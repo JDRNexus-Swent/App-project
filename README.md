@@ -26,3 +26,6 @@
 
     In offline mode, users will still be able to manage their personal data (create characters, write personal lore, etc.) and use the dice rolling feature. Group features synchronisation will be unavailable while offline.
     However, Cloud Firestore features native 'Offline Persistence.' This means any campaign documents accessed before losing connection are automatically cached locally. As a result, both players and the game master can continue consulting essential files, ensuring sessions can still be held in locations with poor network connectivity.
+
+## Figma link
+    https://www.figma.com/design/ZjG9mZc75jXXEqUHVstTES/App-design?node-id=0-1&t=LaPPKQe3UxfPWKZE-1
