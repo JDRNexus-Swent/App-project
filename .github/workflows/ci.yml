@@ -23,7 +23,7 @@ jobs:
         uses: android-actions/setup-android@v4
 
       - name: Install Android SDK platform
-        run: sdkmanager "platforms;android-37"
+        run: android sdk install --canary platforms/android-37
 
       - name: Make Gradle executable
         run: chmod +x gradlew
