@@ -1,4 +1,4 @@
-package com.android.sample
+package com.github.se.jdrnexus
 
 import kotlin.math.sqrt
 

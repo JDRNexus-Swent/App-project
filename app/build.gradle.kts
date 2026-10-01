@@ -9,11 +9,11 @@ plugins {
 }
 
 android {
-  namespace = "com.android.sample"
+  namespace = "com.github.se.jdrnexus"
   compileSdk = 37
 
   defaultConfig {
-    applicationId = "com.android.sample"
+    applicationId = "com.github.se.jdrnexus"
     minSdk = 28
     targetSdk = 34
     versionCode = 1
