@@ -1,0 +1,32 @@
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK platform
+        run: android sdk install --canary platforms/android-37
+
+      - name: Make Gradle executable
+        run: chmod +x gradlew
+
+      - name: Run checks
+        run: ./gradlew check
