@@ -45,4 +45,4 @@ A player can belong to multiple campaigns, and each one gets its own shared work
 - **Device features:** GPS + map, microphone and speaker.
 
 ## Figma link
-   [Find our mockups here] (https://www.figma.com/design/ZjG9mZc75jXXEqUHVstTES/App-design?node-id=0-1&t=LaPPKQe3UxfPWKZE-1)
+   [Find our mockups here](https://www.figma.com/design/ZjG9mZc75jXXEqUHVstTES/App-design?node-id=0-1&t=LaPPKQe3UxfPWKZE-1)
