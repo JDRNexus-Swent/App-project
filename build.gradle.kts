@@ -4,6 +4,4 @@ plugins {
     alias(libs.plugins.jetbrainsKotlinAndroid) apply false
     alias(libs.plugins.kotlinCompose) apply false
     alias(libs.plugins.ktfmt) apply false
-    // Add the dependency for the Google services Gradle plugin
-    id("com.google.gms.google-services") version "4.5.0" apply false
 }
