@@ -117,6 +117,7 @@ fun DependencyHandlerScope.globalTestImplementation(dep: Any) {
 dependencies {
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.appcompat)
+  implementation(libs.androidx.ui.graphics)
   implementation(libs.material)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(platform(libs.compose.bom))
@@ -143,7 +144,7 @@ dependencies {
   // UI Tests
   globalTestImplementation(libs.compose.test.junit)
   debugImplementation(libs.compose.test.manifest)
-
+  implementation(libs.compose.material.icons.extended)
   // --------- Kaspresso test framework ----------
   globalTestImplementation(libs.kaspresso)
   globalTestImplementation(libs.kaspresso.compose)
