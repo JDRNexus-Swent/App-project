@@ -6,10 +6,6 @@ plugins {
   alias(libs.plugins.ktfmt)
   alias(libs.plugins.sonar)
   id("jacoco")
-
-  id("com.android.application")
-  // Add the Google services Gradle plugin
-  id("com.google.gms.google-services")
 }
 
 android {
