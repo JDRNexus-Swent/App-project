@@ -48,4 +48,5 @@ A player can belong to multiple campaigns, and each one gets its own shared work
    [Find our mockups here](https://www.figma.com/design/ZjG9mZc75jXXEqUHVstTES/App-design?node-id=0-1&t=LaPPKQe3UxfPWKZE-1)
 
 ## Contributors
-   AI agents
+- JDRNexus team (@Cledje, @ ThibaultCochetEPFL, @bechlima, @Artyst05, @ LDfrt, @ MeriemEPFL, @ s-tan-S )
+- AI agents
