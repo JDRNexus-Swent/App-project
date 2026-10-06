@@ -6,6 +6,7 @@ plugins {
   alias(libs.plugins.ktfmt)
   alias(libs.plugins.sonar)
   id("jacoco")
+  alias(libs.plugins.google.services)
 }
 
 android {
@@ -150,6 +151,14 @@ dependencies {
 
   // ----------       Robolectric     ------------
   testImplementation(libs.robolectric)
+
+  // ----------       FireBase        ------------
+  // Firebase BoM
+  implementation(platform(libs.firebase.bom))
+
+  implementation(libs.firebase.firestore)
+  implementation(libs.firebase.auth)
+  implementation(libs.firebase.messaging)
 }
 
 tasks.withType<Test> {
