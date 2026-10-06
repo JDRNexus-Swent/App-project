@@ -1,14 +1,11 @@
 // Co-authored-by: OpenAI Codex
 package com.github.se.jdrnexus.model.repository
 
-import com.google.android.gms.tasks.Task
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.UserProfileChangeRequest
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
@@ -18,7 +15,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.merge
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 class AuthRepositoryFirebase internal constructor(private val client: FirebaseAuthClient) :
@@ -170,11 +167,8 @@ private class FirebaseAuthClientFirebase(private val firebaseAuth: FirebaseAuth)
 
   override suspend fun createEmailAccount(email: String, password: String): AuthUser =
       withFirebaseErrors {
-        firebaseAuth
-            .createUserWithEmailAndPassword(email, password)
-            .awaitResult()
-            .user
-            ?.toAuthUser() ?: throw AuthOperationException(AuthError.UNKNOWN)
+        firebaseAuth.createUserWithEmailAndPassword(email, password).await().user?.toAuthUser()
+            ?: throw AuthOperationException(AuthError.UNKNOWN)
       }
 
   override suspend fun updateUsername(uid: String, username: String): AuthUser =
@@ -183,7 +177,7 @@ private class FirebaseAuthClientFirebase(private val firebaseAuth: FirebaseAuth)
             firebaseAuth.currentUser?.takeIf { it.uid == uid }
                 ?: throw AuthOperationException(AuthError.SESSION_NOT_FOUND)
         val profile = UserProfileChangeRequest.Builder().setDisplayName(username).build()
-        user.updateProfile(profile).awaitResult()
+        user.updateProfile(profile).await()
         user.toAuthUser().also { profileUpdates.tryEmit(it) }
       }
 
@@ -192,19 +186,19 @@ private class FirebaseAuthClientFirebase(private val firebaseAuth: FirebaseAuth)
       val user =
           firebaseAuth.currentUser?.takeIf { it.uid == uid }
               ?: throw AuthOperationException(AuthError.SESSION_NOT_FOUND)
-      user.delete().awaitResult()
+      user.delete().await()
     }
   }
 
   override suspend fun signInWithEmail(email: String, password: String): AuthUser =
       withFirebaseErrors {
-        firebaseAuth.signInWithEmailAndPassword(email, password).awaitResult().user?.toAuthUser()
+        firebaseAuth.signInWithEmailAndPassword(email, password).await().user?.toAuthUser()
             ?: throw AuthOperationException(AuthError.UNKNOWN)
       }
 
   override suspend fun signInWithGoogle(idToken: String): AuthUser = withFirebaseErrors {
     val credential = GoogleAuthProvider.getCredential(idToken, null)
-    firebaseAuth.signInWithCredential(credential).awaitResult().user?.toAuthUser()
+    firebaseAuth.signInWithCredential(credential).await().user?.toAuthUser()
         ?: throw AuthOperationException(AuthError.UNKNOWN)
   }
 
@@ -246,17 +240,3 @@ internal fun authErrorForFirebaseCode(code: String): AuthError =
 
 private fun com.google.firebase.auth.FirebaseUser.toAuthUser(): AuthUser =
     AuthUser(uid = uid, email = email, username = displayName)
-
-private suspend fun <T> Task<T>.awaitResult(): T = suspendCancellableCoroutine { continuation ->
-  addOnCompleteListener { task ->
-    if (continuation.isActive) {
-      if (task.isSuccessful) {
-        continuation.resume(task.result)
-      } else {
-        continuation.resumeWithException(
-            task.exception ?: IllegalStateException("Firebase Auth operation failed")
-        )
-      }
-    }
-  }
-}
