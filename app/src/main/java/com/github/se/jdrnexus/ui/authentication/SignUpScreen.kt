@@ -1,8 +1,5 @@
 package com.github.se.jdrnexus.ui.authentication
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -23,7 +20,6 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,10 +34,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -56,31 +48,29 @@ import com.github.se.jdrnexus.resources.JdrNexusLogo
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 
 @Composable
-fun SignInScreen(
-    // later :   signInViewModel: SignInViewModel = viewModel(),
-    // later:   credentialManager: CredentialManager = CredentialManager
-    onSignIn: () -> Unit = {},
-    signInWithGoogle: () -> Unit = {},
-    onSignUp: () -> Unit = {},
-    forgotPassword: () -> Unit = {},
+fun SignUpScreen(
+    // later : signUpViewModel:SignUpViewModel = ViewModel(),
+    onRegister: () -> Unit = {},
+    onSignInScreen: () -> Unit = {},
     emailError: String? = null,
     passwordError: String? = null,
+    usernameError: String? = null,
     isLoading: Boolean = false,
 ) {
 
-  // Get the colors defined by the application's Material theme.
+  // Use the application's Material 3 theme colors.
   val colors = MaterialTheme.colorScheme
 
+  // Local UI state for the form fields.
   var email by remember { mutableStateOf("") }
   var password by remember { mutableStateOf("") }
+  var username by remember { mutableStateOf("") }
 
   // Keeps track of whether the password should be visible or masked.
   var passwordVisible by remember { mutableStateOf(false) }
-  val context = LocalContext.current
-  //  later :   val uiState by signInViewModel.uiState.collectAsState()
-  // later :    val errorMsg = uiState.errorMsg
 
-  // later :   LaunchedEffect(uiState.user) { uiState.user?.let { onSignIn() } }
+  // later :   val uiState by signUpViewModel.uiState.collectAsState()
+  // later :   LaunchedEffect(uiState.user) { uiState.user?.let { onRegister() } }
 
   Surface(
       modifier = Modifier.fillMaxSize(),
@@ -90,7 +80,6 @@ fun SignInScreen(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-
       // Application logo.
       Box(
           modifier = Modifier.fillMaxWidth(),
@@ -99,7 +88,7 @@ fun SignInScreen(
         JdrNexusLogo(
             modifier = Modifier.size(140.dp),
             color = colors.primary,
-            backGroundColor = colors.onBackground,
+            backGroundColor = colors.background,
         )
       }
       // Application name and subtitle.
@@ -110,7 +99,6 @@ fun SignInScreen(
           textAlign = TextAlign.Center,
           color = colors.onSecondary,
       )
-      Spacer(modifier = Modifier.height(8.dp))
       Text(
           text = "Your next chapter awaits",
           fontSize = 13.sp,
@@ -120,9 +108,9 @@ fun SignInScreen(
       DivideWithDiamonds(colors.primary)
       Spacer(modifier = Modifier.height(8.dp))
 
-      // Sign-in introduction.
+      // Sign-up introduction.
       Text(
-          text = "Welcome back, adventurer.",
+          text = "Welcome new adventurer.",
           fontSize = 22.sp,
           fontFamily = FontFamily.Serif,
           modifier = Modifier.fillMaxWidth(),
@@ -130,12 +118,47 @@ fun SignInScreen(
       )
       Spacer(modifier = Modifier.height(5.dp))
       Text(
-          text = "Sign in to continue your story.",
+          text = "Sign up to start your adventure",
           color = colors.tertiary,
-          fontSize = 13.sp,
+          fontSize = 12.sp,
           modifier = Modifier.fillMaxWidth(),
       )
-      Spacer(modifier = Modifier.height(16.dp))
+      Spacer(Modifier.height(16.dp))
+      // Username field.
+      Text(
+          text = "Username",
+          fontWeight = FontWeight.Medium,
+          modifier = Modifier.fillMaxWidth(),
+          color = colors.onSecondary,
+      )
+      Spacer(Modifier.height(10.dp))
+      OutlinedTextField(
+          value = username, // later : uiState.username
+          onValueChange = {
+            username = it
+          }, // later :  onValueChange = {signUpViewModel.setUsername(it)}
+          shape = RoundedCornerShape(45.dp),
+          placeholder = { Text(text = "Username", color = colors.tertiary) },
+          singleLine = true,
+          modifier = Modifier.fillMaxWidth(),
+          colors =
+              DarkFieldColors(
+                  container = colors.onBackground,
+                  border = colors.onSurface,
+                  textPrimary = colors.onSecondary,
+                  primary = colors.primary,
+              ),
+          // later :
+          //          isError = uiState.usernameError != null,
+          //          supportingText = {
+          //              uiState.usernameError?.let { error ->
+          //                  Text(text = error)
+          //              }
+          //          },
+          isError = usernameError != null,
+          supportingText = { usernameError?.let { error -> Text(text = error) } },
+      )
+      Spacer(Modifier.height(20.dp))
 
       // Email field.
       Text(
@@ -147,10 +170,10 @@ fun SignInScreen(
       Spacer(Modifier.height(10.dp))
 
       OutlinedTextField(
-          value = email, // later: value = uiState.email
+          value = email, // later : value = uiState.email
           onValueChange = {
             email = it
-          }, //   later :  onValueChange = {signInViewModel.onEmail(it) },
+          }, // later :  onValueChange = {signUpViewModel.setEmail(it) },
           shape = RoundedCornerShape(45.dp),
           leadingIcon = {
             Icon(
@@ -169,6 +192,7 @@ fun SignInScreen(
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
+          // later :
           //          isError = uiState.emailError != null,
           //          supportingText = {
           //              uiState.emailError?.let { error ->
@@ -187,14 +211,13 @@ fun SignInScreen(
           modifier = Modifier.fillMaxWidth(),
           color = colors.onSecondary,
       )
-
       Spacer(modifier = Modifier.height(10.dp))
 
       OutlinedTextField(
           value = password, // later : value = uiState.password
           onValueChange = {
             password = it
-          }, // later:       onValueChange = {signInViewModel.onPassword(it) },
+          }, // later :     onValueChange = {signUpViewModel.setPassword(it) },
           shape = RoundedCornerShape(45.dp),
           leadingIcon = {
             Icon(
@@ -235,37 +258,28 @@ fun SignInScreen(
           isError = passwordError != null,
           supportingText = { passwordError?.let { error -> Text(text = error) } },
       )
-      Spacer(modifier = Modifier.height(4.dp))
+      Spacer(modifier = Modifier.height(8.dp))
+      DivideWithDiamonds(colors.primary)
+      Spacer(Modifier.height(8.dp))
 
-      // button in case of forgotten password
-      TextButton(
-          onClick = forgotPassword,
-          modifier = Modifier.align(Alignment.End),
-      ) {
-        Text(
-            text = "Forgot password ?",
-            color = colors.primary,
-        )
-      }
-      Spacer(Modifier.height(4.dp))
-      // Sign-in button to sign in to the app .
+      // Register button.
       Button(
-          onClick = onSignIn, // later : onClick = signInViewModel.signIn()
+          onClick = onRegister, // later :  onClick = uiState.onRegister()
           enabled = !isLoading,
           modifier = Modifier.fillMaxWidth().height(54.dp),
           shape = RoundedCornerShape(18.dp),
           colors = ButtonDefaults.buttonColors(colors.primary, colors.onPrimary),
       ) {
-        if (isLoading) { // later : uiState.isLoading
+        if (isLoading) { //  later : if (uiState.isLoading)
           CircularProgressIndicator(
-              Modifier.size(24.dp),
-              color = colors.primary,
+              modifier = Modifier.size(24.dp),
+              color = colors.onPrimary,
               strokeWidth = 2.dp,
           )
         } else {
           Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "Sign In",
+                text = "Register",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
             )
@@ -277,114 +291,25 @@ fun SignInScreen(
           }
         }
       }
-      Spacer(Modifier.height(20.dp))
 
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        HorizontalDivider(
-            modifier = Modifier.weight(1f),
-            color = colors.tertiary.copy(alpha = .3f),
-        )
-
-        Text(
-            text = " or continue with ",
-            color = colors.tertiary,
-        )
-
-        HorizontalDivider(
-            modifier = Modifier.weight(1f),
-            color = colors.tertiary.copy(alpha = .3f),
-        )
-      }
-      Spacer(Modifier.height(16.dp))
-
-      //  Sign in with Google for users who already have an account.
-      GoogleSignInButton(
-          click = signInWithGoogle,
-          border = colors.onSurface,
-          logo = colors.primary,
-          textColor = colors.onSecondary,
-          container = colors.onBackground,
-      )
-      // later :
-      //        if (uiState.isLoading) {
-      //            CircularProgressIndicator(Modifier.size(30.dp))
-      //        }else{
-      //            GoogleSignInButton(
-      //                click = signInViewModel.signIn(context, credentialManager),
-      //                border = colors.onSurface,
-      //                logo = colors.primary,
-      //                textColor = colors.onSecondary,
-      //                container = colors.onBackground,
-      //            )
-      //        }
-      Spacer(modifier = Modifier.height(2.dp))
-
-      // Link to the Sign Up screen if the user doesn't have an account yet
+      // Link to the Sign In screen if the user already have an account
       Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
-            "New to the realm? ",
+            "Already have an account? ",
             color = colors.tertiary,
         )
 
         TextButton(
-            onClick = onSignUp,
+            onClick = onSignInScreen,
             contentPadding = PaddingValues(2.dp),
         ) {
           Text(
-              "Sign up",
+              "Log in",
               color = colors.primary,
               fontWeight = FontWeight.Bold,
           )
         }
       }
-    }
-  }
-}
-
-/**
- * Reusable Google sign-in button.
- *
- * The button receives its colors and click action from the SignInScreen so that the authentication
- * logic remains outside this UI component.
- *
- * @param click Action executed when the button is pressed.
- * @param border Border color of the button.
- * @param logo Color applied to the Google logo.
- * @param textColor Color of the button text.
- * @param container Background color of the button.
- */
-@Composable
-fun GoogleSignInButton(
-    click: () -> Unit,
-    border: Color,
-    logo: Color,
-    textColor: Color,
-    container: Color,
-) {
-  Button(
-      onClick = click,
-      colors = ButtonDefaults.buttonColors(containerColor = container),
-      shape = RoundedCornerShape(50),
-      border = BorderStroke(1.dp, border),
-      modifier = Modifier.padding(8.dp).height(48.dp),
-  ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-      Image(
-          painter = painterResource(id = com.github.se.jdrnexus.R.drawable.google_logo),
-          contentDescription = "Google Logo",
-          modifier = Modifier.size(30.dp).padding(end = 8.dp),
-          colorFilter = ColorFilter.tint(logo),
-      )
-
-      Text(
-          text = "Sign in with Google",
-          color = textColor,
-          fontSize = 16.sp,
-      )
     }
   }
 }
@@ -395,8 +320,8 @@ fun GoogleSignInButton(
     name = "Light Mode",
 )
 @Composable
-fun SignInScreenLightPreview() {
-  SampleAppTheme(darkTheme = false, dynamicColor = false) { SignInScreen() }
+fun SignUpScreenLightPreview() {
+  SampleAppTheme(darkTheme = false, dynamicColor = false) { SignUpScreen() }
 }
 
 @Preview(
@@ -404,6 +329,6 @@ fun SignInScreenLightPreview() {
     name = "Dark Mode",
 )
 @Composable
-fun SignInScreenDarkPreview() {
-  SampleAppTheme(darkTheme = true) { SignInScreen() }
+fun SignUpScreenDarkPreview() {
+  SampleAppTheme(darkTheme = true) { SignUpScreen() }
 }
