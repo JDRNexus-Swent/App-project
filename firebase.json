@@ -6,7 +6,7 @@
     "indexes": "firebase/firestore/firestore.indexes.json"
   },
   "storage": {
-    "rules": "firebase/firestore/storage.rules"
+    "rules": "firebase/storage/storage.rules"
   },
   "emulators": {
 
@@ -23,7 +23,7 @@
       "port": 9199
     },
     "ui": {
-      "enabled": false
+      "enabled": true
     },
     "singleProjectMode": true
   },
