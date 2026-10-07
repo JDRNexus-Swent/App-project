@@ -36,11 +36,11 @@ class PersonalSpaceViewModelTest {
 
   // ============ Workspace repository fake ============
   private class FakePersonalSpaceRepository(
-    private val rootItems: List<JDRFile> = emptyList(),
-    private val itemsByFolder: Map<String, List<JDRFile>> = emptyMap(),
-    private val failure: Exception? = null,
-    private val createFailure: Exception? = null,
-    private val fetchGate: CompletableDeferred<Unit>? = null,
+      private val rootItems: List<JDRFile> = emptyList(),
+      private val itemsByFolder: Map<String, List<JDRFile>> = emptyMap(),
+      private val failure: Exception? = null,
+      private val createFailure: Exception? = null,
+      private val fetchGate: CompletableDeferred<Unit>? = null,
   ) : WorkspaceRepository {
     val requestedRootOwners = mutableListOf<String>()
     val folderFetchRequests = mutableListOf<String>()
@@ -87,19 +87,6 @@ class PersonalSpaceViewModelTest {
 
     override suspend fun getFile(fileId: String): Result<JDRFile?> = Result.success(null)
   }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
   // ============ ViewModel behavior tests ============
 
@@ -320,6 +307,4 @@ class PersonalSpaceViewModelTest {
     assertEquals("", viewModel.uiState.value.currentFolderId)
     assertFalse(viewModel.uiState.value.canNavigateUp)
   }
-
-
 }

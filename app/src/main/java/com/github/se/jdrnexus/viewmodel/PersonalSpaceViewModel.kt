@@ -11,7 +11,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -46,11 +45,12 @@ data class PersonalSpaceUiState(
 // ============ Definition of the ViewModel ============
 class PersonalSpaceViewModel(
     private val repository: WorkspaceRepository,
-    private val ownerId: String, // TODO: In my opinion this could be done in the implementation of the
-    //repo but would need a discussion first !!!
+    private val ownerId:
+        String, // TODO: In my opinion this could be done in the implementation of the
+    // repo but would need a discussion first !!!
 ) : ViewModel() {
 
-    // ============ Internal variables ============
+  // ============ Internal variables ============
   private val _uiState = MutableStateFlow(PersonalSpaceUiState())
   val uiState: StateFlow<PersonalSpaceUiState> = _uiState.asStateFlow()
 
@@ -58,13 +58,12 @@ class PersonalSpaceViewModel(
   private val navigationPath = ArrayDeque<String>()
 
   /**
-  * The fetch currently running. It is cancelled when a new fetch starts, so a slow response for a
-  * previous folder can never overwrite the contents of the folder the user is now in.
-  */
+   * The fetch currently running. It is cancelled when a new fetch starts, so a slow response for a
+   * previous folder can never overwrite the contents of the folder the user is now in.
+   */
   private var fetchJob: Job? = null
 
-    // ============ Fetching functions ============
-
+  // ============ Fetching functions ============
 
   init {
     fetchItems(parentFolderId = "")
@@ -107,7 +106,7 @@ class PersonalSpaceViewModel(
     }
   }
 
-    // ============ Seelction/Navigation functions ============
+  // ============ Seelction/Navigation functions ============
 
   /** Folders open in this screen; every other JDR file is opened as a document. */
   fun onItemClicked(item: JDRFile, navigateToDocument: (documentId: String) -> Unit) {
@@ -129,8 +128,7 @@ class PersonalSpaceViewModel(
     fetchItems(parentFolderId = navigationPath.removeLast())
   }
 
-
-    // ============ Addition handling functions (when "+" is clicked) ============
+  // ============ Addition handling functions (when "+" is clicked) ============
 
   /**
    * Handles the screen's "+" action. Call this from its click handler, then show the add menu when
@@ -179,7 +177,7 @@ class PersonalSpaceViewModel(
     }
   }
 
-    // ============ Creation functions ============
+  // ============ Creation functions ============
 
   /**
    * Call when the user confirms the new-folder dialog. The ViewModel creates the folder under the
@@ -222,19 +220,19 @@ class PersonalSpaceViewModel(
     }
   }
 
-    /**
-     * Call when the user chooses "New file" from the add menu. Closes the menu and invokes the UI's
-     * navigation callback with the current folder ID; it is empty when the user is at the root.
-     * The UI can pass this ID to the create-file screen.
-     */
-    fun onNewFileSelected(navigateToCreateFile: (parentFolderId: String) -> Unit) {
-        _uiState.update { it.copy(isAddMenuExpanded = false) }
-        navigateToCreateFile(_uiState.value.currentFolderId)
-    }
+  /**
+   * Call when the user chooses "New file" from the add menu. Closes the menu and invokes the UI's
+   * navigation callback with the current folder ID; it is empty when the user is at the root. The
+   * UI can pass this ID to the create-file screen.
+   */
+  fun onNewFileSelected(navigateToCreateFile: (parentFolderId: String) -> Unit) {
+    _uiState.update { it.copy(isAddMenuExpanded = false) }
+    navigateToCreateFile(_uiState.value.currentFolderId)
+  }
 
-    /* TODO: reflect on how the file will be saved back to the repo and displayed
-    When we navigate to the next screen, is it the one to save to the repo ? And then when comeback fetch again from root
-    Or make the file passback the parentFolder to call the ViewModel with a particular UI state set ?
-    Fetch items will need to be recalled or items need to be updated... To be discussed
-    */
+  /* TODO: reflect on how the file will be saved back to the repo and displayed
+  When we navigate to the next screen, is it the one to save to the repo ? And then when comeback fetch again from root
+  Or make the file passback the parentFolder to call the ViewModel with a particular UI state set ?
+  Fetch items will need to be recalled or items need to be updated... To be discussed
+  */
 }
