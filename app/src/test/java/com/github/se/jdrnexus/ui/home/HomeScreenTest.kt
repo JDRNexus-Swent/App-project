@@ -22,15 +22,15 @@ class HomeScreenTest {
   fun contentDisplaysTheHeadingsAndPlaceholderObjects() {
     composeTestRule.setContent { SampleAppTheme { HomeScreen() } }
 
-    composeTestRule.onNodeWithTag(TestTags.title).assertIsDisplayed()
-    composeTestRule.onNodeWithTag(TestTags.imagePlaceholder).assertIsDisplayed()
-    composeTestRule.onNodeWithTag(TestTags.placeholderObjectsRow).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(TestTags.PROFILE_PIC).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(TestTags.OBJECTSROW).assertIsDisplayed()
     composeTestRule
         .onNodeWithTag(TestTags.placeholderObjects.first())
         .assertIsDisplayed()
-    composeTestRule.onNodeWithTag(TestTags.localAdventures).assertIsDisplayed()
-    composeTestRule.onNodeWithTag(TestTags.quicktools).assertIsDisplayed()
-    TestTags.quicktoolButtons.forEach { testTag ->
+    composeTestRule.onNodeWithTag(TestTags.ADVENTURES).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(TestTags.QUICKTOOLS).assertIsDisplayed()
+    TestTags.BUTTONS.forEach { testTag ->
       val button = composeTestRule.onNodeWithTag(testTag)
       button.assertIsDisplayed()
       val bounds = button.fetchSemanticsNode().boundsInRoot
