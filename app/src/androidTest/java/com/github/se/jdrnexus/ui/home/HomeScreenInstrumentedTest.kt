@@ -16,8 +16,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class HomeScreenInstrumentedTest {
-  @get:Rule
-  val composeTestRule = createComposeRule()
+  @get:Rule val composeTestRule = createComposeRule()
 
   @Test
   fun displaysTitleProfilePlaceholderSectionsAndAdventures() {
@@ -31,12 +30,12 @@ class HomeScreenInstrumentedTest {
 
     TestTags.placeholderObjects.forEachIndexed { index, tag ->
       Assert.assertTrue(composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty())
-        Assert.assertTrue(
-            composeTestRule
-                .onAllNodesWithText("Adventure ${index + 1}")
-                .fetchSemanticsNodes()
-                .isNotEmpty()
-        )
+      Assert.assertTrue(
+          composeTestRule
+              .onAllNodesWithText("Adventure ${index + 1}")
+              .fetchSemanticsNodes()
+              .isNotEmpty()
+      )
     }
   }
 
@@ -49,7 +48,7 @@ class HomeScreenInstrumentedTest {
       button.assertIsDisplayed()
       composeTestRule.onNodeWithText("Tool ${index + 1}").assertIsDisplayed()
       val bounds = button.fetchSemanticsNode().boundsInRoot
-        Assert.assertEquals(bounds.width, bounds.height, 1f)
+      Assert.assertEquals(bounds.width, bounds.height, 1f)
       button.performClick()
     }
   }
@@ -57,12 +56,10 @@ class HomeScreenInstrumentedTest {
   @Test
   fun logoutButtonInvokesCallback() {
     var loggedOut = false
-    composeTestRule.setContent {
-        SampleAppTheme { HomeScreen(onLogout = { loggedOut = true }) }
-    }
+    composeTestRule.setContent { SampleAppTheme { HomeScreen(onLogout = { loggedOut = true }) } }
 
     composeTestRule.onNodeWithText("Log out").performClick()
 
-      Assert.assertTrue(loggedOut)
+    Assert.assertTrue(loggedOut)
   }
 }
