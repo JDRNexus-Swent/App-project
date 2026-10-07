@@ -1,5 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
-package com.github.se.jdrnexus.ui.authentification
+package com.github.se.jdrnexus.ui.authentication
 
 import androidx.lifecycle.ViewModel
 import com.github.se.jdrnexus.model.repository.AuthError
