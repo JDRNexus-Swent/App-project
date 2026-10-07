@@ -105,7 +105,7 @@ sonar {
     // Paths to JaCoCo XML coverage report files.
     property(
         "sonar.coverage.jacoco.xmlReportPaths",
-        "${project.layout.buildDirectory.get()}/reports/jacoco/jacocoTestReport/jacocoTestReport.xml",
+        "${project.layout.buildDirectory.get()}/reports/coverage/test/debug/*.xml",
     )
   }
 }
@@ -204,3 +204,5 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
       }
   )
 }
+
+tasks.named("sonar") { dependsOn("createDebugUnitTestCoverageReport") }
