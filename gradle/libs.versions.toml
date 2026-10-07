@@ -14,8 +14,8 @@ composeViewModel = "2.11.0"
 lifecycleRuntimeKtx = "2.11.0"
 kaspresso = "1.6.1"
 robolectric = "4.16.1"
-sonar = "4.4.1.3373"
 kotlinxCoroutines = "1.11.0"
+sonar = "7.5.0.8588"
 
 # Firebase
 # Every com.google.firebase artifact is versioned by this BOM. KTX artifacts were removed
