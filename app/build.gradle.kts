@@ -160,6 +160,7 @@ dependencies {
   implementation(libs.firebase.firestore)
   implementation(libs.firebase.auth)
   implementation(libs.firebase.messaging)
+  implementation(libs.kotlinx.coroutines.play.services)
 }
 
 tasks.withType<Test> {
