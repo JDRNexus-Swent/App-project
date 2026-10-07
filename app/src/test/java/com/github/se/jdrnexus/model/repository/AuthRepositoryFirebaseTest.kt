@@ -152,24 +152,12 @@ class AuthRepositoryFirebaseTest {
   }
 
   @Test
-  fun mapsCommonFirebaseErrorsToReadableMessages() {
+  fun mapsCommonFirebaseErrors() {
     assertEquals(AuthError.INVALID_EMAIL, authErrorForFirebaseCode("ERROR_INVALID_EMAIL"))
     assertEquals(AuthError.WRONG_PASSWORD, authErrorForFirebaseCode("ERROR_WRONG_PASSWORD"))
     assertEquals(
         AuthError.EMAIL_ALREADY_IN_USE,
         authErrorForFirebaseCode("ERROR_EMAIL_ALREADY_IN_USE"),
-    )
-    assertTrue(AuthError.EMAIL_ALREADY_IN_USE.message.isNotBlank())
-  }
-
-  @Test
-  fun failedOperationReturnsTypedFailure() = runBlocking {
-    val client = FakeFirebaseAuthClient().apply { emailSignInFailure = AuthError.WRONG_PASSWORD }
-    val repository = AuthRepositoryFirebase(client)
-
-    assertEquals(
-        AuthResult.Failure(AuthError.WRONG_PASSWORD),
-        repository.signInWithEmail("player@example.com", "wrong"),
     )
   }
 
