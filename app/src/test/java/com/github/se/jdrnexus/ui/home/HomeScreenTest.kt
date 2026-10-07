@@ -15,8 +15,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class HomeScreenTest {
-  @get:Rule
-  val composeTestRule = createComposeRule()
+  @get:Rule val composeTestRule = createComposeRule()
 
   @Test
   fun contentDisplaysTheHeadingsAndPlaceholderObjects() {
@@ -25,9 +24,7 @@ class HomeScreenTest {
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.PROFILE_PIC).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.OBJECTSROW).assertIsDisplayed()
-    composeTestRule
-        .onNodeWithTag(TestTags.placeholderObjects.first())
-        .assertIsDisplayed()
+    composeTestRule.onNodeWithTag(TestTags.placeholderObjects.first()).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.ADVENTURES).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.QUICKTOOLS).assertIsDisplayed()
     TestTags.BUTTONS.forEach { testTag ->
@@ -41,12 +38,10 @@ class HomeScreenTest {
   @Test
   fun logoutButtonInvokesOnLogout() {
     var loggedOut = false
-    composeTestRule.setContent {
-        SampleAppTheme { HomeScreen(onLogout = { loggedOut = true }) }
-    }
+    composeTestRule.setContent { SampleAppTheme { HomeScreen(onLogout = { loggedOut = true }) } }
 
     composeTestRule.onNodeWithText("Log out").assertIsDisplayed().performClick()
 
-      Assert.assertTrue(loggedOut)
+    Assert.assertTrue(loggedOut)
   }
 }

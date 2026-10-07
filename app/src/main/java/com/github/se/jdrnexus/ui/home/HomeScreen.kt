@@ -30,8 +30,7 @@ object TestTags {
   const val ADVENTURES = "home_local_adventures"
   const val QUICKTOOLS = "home_quicktools"
   val BUTTONS = listOf("home_quicktool_1", "home_quicktool_2", "home_quicktool_3")
-  val placeholderObjects =
-      listOf("home_placeholder_1", "home_placeholder_2", "home_placeholder_3")
+  val placeholderObjects = listOf("home_placeholder_1", "home_placeholder_2", "home_placeholder_3")
 }
 
 @Composable
@@ -102,10 +101,7 @@ fun HomeScreen(modifier: Modifier = Modifier, onLogout: () -> Unit = {}) {
       quicktools.forEachIndexed { index, quicktool ->
         Button(
             onClick = {},
-            modifier =
-                Modifier.weight(1f)
-                    .aspectRatio(1f)
-                    .testTag(TestTags.BUTTONS[index]),
+            modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.BUTTONS[index]),
         ) {
           Text(quicktool)
         }
