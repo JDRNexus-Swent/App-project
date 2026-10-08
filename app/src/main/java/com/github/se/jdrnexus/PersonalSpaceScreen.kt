@@ -46,10 +46,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
-
 import androidx.compose.material.icons.filled.CatchingPokemon
 
 const val PERSONAL_SPACE_ADD_BUTTON_TAG = "personalSpaceAddButton"
@@ -133,13 +135,18 @@ fun PersonalSpaceScreen(
             modifier = Modifier.fillMaxWidth().height(52.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+
           IconButton(
               onClick = onBackButton,
               modifier =
                   Modifier.testTag(PERSONAL_SPACE_BACK_BUTTON_TAG)
                       .semantics { contentDescription = "Back" },
           ) {
-            SpaceIcon(kind = "back", tint = accentColor)
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = null,
+                tint = accentColor,
+            )
           }
           Spacer(modifier = Modifier.width(16.dp))
           Text(
@@ -168,6 +175,7 @@ fun PersonalSpaceScreen(
             modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+
           Text(
               text = "${personalSpaceItems.size} items · Your personal notes, kept together.",
               color = secondaryText,
