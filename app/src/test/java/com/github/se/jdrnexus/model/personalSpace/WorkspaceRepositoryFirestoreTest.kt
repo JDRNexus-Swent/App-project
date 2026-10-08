@@ -217,16 +217,13 @@ class WorkspaceRepositoryFirestoreTest {
     }
   }
 
-  /**
-   * Ensures that attempting to fetch a non-existent document returns a successful Result with a
-   * null value, rather than throwing an exception.
-   */
+  /** Ensures that attempting to fetch a non-existent document returns a failure. */
   @Test
   fun testGetFile_NotFound() {
     runBlocking {
       val result = repository.getFile("non_existent_id")
-      assertTrue("getFile should succeed even if not found", result.isSuccess)
-      assertNull("File should be null when not found", result.getOrNull())
+      assertTrue("getFile should fail when document is not found", result.isFailure)
+      assertEquals("Document not found in Firestore", result.exceptionOrNull()?.message)
     }
   }
 
@@ -242,8 +239,11 @@ class WorkspaceRepositoryFirestoreTest {
       assertTrue("deleteFile should succeed", deleteResult.isSuccess)
 
       val getResult = repository.getFile(fileId)
-      assertTrue("getFile should succeed after delete", getResult.isSuccess)
-      assertNull("File should be null after deletion", getResult.getOrNull())
+      assertTrue(
+          "getFile should fail after delete since the document no longer exists",
+          getResult.isFailure,
+      )
+      assertEquals("Document not found in Firestore", getResult.exceptionOrNull()?.message)
     }
   }
 

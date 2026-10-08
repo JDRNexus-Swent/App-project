@@ -60,7 +60,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       val documentSnapshot = collection.document(fileId).get().await()
 
       if (!documentSnapshot.exists()) {
-        return Result.success(null)
+        return Result.failure(Exception("Document not found in Firestore"))
       }
 
       val file = documentSnapshot.toObject(JDRFile::class.java)
