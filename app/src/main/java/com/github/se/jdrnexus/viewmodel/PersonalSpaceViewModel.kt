@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
-import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import kotlinx.coroutines.CancellationException
