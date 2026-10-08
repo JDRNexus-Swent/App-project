@@ -105,7 +105,7 @@ sonar {
     // Paths to JaCoCo XML coverage report files.
     property(
         "sonar.coverage.jacoco.xmlReportPaths",
-        "${project.layout.buildDirectory.get()}/reports/jacoco/jacocoTestReport/jacocoTestReport.xml",
+        "${project.layout.buildDirectory.get()}/reports/coverage/test/debug/*.xml",
     )
   }
 }
@@ -119,10 +119,13 @@ fun DependencyHandlerScope.globalTestImplementation(dep: Any) {
 dependencies {
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.appcompat)
+  implementation(libs.androidx.ui.graphics)
+  implementation(libs.googleid)
   implementation(libs.material)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(platform(libs.compose.bom))
   testImplementation(libs.junit)
+  testImplementation(libs.kotlinx.coroutines.test)
   globalTestImplementation(libs.androidx.junit)
   globalTestImplementation(libs.androidx.espresso.core)
 
@@ -146,7 +149,7 @@ dependencies {
   // UI Tests
   globalTestImplementation(libs.compose.test.junit)
   debugImplementation(libs.compose.test.manifest)
-
+  implementation(libs.compose.material.icons.extended)
   // --------- Kaspresso test framework ----------
   globalTestImplementation(libs.kaspresso)
   globalTestImplementation(libs.kaspresso.compose)
@@ -161,6 +164,7 @@ dependencies {
   implementation(libs.firebase.firestore)
   implementation(libs.firebase.auth)
   implementation(libs.firebase.messaging)
+  implementation(libs.kotlinx.coroutines.play.services)
 }
 
 tasks.withType<Test> {
@@ -204,3 +208,5 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
       }
   )
 }
+
+tasks.named("sonar") { dependsOn("createDebugUnitTestCoverageReport") }
