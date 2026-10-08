@@ -41,7 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -54,9 +54,42 @@ import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 
-const val PERSONAL_SPACE_ADD_BUTTON_TAG = "personalSpaceAddButton"
-const val PERSONAL_SPACE_BACK_BUTTON_TAG = "personalSpaceBackButton"
-const val PERSONAL_SPACE_ITEM_TAG_PREFIX = "personalSpaceItem"
+internal val PERSONAL_SPACE_CONTAINER_COLOR = SemanticsPropertyKey<Color>("PersonalSpaceContainerColor")
+
+private data class PersonalSpaceThemeColors(
+    val backgroundColor: Color,
+    val cardColor: Color,
+    val iconBackground: Color,
+    val primaryText: Color,
+    val secondaryText: Color,
+    val borderColor: Color,
+    val accentColor: Color,
+    val floatingActionContentColor: Color,
+)
+
+private val darkPersonalSpaceTheme =
+    PersonalSpaceThemeColors(
+        backgroundColor = Color(0xFF17100D),
+        cardColor = Color(0xFF2C211B),
+        iconBackground = Color(0xFF1C140F),
+        primaryText = Color(0xFFE9DDD2),
+        secondaryText = Color(0xFFA98E79),
+        borderColor = Color(0xFF705E50),
+        accentColor = Color(0xFFE2BC32),
+        floatingActionContentColor = Color(0xFF17100D),
+    )
+
+private val lightPersonalSpaceTheme =
+    PersonalSpaceThemeColors(
+        backgroundColor = Color(0xFFF5E9DE),
+        cardColor = Color(0xFFE4D5C8),
+        iconBackground = Color(0xFFF7EDE4),
+        primaryText = Color(0xFF33251D),
+        secondaryText = Color(0xFF96745E),
+        borderColor = Color(0xFFB9A08D),
+        accentColor = Color(0xFF704222),
+        floatingActionContentColor = Color.White,
+    )
 
 private val personalSpaceItems =
     listOf(
@@ -86,6 +119,8 @@ private val personalSpaceItems =
         ),
     )
 
+private const val PERSONAL_SPACE_BACKGROUND_TAG = "personalSpaceBackground"
+
 @Composable
 fun PersonalSpaceScreen(
     onAddButton: () -> Unit,
@@ -94,28 +129,32 @@ fun PersonalSpaceScreen(
     navigation: NavigationPlaceHolder? = null,
 ) {
   val darkTheme = isSystemInDarkTheme()
-  val backgroundColor = if (darkTheme) Color(0xFF17100D) else Color(0xFFF5E9DE)
-  val cardColor = if (darkTheme) Color(0xFF2C211B) else Color(0xFFE4D5C8)
-  val iconBackground = if (darkTheme) Color(0xFF1C140F) else Color(0xFFF7EDE4)
-  val primaryText = if (darkTheme) Color(0xFFE9DDD2) else Color(0xFF33251D)
-  val secondaryText = if (darkTheme) Color(0xFFA98E79) else Color(0xFF96745E)
-  val borderColor = if (darkTheme) Color(0xFF705E50) else Color(0xFFB9A08D)
-  val accentColor = if (darkTheme) Color(0xFFE2BC32) else Color(0xFF704222)
+  val themeColors = if (darkTheme) darkPersonalSpaceTheme else lightPersonalSpaceTheme
+  val backgroundColor = themeColors.backgroundColor
+  val cardColor = themeColors.cardColor
+  val iconBackground = themeColors.iconBackground
+  val primaryText = themeColors.primaryText
+  val secondaryText = themeColors.secondaryText
+  val borderColor = themeColors.borderColor
+  val accentColor = themeColors.accentColor
 
   Scaffold(
+      modifier =
+          Modifier.testTag(PERSONAL_SPACE_BACKGROUND_TAG).semantics {
+            this[PERSONAL_SPACE_CONTAINER_COLOR] = backgroundColor
+          },
       containerColor = backgroundColor,
       floatingActionButton = {
         FloatingActionButton(
             onClick = onAddButton,
-            modifier = Modifier.testTag(PERSONAL_SPACE_ADD_BUTTON_TAG),
             shape = RoundedCornerShape(50),
             containerColor = accentColor,
-            contentColor = if (darkTheme) Color(0xFF17100D) else Color.White,
+            contentColor = themeColors.floatingActionContentColor,
         ) {
           Icon(
               imageVector = Icons.Filled.Add,
-              contentDescription = null,
-              tint = if (darkTheme) Color(0xFF17100D) else Color.White,
+              contentDescription = "Add item",
+              tint = themeColors.floatingActionContentColor,
           )
         }
       },
@@ -136,13 +175,10 @@ fun PersonalSpaceScreen(
 
           IconButton(
               onClick = onBackButton,
-              modifier =
-                  Modifier.testTag(PERSONAL_SPACE_BACK_BUTTON_TAG)
-                      .semantics { contentDescription = "Back" },
           ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = null,
+                contentDescription = "Back",
                 tint = accentColor,
             )
           }
@@ -171,7 +207,6 @@ fun PersonalSpaceScreen(
             fontFamily = FontFamily.Serif,
             fontSize = 30.sp,
             letterSpacing = 1.5.sp,
-            modifier = Modifier.testTag("personalSpaceTitle"),
         )
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 18.dp),
@@ -243,8 +278,7 @@ fun FolderItem(
       modifier =
           modifier
               .fillMaxWidth()
-              .height(96.dp)
-              .testTag("$PERSONAL_SPACE_ITEM_TAG_PREFIX${folder.id}"),
+              .height(96.dp),
       shape = RoundedCornerShape(12.dp),
       colors = CardDefaults.cardColors(containerColor = cardColor),
       border = BorderStroke(1.dp, borderColor),
@@ -264,7 +298,12 @@ fun FolderItem(
                   DocumentType.CHARACTER -> Icons.Filled.Person
                   DocumentType.TEXT -> Icons.AutoMirrored.Filled.MenuBook
                 },
-            contentDescription = null,
+            contentDescription =
+                when (folder.type) {
+                  DocumentType.FOLDER -> "Folder"
+                  DocumentType.CHARACTER -> "Character"
+                  DocumentType.TEXT -> "Text document"
+                },
             tint = accentColor,
             modifier = Modifier.size(24.dp),
         )
