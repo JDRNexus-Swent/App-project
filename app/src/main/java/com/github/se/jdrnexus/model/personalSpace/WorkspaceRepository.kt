@@ -11,6 +11,13 @@ interface WorkspaceRepository {
   // ==========================================
   // Document MANAGEMENT (JDRFile)
   // ==========================================
+  /**
+   * Generates a new, unique document ID. This is useful for initializing a [JDRFile] with a valid
+   * ID before saving it to the database.
+   *
+   * @return A randomly generated unique string ID.
+   */
+  fun getNewUid(): String
 
   /**
    * Creates a new document (e.g., character sheet, lore) in the database.
