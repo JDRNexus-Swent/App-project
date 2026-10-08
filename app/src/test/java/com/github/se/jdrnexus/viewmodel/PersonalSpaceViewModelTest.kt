@@ -251,11 +251,11 @@ class PersonalSpaceViewModelTest {
     viewModel.onItemClicked(rootFolder) {}
     idleMainLooper()
 
-    var selectedParentFolderId = ""
+    var selectedpersonalParentId = ""
     viewModel.onAddClicked()
-    viewModel.onNewFileSelected { selectedParentFolderId = it }
+    viewModel.onNewFileSelected { selectedpersonalParentId = it }
 
-    assertEquals(rootFolder.id, selectedParentFolderId)
+    assertEquals(rootFolder.id, selectedpersonalParentId)
     assertFalse(viewModel.uiState.value.isAddMenuExpanded)
   }
 
@@ -303,7 +303,7 @@ class PersonalSpaceViewModelTest {
     assertEquals("created-folder-id", repository.createdFiles.single().id)
     assertEquals("New folder", repository.createdFiles.single().name)
     assertEquals(ownerId, repository.createdFiles.single().ownerId)
-    assertEquals(listOf(rootFolder.id), repository.createdFiles.single().parentFolderIds)
+    assertEquals(rootFolder.id, repository.createdFiles.single().personalParentId)
     assertEquals(DocumentType.FOLDER, repository.createdFiles.single().type)
     assertFalse(viewModel.uiState.value.isNewFolderDialogOpen)
     assertEquals("", viewModel.uiState.value.newFolderError)
@@ -326,7 +326,7 @@ class PersonalSpaceViewModelTest {
     assertEquals("created-folder-id", repository.createdFiles.single().id)
     assertEquals("Root folder", repository.createdFiles.single().name)
     assertEquals(ownerId, repository.createdFiles.single().ownerId)
-    assertEquals(emptyList<String>(), repository.createdFiles.single().parentFolderIds)
+    assertEquals("", repository.createdFiles.single().personalParentId)
     assertEquals(DocumentType.FOLDER, repository.createdFiles.single().type)
     assertFalse(viewModel.uiState.value.isNewFolderDialogOpen)
     assertEquals("", viewModel.uiState.value.newFolderError)

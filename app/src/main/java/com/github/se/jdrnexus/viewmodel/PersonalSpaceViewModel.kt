@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import kotlinx.coroutines.CancellationException
@@ -70,22 +71,22 @@ class PersonalSpaceViewModel(
   // ============ Fetching functions ============
 
   init {
-    fetchItems(parentFolderId = "")
+    fetchItems(personalParentId = "")
   }
 
   /**
-   * Loads the items whose parent is [parentFolderId]. Can also be used as a "retry".
+   * Loads the items whose parent is [personalParentId]. Can also be used as a "retry".
    *
    * canNavigateUp is recomputed here from the back stack. Every change to [navigationPath] is
    * followed by a call to this function, so the flag is always in sync with the stack.
    */
-  fun fetchItems(parentFolderId: String) {
+  fun fetchItems(personalParentId: String) {
     fetchJob?.cancel()
 
     _uiState.update {
       it.copy(
           items = emptyList(),
-          currentFolderId = parentFolderId,
+          currentFolderId = personalParentId,
           loadState = LoadState.Loading,
           canNavigateUp = navigationPath.isNotEmpty(),
       )
@@ -94,10 +95,10 @@ class PersonalSpaceViewModel(
     fetchJob = viewModelScope.launch {
       try {
         val files =
-            if (parentFolderId.isEmpty()) {
+            if (personalParentId.isEmpty()) {
               repository.getPersonalRootFiles(requireUid())
             } else {
-              repository.getDocumentsInFolder(parentFolderId)
+              repository.getDocumentsInFolder(personalParentId)
             }
         files.collect { items ->
           _uiState.update { it.copy(items = items, loadState = LoadState.Success) }
@@ -117,7 +118,7 @@ class PersonalSpaceViewModel(
   fun onItemClicked(item: JDRFile, navigateToDocument: (documentId: String) -> Unit) {
     if (item.type == DocumentType.FOLDER) {
       navigationPath.addLast(_uiState.value.currentFolderId)
-      fetchItems(parentFolderId = item.id)
+      fetchItems(personalParentId = item.id)
     } else {
       navigateToDocument(item.id)
     }
@@ -130,7 +131,7 @@ class PersonalSpaceViewModel(
   fun onNavigateUp() {
     if (navigationPath.isEmpty()) return
 
-    fetchItems(parentFolderId = navigationPath.removeLast())
+    fetchItems(personalParentId = navigationPath.removeLast())
   }
 
   // ============ Addition handling functions (when "+" is clicked) ============
@@ -208,9 +209,8 @@ class PersonalSpaceViewModel(
                 id = repository.getNewUid(),
                 name = name,
                 ownerId = requireUid(),
-                parentFolderIds =
-                    if (state.currentFolderId.isEmpty()) emptyList()
-                    else listOf(state.currentFolderId),
+                personalParentId =
+                    if (state.currentFolderId.isEmpty()) "" else state.currentFolderId,
                 type = DocumentType.FOLDER,
             )
         repository.createFile(folder).getOrThrow()
