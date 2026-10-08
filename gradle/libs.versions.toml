@@ -14,7 +14,16 @@ composeViewModel = "2.11.0"
 lifecycleRuntimeKtx = "2.11.0"
 kaspresso = "1.6.1"
 robolectric = "4.16.1"
-sonar = "4.4.1.3373"
+kotlinxCoroutines = "1.11.0"
+sonar = "7.5.0.8588"
+
+# Firebase
+# Every com.google.firebase artifact is versioned by this BOM. KTX artifacts were removed
+# from the BOM in 34.0.0 - their APIs now live in the main artifacts.
+firebaseBom = "34.18.0"
+
+googleServices = "4.4.1"
+
 uiGraphics = "1.12.1"
 
 [libraries]
@@ -43,6 +52,13 @@ kaspresso-compose = { group = "com.kaspersky.android-components", name = "kaspre
 
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics", version.ref = "uiGraphics" }
+
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
+firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
+firebase-auth = { module = "com.google.firebase:firebase-auth" }
+firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
+firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
+kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "kotlinxCoroutines" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

@@ -6,6 +6,7 @@ plugins {
   alias(libs.plugins.ktfmt)
   alias(libs.plugins.sonar)
   id("jacoco")
+  alias(libs.plugins.google.services)
 }
 
 android {
@@ -25,7 +26,8 @@ android {
 
   buildTypes {
     release {
-      isMinifyEnabled = false
+      isMinifyEnabled = true
+      isShrinkResources = true
       proguardFiles(
           getDefaultProguardFile("proguard-android-optimize.txt"),
           "proguard-rules.pro",
@@ -84,9 +86,9 @@ kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
 
 sonar {
   properties {
-    property("sonar.projectKey", "gf_android-sample")
-    property("sonar.projectName", "Android-Sample")
-    property("sonar.organization", "gabrielfleischer")
+    property("sonar.projectKey", "JDRNexus-Swent_App-project")
+    property("sonar.projectName", "JDRNexus")
+    property("sonar.organization", "jdrnexus-swent")
     property("sonar.host.url", "https://sonarcloud.io")
     // Comma-separated paths to the various directories containing the *.xml JUnit report files.
     // Each path may be absolute or relative to the project base directory.
@@ -151,6 +153,15 @@ dependencies {
 
   // ----------       Robolectric     ------------
   testImplementation(libs.robolectric)
+
+  // ----------       FireBase        ------------
+  // Firebase BoM
+  implementation(platform(libs.firebase.bom))
+
+  implementation(libs.firebase.firestore)
+  implementation(libs.firebase.auth)
+  implementation(libs.firebase.messaging)
+  implementation(libs.kotlinx.coroutines.play.services)
 }
 
 tasks.withType<Test> {
