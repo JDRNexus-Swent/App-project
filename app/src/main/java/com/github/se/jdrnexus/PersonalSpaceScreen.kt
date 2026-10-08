@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus
 
 import androidx.compose.foundation.BorderStroke
@@ -22,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -34,6 +36,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,7 +50,10 @@ import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 
+import androidx.compose.material.icons.filled.CatchingPokemon
+
 const val PERSONAL_SPACE_ADD_BUTTON_TAG = "personalSpaceAddButton"
+const val PERSONAL_SPACE_BACK_BUTTON_TAG = "personalSpaceBackButton"
 const val PERSONAL_SPACE_ITEM_TAG_PREFIX = "personalSpaceItem"
 
 private val personalSpaceItems =
@@ -86,6 +93,7 @@ private val personalSpaceItems =
 @Composable
 fun PersonalSpaceScreen(
     onAddButton: () -> Unit,
+    onBackButton: () -> Unit,
     onFolderClicked: () -> Unit,
     navigation: NavigationPlaceHolder? = null,
 ) {
@@ -125,7 +133,14 @@ fun PersonalSpaceScreen(
             modifier = Modifier.fillMaxWidth().height(52.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-          SpaceIcon(kind = "back", tint = accentColor)
+          IconButton(
+              onClick = onBackButton,
+              modifier =
+                  Modifier.testTag(PERSONAL_SPACE_BACK_BUTTON_TAG)
+                      .semantics { contentDescription = "Back" },
+          ) {
+            SpaceIcon(kind = "back", tint = accentColor)
+          }
           Spacer(modifier = Modifier.width(16.dp))
           Text(
               text = "My Space",
@@ -244,6 +259,7 @@ fun FolderItem(
             size = 24.dp,
         )
       }
+
 
       Column(modifier = Modifier.weight(1f).padding(start = 14.dp, end = 10.dp)) {
         Text(
@@ -374,6 +390,6 @@ private fun SpaceIcon(kind: String, tint: Color, size: Dp = 24.dp) {
 @Composable
 private fun PersonalSpaceScreenPreview() {
   SampleAppTheme(darkTheme = true, dynamicColor = false) {
-    PersonalSpaceScreen(onAddButton = {}, onFolderClicked = {})
+    PersonalSpaceScreen(onAddButton = {}, onBackButton = {}, onFolderClicked = {})
   }
 }
