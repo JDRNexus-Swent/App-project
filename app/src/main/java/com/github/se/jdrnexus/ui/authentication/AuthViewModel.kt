@@ -2,6 +2,7 @@
 package com.github.se.jdrnexus.ui.authentication
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 data class AuthUiState(
     val email: String = "",
@@ -40,7 +42,7 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
 
   fun onUsernameChange(username: String) = updateInput { copy(username = username) }
 
-  suspend fun signUp() {
+  fun signUp() {
     val form = _uiState.value
     validate(form, requireUsername = true)?.let {
       setStatus(AuthStatus.Error(it))
@@ -56,7 +58,7 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     }
   }
 
-  suspend fun signIn() {
+  fun signIn() {
     val form = _uiState.value
     validate(form, requireUsername = false)?.let {
       setStatus(AuthStatus.Error(it))
@@ -66,7 +68,7 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     authenticate { repository.signInWithEmail(form.email.trim(), form.password) }
   }
 
-  suspend fun signInWithGoogle(token: String) {
+  fun signInWithGoogle(token: String) {
     if (token.isBlank()) {
       setStatus(AuthStatus.Error(AuthError.INVALID_GOOGLE_CREDENTIAL.message))
       return
@@ -75,24 +77,26 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     authenticate { repository.signInWithGoogle(token) }
   }
 
-  private suspend fun authenticate(request: suspend () -> AuthResult<AuthUser>) {
-    setStatus(AuthStatus.Loading)
+  private fun authenticate(request: suspend () -> AuthResult<AuthUser>) {
+    viewModelScope.launch {
+      setStatus(AuthStatus.Loading)
 
-    val status =
-        try {
-          when (val result = request()) {
-            is AuthResult.Success -> AuthStatus.Success(result.value)
-            is AuthResult.Failure -> AuthStatus.Error(result.error.message)
-            is AuthResult.AccountCreatedNeedsRecovery -> AuthStatus.Error(result.message)
+      val status =
+          try {
+            when (val result = request()) {
+              is AuthResult.Success -> AuthStatus.Success(result.value)
+              is AuthResult.Failure -> AuthStatus.Error(result.error.message)
+              is AuthResult.AccountCreatedNeedsRecovery -> AuthStatus.Error(result.message)
+            }
+          } catch (cancellation: CancellationException) {
+            setStatus(AuthStatus.Idle)
+            throw cancellation
+          } catch (_: Exception) {
+            AuthStatus.Error(AuthError.UNKNOWN.message)
           }
-        } catch (cancellation: CancellationException) {
-          setStatus(AuthStatus.Idle)
-          throw cancellation
-        } catch (_: Exception) {
-          AuthStatus.Error(AuthError.UNKNOWN.message)
-        }
 
-    setStatus(status)
+      setStatus(status)
+    }
   }
 
   private fun validate(form: AuthUiState, requireUsername: Boolean): String? {

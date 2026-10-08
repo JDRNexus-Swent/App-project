@@ -7,16 +7,28 @@ import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.async
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TestWatcher
+import org.junit.runner.Description
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AuthViewModelTest {
+
+  @get:Rule val mainDispatcherRule = MainDispatcherRule()
 
   @Test
   fun inputChangesAreExposedThroughState() {
@@ -37,7 +49,7 @@ class AuthViewModelTest {
   }
 
   @Test
-  fun signUpRejectsInvalidEmailWithoutCallingRepository() = runBlocking {
+  fun signUpRejectsInvalidEmailWithoutCallingRepository() = runTest {
     val repository = FakeAuthRepository()
     val viewModel = AuthViewModel(repository)
     fillForm(viewModel, email = "invalid")
@@ -49,7 +61,7 @@ class AuthViewModelTest {
   }
 
   @Test
-  fun signUpRejectsShortPasswordWithoutCallingRepository() = runBlocking {
+  fun signUpRejectsShortPasswordWithoutCallingRepository() = runTest {
     val repository = FakeAuthRepository()
     val viewModel = AuthViewModel(repository)
     fillForm(viewModel, password = "12345")
@@ -64,7 +76,7 @@ class AuthViewModelTest {
   }
 
   @Test
-  fun signUpRejectsBlankUsernameWithoutCallingRepository() = runBlocking {
+  fun signUpRejectsBlankUsernameWithoutCallingRepository() = runTest {
     val repository = FakeAuthRepository()
     val viewModel = AuthViewModel(repository)
     fillForm(viewModel, username = "  ")
@@ -79,14 +91,15 @@ class AuthViewModelTest {
   }
 
   @Test
-  fun signUpSetsLoadingAndSuccessAndPassesTrimmedFormValues() = runBlocking {
+  fun signUpSetsLoadingAndSuccessAndPassesTrimmedFormValues() = runTest {
     val repository = FakeAuthRepository()
     val response = CompletableDeferred<AuthResult<AuthUser>>()
     repository.signUpResponse = response
     val viewModel = AuthViewModel(repository)
     fillForm(viewModel, email = " player@example.com ", username = " Player ")
 
-    val operation = async(start = CoroutineStart.UNDISPATCHED) { viewModel.signUp() }
+    viewModel.signUp()
+    runCurrent()
 
     assertEquals(AuthStatus.Loading, viewModel.uiState.value.status)
     assertEquals(
@@ -95,13 +108,13 @@ class AuthViewModelTest {
     )
 
     response.complete(AuthResult.Success(USER))
-    operation.await()
+    runCurrent()
 
     assertEquals(AuthStatus.Success(USER), viewModel.uiState.value.status)
   }
 
   @Test
-  fun signUpExposesRepositoryErrorMessage() = runBlocking {
+  fun signUpExposesRepositoryErrorMessage() = runTest {
     val repository =
         FakeAuthRepository().apply {
           signUpResponse = CompletableDeferred(AuthResult.Failure(AuthError.EMAIL_ALREADY_IN_USE))
@@ -110,6 +123,7 @@ class AuthViewModelTest {
     fillForm(viewModel)
 
     viewModel.signUp()
+    runCurrent()
 
     assertEquals(
         AuthStatus.Error(AuthError.EMAIL_ALREADY_IN_USE.message),
@@ -118,7 +132,7 @@ class AuthViewModelTest {
   }
 
   @Test
-  fun signUpRecoveryFailureUsesItsUserFriendlyMessage() = runBlocking {
+  fun signUpRecoveryFailureUsesItsUserFriendlyMessage() = runTest {
     val repository =
         FakeAuthRepository().apply {
           signUpResponse =
@@ -134,6 +148,7 @@ class AuthViewModelTest {
     fillForm(viewModel)
 
     viewModel.signUp()
+    runCurrent()
 
     assertEquals(
         AuthStatus.Error(
@@ -145,7 +160,7 @@ class AuthViewModelTest {
   }
 
   @Test
-  fun signInRejectsEmptyEmailWithoutCallingRepository() = runBlocking {
+  fun signInRejectsEmptyEmailWithoutCallingRepository() = runTest {
     val repository = FakeAuthRepository()
     val viewModel = AuthViewModel(repository)
     fillForm(viewModel, email = "")
@@ -157,7 +172,7 @@ class AuthViewModelTest {
   }
 
   @Test
-  fun signInRejectsShortPasswordWithoutCallingRepository() = runBlocking {
+  fun signInRejectsShortPasswordWithoutCallingRepository() = runTest {
     val repository = FakeAuthRepository()
     val viewModel = AuthViewModel(repository)
     fillForm(viewModel, password = "12345")
@@ -172,23 +187,25 @@ class AuthViewModelTest {
   }
 
   @Test
-  fun signInExposesSuccessfulUser() = runBlocking {
+  fun signInExposesSuccessfulUser() = runTest {
     val repository = FakeAuthRepository()
     val viewModel = AuthViewModel(repository)
     fillForm(viewModel)
 
     viewModel.signIn()
+    runCurrent()
 
     assertEquals(AuthStatus.Success(USER), viewModel.uiState.value.status)
     assertEquals("player@example.com" to "password", repository.lastSignInArguments)
   }
 
   @Test
-  fun googleSignInPassesTokenAndExposesSuccessfulUser() = runBlocking {
+  fun googleSignInPassesTokenAndExposesSuccessfulUser() = runTest {
     val repository = FakeAuthRepository()
     val viewModel = AuthViewModel(repository)
 
     viewModel.signInWithGoogle("id-token")
+    runCurrent()
 
     assertEquals(1, repository.googleSignInCalls)
     assertEquals("id-token", repository.lastGoogleToken)
@@ -196,7 +213,7 @@ class AuthViewModelTest {
   }
 
   @Test
-  fun googleSignInRejectsBlankTokenWithoutCallingRepository() = runBlocking {
+  fun googleSignInRejectsBlankTokenWithoutCallingRepository() = runTest {
     val repository = FakeAuthRepository()
     val viewModel = AuthViewModel(repository)
 
@@ -210,7 +227,7 @@ class AuthViewModelTest {
   }
 
   @Test
-  fun repositoryExceptionBecomesGenericFriendlyError() = runBlocking {
+  fun repositoryExceptionBecomesGenericFriendlyError() = runTest {
     val repository =
         FakeAuthRepository().apply {
           signInFailure = IllegalStateException("internal implementation detail")
@@ -219,25 +236,21 @@ class AuthViewModelTest {
     fillForm(viewModel)
 
     viewModel.signIn()
+    runCurrent()
 
     assertEquals(AuthStatus.Error(AuthError.UNKNOWN.message), viewModel.uiState.value.status)
   }
 
   @Test
-  fun cancellationIsRethrown() = runBlocking {
+  fun cancellationCancelsRequestAndResetsStatus() = runTest {
     val repository =
         FakeAuthRepository().apply { signInFailure = CancellationException("cancelled") }
     val viewModel = AuthViewModel(repository)
     fillForm(viewModel)
-    var wasCancelled = false
+    viewModel.signIn()
+    runCurrent()
 
-    try {
-      viewModel.signIn()
-    } catch (_: CancellationException) {
-      wasCancelled = true
-    }
-
-    assertTrue(wasCancelled)
+    assertTrue(repository.signInJob?.isCancelled == true)
     assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
   }
 
@@ -257,6 +270,7 @@ class AuthViewModelTest {
     var signUpCalls = 0
     var signInCalls = 0
     var googleSignInCalls = 0
+    var signInJob: Job? = null
     var lastSignUpArguments: Triple<String, String, String>? = null
     var lastSignInArguments: Pair<String, String>? = null
     var lastGoogleToken: String? = null
@@ -279,6 +293,7 @@ class AuthViewModelTest {
     override suspend fun signInWithEmail(email: String, password: String): AuthResult<AuthUser> {
       signInCalls++
       lastSignInArguments = email to password
+      signInJob = currentCoroutineContext()[Job]
       signInFailure?.let { throw it }
       return signInResponse
     }
@@ -294,5 +309,18 @@ class AuthViewModelTest {
 
   private companion object {
     val USER = AuthUser(uid = "user-1", email = "player@example.com", username = "Player")
+  }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class MainDispatcherRule : TestWatcher() {
+  private val dispatcher = StandardTestDispatcher()
+
+  override fun starting(description: Description) {
+    Dispatchers.setMain(dispatcher)
+  }
+
+  override fun finished(description: Description) {
+    Dispatchers.resetMain()
   }
 }
