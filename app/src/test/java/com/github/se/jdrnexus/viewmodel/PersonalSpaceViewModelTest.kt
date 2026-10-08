@@ -5,12 +5,19 @@ import android.os.Looper
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import com.github.se.jdrnexus.model.repository.AuthRepository
+import com.github.se.jdrnexus.model.repository.AuthResult
+import com.github.se.jdrnexus.model.repository.AuthUser
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onStart
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -20,7 +27,7 @@ import org.robolectric.Shadows.shadowOf
 @RunWith(RobolectricTestRunner::class)
 class PersonalSpaceViewModelTest {
   // ============ Shared test data ============
-  private val ownerId = "owner-1"
+  private val ownerId = "authenticated-user-42"
   private val rootFolder = JDRFile("folder-1", "Folder", type = DocumentType.FOLDER)
   private val rootFile = JDRFile("file-1", "File")
   private val characterFile = JDRFile("character-1", "Character", type = DocumentType.CHARACTER)
@@ -41,31 +48,36 @@ class PersonalSpaceViewModelTest {
       private val failure: Exception? = null,
       private val createFailure: Exception? = null,
       private val fetchGate: CompletableDeferred<Unit>? = null,
+      private val folderFetchGate: CompletableDeferred<Unit>? = null,
   ) : WorkspaceRepository {
     val requestedRootOwners = mutableListOf<String>()
     val folderFetchRequests = mutableListOf<String>()
     val createdFiles = mutableListOf<JDRFile>()
+    val rootItemsFlow = MutableStateFlow(rootItems)
 
-    // ============ Fake flow helper ============
-    /** Delays or fails fetches when configured; otherwise emits the supplied file list. */
-    private fun filesFlow(files: List<JDRFile>): Flow<List<JDRFile>> = flow {
-      fetchGate?.await()
+    /** Delays collection when configured; then keeps emitting repository updates. */
+    private fun <T> gatedFlow(
+        flow: Flow<T>,
+        gate: CompletableDeferred<Unit>? = fetchGate,
+    ): Flow<T> = flow.onStart {
+      gate?.await()
       failure?.let { throw it }
-      emit(files)
     }
 
     // ============ WorkspaceRepository overrides ============
     /** Records root requests and emits the configured root contents. */
     override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> {
       requestedRootOwners.add(ownerId)
-      return filesFlow(rootItems)
+      return gatedFlow(rootItemsFlow)
     }
 
     /** Records the requested folder ID and emits only that folder's configured contents. */
     override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> {
       folderFetchRequests.add(folderId)
-      return filesFlow(itemsByFolder[folderId].orEmpty())
+      return gatedFlow(MutableStateFlow(itemsByFolder[folderId].orEmpty()), folderFetchGate)
     }
+
+    override fun getNewUid(): String = "created-folder-id"
 
     /** Group-root data is outside these tests, so the fake emits an empty list. */
     override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> = flowOf(emptyList())
@@ -88,6 +100,26 @@ class PersonalSpaceViewModelTest {
     override suspend fun getFile(fileId: String): Result<JDRFile?> = Result.success(null)
   }
 
+  private class FakeAuthRepository(
+      private val user: AuthUser = AuthUser("authenticated-user-42", "player@example.com", "Player")
+  ) : AuthRepository {
+    override val authState: StateFlow<AuthUser?> = MutableStateFlow(user)
+
+    override suspend fun signUpWithEmail(
+        email: String,
+        password: String,
+        username: String,
+    ): AuthResult<AuthUser> = AuthResult.Success(user)
+
+    override suspend fun signInWithEmail(email: String, password: String): AuthResult<AuthUser> =
+        AuthResult.Success(user)
+
+    override suspend fun signInWithGoogle(idToken: String): AuthResult<AuthUser> =
+        AuthResult.Success(user)
+
+    override suspend fun signOut(): AuthResult<Unit> = AuthResult.Success(Unit)
+  }
+
   // ============ ViewModel behavior tests ============
 
   /** Verifies the initial Loading state and the exact root results after collection completes. */
@@ -100,7 +132,7 @@ class PersonalSpaceViewModelTest {
             fetchGate = fetchGate,
         )
 
-    val viewModel = PersonalSpaceViewModel(repository, ownerId)
+    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
     assertEquals(LoadState.Loading, viewModel.uiState.value.loadState)
     assertEquals("", viewModel.uiState.value.currentFolderId)
     assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
@@ -121,11 +153,16 @@ class PersonalSpaceViewModelTest {
         ),
         viewModel.uiState.value,
     )
+
+    repository.rootItemsFlow.value = listOf(rootFile)
+    idleMainLooper()
+    assertEquals(listOf(rootFile), viewModel.uiState.value.items)
   }
 
   /** Verifies folder entry, nested back navigation, and the exact repository fetch sequence. */
   @Test
   fun folderClickLoadsItsItemsAndNavigateUpReturnsToParent() {
+    val folderFetchGate = CompletableDeferred<Unit>()
     val repository =
         FakePersonalSpaceRepository(
             rootItems = listOf(rootFolder, rootFile),
@@ -134,14 +171,18 @@ class PersonalSpaceViewModelTest {
                     rootFolder.id to listOf(nestedFolder),
                     nestedFolder.id to listOf(nestedFile),
                 ),
+            folderFetchGate = folderFetchGate,
         )
-    val viewModel = PersonalSpaceViewModel(repository, ownerId)
+    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
     idleMainLooper()
 
     viewModel.onItemClicked(rootFolder) {}
     assertEquals(rootFolder.id, viewModel.uiState.value.currentFolderId)
     assertTrue(viewModel.uiState.value.canNavigateUp)
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
+    assertEquals(LoadState.Loading, viewModel.uiState.value.loadState)
+    idleMainLooper()
+    assertEquals(LoadState.Loading, viewModel.uiState.value.loadState)
+    folderFetchGate.complete(Unit)
     idleMainLooper()
 
     assertEquals(rootFolder.id, viewModel.uiState.value.currentFolderId)
@@ -171,6 +212,9 @@ class PersonalSpaceViewModelTest {
     assertEquals(listOf(rootFolder, rootFile), viewModel.uiState.value.items)
     assertFalse(viewModel.uiState.value.canNavigateUp)
     assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
+    viewModel.onNavigateUp()
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(rootFolder, rootFile), viewModel.uiState.value.items)
     assertEquals(listOf(ownerId, ownerId), repository.requestedRootOwners)
     assertEquals(
         listOf(rootFolder.id, nestedFolder.id, rootFolder.id),
@@ -182,7 +226,7 @@ class PersonalSpaceViewModelTest {
   @Test
   fun clickingAnyNonFolderNavigatesToItsDocument() {
     val repository = FakePersonalSpaceRepository(rootItems = listOf(rootFile, characterFile))
-    val viewModel = PersonalSpaceViewModel(repository, ownerId)
+    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
     idleMainLooper()
 
     val openedDocuments = mutableListOf<String>()
@@ -202,7 +246,7 @@ class PersonalSpaceViewModelTest {
             rootItems = listOf(rootFolder),
             itemsByFolder = mapOf(rootFolder.id to listOf(nestedFile)),
         )
-    val viewModel = PersonalSpaceViewModel(repository, ownerId)
+    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
     idleMainLooper()
     viewModel.onItemClicked(rootFolder) {}
     idleMainLooper()
@@ -218,7 +262,7 @@ class PersonalSpaceViewModelTest {
   /** Verifies add-menu, new-folder dialog, draft-name, and dismissal state transitions. */
   @Test
   fun addMenuAndFolderDialogUpdateUiState() {
-    val viewModel = PersonalSpaceViewModel(FakePersonalSpaceRepository(), ownerId)
+    val viewModel = PersonalSpaceViewModel(FakePersonalSpaceRepository(), FakeAuthRepository())
     idleMainLooper()
 
     viewModel.onAddClicked()
@@ -242,8 +286,8 @@ class PersonalSpaceViewModelTest {
   /** Verifies the saved folder's full data, including its trimmed name and current parent. */
   @Test
   fun createFolderUsesCurrentFolderAndTrimsName() {
-    val repository = FakePersonalSpaceRepository()
-    val viewModel = PersonalSpaceViewModel(repository, ownerId)
+    val repository = FakePersonalSpaceRepository(rootItems = listOf(rootFolder))
+    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
     idleMainLooper()
     viewModel.onItemClicked(rootFolder) {}
     idleMainLooper()
@@ -254,9 +298,35 @@ class PersonalSpaceViewModelTest {
     idleMainLooper()
 
     assertEquals(1, repository.createdFiles.size)
+    assertNotNull(repository.createdFiles.single().id)
+    assertNotEquals("", repository.createdFiles.single().id)
+    assertEquals("created-folder-id", repository.createdFiles.single().id)
     assertEquals("New folder", repository.createdFiles.single().name)
     assertEquals(ownerId, repository.createdFiles.single().ownerId)
     assertEquals(listOf(rootFolder.id), repository.createdFiles.single().parentFolderIds)
+    assertEquals(DocumentType.FOLDER, repository.createdFiles.single().type)
+    assertFalse(viewModel.uiState.value.isNewFolderDialogOpen)
+    assertEquals("", viewModel.uiState.value.newFolderError)
+  }
+
+  @Test
+  fun createFolderAtRootHasNoParentFolders() {
+    val repository = FakePersonalSpaceRepository()
+    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
+    idleMainLooper()
+    viewModel.onNewFolderSelected()
+    viewModel.onNewFolderNameChanged("Root folder")
+
+    viewModel.createFolder()
+    idleMainLooper()
+
+    assertEquals(1, repository.createdFiles.size)
+    assertNotNull(repository.createdFiles.single().id)
+    assertNotEquals("", repository.createdFiles.single().id)
+    assertEquals("created-folder-id", repository.createdFiles.single().id)
+    assertEquals("Root folder", repository.createdFiles.single().name)
+    assertEquals(ownerId, repository.createdFiles.single().ownerId)
+    assertEquals(emptyList<String>(), repository.createdFiles.single().parentFolderIds)
     assertEquals(DocumentType.FOLDER, repository.createdFiles.single().type)
     assertFalse(viewModel.uiState.value.isNewFolderDialogOpen)
     assertEquals("", viewModel.uiState.value.newFolderError)
@@ -267,7 +337,7 @@ class PersonalSpaceViewModelTest {
   fun createFolderShowsValidationAndRepositoryErrors() {
     val repository =
         FakePersonalSpaceRepository(createFailure = IllegalStateException("Create denied"))
-    val viewModel = PersonalSpaceViewModel(repository, ownerId)
+    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
     idleMainLooper()
     viewModel.onNewFolderSelected()
 
@@ -292,7 +362,7 @@ class PersonalSpaceViewModelTest {
             failure = IllegalStateException("Permission denied"),
             fetchGate = fetchGate,
         )
-    val viewModel = PersonalSpaceViewModel(repository, ownerId)
+    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
 
     assertEquals(LoadState.Loading, viewModel.uiState.value.loadState)
     idleMainLooper()

@@ -6,11 +6,14 @@ import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import com.github.se.jdrnexus.model.repository.AuthRepository
+import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -44,13 +47,11 @@ data class PersonalSpaceUiState(
 
 // ============ Definition of the ViewModel ============
 class PersonalSpaceViewModel(
-    private val repository: WorkspaceRepository,
-    private val ownerId:
-        String, // TODO: In my opinion this could be done in the implementation of the
-    // repo but would need a discussion first !!!
+    private val repository: WorkspaceRepository, // Add the default param here when merging PRs
+    private val authRepository: AuthRepository = AuthRepositoryFirebase(),
 ) : ViewModel() {
 
-  // ============ Internal variables ============
+  // ============ Internal variables/functions ============
   private val _uiState = MutableStateFlow(PersonalSpaceUiState())
   val uiState: StateFlow<PersonalSpaceUiState> = _uiState.asStateFlow()
 
@@ -62,6 +63,10 @@ class PersonalSpaceViewModel(
    * previous folder can never overwrite the contents of the folder the user is now in.
    */
   private var fetchJob: Job? = null
+
+  /** UID of the signed-in user, read from the auth repository. */
+  private suspend fun requireUid(): String =
+      authRepository.authState.first()?.uid ?: throw IllegalStateException("You must be signed in.")
 
   // ============ Fetching functions ============
 
@@ -78,19 +83,20 @@ class PersonalSpaceViewModel(
   fun fetchItems(parentFolderId: String) {
     fetchJob?.cancel()
 
-    _uiState.value =
-        _uiState.value.copy(
-            items = emptyList(),
-            currentFolderId = parentFolderId,
-            loadState = LoadState.Loading,
-            canNavigateUp = navigationPath.isNotEmpty(),
-        )
+    _uiState.update {
+      it.copy(
+          items = emptyList(),
+          currentFolderId = parentFolderId,
+          loadState = LoadState.Loading,
+          canNavigateUp = navigationPath.isNotEmpty(),
+      )
+    }
 
     fetchJob = viewModelScope.launch {
       try {
         val files =
             if (parentFolderId.isEmpty()) {
-              repository.getPersonalRootFiles(ownerId)
+              repository.getPersonalRootFiles(requireUid())
             } else {
               repository.getDocumentsInFolder(parentFolderId)
             }
@@ -196,17 +202,18 @@ class PersonalSpaceViewModel(
       return
     }
 
-    val folder =
-        JDRFile(
-            name = name,
-            ownerId = ownerId,
-            parentFolderIds =
-                if (state.currentFolderId.isEmpty()) emptyList() else listOf(state.currentFolderId),
-            type = DocumentType.FOLDER,
-        )
-
     viewModelScope.launch {
       try {
+        val folder =
+            JDRFile(
+                id = repository.getNewUid(),
+                name = name,
+                ownerId = requireUid(),
+                parentFolderIds =
+                    if (state.currentFolderId.isEmpty()) emptyList()
+                    else listOf(state.currentFolderId),
+                type = DocumentType.FOLDER,
+            )
         repository.createFile(folder).getOrThrow()
         _uiState.update {
           it.copy(isNewFolderDialogOpen = false, newFolderName = "", newFolderError = "")
@@ -229,10 +236,4 @@ class PersonalSpaceViewModel(
     _uiState.update { it.copy(isAddMenuExpanded = false) }
     navigateToCreateFile(_uiState.value.currentFolderId)
   }
-
-  /* TODO: reflect on how the file will be saved back to the repo and displayed
-  When we navigate to the next screen, is it the one to save to the repo ? And then when comeback fetch again from root
-  Or make the file passback the parentFolder to call the ViewModel with a particular UI state set ?
-  Fetch items will need to be recalled or items need to be updated... To be discussed
-  */
 }
