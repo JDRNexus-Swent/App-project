@@ -3,8 +3,6 @@ package com.github.se.jdrnexus.ui.authentication
 import android.app.PendingIntent
 import android.content.Context
 import android.os.CancellationSignal
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -14,14 +12,15 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.unit.Density
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CreateCredentialRequest
 import androidx.credentials.CreateCredentialResponse
@@ -55,7 +54,7 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 @RunWith(AndroidJUnit4::class)
-@Config(qualifiers = "w360dp-h2400dp-xhdpi")
+@Config(qualifiers = "w360dp-h800dp-xhdpi")
 class SignInScreenTest {
   @get:Rule val composeTestRule = createComposeRule()
 
@@ -264,6 +263,17 @@ class SignInScreenTest {
     assertEquals(true, signUpRequested)
   }
 
+  @Test
+  fun signInScreen_canScrollToBottomControls() {
+    showSignIn()
+
+    composeTestRule
+        .onNodeWithTag("sign_in_scroll_container")
+        .performScrollToNode(hasTestTag(C.Tag.sign_in_sign_up))
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
+  }
+
   private fun showSignIn(
       repository: FakeAuthRepository = FakeAuthRepository(),
       credentialManager: CredentialManager? = null,
@@ -273,25 +283,23 @@ class SignInScreenTest {
   ) {
     val viewModel = AuthViewModel(repository)
     composeTestRule.setContent {
-      CompositionLocalProvider(LocalDensity provides Density(0.7f)) {
-        SampleAppTheme {
-          val manager = credentialManager
-          if (manager == null) {
-            SignInScreen(
-                signInViewModel = viewModel,
-                onSignInSuccess = onSignInSuccess,
-                onSignUp = onSignUp,
-                forgotPassword = forgotPassword,
-            )
-          } else {
-            SignInScreen(
-                signInViewModel = viewModel,
-                credentialManager = manager,
-                onSignInSuccess = onSignInSuccess,
-                onSignUp = onSignUp,
-                forgotPassword = forgotPassword,
-            )
-          }
+      SampleAppTheme {
+        val manager = credentialManager
+        if (manager == null) {
+          SignInScreen(
+              signInViewModel = viewModel,
+              onSignInSuccess = onSignInSuccess,
+              onSignUp = onSignUp,
+              forgotPassword = forgotPassword,
+          )
+        } else {
+          SignInScreen(
+              signInViewModel = viewModel,
+              credentialManager = manager,
+              onSignInSuccess = onSignInSuccess,
+              onSignUp = onSignUp,
+              forgotPassword = forgotPassword,
+          )
         }
       }
     }

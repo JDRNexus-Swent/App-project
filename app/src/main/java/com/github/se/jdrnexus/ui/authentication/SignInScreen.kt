@@ -13,10 +13,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.outlined.Email
@@ -68,6 +71,7 @@ import com.github.se.jdrnexus.resources.JdrNexusLogo
 import com.github.se.jdrnexus.resources.darkFieldColors
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
@@ -85,8 +89,13 @@ fun SignInScreen(
   val email = uiState.email
   val password = uiState.password
 
+  var isGooglePickerLoading by remember { mutableStateOf(false) }
+  var googleErrorMessage by remember { mutableStateOf<String?>(null) }
+
   val isLoading = uiState.status is AuthStatus.Loading
-  val errorMessage = (uiState.status as? AuthStatus.Error)?.message
+
+  val isAuthenticating = isLoading || isGooglePickerLoading
+  val errorMessage = googleErrorMessage ?: (uiState.status as? AuthStatus.Error)?.message
 
   // Keeps track of whether the password should be visible or masked.
   var passwordVisible by remember { mutableStateOf(false) }
@@ -95,13 +104,30 @@ fun SignInScreen(
   val coroutineScope = rememberCoroutineScope()
 
   LaunchedEffect(uiState.status) {
-    if (uiState.status is AuthStatus.Success) {
-      onSignInSuccess()
+    when (uiState.status) {
+      AuthStatus.Loading -> {
+        // Credential acquisition has finished; the ViewModel now owns loading.
+        isGooglePickerLoading = false
+      }
+      is AuthStatus.Success -> {
+        isGooglePickerLoading = false
+        onSignInSuccess()
+      }
+      is AuthStatus.Error -> {
+        isGooglePickerLoading = false
+      }
+      AuthStatus.Idle -> Unit
     }
   }
 
   @SuppressLint("LocalContextGetResourceValueCall")
   fun signInWithGoogle() {
+    // Ignore repeated clicks while either authentication path is active.
+    if (isAuthenticating) return
+
+    googleErrorMessage = null
+    isGooglePickerLoading = true
+
     coroutineScope.launch {
       try {
         val googleIdOption =
@@ -113,15 +139,11 @@ fun SignInScreen(
 
         val request = GetCredentialRequest.Builder().addCredentialOption(googleIdOption).build()
 
-        Log.d("SignInScreen", "Starting Google Credential Manager")
-
         val result =
             credentialManager.getCredential(
                 context = context,
                 request = request,
             )
-
-        Log.d("SignInScreen", "Credential received: ${result.credential.type}")
 
         val credential = result.credential
 
@@ -129,41 +151,35 @@ fun SignInScreen(
             credential is CustomCredential &&
                 credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
         ) {
-
           val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
-
-          Log.d("SignInScreen", "Google ID token received")
 
           signInViewModel.signInWithGoogle(googleCredential.idToken)
         } else {
-          Log.e(
-              "SignInScreen",
-              "Unexpected credential type: ${credential.type}",
-          )
+          googleErrorMessage =
+              "Google sign-in returned an unsupported credential. Please try again."
+          isGooglePickerLoading = false
+          Log.e("SignInScreen", "Unexpected credential type: ${credential.type}")
         }
-      } catch (e: NoCredentialException) {
-        Log.e(
-            "SignInScreen",
-            "No Google credential available",
-            e,
-        )
       } catch (e: GetCredentialCancellationException) {
-        Log.d(
-            "SignInScreen",
-            "Google Sign-In cancelled",
-        )
+        // The user closed the picker: cancellation is not an authentication error.
+        isGooglePickerLoading = false
+        Log.d("SignInScreen", "Google sign-in cancelled")
+      } catch (e: NoCredentialException) {
+        isGooglePickerLoading = false
+        googleErrorMessage =
+            "No available Google account was found. Please try another sign-in method."
+        Log.e("SignInScreen", "No Google credential available", e)
       } catch (e: GetCredentialException) {
-        Log.e(
-            "SignInScreen",
-            "Google Credential Manager failed",
-            e,
-        )
+        isGooglePickerLoading = false
+        googleErrorMessage = "Unable to start Google sign-in. Please try again."
+        Log.e("SignInScreen", "Google Credential Manager failed", e)
+      } catch (e: CancellationException) {
+        isGooglePickerLoading = false
+        throw e
       } catch (e: Exception) {
-        Log.e(
-            "SignInScreen",
-            "Unexpected Google Sign-In error",
-            e,
-        )
+        isGooglePickerLoading = false
+        googleErrorMessage = "Google sign-in failed. Please try again."
+        Log.e("SignInScreen", "Unexpected Google sign-in error", e)
       }
     }
   }
@@ -173,7 +189,12 @@ fun SignInScreen(
       color = colors.background,
   ) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier =
+            Modifier.fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(24.dp)
+                .testTag("sign_in_scroll_container"),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
 
@@ -319,8 +340,11 @@ fun SignInScreen(
       Spacer(Modifier.height(4.dp))
       // Sign-in button to sign in to the app .
       Button(
-          onClick = { signInViewModel.signIn() },
-          enabled = !isLoading,
+          onClick = {
+            googleErrorMessage = null
+            signInViewModel.signIn()
+          },
+          enabled = !isAuthenticating,
           modifier = Modifier.fillMaxWidth().height(54.dp).testTag(C.Tag.sign_in_submit),
           shape = RoundedCornerShape(18.dp),
           colors = ButtonDefaults.buttonColors(colors.primary, colors.onPrimary),
@@ -373,6 +397,7 @@ fun SignInScreen(
           logo = colors.primary,
           textColor = colors.onSecondary,
           container = colors.onBackground,
+          enabled = !isAuthenticating,
       )
       Spacer(modifier = Modifier.height(2.dp))
 
@@ -418,9 +443,11 @@ fun GoogleSignInButton(
     logo: Color,
     textColor: Color,
     container: Color,
+    enabled: Boolean = true,
 ) {
   Button(
       onClick = click,
+      enabled = enabled,
       colors = ButtonDefaults.buttonColors(containerColor = container),
       shape = RoundedCornerShape(50),
       border = BorderStroke(1.dp, border),
