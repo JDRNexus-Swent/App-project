@@ -152,6 +152,7 @@ dependencies {
 
   // ----------       Robolectric     ------------
   testImplementation(libs.robolectric)
+  testImplementation(libs.kotlinx.coroutines.test)
 
   // ----------       FireBase        ------------
   // Firebase BoM
