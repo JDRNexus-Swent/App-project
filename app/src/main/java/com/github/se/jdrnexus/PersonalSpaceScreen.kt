@@ -350,7 +350,7 @@ fun FolderItem(
 @Preview
 @Composable
 private fun PersonalSpaceScreenPreview() {
-  SampleAppTheme(darkTheme = true, dynamicColor = true) {
+  SampleAppTheme(darkTheme = true) {
     PersonalSpaceScreen(onAddButton = {}, onBackButton = {}, onFolderClicked = {})
   }
 }
