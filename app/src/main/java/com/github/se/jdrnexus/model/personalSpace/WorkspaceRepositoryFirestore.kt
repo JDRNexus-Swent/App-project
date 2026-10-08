@@ -70,7 +70,8 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     // It allows us to emit values asynchronously whenever Firestore triggers an update.
     val listenerRegistration =
         // addSnapshotListener acts like a live connection (similar to a web socket).
-        // It triggers immediately with the current state, and then again every time the document changes in the DB.
+        // It triggers immediately with the current state, and then again every time the document
+        // changes in the DB.
         collection.document(fileId).addSnapshotListener { snapshot, error ->
           if (error != null) {
             // If an error occurs (e.g., permission denied), we close the Flow with the error.
@@ -79,21 +80,25 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
             return@addSnapshotListener
           }
           if (snapshot != null) {
-            // trySend safely pushes the newly updated document into the Flow for observers to collect.
+            // trySend safely pushes the newly updated document into the Flow for observers to
+            // collect.
             trySend(snapshot.toObject(JDRFile::class.java))
           } else {
             // If the document doesn't exist or was deleted, we emit null.
             trySend(null)
           }
         }
-    
-    // awaitClose suspends the coroutine until the Flow collector stops collecting (e.g., ViewModel is cleared).
-    // It is CRITICAL to remove the listener here to prevent memory leaks and unnecessary network usage.
+
+    // awaitClose suspends the coroutine until the Flow collector stops collecting (e.g., ViewModel
+    // is cleared).
+    // It is CRITICAL to remove the listener here to prevent memory leaks and unnecessary network
+    // usage.
     awaitClose { listenerRegistration.remove() }
   }
 
   override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = callbackFlow {
-    // Listen for changes on all documents owned by this user where parentFolderIds is empty (meaning they are at the root level).
+    // Listen for changes on all documents owned by this user where parentFolderIds is empty
+    // (meaning they are at the root level).
     val listenerRegistration =
         collection
             .whereEqualTo("ownerId", ownerId)
@@ -105,18 +110,19 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
               }
               // Transform the Firestore documents into JDRFile objects.
               // We use mapNotNull to safely ignore any documents that fail to deserialize.
-              // We also filter again on the client side (`parentFolderIds.isEmpty()`) as a safety measure,
+              // We also filter again on the client side (`parentFolderIds.isEmpty()`) as a safety
+              // measure,
               // which can sometimes help bypass Firestore index limitations on empty arrays.
               val files =
                   snapshot
                       ?.documents
                       ?.mapNotNull { it.toObject(JDRFile::class.java) }
                       ?.filter { it.parentFolderIds.isEmpty() } ?: emptyList()
-              
+
               // Emit the updated list of files to the Flow.
               trySend(files)
             }
-            
+
     // Clean up the listener when the Flow is cancelled.
     awaitClose { listenerRegistration.remove() }
   }
@@ -132,8 +138,9 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
             close(error)
             return@addSnapshotListener
           }
-          
-          // Similar to personal root files, we parse the documents and enforce the root-level condition
+
+          // Similar to personal root files, we parse the documents and enforce the root-level
+          // condition
           // (parentFolderIds.isEmpty()) on the client side since Firestore doesn't easily support
           // multiple array/inequality filters in a single query without complex composite indexes.
           val files =
@@ -145,7 +152,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
           // Emit the updated list.
           trySend(files)
         }
-        
+
     // Clean up the listener when the Flow is cancelled.
     awaitClose { listenerRegistration.remove() }
   }
@@ -161,7 +168,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
             close(error)
             return@addSnapshotListener
           }
-          
+
           // Map the raw Firestore documents to our JDRFile data class.
           val documents =
               snapshot?.documents?.mapNotNull { it.toObject(JDRFile::class.java) } ?: emptyList()
@@ -169,7 +176,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
           // Emit the updated list of folder contents.
           trySend(documents)
         }
-        
+
     // Clean up the listener when the Flow is cancelled.
     awaitClose { listenerRegistration.remove() }
   }

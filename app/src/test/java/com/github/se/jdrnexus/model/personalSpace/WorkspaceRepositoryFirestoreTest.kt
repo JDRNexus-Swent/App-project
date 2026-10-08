@@ -17,6 +17,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -24,7 +25,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
-import org.junit.Assert.assertNotEquals
 
 /** Those test use firebase emulator, make sure to activate it with "firebase emulators:start" */
 @RunWith(RobolectricTestRunner::class)
@@ -123,9 +123,8 @@ class WorkspaceRepositoryFirestoreTest {
         "Timeout waiting for condition. Last value emitted: ${latestValue.get()}, emitted at all: ${hasValue.get()}"
     )
   }
-  /**
-   * Tests the creation of a new uid and verifies that it not empty and unique
-   */
+
+  /** Tests the creation of a new uid and verifies that it not empty and unique */
   @Test
   fun testGetNewUid() {
     val uid1 = repository.getNewUid()

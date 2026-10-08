@@ -41,11 +41,11 @@ jobs:
             echo "::warning::LOCAL_PROPERTIES secret is not set."
           fi
 
-      - name: Run checks
-        run: ./gradlew check
-
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
+
+      - name: Run checks
+        run: ./gradlew check
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
