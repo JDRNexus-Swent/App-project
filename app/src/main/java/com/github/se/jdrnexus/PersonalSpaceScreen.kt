@@ -2,9 +2,7 @@
 package com.github.se.jdrnexus
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,9 +18,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -33,8 +40,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -42,17 +47,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Icon
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
-import androidx.compose.material.icons.filled.CatchingPokemon
 
 const val PERSONAL_SPACE_ADD_BUTTON_TAG = "personalSpaceAddButton"
 const val PERSONAL_SPACE_BACK_BUTTON_TAG = "personalSpaceBackButton"
@@ -77,12 +77,6 @@ private val personalSpaceItems =
             name = "The Sunken Citadel",
             type = DocumentType.TEXT,
             content = "Lore of a forgotten kingdom",
-        ),
-        JDRFile(
-            id = "session-pact",
-            name = "Session 12 — The Pact",
-            type = DocumentType.TEXT,
-            content = "Notes from our last adventure",
         ),
         JDRFile(
             id = "silver-covenant",
@@ -118,7 +112,11 @@ fun PersonalSpaceScreen(
             containerColor = accentColor,
             contentColor = if (darkTheme) Color(0xFF17100D) else Color.White,
         ) {
-          SpaceIcon(kind = "plus", tint = if (darkTheme) Color(0xFF17100D) else Color.White)
+          Icon(
+              imageVector = Icons.Filled.Add,
+              contentDescription = null,
+              tint = if (darkTheme) Color(0xFF17100D) else Color.White,
+          )
         }
       },
       bottomBar = {
@@ -159,7 +157,11 @@ fun PersonalSpaceScreen(
           Spacer(modifier = Modifier.width(10.dp))
           Text(text = "Medieval", color = primaryText, fontSize = 12.sp)
           Spacer(modifier = Modifier.weight(1f))
-          SpaceIcon(kind = "search", tint = accentColor)
+          Icon(
+              imageVector = Icons.Filled.Search,
+              contentDescription = "Search",
+              tint = accentColor,
+          )
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -255,28 +257,25 @@ fun FolderItem(
           modifier = Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(iconBackground),
           contentAlignment = Alignment.Center,
       ) {
-        SpaceIcon(
-            kind =
+        Icon(
+            imageVector =
                 when (folder.type) {
-                  DocumentType.FOLDER -> "folder"
-                  DocumentType.CHARACTER -> "person"
-                  DocumentType.TEXT ->
-                      if (folder.name.startsWith("Session")) "document" else "book"
+                  DocumentType.FOLDER -> Icons.Filled.Folder
+                  DocumentType.CHARACTER -> Icons.Filled.Person
+                  DocumentType.TEXT -> Icons.AutoMirrored.Filled.MenuBook
                 },
+            contentDescription = null,
             tint = accentColor,
-            size = 24.dp,
+            modifier = Modifier.size(24.dp),
         )
       }
-
-
       Column(modifier = Modifier.weight(1f).padding(start = 14.dp, end = 10.dp)) {
         Text(
             text =
                 when (folder.type) {
                   DocumentType.FOLDER -> "FOLDER"
                   DocumentType.CHARACTER -> "CHARACTER SHEET"
-                  DocumentType.TEXT ->
-                      if (folder.name.startsWith("Session")) "TEXT DOCUMENT" else "LORE NOTE"
+                  DocumentType.TEXT -> "TEXT DOCUMENT"
                 },
             color = secondaryText,
             fontSize = 9.sp,
@@ -302,93 +301,12 @@ fun FolderItem(
       }
 
       if (folder.type == DocumentType.FOLDER) {
-        SpaceIcon(kind = "chevron", tint = secondaryText, size = 16.dp)
-      }
-    }
-  }
-}
-
-@Composable
-private fun SpaceIcon(kind: String, tint: Color, size: Dp = 24.dp) {
-  Canvas(modifier = Modifier.size(size).testTag("personalSpaceIcon$kind")) {
-    val scale = this.size.minDimension / 24f
-    drawContext.transform.scale(scale, scale, pivot = androidx.compose.ui.geometry.Offset.Zero)
-    val stroke = Stroke(width = 1.6f)
-    when (kind) {
-      "back" -> {
-        drawLine(tint, androidx.compose.ui.geometry.Offset(19f, 12f), androidx.compose.ui.geometry.Offset(5f, 12f), 1.8f)
-        drawLine(tint, androidx.compose.ui.geometry.Offset(5f, 12f), androidx.compose.ui.geometry.Offset(11f, 6f), 1.8f)
-        drawLine(tint, androidx.compose.ui.geometry.Offset(5f, 12f), androidx.compose.ui.geometry.Offset(11f, 18f), 1.8f)
-      }
-      "search" -> {
-        drawCircle(tint, radius = 7f, center = androidx.compose.ui.geometry.Offset(10f, 10f), style = stroke)
-        drawLine(tint, androidx.compose.ui.geometry.Offset(15f, 15f), androidx.compose.ui.geometry.Offset(21f, 21f), 1.8f)
-      }
-      "plus" -> {
-        drawLine(tint, androidx.compose.ui.geometry.Offset(12f, 4f), androidx.compose.ui.geometry.Offset(12f, 20f), 1.8f)
-        drawLine(tint, androidx.compose.ui.geometry.Offset(4f, 12f), androidx.compose.ui.geometry.Offset(20f, 12f), 1.8f)
-      }
-      "chevron" -> {
-        drawLine(tint, androidx.compose.ui.geometry.Offset(9f, 5f), androidx.compose.ui.geometry.Offset(15f, 12f), 1.8f)
-        drawLine(tint, androidx.compose.ui.geometry.Offset(15f, 12f), androidx.compose.ui.geometry.Offset(9f, 19f), 1.8f)
-      }
-      "folder" -> {
-        val path =
-            Path().apply {
-              moveTo(3f, 6f)
-              lineTo(9f, 6f)
-              lineTo(11f, 8f)
-              lineTo(21f, 8f)
-              lineTo(21f, 19f)
-              lineTo(3f, 19f)
-              close()
-            }
-        drawPath(path, tint, style = stroke)
-      }
-      "person" -> {
-        drawCircle(tint, radius = 4f, center = androidx.compose.ui.geometry.Offset(12f, 8f), style = stroke)
-        val path =
-            Path().apply {
-              moveTo(4f, 21f)
-              quadraticTo(4f, 14f, 12f, 14f)
-              quadraticTo(20f, 14f, 20f, 21f)
-            }
-        drawPath(path, tint, style = stroke)
-      }
-      "book" -> {
-        val path =
-            Path().apply {
-              moveTo(12f, 6f)
-              quadraticTo(8f, 3f, 3f, 5f)
-              lineTo(3f, 19f)
-              quadraticTo(8f, 17f, 12f, 20f)
-              quadraticTo(16f, 17f, 21f, 19f)
-              lineTo(21f, 5f)
-              quadraticTo(16f, 3f, 12f, 6f)
-              close()
-              moveTo(12f, 6f)
-              lineTo(12f, 20f)
-            }
-        drawPath(path, tint, style = stroke)
-      }
-      "document" -> {
-        val path =
-            Path().apply {
-              moveTo(6f, 3f)
-              lineTo(15f, 3f)
-              lineTo(19f, 7f)
-              lineTo(19f, 21f)
-              lineTo(6f, 21f)
-              close()
-              moveTo(14f, 3f)
-              lineTo(14f, 8f)
-              lineTo(19f, 8f)
-              moveTo(9f, 12f)
-              lineTo(16f, 12f)
-              moveTo(9f, 16f)
-              lineTo(16f, 16f)
-            }
-        drawPath(path, tint, style = stroke)
+        Icon(
+            imageVector = Icons.Filled.ChevronRight,
+            contentDescription = null,
+            tint = secondaryText,
+            modifier = Modifier.size(16.dp),
+        )
       }
     }
   }
@@ -397,7 +315,7 @@ private fun SpaceIcon(kind: String, tint: Color, size: Dp = 24.dp) {
 @Preview
 @Composable
 private fun PersonalSpaceScreenPreview() {
-  SampleAppTheme(darkTheme = true, dynamicColor = false) {
+  SampleAppTheme(darkTheme = true, dynamicColor = true) {
     PersonalSpaceScreen(onAddButton = {}, onBackButton = {}, onFolderClicked = {})
   }
 }
