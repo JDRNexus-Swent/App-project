@@ -3,8 +3,6 @@ package com.github.se.jdrnexus.ui.authentication
 import android.app.PendingIntent
 import android.content.Context
 import android.os.CancellationSignal
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -14,13 +12,14 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.unit.Density
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CreateCredentialRequest
 import androidx.credentials.CreateCredentialResponse
@@ -53,7 +52,7 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 @RunWith(AndroidJUnit4::class)
-@Config(qualifiers = "w360dp-h2400dp-xhdpi")
+@Config(qualifiers = "w360dp-h800dp-xhdpi")
 class SignUpScreenTest {
   @get:Rule val composeTestRule = createComposeRule()
 
@@ -246,6 +245,30 @@ class SignUpScreenTest {
     assertEquals(true, signInRequested)
   }
 
+    @Test
+    fun signUpScreen_canScrollToBottomControls() {
+        showSignUp()
+
+        val scrollContainer =
+            composeTestRule.onNodeWithTag("sign_up_scroll_container")
+
+        // Scroll to the Register button and check it is visible.
+        scrollContainer.performScrollToNode(
+            hasTestTag(C.Tag.sign_up_submit)
+        )
+        composeTestRule
+            .onNodeWithTag(C.Tag.sign_up_submit)
+            .assertIsDisplayed()
+
+        // Scroll to the Login link and check it is visible.
+        scrollContainer.performScrollToNode(
+            hasTestTag(C.Tag.sign_up_sign_in)
+        )
+        composeTestRule
+            .onNodeWithTag(C.Tag.sign_up_sign_in)
+            .assertIsDisplayed()
+    }
+
   private fun showSignUp(
       repository: FakeAuthRepository = FakeAuthRepository(),
       onRegister: () -> Unit = {},
@@ -253,14 +276,12 @@ class SignUpScreenTest {
   ) {
     val viewModel = AuthViewModel(repository)
     composeTestRule.setContent {
-      CompositionLocalProvider(LocalDensity provides Density(0.7f)) {
-        SampleAppTheme {
-          SignUpScreen(
-              signUpViewModel = viewModel,
-              onRegister = onRegister,
-              onSignInScreen = onSignInScreen,
-          )
-        }
+      SampleAppTheme {
+        SignUpScreen(
+            signUpViewModel = viewModel,
+            onRegister = onRegister,
+            onSignInScreen = onSignInScreen,
+        )
       }
     }
   }
