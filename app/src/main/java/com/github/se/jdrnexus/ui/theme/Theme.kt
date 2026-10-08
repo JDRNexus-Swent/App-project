@@ -9,7 +9,6 @@ import androidx.compose.ui.graphics.Color
 
 private val DarkColorScheme =
     darkColorScheme(
-        //        primary = Purple80, secondary = PurpleGrey80, tertiary = Pink80
         primary = Color(0xFFD4B95D), // gold
         secondary = Color(0xFFB89B5A),
         tertiary = Color(0xFF8E8278),
@@ -24,9 +23,6 @@ private val DarkColorScheme =
 
 private val LightColorScheme =
     lightColorScheme(
-        //        primary = Purple40,
-        //        secondary = PurpleGrey40,
-        //        tertiary = Pink40,
         primary = Color(0xFF6F5138), // brown
         secondary = Color(0xFFD4B95D), // gold
         tertiary = Color(0xFF8E8278),
@@ -37,49 +33,12 @@ private val LightColorScheme =
         onTertiary = Color.White,
         onBackground = Color(0xFFE7E0D8),
         onSurface = Color(0xFFD1C7BD),
-
-        /* Other default colors to override
-        background = Color(0xFFFFFBFE),
-        surface = Color(0xFFFFFBFE),
-        onPrimary = Color.White,
-        onSecondary = Color.White,
-        onTertiary = Color.White,
-        onBackground = Color(0xFF1C1B1F),
-        onSurface = Color(0xFF1C1B1F),
-        */
     )
 
-// @Composable
-// fun SampleAppTheme(
-//    darkTheme: Boolean = isSystemInDarkTheme(),
-//    // Dynamic color is available on Android 12+
-//    dynamicColor: Boolean = false,
-//    content: @Composable () -> Unit,
-// ) {
-//  val colorScheme =
-//      when {
-//        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-//          val context = LocalContext.current
-//          if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-//        }
-//        darkTheme -> DarkColorScheme
-//        else -> LightColorScheme
-//      }
-//  val view = LocalView.current
-//  if (!view.isInEditMode) {
-//    SideEffect {
-//      val window = (view.context as Activity).window
-//      window.statusBarColor = colorScheme.primary.toArgb()
-//      WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = darkTheme
-//    }
-//  }
-//
-//  MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
-// }
+
 @Composable
 fun SampleAppTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
   val colorScheme =

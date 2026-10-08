@@ -152,6 +152,7 @@ fun SignInScreen(
     }
   }
 
+
   Surface(
       modifier = Modifier.fillMaxSize(),
       color = colors.background,
@@ -217,7 +218,7 @@ fun SignInScreen(
       Spacer(Modifier.height(10.dp))
 
       OutlinedTextField(
-          value = email, // later: value = uiState.email
+          value = email,
           onValueChange = { signInViewModel.onEmailChange(it) },
           shape = RoundedCornerShape(45.dp),
           leadingIcon = {
@@ -431,21 +432,4 @@ fun GoogleSignInButton(
   }
 }
 
-// Preview of the Sign-Up screen using the light theme and dark theme
-// @Preview(
-//    showBackground = true,
-//    name = "Light Mode",
-// )
-// @Composable
-// fun SignInScreenLightPreview() {
-//  SampleAppTheme(darkTheme = false, dynamicColor = false) { SignInScreen() }
-// }
-//
-// @Preview(
-//    showBackground = true,
-//    name = "Dark Mode",
-// )
-// @Composable
-// fun SignInScreenDarkPreview() {
-//  SampleAppTheme(darkTheme = true) { SignInScreen() }
-// }
+
