@@ -6,6 +6,7 @@ plugins {
   alias(libs.plugins.ktfmt)
   alias(libs.plugins.sonar)
   id("jacoco")
+  alias(libs.plugins.google.services)
 }
 
 android {
@@ -25,7 +26,8 @@ android {
 
   buildTypes {
     release {
-      isMinifyEnabled = false
+      isMinifyEnabled = true
+      isShrinkResources = true
       proguardFiles(
           getDefaultProguardFile("proguard-android-optimize.txt"),
           "proguard-rules.pro",
@@ -103,7 +105,7 @@ sonar {
     // Paths to JaCoCo XML coverage report files.
     property(
         "sonar.coverage.jacoco.xmlReportPaths",
-        "${project.layout.buildDirectory.get()}/reports/jacoco/jacocoTestReport/jacocoTestReport.xml",
+        "${project.layout.buildDirectory.get()}/reports/coverage/test/debug/*.xml",
     )
   }
 }
@@ -150,6 +152,15 @@ dependencies {
 
   // ----------       Robolectric     ------------
   testImplementation(libs.robolectric)
+
+  // ----------       FireBase        ------------
+  // Firebase BoM
+  implementation(platform(libs.firebase.bom))
+
+  implementation(libs.firebase.firestore)
+  implementation(libs.firebase.auth)
+  implementation(libs.firebase.messaging)
+  implementation(libs.kotlinx.coroutines.play.services)
 }
 
 tasks.withType<Test> {
@@ -193,3 +204,5 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
       }
   )
 }
+
+tasks.named("sonar") { dependsOn("createDebugUnitTestCoverageReport") }

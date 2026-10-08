@@ -1,31 +1,52 @@
-# App-project
+### 🎲 JDRNexus App
 
-## App name
+> A mobile-first hub for tabletop roleplaying campaigns — character sheets, lore, dice, maps, and voice chat, all in one place.
 
-    JDRNexus
+## Overview
 
-## Pitch
+Running a tabletop RPG usually means juggling several tools: character sheets, lore, dice, and voice chat. **JDRNexus** brings them into a single, shared workspace for every participant in a campaign.
 
-    Playing tabletop roleplaying games requires managing multiple tools, from character sheets and lore to dice and voice chats. Our application centralizes these elements into a single, interactive hub featuring a  dedicated shared "workspace" for all participants of a campaign (a player can be in multiple groups). Unlike a simple drive, the app will offer a mobile-first, highly readable interface. Players can instantly update their stats (such as taking damage) using intuitive buttons. These actions trigger real-time synchronization across all devices, eliminating the friction of manual typing and preserving the game's immersion.
-     It will also provide in-session tools, such as a dice roller and a voice chat to enable people to play even if they cannot be in the same place
-    It is designed for both players and game masters.
+Designed for both **players and game masters**, JDRNexus offers a mobile-first, highly readable interface. Update your stats with one tap and see the change reflected in real time on every device — no manual typing, no breaking immersion.
 
+A player can belong to multiple campaigns, and each one gets its own shared workspace.
 
-## Split-app model
+## ✨ Features
 
-    Documents must be shared among different users and thus stored online with real-time synchronization. We will do this using Cloud Firestore.
-    The app will also use Google Sign-in through Firebase Authentication as an authentication service and use Firebase Cloud Messaging will be utilized to push notifications for campaign updates and upcoming session reminders
-## Multi-user support
+- **Shared campaign workspace** — one hub per campaign, synced across all participants.
+- **One-tap stat updates** — change a stat (such as taking damage) with intuitive buttons; updates appear instantly on every device.
+- **Built-in dice roller** — roll without leaving the app.
+- **Voice chat** — play together even when you're apart.
+- **Session discovery** — game masters can propose a session at a specific location; players see nearby sessions on a map.
+- **Offline support** — see below.
+- **Notifications** — campaign updates and upcoming session reminders.
 
-    Users will log into the app using an authentication protocol and a username, allowing players to invite each other. Inside the app, each user will have a personal space. Within a group, the game master will act as an "admin" who can modify any shared documents.
-## Sensor use
+## 👥 Who it's for
 
-    The app utilizes the GPS and a map feature so a game master can propose a game at a specific location, allowing other users to see all sessions available around their position.
-    Furthermore, the app integrates the device's microphone and speaker to facilitate remote play, providing a built-in voice channel for seamless communication among group members.
-## Offline mode
+- **Players** — track your character, roll dice, and stay in sync with your group.
+- **Game masters** — run sessions and manage shared campaign documents.
 
-    In offline mode, users will still be able to manage their personal data (create characters, write personal lore, etc.) and use the dice rolling feature. Group features synchronisation will be unavailable while offline.
-    However, Cloud Firestore features native 'Offline Persistence.' This means any campaign documents accessed before losing connection are automatically cached locally. As a result, both players and the game master can continue consulting essential files, ensuring sessions can still be held in locations with poor network connectivity.
+## 🔐 Roles and access
+
+- Users sign in with a username and can invite others.
+- Every user has a **personal space** for private characters and lore.
+- Inside a campaign, the **game master** acts as admin and can edit any shared document.
+
+## 📶 Offline mode
+
+- ✅ Create characters, write personal lore, roll dice.
+- ✅ Consult campaign documents you opened before — they're cached automatically.
+- ❌ Group synchronization.
+
+## 🛠 Tech stack
+
+- **Real-time data & offline persistence:** Cloud Firestore.
+- **Authentication:** Firebase Authentication (Google Sign-In).
+- **Notifications:** Firebase Cloud Messaging.
+- **Device features:** GPS + map, microphone and speaker.
 
 ## Figma link
-    https://www.figma.com/design/ZjG9mZc75jXXEqUHVstTES/App-design?node-id=0-1&t=LaPPKQe3UxfPWKZE-1
+   [Find our mockups here](https://www.figma.com/design/ZjG9mZc75jXXEqUHVstTES/App-design?node-id=0-1&t=LaPPKQe3UxfPWKZE-1)
+
+## Contributors
+- JDRNexus team (@Cledje, @ ThibaultCochetEPFL, @bechlima, @Artyst05, @ LDfrt, @ MeriemEPFL, @ s-tan-S )
+- AI agents
