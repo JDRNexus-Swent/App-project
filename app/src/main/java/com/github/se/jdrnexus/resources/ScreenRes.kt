@@ -26,20 +26,23 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun JdrNexusLogo(
-    modifier: Modifier = Modifier.size(260.dp),
+    modifier: Modifier = Modifier,
     color: Color,
     backGroundColor: Color,
 ) {
   Canvas(modifier = modifier) {
     val center = center
+
     val radius = size.minDimension * 0.35f
+    //      fun s(value : Float): Float = value*unit
+    //      val radius = s(35f)
 
     // Outer circle around the logo
     drawCircle(
         color = color.copy(alpha = 0.2f),
-        radius = radius + 25f,
+        radius = radius + (25f),
         center = center,
-        style = Stroke(width = 3f),
+        style = Stroke(width = (3f)),
     )
 
     // Fill the inner circle with the screen background color.
@@ -52,9 +55,9 @@ fun JdrNexusLogo(
     // Inner circle outline.
     drawCircle(
         color = color.copy(alpha = 0.35f),
-        radius = radius - 2f,
+        radius = radius - (2f),
         center = center,
-        style = Stroke(width = 3f),
+        style = Stroke(width = (3f)),
     )
 
     // Draws one diamond around the main logo circle.
@@ -77,18 +80,18 @@ fun JdrNexusLogo(
     }
 
     // Four decorative diamonds surrounding the logo.
-    drawDiamond(center.x, center.y - radius - 40f)
-    drawDiamond(center.x, center.y + radius + 40f)
-    drawDiamond(center.x - radius - 40f, center.y)
-    drawDiamond(center.x + radius + 40f, center.y)
+    drawDiamond(center.x, center.y - radius - (40f))
+    drawDiamond(center.x, center.y + radius + (40f))
+    drawDiamond(center.x - radius - (40f), center.y)
+    drawDiamond(center.x + radius + (40f), center.y)
 
     // D20 dice shape in the center of the logo.
-    val d20Radius = 45f
+    val d20Radius = (radius * 0.35f)
 
-    val top = Offset(center.x, center.y - 50f)
-    val left = Offset(center.x - d20Radius, center.y - 10f)
-    val right = Offset(center.x + d20Radius, center.y - 10f)
-    val bottom = Offset(center.x, center.y + 45f)
+    val top = Offset(center.x, center.y - (radius * 0.37f))
+    val left = Offset(center.x - d20Radius, center.y - (radius * 0.10f))
+    val right = Offset(center.x + d20Radius, center.y - (radius * 0.10f))
+    val bottom = Offset(center.x, center.y + (radius * 0.35f))
 
     // lines for the fox shape in the logo
     drawLine(color, top, left, 4f)
@@ -99,21 +102,21 @@ fun JdrNexusLogo(
 
     drawLine(
         color,
-        Offset(center.x - 35f, center.y - 50f),
-        Offset(center.x + 35f, center.y - 50f),
+        Offset(center.x - (radius * 0.25f), center.y - (radius * 0.37f)),
+        Offset(center.x + (radius * 0.25f), center.y - (radius * 0.37f)),
         3f,
     )
 
     drawLine(
         color,
-        Offset(center.x - 35f, center.y - 50f),
-        Offset(center.x - 70f, center.y - 25f),
+        Offset(center.x - radius * 0.25f, center.y - radius * 0.37f),
+        Offset(center.x - radius * 0.50f, center.y - radius * 0.2f),
         3f,
     )
     drawLine(
         color,
-        Offset(center.x + 35f, center.y - 50f),
-        Offset(center.x + 70f, center.y - 25f),
+        Offset(center.x + radius * 0.25f, center.y - radius * 0.37f),
+        Offset(center.x + radius * 0.50f, center.y - radius * 0.2f),
         3f,
     )
 
@@ -126,79 +129,79 @@ fun JdrNexusLogo(
 
     drawLine(
         color,
-        Offset(center.x - 70f, center.y - 25f),
+        Offset(center.x - radius * 0.5f, center.y - radius * 0.2f),
         center,
         3f,
     )
 
     drawLine(
         color,
-        Offset(center.x + 70f, center.y - 25f),
+        Offset(center.x + radius * 0.5f, center.y - radius * 0.2f),
         center,
         3f,
     )
     drawLine(
         color,
-        Offset(center.x + 70f, center.y - 100f),
+        Offset(center.x + radius * 0.5f, center.y - radius * 0.75f),
         center,
         3f,
     )
     drawLine(
         color,
-        Offset(center.x - 70f, center.y - 100f),
+        Offset(center.x - radius * 0.5f, center.y - radius * 0.75f),
         center,
         3f,
     )
     drawLine(
         color,
-        Offset(center.x - 70f, center.y - 100f),
-        Offset(center.x - 70f, center.y - 25f),
+        Offset(center.x - radius * 0.5f, center.y - radius * 0.75f),
+        Offset(center.x - radius * 0.5f, center.y - radius * 0.2f),
         3f,
     )
     drawLine(
         color,
-        Offset(center.x + 70f, center.y - 100f),
-        Offset(center.x + 70f, center.y - 25f),
+        Offset(center.x + radius * 0.5f, center.y - radius * 0.75f),
+        Offset(center.x + radius * 0.5f, center.y - radius * 0.2f),
         3f,
     )
     drawLine(
         color,
-        Offset(center.x + 70f, center.y - 25f),
+        Offset(center.x + radius * 0.5f, center.y - radius * 0.2f),
         bottom,
         3f,
     )
     drawLine(
         color,
-        Offset(center.x - 70f, center.y - 25f),
+        Offset(center.x - radius * 0.5f, center.y - radius * 0.2f),
         bottom,
         3f,
     )
 
     // Book under the fox shape
-    val bookY = center.y + 70f
+    val bookY = center.y + radius * 0.5f
 
     val leftPage =
         Path().apply {
-          moveTo(center.x - 55f, bookY)
+          moveTo(center.x - radius * 0.38f, bookY)
           quadraticTo(
-              center.x - 25f,
-              bookY - 10f,
+              center.x - radius * 0.2f,
+              bookY - radius * 0.10f,
               center.x,
-              bookY + 10f,
+              bookY + radius * 0.10f,
           )
-          lineTo(center.x, bookY + 40f)
+          lineTo(center.x, bookY + radius * 0.35f)
         }
 
     val rightPage =
         Path().apply {
-          moveTo(center.x + 55f, bookY)
+          moveTo(center.x + radius * 0.38f, bookY)
           quadraticTo(
-              center.x + 25f,
-              bookY - 10f,
+              center.x + radius * 0.2f,
+              bookY - radius * 0.10f,
               center.x,
-              bookY + 10f,
+              bookY + radius * 0.10f,
           )
-          lineTo(center.x, bookY + 40f)
+          lineTo(center.x, bookY + radius * 0.35f)
         }
 
     // Draw both pages of the book.
@@ -217,26 +220,26 @@ fun JdrNexusLogo(
     // Center line separating the two pages.
     drawLine(
         color,
-        Offset(center.x, bookY + 10f),
-        Offset(center.x, bookY + 40f),
+        Offset(center.x, bookY + radius * 0.10f),
+        Offset(center.x, bookY + radius * 0.35f),
         4f,
     )
 
     // Decorative lines representing text on the book pages.
     repeat(3) { i ->
-      val y = bookY + 10f + i * 8f
+      val y = bookY + radius * 0.10f + i * radius * 0.08f
 
       drawLine(
           color,
-          Offset(center.x - 45f, y),
-          Offset(center.x - 15f, y + 4f),
+          Offset(center.x - radius * 0.35f, y),
+          Offset(center.x - radius * 0.15f, y + radius * 0.04f),
           2f,
       )
 
       drawLine(
           color,
-          Offset(center.x + 45f, y),
-          Offset(center.x + 15f, y + 4f),
+          Offset(center.x + radius * 0.35f, y),
+          Offset(center.x + radius * 0.15f, y + radius * 0.04f),
           2f,
       )
     }
@@ -296,7 +299,7 @@ fun DivideWithDiamonds(color: Color) {
  * @param primary Color used for the cursor.
  */
 @Composable
-fun DarkFieldColors(
+fun darkFieldColors(
     container: Color,
     border: Color,
     textPrimary: Color,

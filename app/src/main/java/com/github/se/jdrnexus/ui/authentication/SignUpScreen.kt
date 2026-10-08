@@ -28,49 +28,52 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.github.se.jdrnexus.resources.DarkFieldColors
+import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
 import com.github.se.jdrnexus.resources.JdrNexusLogo
-import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import com.github.se.jdrnexus.resources.darkFieldColors
 
 @Composable
 fun SignUpScreen(
-    // later : signUpViewModel:SignUpViewModel = ViewModel(),
+    signUpViewModel: AuthViewModel,
     onRegister: () -> Unit = {},
     onSignInScreen: () -> Unit = {},
-    emailError: String? = null,
-    passwordError: String? = null,
-    usernameError: String? = null,
-    isLoading: Boolean = false,
 ) {
+  // Observe the state exposed by AuthViewModel.
+  val uiState by signUpViewModel.uiState.collectAsState()
 
   // Use the application's Material 3 theme colors.
   val colors = MaterialTheme.colorScheme
 
-  // Local UI state for the form fields.
-  var email by remember { mutableStateOf("") }
-  var password by remember { mutableStateOf("") }
-  var username by remember { mutableStateOf("") }
+  // Authentication state.
+  val isLoading = uiState.status is AuthStatus.Loading
+  val errorMessage = (uiState.status as? AuthStatus.Error)?.message
 
   // Keeps track of whether the password should be visible or masked.
   var passwordVisible by remember { mutableStateOf(false) }
 
-  // later :   val uiState by signUpViewModel.uiState.collectAsState()
-  // later :   LaunchedEffect(uiState.user) { uiState.user?.let { onRegister() } }
+  // Navigate to the next screen after successful registration.
+  LaunchedEffect(uiState.status) {
+    if (uiState.status is AuthStatus.Success) {
+      onRegister()
+    }
+  }
 
   Surface(
       modifier = Modifier.fillMaxSize(),
@@ -88,7 +91,7 @@ fun SignUpScreen(
         JdrNexusLogo(
             modifier = Modifier.size(140.dp),
             color = colors.primary,
-            backGroundColor = colors.background,
+            backGroundColor = colors.onBackground,
         )
       }
       // Application name and subtitle.
@@ -133,30 +136,20 @@ fun SignUpScreen(
       )
       Spacer(Modifier.height(10.dp))
       OutlinedTextField(
-          value = username, // later : uiState.username
-          onValueChange = {
-            username = it
-          }, // later :  onValueChange = {signUpViewModel.setUsername(it)}
+          value = uiState.username, // later : uiState.username
+          onValueChange = { signUpViewModel.onUsernameChange(it) },
           shape = RoundedCornerShape(45.dp),
           placeholder = { Text(text = "Username", color = colors.tertiary) },
           singleLine = true,
-          modifier = Modifier.fillMaxWidth(),
+          modifier = Modifier.fillMaxWidth().testTag(C.Tag.sign_up_username),
           colors =
-              DarkFieldColors(
+              darkFieldColors(
                   container = colors.onBackground,
                   border = colors.onSurface,
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
-          // later :
-          //          isError = uiState.usernameError != null,
-          //          supportingText = {
-          //              uiState.usernameError?.let { error ->
-          //                  Text(text = error)
-          //              }
-          //          },
-          isError = usernameError != null,
-          supportingText = { usernameError?.let { error -> Text(text = error) } },
+          isError = errorMessage != null,
       )
       Spacer(Modifier.height(20.dp))
 
@@ -170,10 +163,8 @@ fun SignUpScreen(
       Spacer(Modifier.height(10.dp))
 
       OutlinedTextField(
-          value = email, // later : value = uiState.email
-          onValueChange = {
-            email = it
-          }, // later :  onValueChange = {signUpViewModel.setEmail(it) },
+          value = uiState.email, // later : value = uiState.email
+          onValueChange = { signUpViewModel.onEmailChange(it) },
           shape = RoundedCornerShape(45.dp),
           leadingIcon = {
             Icon(
@@ -184,23 +175,15 @@ fun SignUpScreen(
           },
           placeholder = { Text(text = "You@example.com", color = colors.tertiary) },
           singleLine = true,
-          modifier = Modifier.fillMaxWidth(),
+          modifier = Modifier.fillMaxWidth().testTag(C.Tag.sign_up_email),
           colors =
-              DarkFieldColors(
+              darkFieldColors(
                   container = colors.onBackground,
                   border = colors.onSurface,
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
-          // later :
-          //          isError = uiState.emailError != null,
-          //          supportingText = {
-          //              uiState.emailError?.let { error ->
-          //                  Text(text = error)
-          //              }
-          //          },
-          isError = emailError != null,
-          supportingText = { emailError?.let { error -> Text(text = error) } },
+          isError = errorMessage != null,
       )
       Spacer(modifier = Modifier.height(20.dp))
 
@@ -214,10 +197,8 @@ fun SignUpScreen(
       Spacer(modifier = Modifier.height(10.dp))
 
       OutlinedTextField(
-          value = password, // later : value = uiState.password
-          onValueChange = {
-            password = it
-          }, // later :     onValueChange = {signUpViewModel.setPassword(it) },
+          value = uiState.password, // later : value = uiState.password
+          onValueChange = { signUpViewModel.onPasswordChange(it) },
           shape = RoundedCornerShape(45.dp),
           leadingIcon = {
             Icon(
@@ -228,7 +209,10 @@ fun SignUpScreen(
           },
           trailingIcon = {
             // Toggle between visible and masked password.
-            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+            IconButton(
+                onClick = { passwordVisible = !passwordVisible },
+                modifier = Modifier.testTag(C.Tag.sign_up_password_visibility),
+            ) {
               Icon(
                   imageVector = Icons.Outlined.Visibility,
                   contentDescription = "Toggle password visibility",
@@ -240,23 +224,16 @@ fun SignUpScreen(
               if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
           placeholder = { Text(text = "Enter your password", color = colors.tertiary) },
           singleLine = true,
-          modifier = Modifier.fillMaxWidth(),
+          modifier = Modifier.fillMaxWidth().testTag(C.Tag.sign_up_password),
           colors =
-              DarkFieldColors(
+              darkFieldColors(
                   container = colors.onBackground,
                   border = colors.onSurface,
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
-          // later :
-          //          isError = uiState.passwordError != null,
-          //          supportingText = {
-          //              uiState.passwordError?.let { error ->
-          //                  Text(text = error)
-          //              }
-          //          },
-          isError = passwordError != null,
-          supportingText = { passwordError?.let { error -> Text(text = error) } },
+          isError = errorMessage != null,
+          supportingText = { errorMessage?.let { error -> Text(text = error) } },
       )
       Spacer(modifier = Modifier.height(8.dp))
       DivideWithDiamonds(colors.primary)
@@ -264,9 +241,9 @@ fun SignUpScreen(
 
       // Register button.
       Button(
-          onClick = onRegister, // later :  onClick = uiState.onRegister()
+          onClick = { signUpViewModel.signUp() },
           enabled = !isLoading,
-          modifier = Modifier.fillMaxWidth().height(54.dp),
+          modifier = Modifier.fillMaxWidth().height(54.dp).testTag(C.Tag.sign_up_submit),
           shape = RoundedCornerShape(18.dp),
           colors = ButtonDefaults.buttonColors(colors.primary, colors.onPrimary),
       ) {
@@ -301,6 +278,7 @@ fun SignUpScreen(
 
         TextButton(
             onClick = onSignInScreen,
+            modifier = Modifier.testTag(C.Tag.sign_up_sign_in),
             contentPadding = PaddingValues(2.dp),
         ) {
           Text(
@@ -315,20 +293,20 @@ fun SignUpScreen(
 }
 
 // Preview of the Sign-Up screen using the light theme and dark theme
-@Preview(
-    showBackground = true,
-    name = "Light Mode",
-)
-@Composable
-fun SignUpScreenLightPreview() {
-  SampleAppTheme(darkTheme = false, dynamicColor = false) { SignUpScreen() }
-}
-
-@Preview(
-    showBackground = true,
-    name = "Dark Mode",
-)
-@Composable
-fun SignUpScreenDarkPreview() {
-  SampleAppTheme(darkTheme = true) { SignUpScreen() }
-}
+// @Preview(
+//    showBackground = true,
+//    name = "Light Mode",
+// )
+// @Composable
+// fun SignUpScreenLightPreview() {
+//  SampleAppTheme(darkTheme = false, dynamicColor = false) { SignUpScreen() }
+// }
+//
+// @Preview(
+//    showBackground = true,
+//    name = "Dark Mode",
+// )
+// @Composable
+// fun SignUpScreenDarkPreview() {
+//  SampleAppTheme(darkTheme = true) { SignUpScreen() }
+// }
