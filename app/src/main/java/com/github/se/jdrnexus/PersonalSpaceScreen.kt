@@ -3,6 +3,7 @@ package com.github.se.jdrnexus
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,12 +50,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.isSystemInDarkTheme
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 
-internal val PERSONAL_SPACE_CONTAINER_COLOR = SemanticsPropertyKey<Color>("PersonalSpaceContainerColor")
+internal val PERSONAL_SPACE_CONTAINER_COLOR =
+    SemanticsPropertyKey<Color>("PersonalSpaceContainerColor")
 
 private data class PersonalSpaceThemeColors(
     val backgroundColor: Color,
@@ -172,7 +173,6 @@ fun PersonalSpaceScreen(
             modifier = Modifier.fillMaxWidth().height(52.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-
           IconButton(
               onClick = onBackButton,
           ) {
@@ -212,7 +212,6 @@ fun PersonalSpaceScreen(
             modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-
           Text(
               text = "${personalSpaceItems.size} items · Your personal notes, kept together.",
               color = secondaryText,
@@ -275,10 +274,7 @@ fun FolderItem(
 ) {
   Card(
       onClick = onFolderClicked,
-      modifier =
-          modifier
-              .fillMaxWidth()
-              .height(96.dp),
+      modifier = modifier.fillMaxWidth().height(96.dp),
       shape = RoundedCornerShape(12.dp),
       colors = CardDefaults.cardColors(containerColor = cardColor),
       border = BorderStroke(1.dp, borderColor),
@@ -288,7 +284,8 @@ fun FolderItem(
         verticalAlignment = Alignment.CenterVertically,
     ) {
       Box(
-          modifier = Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(iconBackground),
+          modifier =
+              Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(iconBackground),
           contentAlignment = Alignment.Center,
       ) {
         Icon(
