@@ -363,7 +363,7 @@ class WorkspaceRepositoryFirestoreTest {
               id = UUID.randomUUID().toString(),
               ownerId = ownerId,
               name = "Child File",
-              parentFolderIds = listOf("parent1"),
+              personalParentId = "parent1",
           )
 
       repository.createFile(file1)

@@ -1,25 +1,33 @@
 /** Co-authored-by: AI Agent */
 package com.github.se.jdrnexus.model.personalSpace
 
+import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 
 class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : WorkspaceRepository {
+  companion object {
+    private const val COLLECTION_PATH = "documents"
+  }
+
+  // Déclaré en haut, avant son utilisation
+  private val collection = firestore.collection(COLLECTION_PATH)
 
   override fun getNewUid(): String {
     // Calling document() without arguments generates a new reference with a unique ID
     return collection.document().id
   }
 
-  private val collection = firestore.collection("documents")
-
   override suspend fun createFile(file: JDRFile): Result<Unit> {
     return try {
       collection.document(file.id).set(file).await()
       Result.success(Unit)
+    } catch (e: CancellationException) {
+      throw e
     } catch (e: Exception) {
       Result.failure(e)
     }
@@ -27,20 +35,10 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
 
   override suspend fun updateFile(file: JDRFile): Result<Unit> {
     return try {
-      collection
-          .document(file.id)
-          .update(
-              mapOf(
-                  "name" to file.name,
-                  "ownerId" to file.ownerId,
-                  "sharedGroupsIds" to file.sharedGroupsIds,
-                  "parentFolderIds" to file.parentFolderIds,
-                  "type" to file.type,
-                  "content" to file.content,
-              )
-          )
-          .await()
+      collection.document(file.id).update(file.toMap()).await()
       Result.success(Unit)
+    } catch (e: CancellationException) {
+      throw e
     } catch (e: Exception) {
       Result.failure(e)
     }
@@ -50,6 +48,8 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     return try {
       collection.document(fileId).delete().await()
       Result.success(Unit)
+    } catch (e: CancellationException) {
+      throw e
     } catch (e: Exception) {
       Result.failure(e)
     }
@@ -58,8 +58,15 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
   override suspend fun getFile(fileId: String): Result<JDRFile?> {
     return try {
       val documentSnapshot = collection.document(fileId).get().await()
+
+      if (!documentSnapshot.exists()) {
+        return Result.success(null)
+      }
+
       val file = documentSnapshot.toObject(JDRFile::class.java)
       Result.success(file)
+    } catch (e: CancellationException) {
+      throw e
     } catch (e: Exception) {
       Result.failure(e)
     }
@@ -97,30 +104,40 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
   }
 
   override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = callbackFlow {
-    // Listen for changes on all documents owned by this user where parentFolderIds is empty
+    // Listen for changes on all documents owned by this user where personalParentId is empty
     // (meaning they are at the root level).
     val listenerRegistration =
         collection
             .whereEqualTo("ownerId", ownerId)
-            .whereEqualTo("parentFolderIds", emptyList<String>())
+            .whereEqualTo("personalParentId", "")
             .addSnapshotListener { snapshot, error ->
               if (error != null) {
                 close(error)
                 return@addSnapshotListener
               }
-              // Transform the Firestore documents into JDRFile objects.
-              // We use mapNotNull to safely ignore any documents that fail to deserialize.
-              // We also filter again on the client side (`parentFolderIds.isEmpty()`) as a safety
-              // measure,
-              // which can sometimes help bypass Firestore index limitations on empty arrays.
-              val files =
-                  snapshot
-                      ?.documents
-                      ?.mapNotNull { it.toObject(JDRFile::class.java) }
-                      ?.filter { it.parentFolderIds.isEmpty() } ?: emptyList()
 
-              // Emit the updated list of files to the Flow.
-              trySend(files)
+              // Transform the Firestore documents into JDRFile objects.
+              if (snapshot != null) {
+                val files = mutableListOf<JDRFile>()
+
+                for (document in snapshot.documents) {
+                  try {
+                    val file = document.toObject(JDRFile::class.java)
+                    if (file != null) {
+                      files.add(file)
+                    }
+                  } catch (e: Exception) {
+                    // corrupted document leave an error message, with making the app crash
+                    Log.e(
+                        "WorkspaceRepository",
+                        "Error in the deserialization of ${document.id}",
+                        e,
+                    )
+                  }
+                }
+                // Emit the updated list of files to the Flow.
+                trySend(files)
+              }
             }
 
     // Clean up the listener when the Flow is cancelled.
@@ -143,14 +160,30 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
           // condition
           // (parentFolderIds.isEmpty()) on the client side since Firestore doesn't easily support
           // multiple array/inequality filters in a single query without complex composite indexes.
-          val files =
-              snapshot
-                  ?.documents
-                  ?.mapNotNull { it.toObject(JDRFile::class.java) }
-                  ?.filter { it.parentFolderIds.isEmpty() } ?: emptyList()
+          if (snapshot != null) {
+            val files = mutableListOf<JDRFile>()
 
-          // Emit the updated list.
-          trySend(files)
+            for (document in snapshot.documents) {
+              try {
+                val file = document.toObject(JDRFile::class.java)
+
+                // La vérification "root" se fait ici de manière explicite :
+                // On s'assure que le fichier existe ET qu'il n'a pas de dossier parent
+                if (file != null && file.parentFolderIds.isEmpty()) {
+                  files.add(file)
+                }
+              } catch (e: Exception) {
+                // Keep the flow alive even if we have a corruption problem.
+                Log.e(
+                    "WorkspaceRepository",
+                    "Error in the deserialization of group doc ${document.id}",
+                    e,
+                )
+              }
+            }
+            // Emit the updated list.
+            trySend(files)
+          }
         }
 
     // Clean up the listener when the Flow is cancelled.
@@ -169,12 +202,27 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
             return@addSnapshotListener
           }
 
-          // Map the raw Firestore documents to our JDRFile data class.
-          val documents =
-              snapshot?.documents?.mapNotNull { it.toObject(JDRFile::class.java) } ?: emptyList()
+          if (snapshot != null) {
+            val documents = mutableListOf<JDRFile>()
 
-          // Emit the updated list of folder contents.
-          trySend(documents)
+            for (document in snapshot.documents) {
+              try {
+                val file = document.toObject(JDRFile::class.java)
+                if (file != null) {
+                  documents.add(file)
+                }
+              } catch (e: Exception) {
+                Log.e(
+                    "WorkspaceRepository",
+                    "Error in the deserialization of folder doc ${document.id}",
+                    e,
+                )
+              }
+            }
+
+            // Emit the updated list of folder contents.
+            trySend(documents)
+          }
         }
 
     // Clean up the listener when the Flow is cancelled.
