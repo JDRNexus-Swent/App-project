@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import kotlinx.coroutines.CancellationException
@@ -47,7 +48,7 @@ data class PersonalSpaceUiState(
 
 // ============ Definition of the ViewModel ============
 class PersonalSpaceViewModel(
-    private val repository: WorkspaceRepository, // Add the default param here when merging PRs
+    private val repository: WorkspaceRepository = WorkspaceRepositoryProvider.repository,
     private val authRepository: AuthRepository = AuthRepositoryFirebase(),
 ) : ViewModel() {
 
