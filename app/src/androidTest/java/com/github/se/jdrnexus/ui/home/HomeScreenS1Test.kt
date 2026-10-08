@@ -15,7 +15,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class HomeScreenInstrumentedTest {
+class HomeScreenS1Test {
   @get:Rule val composeTestRule = createComposeRule()
 
   @Test
@@ -28,8 +28,8 @@ class HomeScreenInstrumentedTest {
     composeTestRule.onNodeWithTag(TestTags.ADVENTURES).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.QUICKTOOLS).assertIsDisplayed()
 
-    TestTags.placeholderObjects.forEachIndexed { index, tag ->
-      Assert.assertTrue(composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty())
+    TestTags.placeholderObjects.forEachIndexed { index, ttag ->
+      Assert.assertTrue(composeTestRule.onAllNodesWithTag(ttag).fetchSemanticsNodes().isNotEmpty())
       Assert.assertTrue(
           composeTestRule
               .onAllNodesWithText("Adventure ${index + 1}")
