@@ -35,7 +35,6 @@ private val LightColorScheme =
         onSurface = Color(0xFFD1C7BD),
     )
 
-
 @Composable
 fun SampleAppTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),

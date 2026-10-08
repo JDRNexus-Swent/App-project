@@ -152,7 +152,6 @@ fun SignInScreen(
     }
   }
 
-
   Surface(
       modifier = Modifier.fillMaxSize(),
       color = colors.background,
@@ -431,5 +430,3 @@ fun GoogleSignInButton(
     }
   }
 }
-
-
