@@ -245,29 +245,20 @@ class SignUpScreenTest {
     assertEquals(true, signInRequested)
   }
 
-    @Test
-    fun signUpScreen_canScrollToBottomControls() {
-        showSignUp()
+  @Test
+  fun signUpScreen_canScrollToBottomControls() {
+    showSignUp()
 
-        val scrollContainer =
-            composeTestRule.onNodeWithTag("sign_up_scroll_container")
+    val scrollContainer = composeTestRule.onNodeWithTag("sign_up_scroll_container")
 
-        // Scroll to the Register button and check it is visible.
-        scrollContainer.performScrollToNode(
-            hasTestTag(C.Tag.sign_up_submit)
-        )
-        composeTestRule
-            .onNodeWithTag(C.Tag.sign_up_submit)
-            .assertIsDisplayed()
+    // Scroll to the Register button and check it is visible.
+    scrollContainer.performScrollToNode(hasTestTag(C.Tag.sign_up_submit))
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).assertIsDisplayed()
 
-        // Scroll to the Login link and check it is visible.
-        scrollContainer.performScrollToNode(
-            hasTestTag(C.Tag.sign_up_sign_in)
-        )
-        composeTestRule
-            .onNodeWithTag(C.Tag.sign_up_sign_in)
-            .assertIsDisplayed()
-    }
+    // Scroll to the Login link and check it is visible.
+    scrollContainer.performScrollToNode(hasTestTag(C.Tag.sign_up_sign_in))
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsDisplayed()
+  }
 
   private fun showSignUp(
       repository: FakeAuthRepository = FakeAuthRepository(),
