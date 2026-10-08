@@ -127,7 +127,6 @@ fun PersonalSpaceScreen(
     onAddButton: () -> Unit,
     onBackButton: () -> Unit,
     onFolderClicked: () -> Unit,
-    navigation: NavigationPlaceHolder? = null,
 ) {
   val darkTheme = isSystemInDarkTheme()
   val themeColors = if (darkTheme) darkPersonalSpaceTheme else lightPersonalSpaceTheme
