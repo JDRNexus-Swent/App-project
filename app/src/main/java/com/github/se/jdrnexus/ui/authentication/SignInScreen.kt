@@ -58,6 +58,9 @@ import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
@@ -65,7 +68,6 @@ import com.github.se.jdrnexus.resources.JdrNexusLogo
 import com.github.se.jdrnexus.resources.darkFieldColors
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import kotlinx.coroutines.launch
 
 @Composable
@@ -111,11 +113,15 @@ fun SignInScreen(
 
         val request = GetCredentialRequest.Builder().addCredentialOption(googleIdOption).build()
 
+        Log.d("SignInScreen", "Starting Google Credential Manager")
+
         val result =
             credentialManager.getCredential(
                 context = context,
                 request = request,
             )
+
+        Log.d("SignInScreen", "Credential received: ${result.credential.type}")
 
         val credential = result.credential
 
@@ -123,29 +129,39 @@ fun SignInScreen(
             credential is CustomCredential &&
                 credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
         ) {
-          try {
-            val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
 
-            val idToken = googleCredential.idToken
+          val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
 
-            signInViewModel.signInWithGoogle(idToken)
-          } catch (e: GoogleIdTokenParsingException) {
-            Log.e(
-                "SignInScreen",
-                "Invalid Google ID token",
-                e,
-            )
-          }
+          Log.d("SignInScreen", "Google ID token received")
+
+          signInViewModel.signInWithGoogle(googleCredential.idToken)
         } else {
           Log.e(
               "SignInScreen",
               "Unexpected credential type: ${credential.type}",
           )
         }
+      } catch (e: NoCredentialException) {
+        Log.e(
+            "SignInScreen",
+            "No Google credential available",
+            e,
+        )
+      } catch (e: GetCredentialCancellationException) {
+        Log.d(
+            "SignInScreen",
+            "Google Sign-In cancelled",
+        )
+      } catch (e: GetCredentialException) {
+        Log.e(
+            "SignInScreen",
+            "Google Credential Manager failed",
+            e,
+        )
       } catch (e: Exception) {
         Log.e(
             "SignInScreen",
-            "Google Sign-In failed",
+            "Unexpected Google Sign-In error",
             e,
         )
       }

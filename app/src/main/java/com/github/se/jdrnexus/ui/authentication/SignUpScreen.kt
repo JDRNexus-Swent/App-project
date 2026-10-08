@@ -136,7 +136,7 @@ fun SignUpScreen(
       )
       Spacer(Modifier.height(10.dp))
       OutlinedTextField(
-          value = uiState.username, // later : uiState.username
+          value = uiState.username,
           onValueChange = { signUpViewModel.onUsernameChange(it) },
           shape = RoundedCornerShape(45.dp),
           placeholder = { Text(text = "Username", color = colors.tertiary) },
@@ -163,7 +163,7 @@ fun SignUpScreen(
       Spacer(Modifier.height(10.dp))
 
       OutlinedTextField(
-          value = uiState.email, // later : value = uiState.email
+          value = uiState.email,
           onValueChange = { signUpViewModel.onEmailChange(it) },
           shape = RoundedCornerShape(45.dp),
           leadingIcon = {
@@ -197,7 +197,7 @@ fun SignUpScreen(
       Spacer(modifier = Modifier.height(10.dp))
 
       OutlinedTextField(
-          value = uiState.password, // later : value = uiState.password
+          value = uiState.password,
           onValueChange = { signUpViewModel.onPasswordChange(it) },
           shape = RoundedCornerShape(45.dp),
           leadingIcon = {
@@ -247,7 +247,7 @@ fun SignUpScreen(
           shape = RoundedCornerShape(18.dp),
           colors = ButtonDefaults.buttonColors(colors.primary, colors.onPrimary),
       ) {
-        if (isLoading) { //  later : if (uiState.isLoading)
+        if (isLoading) {
           CircularProgressIndicator(
               modifier = Modifier.size(24.dp),
               color = colors.onPrimary,
@@ -291,22 +291,3 @@ fun SignUpScreen(
     }
   }
 }
-
-// Preview of the Sign-Up screen using the light theme and dark theme
-// @Preview(
-//    showBackground = true,
-//    name = "Light Mode",
-// )
-// @Composable
-// fun SignUpScreenLightPreview() {
-//  SampleAppTheme(darkTheme = false, dynamicColor = false) { SignUpScreen() }
-// }
-//
-// @Preview(
-//    showBackground = true,
-//    name = "Dark Mode",
-// )
-// @Composable
-// fun SignUpScreenDarkPreview() {
-//  SampleAppTheme(darkTheme = true) { SignUpScreen() }
-// }
