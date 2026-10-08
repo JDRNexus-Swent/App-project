@@ -205,4 +205,6 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
   )
 }
 
-tasks.named("sonar") { dependsOn("createDebugUnitTestCoverageReport") }
+tasks.named("sonar") {
+  dependsOn("createDebugUnitTestCoverageReport")
+}
