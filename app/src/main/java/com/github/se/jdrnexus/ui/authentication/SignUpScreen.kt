@@ -291,5 +291,3 @@ fun SignUpScreen(
     }
   }
 }
-
-
