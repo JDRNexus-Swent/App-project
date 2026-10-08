@@ -3,6 +3,17 @@ package com.github.se.jdrnexus.resources
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 
 // Like R, but C
+/**
+ * Contains test tags used to identify UI elements in Jetpack Compose.
+ *
+ * These constants provide stable, reusable identifiers for elements such as text fields, buttons,
+ * and containers. They allow UI tests to locate and interact with specific components using
+ * `Modifier.testTag()` and `onNodeWithTag()`, without depending on the element's displayed text or
+ * position in the UI.
+ *
+ * Keeping tags centralized avoids hard-coded strings throughout the application and helps ensure
+ * that the UI implementation and its tests use the same identifiers.
+ */
 object C {
   object Tag {
     const val greeting = "main_screen_greeting"

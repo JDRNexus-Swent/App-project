@@ -34,8 +34,6 @@ fun JdrNexusLogo(
     val center = center
 
     val radius = size.minDimension * 0.35f
-    //      fun s(value : Float): Float = value*unit
-    //      val radius = s(35f)
 
     // Outer circle around the logo
     drawCircle(
