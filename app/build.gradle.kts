@@ -123,6 +123,7 @@ dependencies {
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(platform(libs.compose.bom))
   testImplementation(libs.junit)
+  testImplementation(libs.kotlinx.coroutines.test)
   globalTestImplementation(libs.androidx.junit)
   globalTestImplementation(libs.androidx.espresso.core)
 
@@ -152,6 +153,7 @@ dependencies {
 
   // ----------       Robolectric     ------------
   testImplementation(libs.robolectric)
+  testImplementation(libs.kotlinx.coroutines.test)
 
   // ----------       FireBase        ------------
   // Firebase BoM
