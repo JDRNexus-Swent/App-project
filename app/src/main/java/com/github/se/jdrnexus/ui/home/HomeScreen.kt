@@ -18,10 +18,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 
 object TestTags {
   const val TITLE = "home_title"
@@ -29,12 +33,21 @@ object TestTags {
   const val PROFILE_PIC = "home_image_placeholder"
   const val ADVENTURES = "home_local_adventures"
   const val QUICKTOOLS = "home_quicktools"
-  val BUTTONS = listOf("home_quicktool_1", "home_quicktool_2", "home_quicktool_3")
+  const val PSPACEBUTTON = "home_to_pspace"
+  val BUTTONS = listOf("home_quicktool_1", "home_quicktool_2")
   val placeholderObjects = listOf("home_placeholder_1", "home_placeholder_2", "home_placeholder_3")
 }
 
 @Composable
-fun HomeScreen(modifier: Modifier = Modifier, onLogout: () -> Unit = {}) {
+fun HomeScreen(
+    viewModel: AuthViewModel = viewModel(),
+    modifier: Modifier = Modifier,
+    onLogout: () -> Unit = {},
+    onPersonalSpaceClick: () -> Unit = {},
+) {
+
+  val uiState by viewModel.uiState.collectAsState()
+
   Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
@@ -48,7 +61,14 @@ fun HomeScreen(modifier: Modifier = Modifier, onLogout: () -> Unit = {}) {
       ) {
         Box {}
       }
-      Button(onClick = onLogout) { Text("Log out") }
+      Button(
+          onClick = {
+            viewModel.signOut()
+            onLogout()
+          }
+      ) {
+        Text("Log out")
+      }
     }
 
     Text(
@@ -106,9 +126,15 @@ fun HomeScreen(modifier: Modifier = Modifier, onLogout: () -> Unit = {}) {
           Text(quicktool)
         }
       }
+      Button(
+          onClick = onPersonalSpaceClick,
+          modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.PSPACEBUTTON),
+      ) {
+        Text("Personal Space")
+      }
     }
   }
 }
 
 private val placeholderObjects = listOf("Adventure 1", "Adventure 2", "Adventure 3")
-private val quicktools = listOf("Tool 1", "Tool 2", "Tool 3")
+private val quicktools = listOf("Tool 1", "Tool 2")

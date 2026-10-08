@@ -227,6 +227,18 @@ class AuthViewModelTest {
   }
 
   @Test
+  fun signOutCallsRepositoryAndReturnsToIdle() = runTest {
+    val repository = FakeAuthRepository()
+    val viewModel = AuthViewModel(repository)
+
+    viewModel.signOut()
+    runCurrent()
+
+    assertEquals(1, repository.signOutCalls)
+    assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
+  }
+
+  @Test
   fun repositoryExceptionBecomesGenericFriendlyError() = runTest {
     val repository =
         FakeAuthRepository().apply {
@@ -270,6 +282,7 @@ class AuthViewModelTest {
     var signUpCalls = 0
     var signInCalls = 0
     var googleSignInCalls = 0
+    var signOutCalls = 0
     var signInJob: Job? = null
     var lastSignUpArguments: Triple<String, String, String>? = null
     var lastSignInArguments: Pair<String, String>? = null
@@ -304,7 +317,10 @@ class AuthViewModelTest {
       return googleResponse
     }
 
-    override suspend fun signOut(): AuthResult<Unit> = AuthResult.Success(Unit)
+    override suspend fun signOut(): AuthResult<Unit> {
+      signOutCalls++
+      return AuthResult.Success(Unit)
+    }
   }
 
   private companion object {

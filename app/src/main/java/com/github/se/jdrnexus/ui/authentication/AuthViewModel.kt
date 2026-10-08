@@ -68,6 +68,28 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     authenticate { repository.signInWithEmail(form.email.trim(), form.password) }
   }
 
+  fun signOut() {
+    viewModelScope.launch {
+      setStatus(AuthStatus.Loading)
+
+      val status =
+          try {
+            when (val result = repository.signOut()) {
+              is AuthResult.Success -> AuthStatus.Idle
+              is AuthResult.Failure -> AuthStatus.Error(result.error.message)
+              is AuthResult.AccountCreatedNeedsRecovery -> AuthStatus.Error(result.message)
+            }
+          } catch (cancellation: CancellationException) {
+            setStatus(AuthStatus.Idle)
+            throw cancellation
+          } catch (_: Exception) {
+            AuthStatus.Error(AuthError.UNKNOWN.message)
+          }
+
+      setStatus(status)
+    }
+  }
+
   fun signInWithGoogle(token: String) {
     if (token.isBlank()) {
       setStatus(AuthStatus.Error(AuthError.INVALID_GOOGLE_CREDENTIAL.message))
