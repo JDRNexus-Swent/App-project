@@ -54,8 +54,7 @@ import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 
-internal val PERSONAL_SPACE_CONTAINER_COLOR =
-    SemanticsPropertyKey<Color>("PersonalSpaceContainerColor")
+
 
 private data class PersonalSpaceThemeColors(
     val backgroundColor: Color,
@@ -120,7 +119,6 @@ private val samplePersonalSpaceItems =
         ),
     )
 
-private const val PERSONAL_SPACE_BACKGROUND_TAG = "personalSpaceBackground"
 
 @Composable
 fun PersonalSpaceScreen(
@@ -140,10 +138,7 @@ fun PersonalSpaceScreen(
   val accentColor = themeColors.accentColor
 
   Scaffold(
-      modifier =
-          Modifier.testTag(PERSONAL_SPACE_BACKGROUND_TAG).semantics {
-            this[PERSONAL_SPACE_CONTAINER_COLOR] = backgroundColor
-          },
+
       containerColor = backgroundColor,
       floatingActionButton = {
         FloatingActionButton(

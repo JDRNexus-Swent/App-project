@@ -4,6 +4,7 @@ package com.github.se.jdrnexus.screen
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -90,6 +91,10 @@ class PersonalSpaceScreenTests {
     }
 
     composeTestRule.onNodeWithText("Your personal space is empty.").assertIsDisplayed()
+    composeTestRule.onNodeWithText("The Ashen Realms").assertIsNotDisplayed()
+    composeTestRule.onNodeWithText("Elara Moonwhisper").assertIsNotDisplayed()
+    composeTestRule.onNodeWithText("The Sunken Citadel").assertIsNotDisplayed()
+    composeTestRule.onNodeWithText("The Silver Covenant").assertIsNotDisplayed()
   }
 
   @Test
