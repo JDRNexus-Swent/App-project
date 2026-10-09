@@ -277,6 +277,8 @@ class PersonalSpaceScreenTests {
     ): AuthResult<AuthUser> = AuthResult.Success(user)
 
     override suspend fun signInWithGoogle(idToken: String): AuthResult<AuthUser> =
+
+
         AuthResult.Success(user)
 
     override suspend fun signOut(): AuthResult<Unit> = AuthResult.Success(Unit)
