@@ -41,9 +41,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.SemanticsPropertyKey
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,8 +50,6 @@ import androidx.compose.ui.unit.sp
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
-
-
 
 private data class PersonalSpaceThemeColors(
     val backgroundColor: Color,
@@ -119,7 +114,6 @@ private val samplePersonalSpaceItems =
         ),
     )
 
-
 @Composable
 fun PersonalSpaceScreen(
     onAddButton: () -> Unit,
@@ -138,7 +132,6 @@ fun PersonalSpaceScreen(
   val accentColor = themeColors.accentColor
 
   Scaffold(
-
       containerColor = backgroundColor,
       floatingActionButton = {
         FloatingActionButton(
