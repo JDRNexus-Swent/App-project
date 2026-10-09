@@ -239,6 +239,19 @@ class AuthViewModelTest {
   }
 
   @Test
+  fun signOutExposesRepositoryFailure() = runTest {
+    val repository =
+        FakeAuthRepository().apply { signOutResponse = AuthResult.Failure(AuthError.UNKNOWN) }
+    val viewModel = AuthViewModel(repository)
+
+    viewModel.signOut()
+    runCurrent()
+
+    assertEquals(1, repository.signOutCalls)
+    assertEquals(AuthStatus.Error(AuthError.UNKNOWN.message), viewModel.uiState.value.status)
+  }
+
+  @Test
   fun repositoryExceptionBecomesGenericFriendlyError() = runTest {
     val repository =
         FakeAuthRepository().apply {
@@ -291,6 +304,7 @@ class AuthViewModelTest {
         CompletableDeferred(AuthResult.Success(USER))
     var signInResponse: AuthResult<AuthUser> = AuthResult.Success(USER)
     var googleResponse: AuthResult<AuthUser> = AuthResult.Success(USER)
+    var signOutResponse: AuthResult<Unit> = AuthResult.Success(Unit)
     var signInFailure: Exception? = null
 
     override suspend fun signUpWithEmail(
@@ -319,7 +333,7 @@ class AuthViewModelTest {
 
     override suspend fun signOut(): AuthResult<Unit> {
       signOutCalls++
-      return AuthResult.Success(Unit)
+      return signOutResponse
     }
   }
 

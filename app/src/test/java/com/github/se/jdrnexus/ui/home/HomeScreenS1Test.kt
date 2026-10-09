@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.home
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -61,5 +62,17 @@ class HomeScreenS1Test {
     composeTestRule.onNodeWithText("Log out").performClick()
 
     Assert.assertTrue(loggedOut)
+  }
+
+  @Test
+  fun personalSpaceButtonInvokesCallback() {
+    var clicked = false
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(onPersonalSpaceClick = { clicked = true }) }
+    }
+
+    composeTestRule.onNodeWithTag(TestTags.PSPACEBUTTON).performClick()
+
+    Assert.assertTrue(clicked)
   }
 }
