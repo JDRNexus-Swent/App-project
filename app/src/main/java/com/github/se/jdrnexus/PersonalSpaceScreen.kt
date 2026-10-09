@@ -27,16 +27,24 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,12 +52,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
-import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import com.github.se.jdrnexus.viewmodel.LoadState
+import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 
 private data class PersonalSpaceThemeColors(
     val backgroundColor: Color,
@@ -86,41 +95,16 @@ private val lightPersonalSpaceTheme =
         floatingActionContentColor = Color.White,
     )
 
-private val samplePersonalSpaceItems =
-    listOf(
-        JDRFile(
-            id = "ashen-realms",
-            name = "The Ashen Realms",
-            type = DocumentType.FOLDER,
-            content = "8 files · World lore & maps",
-        ),
-        JDRFile(
-            id = "elara-moonwhisper",
-            name = "Elara Moonwhisper",
-            type = DocumentType.CHARACTER,
-            content = "Level 7 · Half-elf ranger",
-        ),
-        JDRFile(
-            id = "sunken-citadel",
-            name = "The Sunken Citadel",
-            type = DocumentType.TEXT,
-            content = "Lore of a forgotten kingdom",
-        ),
-        JDRFile(
-            id = "silver-covenant",
-            name = "The Silver Covenant",
-            type = DocumentType.FOLDER,
-            content = "4 files · Allies & adversaries",
-        ),
-    )
-
 @Composable
 fun PersonalSpaceScreen(
-    onAddButton: () -> Unit,
     onBackButton: () -> Unit,
-    onFolderClicked: () -> Unit,
-    personalSpaceItems: List<JDRFile> = samplePersonalSpaceItems,
+    personalSpaceViewModel: PersonalSpaceViewModel = viewModel(),
+    onDocumentClicked: (String) -> Unit,
+    onCreateFile: (String) -> Unit,
 ) {
+  val uiState by personalSpaceViewModel.uiState.collectAsState()
+  val personalSpaceItems = uiState.items
+
   val darkTheme = isSystemInDarkTheme()
   val themeColors = if (darkTheme) darkPersonalSpaceTheme else lightPersonalSpaceTheme
   val backgroundColor = themeColors.backgroundColor
@@ -134,17 +118,32 @@ fun PersonalSpaceScreen(
   Scaffold(
       containerColor = backgroundColor,
       floatingActionButton = {
-        FloatingActionButton(
-            onClick = onAddButton,
-            shape = RoundedCornerShape(50),
-            containerColor = accentColor,
-            contentColor = themeColors.floatingActionContentColor,
-        ) {
-          Icon(
-              imageVector = Icons.Filled.Add,
-              contentDescription = "Add item",
-              tint = themeColors.floatingActionContentColor,
-          )
+        Box {
+          FloatingActionButton(
+              onClick = personalSpaceViewModel::onAddClicked,
+              shape = RoundedCornerShape(50),
+              containerColor = accentColor,
+              contentColor = themeColors.floatingActionContentColor,
+          ) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = "Add item",
+                tint = themeColors.floatingActionContentColor,
+            )
+          }
+          DropdownMenu(
+              expanded = uiState.isAddMenuExpanded,
+              onDismissRequest = personalSpaceViewModel::onAddMenuDismissed,
+          ) {
+            DropdownMenuItem(
+                text = { Text("New folder") },
+                onClick = personalSpaceViewModel::onNewFolderSelected,
+            )
+            DropdownMenuItem(
+                text = { Text("New file") },
+                onClick = { personalSpaceViewModel.onNewFileSelected(onCreateFile) },
+            )
+          }
         }
       },
       bottomBar = {
@@ -162,7 +161,13 @@ fun PersonalSpaceScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
           IconButton(
-              onClick = onBackButton,
+              onClick = {
+                if (uiState.canNavigateUp) {
+                  personalSpaceViewModel.onNavigateUp()
+                } else {
+                  onBackButton()
+                }
+              },
           ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -179,7 +184,13 @@ fun PersonalSpaceScreen(
           Spacer(modifier = Modifier.width(10.dp))
           Text(text = "›", color = secondaryText, fontSize = 19.sp)
           Spacer(modifier = Modifier.width(10.dp))
-          Text(text = "Medieval", color = primaryText, fontSize = 12.sp)
+          Text(
+              text = uiState.newFolderName.ifEmpty { "Personal Space" },
+              color = primaryText,
+              fontSize = 12.sp,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis,
+          )
           Spacer(modifier = Modifier.weight(1f))
           Icon(
               imageVector = Icons.Filled.Search,
@@ -190,7 +201,7 @@ fun PersonalSpaceScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Medieval",
+            text = uiState.newFolderName.ifEmpty { "My Space" },
             color = primaryText,
             fontFamily = FontFamily.Serif,
             fontSize = 30.sp,
@@ -201,7 +212,7 @@ fun PersonalSpaceScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
           Text(
-              text = "${personalSpaceItems.size} items · Your personal notes, kept together.",
+              text = "${personalSpaceItems.size} items",
               color = secondaryText,
               fontSize = 12.sp,
               modifier = Modifier.weight(1f),
@@ -218,33 +229,93 @@ fun PersonalSpaceScreen(
         }
       }
 
-      if (personalSpaceItems.isEmpty()) {
-        Text(
-            text = "Your personal space is empty.",
-            color = secondaryText,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
-        )
-      } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-          items(personalSpaceItems, key = { it.id }) { item ->
-            FolderItem(
-                folder = item,
-                onFolderClicked = onFolderClicked,
-                cardColor = cardColor,
-                iconBackground = iconBackground,
-                primaryText = primaryText,
-                secondaryText = secondaryText,
-                borderColor = borderColor,
-                accentColor = accentColor,
-            )
+      when (val loadState = uiState.loadState) {
+        LoadState.Loading -> {
+          Box(
+              modifier = Modifier.fillMaxWidth().weight(1f),
+              contentAlignment = Alignment.Center,
+          ) {
+            CircularProgressIndicator(color = accentColor)
           }
         }
+        is LoadState.Error -> {
+          Column(
+              modifier = Modifier.fillMaxWidth().weight(1f).padding(24.dp),
+              horizontalAlignment = Alignment.CenterHorizontally,
+              verticalArrangement = Arrangement.Center,
+          ) {
+            Text(text = loadState.message, color = secondaryText)
+            TextButton(
+                onClick = { personalSpaceViewModel.fetchItems(uiState.currentFolderId) },
+            ) {
+              Text("Retry")
+            }
+          }
+        }
+        LoadState.Success ->
+            if (personalSpaceItems.isEmpty()) {
+              Text(
+                  text =
+                      if (uiState.currentFolderId.isEmpty()) {
+                        "Your personal space is empty."
+                      } else {
+                        "This folder is empty."
+                      },
+                  color = secondaryText,
+                  modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+              )
+            } else {
+              LazyColumn(
+                  modifier = Modifier.fillMaxWidth().weight(1f),
+                  contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 20.dp),
+                  verticalArrangement = Arrangement.spacedBy(12.dp),
+              ) {
+                items(personalSpaceItems, key = { it.id }) { item ->
+                  FolderItem(
+                      folder = item,
+                      onFolderClicked = {
+                        personalSpaceViewModel.onItemClicked(item, onDocumentClicked)
+                      },
+                      cardColor = cardColor,
+                      iconBackground = iconBackground,
+                      primaryText = primaryText,
+                      secondaryText = secondaryText,
+                      borderColor = borderColor,
+                      accentColor = accentColor,
+                  )
+                }
+              }
+            }
       }
     }
+  }
+
+  if (uiState.isNewFolderDialogOpen) {
+    AlertDialog(
+        onDismissRequest = personalSpaceViewModel::onNewFolderDialogDismissed,
+        title = { Text("New folder") },
+        text = {
+          Column {
+            OutlinedTextField(
+                value = uiState.newFolderName,
+                onValueChange = personalSpaceViewModel::onNewFolderNameChanged,
+                label = { Text("Folder name") },
+                singleLine = true,
+            )
+            if (uiState.newFolderError.isNotEmpty()) {
+              Text(text = uiState.newFolderError, color = MaterialTheme.colorScheme.error)
+            }
+          }
+        },
+        confirmButton = {
+          TextButton(onClick = personalSpaceViewModel::createFolder) { Text("Create") }
+        },
+        dismissButton = {
+          TextButton(onClick = personalSpaceViewModel::onNewFolderDialogDismissed) {
+            Text("Cancel")
+          }
+        },
+    )
   }
 }
 
@@ -333,13 +404,5 @@ fun FolderItem(
         )
       }
     }
-  }
-}
-
-@Preview
-@Composable
-private fun PersonalSpaceScreenPreview() {
-  SampleAppTheme(darkTheme = true) {
-    PersonalSpaceScreen(onAddButton = {}, onBackButton = {}, onFolderClicked = {})
   }
 }
