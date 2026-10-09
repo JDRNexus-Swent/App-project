@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -50,6 +51,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -199,6 +201,11 @@ fun SignInScreen(
       OutlinedTextField(
           value = password,
           onValueChange = { signInViewModel.onPasswordChange(it) },
+          keyboardOptions =
+              KeyboardOptions(
+                  keyboardType = KeyboardType.Password,
+                  autoCorrectEnabled = false,
+              ),
           shape = RoundedCornerShape(45.dp),
           leadingIcon = {
             Icon(
