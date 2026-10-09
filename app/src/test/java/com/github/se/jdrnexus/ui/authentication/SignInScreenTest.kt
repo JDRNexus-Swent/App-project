@@ -58,6 +58,161 @@ import org.robolectric.annotation.Config
 class SignInScreenTest {
   @get:Rule val composeTestRule = createComposeRule()
 
+  /** Helper functions to execute the tests */
+  private fun showSignIn(
+      repository: FakeAuthRepository = FakeAuthRepository(),
+      credentialManager: CredentialManager? = null,
+      onSignInSuccess: () -> Unit = {},
+      onSignUp: () -> Unit = {},
+      forgotPassword: () -> Unit = {},
+  ) {
+    val viewModel = AuthViewModel(repository)
+    composeTestRule.setContent {
+      SampleAppTheme {
+        if (credentialManager == null) {
+          SignInScreen(
+              signInViewModel = viewModel,
+              onSignInSuccess = onSignInSuccess,
+              onSignUp = onSignUp,
+              forgotPassword = forgotPassword,
+          )
+        } else {
+          SignInScreen(
+              signInViewModel = viewModel,
+              credentialManager = credentialManager,
+              onSignInSuccess = onSignInSuccess,
+              onSignUp = onSignUp,
+              forgotPassword = forgotPassword,
+          )
+        }
+      }
+    }
+  }
+
+  private fun emailInput(tag: String) = composeTestRule.onNodeWithTag(tag)
+
+  private fun passwordInput(tag: String) = composeTestRule.onNodeWithTag(tag)
+
+  private fun enterSignInCredentials() {
+    emailInput(C.Tag.sign_in_email).performTextInput("hero@example.com")
+    passwordInput(C.Tag.sign_in_password).performTextInput("secret1")
+  }
+
+  private class FakeAuthRepository : AuthRepository {
+    override val authState: Flow<AuthUser?> = MutableStateFlow(null)
+    var signInCalls = 0
+    var signUpCalls = 0
+    var googleSignInCalls = 0
+    var lastGoogleToken: String? = null
+    var lastSignInArguments: Pair<String, String>? = null
+    var lastSignUpArguments: Triple<String, String, String>? = null
+    var signInResponse: CompletableDeferred<AuthResult<AuthUser>> =
+        CompletableDeferred(AuthResult.Success(TEST_USER))
+    var signUpResponse: CompletableDeferred<AuthResult<AuthUser>> =
+        CompletableDeferred(AuthResult.Success(TEST_USER))
+
+    override suspend fun signInWithEmail(
+        email: String,
+        password: String,
+    ): AuthResult<AuthUser> {
+      signInCalls++
+      lastSignInArguments = email to password
+      return signInResponse.await()
+    }
+
+    override suspend fun signUpWithEmail(
+        email: String,
+        password: String,
+        username: String,
+    ): AuthResult<AuthUser> {
+      signUpCalls++
+      lastSignUpArguments = Triple(username, email, password)
+      return signUpResponse.await()
+    }
+
+    override suspend fun signInWithGoogle(idToken: String): AuthResult<AuthUser> {
+      googleSignInCalls++
+      lastGoogleToken = idToken
+      return AuthResult.Success(TEST_USER)
+    }
+
+    override suspend fun signOut(): AuthResult<Unit> = AuthResult.Success(Unit)
+
+    private companion object {
+      val TEST_USER = AuthUser(uid = "user-1", email = "hero@example.com", username = "Ranger")
+    }
+  }
+
+  private class FakeCredentialManager(private val response: GetCredentialResponse) :
+      CredentialManager {
+    var getCredentialCalls = 0
+
+    override fun getCredentialAsync(
+        context: Context,
+        request: GetCredentialRequest,
+        cancellationSignal: CancellationSignal?,
+        executor: Executor,
+        callback: CredentialManagerCallback<GetCredentialResponse, GetCredentialException>,
+    ) {
+      getCredentialCalls++
+      executor.execute { callback.onResult(response) }
+    }
+
+    override fun getCredentialAsync(
+        context: Context,
+        pendingGetCredentialHandle: PrepareGetCredentialResponse.PendingGetCredentialHandle,
+        cancellationSignal: CancellationSignal?,
+        executor: Executor,
+        callback: CredentialManagerCallback<GetCredentialResponse, GetCredentialException>,
+    ) {
+      throw UnsupportedOperationException("Not used in authentication screen tests")
+    }
+
+    override fun prepareGetCredentialAsync(
+        request: GetCredentialRequest,
+        cancellationSignal: CancellationSignal?,
+        executor: Executor,
+        callback: CredentialManagerCallback<PrepareGetCredentialResponse, GetCredentialException>,
+    ) {
+      throw UnsupportedOperationException("Not used in authentication screen tests")
+    }
+
+    override fun createCredentialAsync(
+        context: Context,
+        request: CreateCredentialRequest,
+        cancellationSignal: CancellationSignal?,
+        executor: Executor,
+        callback: CredentialManagerCallback<CreateCredentialResponse, CreateCredentialException>,
+    ) {
+      throw UnsupportedOperationException("Not used in authentication screen tests")
+    }
+
+    override fun clearCredentialStateAsync(
+        request: ClearCredentialStateRequest,
+        cancellationSignal: CancellationSignal?,
+        executor: Executor,
+        callback: CredentialManagerCallback<Void?, ClearCredentialException>,
+    ) {
+      throw UnsupportedOperationException("Not used in authentication screen tests")
+    }
+
+    override fun signalCredentialStateAsync(
+        request: SignalCredentialStateRequest,
+        executor: Executor,
+        callback:
+            CredentialManagerCallback<
+                SignalCredentialStateResponse,
+                SignalCredentialStateException,
+            >,
+    ) {
+      throw UnsupportedOperationException("Not used in authentication screen tests")
+    }
+
+    override fun createSettingsPendingIntent(): PendingIntent =
+        throw UnsupportedOperationException("Not used in authentication screen tests")
+  }
+
+  /** the tests */
   @Test
   fun signInScreen_displaysAllAuthenticationContent() {
     showSignIn()
@@ -272,159 +427,5 @@ class SignInScreenTest {
         .performScrollToNode(hasTestTag(C.Tag.sign_in_sign_up))
 
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
-  }
-
-  private fun showSignIn(
-      repository: FakeAuthRepository = FakeAuthRepository(),
-      credentialManager: CredentialManager? = null,
-      onSignInSuccess: () -> Unit = {},
-      onSignUp: () -> Unit = {},
-      forgotPassword: () -> Unit = {},
-  ) {
-    val viewModel = AuthViewModel(repository)
-    composeTestRule.setContent {
-      SampleAppTheme {
-        val manager = credentialManager
-        if (manager == null) {
-          SignInScreen(
-              signInViewModel = viewModel,
-              onSignInSuccess = onSignInSuccess,
-              onSignUp = onSignUp,
-              forgotPassword = forgotPassword,
-          )
-        } else {
-          SignInScreen(
-              signInViewModel = viewModel,
-              credentialManager = manager,
-              onSignInSuccess = onSignInSuccess,
-              onSignUp = onSignUp,
-              forgotPassword = forgotPassword,
-          )
-        }
-      }
-    }
-  }
-
-  private fun emailInput(tag: String) = composeTestRule.onNodeWithTag(tag)
-
-  private fun passwordInput(tag: String) = composeTestRule.onNodeWithTag(tag)
-
-  private fun enterSignInCredentials() {
-    emailInput(C.Tag.sign_in_email).performTextInput("hero@example.com")
-    passwordInput(C.Tag.sign_in_password).performTextInput("secret1")
-  }
-
-  private class FakeAuthRepository : AuthRepository {
-    override val authState: Flow<AuthUser?> = MutableStateFlow(null)
-    var signInCalls = 0
-    var signUpCalls = 0
-    var googleSignInCalls = 0
-    var lastGoogleToken: String? = null
-    var lastSignInArguments: Pair<String, String>? = null
-    var lastSignUpArguments: Triple<String, String, String>? = null
-    var signInResponse: CompletableDeferred<AuthResult<AuthUser>> =
-        CompletableDeferred(AuthResult.Success(TEST_USER))
-    var signUpResponse: CompletableDeferred<AuthResult<AuthUser>> =
-        CompletableDeferred(AuthResult.Success(TEST_USER))
-
-    override suspend fun signInWithEmail(
-        email: String,
-        password: String,
-    ): AuthResult<AuthUser> {
-      signInCalls++
-      lastSignInArguments = email to password
-      return signInResponse.await()
-    }
-
-    override suspend fun signUpWithEmail(
-        email: String,
-        password: String,
-        username: String,
-    ): AuthResult<AuthUser> {
-      signUpCalls++
-      lastSignUpArguments = Triple(username, email, password)
-      return signUpResponse.await()
-    }
-
-    override suspend fun signInWithGoogle(idToken: String): AuthResult<AuthUser> {
-      googleSignInCalls++
-      lastGoogleToken = idToken
-      return AuthResult.Success(TEST_USER)
-    }
-
-    override suspend fun signOut(): AuthResult<Unit> = AuthResult.Success(Unit)
-
-    private companion object {
-      val TEST_USER = AuthUser(uid = "user-1", email = "hero@example.com", username = "Ranger")
-    }
-  }
-
-  private class FakeCredentialManager(private val response: GetCredentialResponse) :
-      CredentialManager {
-    var getCredentialCalls = 0
-
-    override fun getCredentialAsync(
-        context: Context,
-        request: GetCredentialRequest,
-        cancellationSignal: CancellationSignal?,
-        executor: Executor,
-        callback: CredentialManagerCallback<GetCredentialResponse, GetCredentialException>,
-    ) {
-      getCredentialCalls++
-      executor.execute { callback.onResult(response) }
-    }
-
-    override fun getCredentialAsync(
-        context: Context,
-        pendingGetCredentialHandle: PrepareGetCredentialResponse.PendingGetCredentialHandle,
-        cancellationSignal: CancellationSignal?,
-        executor: Executor,
-        callback: CredentialManagerCallback<GetCredentialResponse, GetCredentialException>,
-    ) {
-      throw UnsupportedOperationException("Not used in authentication screen tests")
-    }
-
-    override fun prepareGetCredentialAsync(
-        request: GetCredentialRequest,
-        cancellationSignal: CancellationSignal?,
-        executor: Executor,
-        callback: CredentialManagerCallback<PrepareGetCredentialResponse, GetCredentialException>,
-    ) {
-      throw UnsupportedOperationException("Not used in authentication screen tests")
-    }
-
-    override fun createCredentialAsync(
-        context: Context,
-        request: CreateCredentialRequest,
-        cancellationSignal: CancellationSignal?,
-        executor: Executor,
-        callback: CredentialManagerCallback<CreateCredentialResponse, CreateCredentialException>,
-    ) {
-      throw UnsupportedOperationException("Not used in authentication screen tests")
-    }
-
-    override fun clearCredentialStateAsync(
-        request: ClearCredentialStateRequest,
-        cancellationSignal: CancellationSignal?,
-        executor: Executor,
-        callback: CredentialManagerCallback<Void?, ClearCredentialException>,
-    ) {
-      throw UnsupportedOperationException("Not used in authentication screen tests")
-    }
-
-    override fun signalCredentialStateAsync(
-        request: SignalCredentialStateRequest,
-        executor: Executor,
-        callback:
-            CredentialManagerCallback<
-                SignalCredentialStateResponse,
-                SignalCredentialStateException,
-            >,
-    ) {
-      throw UnsupportedOperationException("Not used in authentication screen tests")
-    }
-
-    override fun createSettingsPendingIntent(): PendingIntent =
-        throw UnsupportedOperationException("Not used in authentication screen tests")
   }
 }
