@@ -2,9 +2,13 @@
 package com.github.se.jdrnexus.ui.authentication
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
+import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import kotlinx.coroutines.CancellationException
@@ -143,7 +147,11 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     _uiState.update { it.copy(status = status) }
   }
 
-  private companion object {
+  companion object {
+    val Factory: ViewModelProvider.Factory = viewModelFactory {
+      initializer { AuthViewModel(AuthRepositoryFirebase()) }
+    }
+
     const val MIN_PASSWORD_LENGTH = 6
     val EMAIL_PATTERN = Regex("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
   }

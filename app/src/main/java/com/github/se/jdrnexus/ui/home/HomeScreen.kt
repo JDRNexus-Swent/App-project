@@ -40,7 +40,7 @@ object TestTags {
 
 @Composable
 fun HomeScreen(
-    viewModel: AuthViewModel = viewModel(),
+    viewModel: AuthViewModel = viewModel(factory = AuthViewModel.Factory),
     modifier: Modifier = Modifier,
     onLogout: () -> Unit = {},
     onPersonalSpaceClick: () -> Unit = {},

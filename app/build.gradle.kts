@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
   alias(libs.plugins.androidApplication)
   alias(libs.plugins.kotlinCompose)
+  alias(libs.plugins.kotlinSerialization)
   alias(libs.plugins.ktfmt)
   alias(libs.plugins.sonar)
   id("jacoco")
@@ -119,7 +120,6 @@ fun DependencyHandlerScope.globalTestImplementation(dep: Any) {
 dependencies {
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.appcompat)
-  implementation(libs.firebase.auth.ktx)
   implementation(libs.material)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(platform(libs.compose.bom))
@@ -163,6 +163,8 @@ dependencies {
   implementation(libs.firebase.firestore)
   implementation(libs.firebase.auth)
   implementation(libs.firebase.messaging)
+  implementation(libs.firebase.dataconnect)
+  implementation(libs.kotlinx.serialization.core)
   implementation(libs.kotlinx.coroutines.play.services)
 }
 

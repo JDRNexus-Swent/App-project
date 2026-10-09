@@ -9,7 +9,14 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.model.repository.AuthError
+import com.github.se.jdrnexus.model.repository.AuthRepository
+import com.github.se.jdrnexus.model.repository.AuthResult
+import com.github.se.jdrnexus.model.repository.AuthUser
+import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import org.junit.Assert
 import org.junit.Rule
 import org.junit.Test
@@ -21,7 +28,7 @@ class HomeScreenS1Test {
 
   @Test
   fun displaysTitleProfilePlaceholderSectionsAndAdventures() {
-    composeTestRule.setContent { SampleAppTheme { HomeScreen() } }
+    composeTestRule.setContent { SampleAppTheme { HomeScreen(createViewModel()) } }
 
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.PROFILE_PIC).assertIsDisplayed()
@@ -42,7 +49,7 @@ class HomeScreenS1Test {
 
   @Test
   fun quickToolButtonsAreSquareAndClickable() {
-    composeTestRule.setContent { SampleAppTheme { HomeScreen() } }
+    composeTestRule.setContent { SampleAppTheme { HomeScreen(createViewModel()) } }
 
     TestTags.BUTTONS.forEachIndexed { index, tag ->
       val button = composeTestRule.onNodeWithTag(tag)
@@ -57,7 +64,9 @@ class HomeScreenS1Test {
   @Test
   fun logoutButtonInvokesCallback() {
     var loggedOut = false
-    composeTestRule.setContent { SampleAppTheme { HomeScreen(onLogout = { loggedOut = true }) } }
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(createViewModel(), onLogout = { loggedOut = true }) }
+    }
 
     composeTestRule.onNodeWithText("Log out").performClick()
 
@@ -68,11 +77,33 @@ class HomeScreenS1Test {
   fun personalSpaceButtonInvokesCallback() {
     var clicked = false
     composeTestRule.setContent {
-      SampleAppTheme { HomeScreen(onPersonalSpaceClick = { clicked = true }) }
+      SampleAppTheme { HomeScreen(createViewModel(), onPersonalSpaceClick = { clicked = true }) }
     }
 
     composeTestRule.onNodeWithTag(TestTags.PSPACEBUTTON).performClick()
 
     Assert.assertTrue(clicked)
+  }
+
+  private fun createViewModel() = AuthViewModel(FakeAuthRepository())
+
+  private class FakeAuthRepository : AuthRepository {
+    override val authState: Flow<AuthUser?> = emptyFlow()
+
+    override suspend fun signUpWithEmail(
+        email: String,
+        password: String,
+        username: String,
+    ): AuthResult<AuthUser> = AuthResult.Failure(AuthError.UNKNOWN)
+
+    override suspend fun signInWithEmail(
+        email: String,
+        password: String,
+    ): AuthResult<AuthUser> = AuthResult.Failure(AuthError.UNKNOWN)
+
+    override suspend fun signInWithGoogle(idToken: String): AuthResult<AuthUser> =
+        AuthResult.Failure(AuthError.UNKNOWN)
+
+    override suspend fun signOut(): AuthResult<Unit> = AuthResult.Success(Unit)
   }
 }
