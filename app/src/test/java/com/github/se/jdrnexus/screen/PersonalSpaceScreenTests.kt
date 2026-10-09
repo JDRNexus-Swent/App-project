@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.PersonalSpaceScreen
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
@@ -81,6 +82,62 @@ class PersonalSpaceScreenTests {
 
     composeTestRule.onNodeWithText("New folder").assertIsDisplayed()
     assertTrue(viewModel.uiState.value.isAddMenuExpanded)
+  }
+
+  @Test
+  fun newFolderDialogShowsValidationAndCreatesFolder() {
+    val viewModel = viewModel()
+    composeTestRule.setContent {
+      PersonalSpaceScreen(
+          onBackButton = {},
+          personalSpaceViewModel = viewModel,
+          onDocumentClicked = {},
+          onCreateFile = {},
+      )
+    }
+
+    composeTestRule.onNodeWithContentDescription("Add item").performClick()
+    composeTestRule.onNodeWithText("New folder").performClick()
+
+    composeTestRule.onNodeWithText("New folder").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Folder name").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Create").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Cancel").assertIsDisplayed()
+    assertTrue(viewModel.uiState.value.isNewFolderDialogOpen)
+
+    composeTestRule.onNodeWithText("Create").performClick()
+
+    composeTestRule.onNodeWithText("Folder name cannot be empty.").assertIsDisplayed()
+    assertEquals("Folder name cannot be empty.", viewModel.uiState.value.newFolderError)
+
+    composeTestRule.onNodeWithText("Folder name").performTextInput("New campaign")
+    composeTestRule.onNodeWithText("Folder name cannot be empty.").assertIsNotDisplayed()
+    composeTestRule.onNodeWithText("Create").performClick()
+    composeTestRule.waitForIdle()
+
+    assertTrue(!viewModel.uiState.value.isNewFolderDialogOpen)
+  }
+
+  @Test
+  fun cancelingNewFolderDialogClosesAndClearsIt() {
+    val viewModel = viewModel()
+    composeTestRule.setContent {
+      PersonalSpaceScreen(
+          onBackButton = {},
+          personalSpaceViewModel = viewModel,
+          onDocumentClicked = {},
+          onCreateFile = {},
+      )
+    }
+
+    composeTestRule.onNodeWithContentDescription("Add item").performClick()
+    composeTestRule.onNodeWithText("New folder").performClick()
+    composeTestRule.onNodeWithText("Folder name").performTextInput("Draft")
+    composeTestRule.onNodeWithText("Cancel").performClick()
+
+    assertTrue(!viewModel.uiState.value.isNewFolderDialogOpen)
+    assertEquals("", viewModel.uiState.value.newFolderName)
+    composeTestRule.onNodeWithText("Folder name").assertIsNotDisplayed()
   }
 
   @Test
