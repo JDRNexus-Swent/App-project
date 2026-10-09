@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.screen
 
 import androidx.compose.ui.test.assertCountEquals
@@ -75,6 +76,20 @@ class PersonalSpaceScreenTests {
     composeTestRule
         .onNodeWithContentDescription("Text document", useUnmergedTree = true)
         .assertIsDisplayed()
+  }
+
+  @Test
+  fun emptyPersonalSpaceShowsEmptyStateMessage() {
+    composeTestRule.setContent {
+      PersonalSpaceScreen(
+          onAddButton = {},
+          onBackButton = {},
+          onFolderClicked = {},
+          personalSpaceItems = emptyList(),
+      )
+    }
+
+    composeTestRule.onNodeWithText("Your personal space is empty.").assertIsDisplayed()
   }
 
   @Test

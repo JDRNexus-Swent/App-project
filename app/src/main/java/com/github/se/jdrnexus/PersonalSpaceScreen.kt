@@ -92,7 +92,7 @@ private val lightPersonalSpaceTheme =
         floatingActionContentColor = Color.White,
     )
 
-private val personalSpaceItems =
+private val samplePersonalSpaceItems =
     listOf(
         JDRFile(
             id = "ashen-realms",
@@ -127,6 +127,7 @@ fun PersonalSpaceScreen(
     onAddButton: () -> Unit,
     onBackButton: () -> Unit,
     onFolderClicked: () -> Unit,
+    personalSpaceItems: List<JDRFile> = samplePersonalSpaceItems,
 ) {
   val darkTheme = isSystemInDarkTheme()
   val themeColors = if (darkTheme) darkPersonalSpaceTheme else lightPersonalSpaceTheme
