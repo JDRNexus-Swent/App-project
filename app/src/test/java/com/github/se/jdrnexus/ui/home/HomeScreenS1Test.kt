@@ -21,6 +21,7 @@ import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import org.junit.Assert
@@ -95,6 +96,24 @@ class HomeScreenS1Test {
   }
 
   @Test
+  fun logoutCallbackWaitsForSignOutToComplete() {
+    val signOutResult = CompletableDeferred<AuthResult<Unit>>()
+    val viewModel = AuthViewModel(FakeAuthRepository { signOutResult.await() })
+    var loggedOut = false
+
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(viewModel, onLogout = { loggedOut = true }) }
+    }
+    composeTestRule.onNodeWithText("Log out").performClick()
+    composeTestRule.waitForIdle()
+    Assert.assertFalse(loggedOut)
+
+    signOutResult.complete(AuthResult.Success(Unit))
+    composeTestRule.waitUntil(5_000) { loggedOut }
+    Assert.assertTrue(loggedOut)
+  }
+
+  @Test
   fun personalSpaceButtonInvokesCallback() {
     var clicked = false
     composeTestRule.setContent {
@@ -108,7 +127,9 @@ class HomeScreenS1Test {
 
   private fun createViewModel() = AuthViewModel(FakeAuthRepository())
 
-  private class FakeAuthRepository : AuthRepository {
+  private class FakeAuthRepository(
+      private val signOutAction: suspend () -> AuthResult<Unit> = { AuthResult.Success(Unit) }
+  ) : AuthRepository {
     override val authState: Flow<AuthUser?> = emptyFlow()
 
     override suspend fun signUpWithEmail(
@@ -125,6 +146,6 @@ class HomeScreenS1Test {
     override suspend fun signInWithGoogle(idToken: String): AuthResult<AuthUser> =
         AuthResult.Failure(AuthError.UNKNOWN)
 
-    override suspend fun signOut(): AuthResult<Unit> = AuthResult.Success(Unit)
+    override suspend fun signOut(): AuthResult<Unit> = signOutAction()
   }
 }

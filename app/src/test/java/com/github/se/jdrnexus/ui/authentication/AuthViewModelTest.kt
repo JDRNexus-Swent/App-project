@@ -229,19 +229,41 @@ class AuthViewModelTest {
   @Test
   fun signOutCallsRepositoryAndReturnsToIdle() = runTest {
     val repository = FakeAuthRepository()
+    val response = CompletableDeferred<AuthResult<Unit>>()
+    repository.signOutResponse = response
     val viewModel = AuthViewModel(repository)
 
     viewModel.signOut()
     runCurrent()
 
     assertEquals(1, repository.signOutCalls)
+    assertEquals(AuthStatus.Loading, viewModel.uiState.value.status)
+
+    response.complete(AuthResult.Success(Unit))
+    runCurrent()
+
     assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
   }
 
   @Test
   fun signOutExposesRepositoryFailure() = runTest {
     val repository =
-        FakeAuthRepository().apply { signOutResponse = AuthResult.Failure(AuthError.UNKNOWN) }
+        FakeAuthRepository().apply {
+          signOutResponse = CompletableDeferred(AuthResult.Failure(AuthError.UNKNOWN))
+        }
+    val viewModel = AuthViewModel(repository)
+
+    viewModel.signOut()
+    runCurrent()
+
+    assertEquals(1, repository.signOutCalls)
+    assertEquals(AuthStatus.Error(AuthError.UNKNOWN.message), viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun signOutExceptionBecomesGenericFriendlyError() = runTest {
+    val repository =
+        FakeAuthRepository().apply { signOutFailure = RuntimeException("Network Crash") }
     val viewModel = AuthViewModel(repository)
 
     viewModel.signOut()
@@ -297,6 +319,7 @@ class AuthViewModelTest {
     var googleSignInCalls = 0
     var signOutCalls = 0
     var signInJob: Job? = null
+    var signOutFailure: Exception? = null
     var lastSignUpArguments: Triple<String, String, String>? = null
     var lastSignInArguments: Pair<String, String>? = null
     var lastGoogleToken: String? = null
@@ -304,7 +327,8 @@ class AuthViewModelTest {
         CompletableDeferred(AuthResult.Success(USER))
     var signInResponse: AuthResult<AuthUser> = AuthResult.Success(USER)
     var googleResponse: AuthResult<AuthUser> = AuthResult.Success(USER)
-    var signOutResponse: AuthResult<Unit> = AuthResult.Success(Unit)
+    var signOutResponse: CompletableDeferred<AuthResult<Unit>> =
+        CompletableDeferred(AuthResult.Success(Unit))
     var signInFailure: Exception? = null
 
     override suspend fun signUpWithEmail(
@@ -333,7 +357,8 @@ class AuthViewModelTest {
 
     override suspend fun signOut(): AuthResult<Unit> {
       signOutCalls++
-      return signOutResponse
+      signOutFailure?.let { throw it }
+      return signOutResponse.await()
     }
   }
 

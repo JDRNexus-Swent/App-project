@@ -18,13 +18,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 
 object TestTags {
@@ -47,6 +52,20 @@ fun HomeScreen(
 ) {
 
   val uiState by viewModel.uiState.collectAsState()
+  var logoutRequested by remember { mutableStateOf(false) }
+
+  LaunchedEffect(uiState.status) {
+    when (uiState.status) {
+      AuthStatus.Idle -> {
+        if (logoutRequested) {
+          logoutRequested = false
+          onLogout()
+        }
+      }
+      is AuthStatus.Error -> logoutRequested = false
+      else -> Unit
+    }
+  }
 
   Surface(
       modifier = modifier.fillMaxSize(),
@@ -69,8 +88,8 @@ fun HomeScreen(
         }
         Button(
             onClick = {
+              logoutRequested = true
               viewModel.signOut()
-              onLogout()
             }
         ) {
           Text("Log out")
