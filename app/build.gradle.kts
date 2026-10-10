@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
   alias(libs.plugins.androidApplication)
   alias(libs.plugins.kotlinCompose)
+  alias(libs.plugins.kotlinSerialization)
   alias(libs.plugins.ktfmt)
   alias(libs.plugins.sonar)
   id("jacoco")
@@ -163,6 +164,8 @@ dependencies {
   implementation(libs.firebase.firestore)
   implementation(libs.firebase.auth)
   implementation(libs.firebase.messaging)
+  implementation(libs.firebase.dataconnect)
+  implementation(libs.kotlinx.serialization.core)
   implementation(libs.kotlinx.coroutines.play.services)
 }
 

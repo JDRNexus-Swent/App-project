@@ -10,10 +10,14 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
+import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
@@ -77,6 +81,28 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     }
 
     authenticate { repository.signInWithEmail(form.email.trim(), form.password) }
+  }
+
+  fun signOut() {
+    viewModelScope.launch {
+      setStatus(AuthStatus.Loading)
+
+      val status =
+          try {
+            when (val result = repository.signOut()) {
+              is AuthResult.Success -> AuthStatus.Idle
+              is AuthResult.Failure -> AuthStatus.Error(result.error.message)
+              is AuthResult.AccountCreatedNeedsRecovery -> AuthStatus.Error(result.message)
+            }
+          } catch (cancellation: CancellationException) {
+            setStatus(AuthStatus.Idle)
+            throw cancellation
+          } catch (_: Exception) {
+            AuthStatus.Error(AuthError.UNKNOWN.message)
+          }
+
+      setStatus(status)
+    }
   }
 
   fun googleSignIn(
@@ -189,7 +215,11 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     _uiState.update { it.copy(status = status) }
   }
 
-  private companion object {
+  companion object {
+    val Factory: ViewModelProvider.Factory = viewModelFactory {
+      initializer { AuthViewModel(AuthRepositoryFirebase()) }
+    }
+
     const val MIN_PASSWORD_LENGTH = 6
     val EMAIL_PATTERN = Regex("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
   }
