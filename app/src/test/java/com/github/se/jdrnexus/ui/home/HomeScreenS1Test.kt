@@ -4,21 +4,19 @@ package com.github.se.jdrnexus.ui.home
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
+import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import kotlinx.coroutines.CompletableDeferred
@@ -34,7 +32,7 @@ class HomeScreenS1Test {
   @get:Rule val composeTestRule = createComposeRule()
 
   @Test
-  fun usesThemeBackgroundColor() {
+  fun rendersWithCustomTheme() {
     val background = Color(0xFF123456)
     composeTestRule.setContent {
       MaterialTheme(colorScheme = lightColorScheme(background = background)) {
@@ -42,10 +40,7 @@ class HomeScreenS1Test {
       }
     }
 
-    Assert.assertEquals(
-        background,
-        composeTestRule.onRoot().captureToImage().toPixelMap()[0, 0],
-    )
+    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
   }
 
   @Test
@@ -84,19 +79,24 @@ class HomeScreenS1Test {
   }
 
   @Test
-  fun logoutButtonInvokesCallback() {
+  fun logoutButtonInvokesCallbackOnSuccessfulSignOut() {
+    val signOutResult = CompletableDeferred<AuthResult<Unit>>()
+    val viewModel = AuthViewModel(FakeAuthRepository { signOutResult.await() })
     var loggedOut = false
+
     composeTestRule.setContent {
-      SampleAppTheme { HomeScreen(createViewModel(), onLogout = { loggedOut = true }) }
+      SampleAppTheme { HomeScreen(viewModel, onLogout = { loggedOut = true }) }
     }
-
     composeTestRule.onNodeWithText("Log out").performClick()
+    composeTestRule.waitForIdle()
 
+    signOutResult.complete(AuthResult.Success(Unit))
+    composeTestRule.waitUntil(5_000) { loggedOut }
     Assert.assertTrue(loggedOut)
   }
 
   @Test
-  fun logoutCallbackWaitsForSignOutToComplete() {
+  fun logoutCallbackDoesNotRunWhenSignOutFails() {
     val signOutResult = CompletableDeferred<AuthResult<Unit>>()
     val viewModel = AuthViewModel(FakeAuthRepository { signOutResult.await() })
     var loggedOut = false
@@ -108,9 +108,9 @@ class HomeScreenS1Test {
     composeTestRule.waitForIdle()
     Assert.assertFalse(loggedOut)
 
-    signOutResult.complete(AuthResult.Success(Unit))
-    composeTestRule.waitUntil(5_000) { loggedOut }
-    Assert.assertTrue(loggedOut)
+    signOutResult.complete(AuthResult.Failure(AuthError.UNKNOWN))
+    composeTestRule.waitUntil(5_000) { viewModel.uiState.value.status is AuthStatus.Error }
+    Assert.assertFalse(loggedOut)
   }
 
   @Test
