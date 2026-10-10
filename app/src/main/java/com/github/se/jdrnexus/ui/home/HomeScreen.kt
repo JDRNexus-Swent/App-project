@@ -83,7 +83,7 @@ fun HomeScreen(
             color = MaterialTheme.colorScheme.secondaryContainer,
             shape = MaterialTheme.shapes.medium,
         ) {
-          // This box will contain the profile picture
+          // This box will contain the profile picture (and maybe more)
           Box {}
         }
         Button(
