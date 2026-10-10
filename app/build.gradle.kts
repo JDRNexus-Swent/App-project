@@ -161,6 +161,8 @@ dependencies {
   // Firebase BoM
   implementation(platform(libs.firebase.bom))
 
+  testImplementation(libs.mockk)
+
   implementation(libs.firebase.firestore)
   implementation(libs.firebase.auth)
   implementation(libs.firebase.messaging)

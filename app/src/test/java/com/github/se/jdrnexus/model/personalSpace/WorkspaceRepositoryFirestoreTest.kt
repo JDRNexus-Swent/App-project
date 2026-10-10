@@ -4,10 +4,19 @@ package com.github.se.jdrnexus.model.personalSpace
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import com.google.firebase.FirebaseApp
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.EventListener
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.QuerySnapshot
+import io.mockk.every
+import io.mockk.mockk
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -20,6 +29,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -92,18 +102,24 @@ class WorkspaceRepositoryFirestoreTest {
       timeoutMs: Long = 5000,
       condition: (T) -> Boolean,
   ): T {
-    // use of atomic value alows the real storage in memory (not in cache)
+    // use of atomic value allows the real storage in memory (not in cache)
     val latestValue = AtomicReference<T?>(null)
     val hasValue = AtomicBoolean(false)
     val isReady = AtomicBoolean(false)
+    val errorRef = AtomicReference<Throwable?>(null) // Capture any exceptions thrown by Flow
+
     val job =
         CoroutineScope(Dispatchers.Default).launch {
-          this@waitFor.collect {
-            latestValue.set(it)
-            hasValue.set(true)
-            if (condition(it)) {
-              isReady.set(true)
+          try {
+            this@waitFor.collect {
+              latestValue.set(it)
+              hasValue.set(true)
+              if (condition(it)) {
+                isReady.set(true)
+              }
             }
+          } catch (e: Throwable) {
+            errorRef.set(e)
           }
         }
 
@@ -111,6 +127,14 @@ class WorkspaceRepositoryFirestoreTest {
     while (System.currentTimeMillis() - startTime < timeoutMs) {
       // Pump Robolectric's main looper so Firebase callbacks can run!
       shadowOf(Looper.getMainLooper()).idle()
+
+      // If the flow threw an error (like PERMISSION_DENIED), rethrow it immediately
+      val flowError = errorRef.get()
+      if (flowError != null) {
+        job.cancel()
+        throw flowError
+      }
+
       if (isReady.get()) {
         job.cancel()
         @Suppress("UNCHECKED_CAST")
@@ -574,8 +598,7 @@ class WorkspaceRepositoryFirestoreTest {
 
   /**
    * Simulates offline behavior using Cloud Firestore's native cache. Ensures the app can read data
-   * gracefully without a network connection. JDRNexus relies on this so gaming sessions can
-   * continue in poorly covered areas.
+   * gracefully without a network connection.
    */
   @Test
   fun testOfflineBehavior() {
@@ -605,6 +628,150 @@ class WorkspaceRepositoryFirestoreTest {
 
       // Restore network to leave the instance clean
       firestore.enableNetwork().await()
+    }
+  }
+
+  /**
+   * Tests that if a document is corrupted in Firestore (e.g., incorrect types causing a
+   * RuntimeException during deserialization), the application does not crash. Instead, the corrupt
+   * document is simply ignored in the emitted list.
+   */
+  @Test
+  fun testDeserializationError_IsCaught() {
+    runBlocking {
+      val corruptedData =
+          hashMapOf(
+              "ownerId" to "corrupted_owner",
+              "personalParentId" to "",
+              "parentFolderIds" to 12345,
+          )
+      firestore.collection("documents").document("corrupted_doc").set(corruptedData).await()
+
+      // Listen to the corrupted folder. The catch block will log the error and ignore the file
+      // instead of crashing the entire Flow.
+      val files = repository.getPersonalRootFiles("corrupted_owner").waitFor { true }
+
+      // Assert the list is empty because the only document was corrupted and thus ignored.
+      assertTrue("List should be empty due to parsing failure", files.isEmpty())
+    }
+  }
+
+  /**
+   * Verifies that Kotlin Coroutines' CancellationException is properly rethrown when an active
+   * coroutine is canceled. If it were incorrectly swallowed by a generic catch(e: Exception),
+   * coroutines would continue executing in the background, causing memory leaks.
+   */
+  @Test
+  fun testCoroutinesCancellation_IsPropagated() {
+    runBlocking {
+      val file = JDRFile(id = "cancel_test")
+
+      // Launch the creation in a separate Job so we can cancel it mid-flight
+      val job = launch {
+        try {
+          repository.createFile(file)
+        } catch (e: CancellationException) {
+          // This confirms our 'catch (e: CancellationException) { throw e }' works perfectly
+          throw e
+        }
+      }
+
+      // Cancel the job immediately before Firestore finishes the network call
+      job.cancel()
+      job.join()
+
+      assertTrue("Job should be successfully cancelled", job.isCancelled)
+    }
+  }
+
+  /**
+   * Tests that when a user lacks the necessary permissions to read a Firestore document or
+   * collection, the Flow correctly closes and surfaces a Permission Denied error to the collector.
+   *
+   * We use the custom 'waitFor' method to pump Robolectric's main looper and avoid deadlocks. The
+   * condition '{ false }' ensures the Flow runs until the permission error is forcefully thrown.
+   */
+  @Test
+  fun testSnapshotListeners_PermissionDenied() = runBlocking {
+    // 1. Test single file flow permission denied
+    try {
+      repository.getFileFlow("access_denied_test").waitFor(timeoutMs = 5000) { false }
+      fail("Should have thrown an exception")
+    } catch (e: Exception) {
+      assertTrue(
+          "Should throw permission denied",
+          e.message?.contains("PERMISSION_DENIED") == true,
+      )
+    }
+  }
+
+  /**
+   * Tests that list-based snapshot listeners correctly close the Flow and propagate Permission
+   * Denied errors. We use MockK here because Firestore security rules cannot securely target
+   * specific list queries without breaking normal behavior.
+   */
+  @Test
+  fun testListListeners_PermissionDenied_WithMockK() = runBlocking {
+    // 1. Create the mocks for Firestore components
+    val firestoreMock = mockk<FirebaseFirestore>()
+    val collectionMock = mockk<CollectionReference>()
+    val queryMock = mockk<Query>()
+    val registrationMock = mockk<ListenerRegistration>(relaxed = true)
+
+    // 2. Set up the default routing for the documents collection
+    every { firestoreMock.collection("documents") } returns collectionMock
+
+    // Mocking the 'getPersonalRootFiles' query chain
+    every { collectionMock.whereEqualTo("ownerId", "error_owner_test") } returns queryMock
+    every { queryMock.whereEqualTo("personalParentId", "") } returns queryMock
+
+    // Mocking the 'getGroupRootFiles' query chain
+    every { collectionMock.whereArrayContains("sharedGroupsIds", "error_group_test") } returns
+        queryMock
+
+    // Mocking the 'getDocumentsInFolder' query chain
+    every { collectionMock.whereArrayContains("parentFolderIds", "error_folder_test") } returns
+        queryMock
+
+    // 3. Intercept 'addSnapshotListener' and instantly trigger a PERMISSION_DENIED error
+    every { queryMock.addSnapshotListener(any()) } answers
+        {
+          val listener = firstArg<EventListener<QuerySnapshot>>()
+          listener.onEvent(
+              null, // No snapshot
+              FirebaseFirestoreException(
+                  "Simulated Permission Denied",
+                  FirebaseFirestoreException.Code.PERMISSION_DENIED,
+              ),
+          )
+          registrationMock
+        }
+
+    // Initialize a separate repository instance injected with our mock
+    val mockRepository = WorkspaceRepositoryFirestore(firestoreMock)
+
+    // 4. Assert that getPersonalRootFiles correctly catches and propagates the error
+    try {
+      mockRepository.getPersonalRootFiles("error_owner_test").collect {}
+      fail("getPersonalRootFiles should have thrown an exception")
+    } catch (e: Exception) {
+      assertTrue(e.message?.contains("Simulated Permission Denied") == true)
+    }
+
+    // 5. Assert that getGroupRootFiles correctly catches and propagates the error
+    try {
+      mockRepository.getGroupRootFiles("error_group_test").collect {}
+      fail("getGroupRootFiles should have thrown an exception")
+    } catch (e: Exception) {
+      assertTrue(e.message?.contains("Simulated Permission Denied") == true)
+    }
+
+    // 6. Assert that getDocumentsInFolder correctly catches and propagates the error
+    try {
+      mockRepository.getDocumentsInFolder("error_folder_test").collect {}
+      fail("getDocumentsInFolder should have thrown an exception")
+    } catch (e: Exception) {
+      assertTrue(e.message?.contains("Simulated Permission Denied") == true)
     }
   }
 }
