@@ -13,6 +13,7 @@ composeActivity = "1.13.0"
 composeViewModel = "2.11.0"
 lifecycleRuntimeKtx = "2.11.0"
 kaspresso = "1.6.1"
+mockk = "1.14.11"
 robolectric = "4.16.1"
 kotlinxCoroutines = "1.11.0"
 sonar = "7.5.0.8588"
@@ -51,6 +52,7 @@ compose-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifes
 kaspresso = { group = "com.kaspersky.android-components", name = "kaspresso", version.ref = "kaspresso" }
 kaspresso-compose = { group = "com.kaspersky.android-components", name = "kaspresso-compose-support", version.ref = "kaspresso" }
 
+mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics", version.ref = "uiGraphics" }
 
