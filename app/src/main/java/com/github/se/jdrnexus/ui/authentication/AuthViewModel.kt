@@ -102,6 +102,9 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
           }
 
       setStatus(status)
+    }
+  }
+
   fun googleSignIn(
       context: Context,
       credentialManager: CredentialManager,
