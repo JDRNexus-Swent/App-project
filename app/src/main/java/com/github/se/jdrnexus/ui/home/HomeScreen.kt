@@ -48,89 +48,96 @@ fun HomeScreen(
 
   val uiState by viewModel.uiState.collectAsState()
 
-  Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-      Surface(
-          modifier = Modifier.size(48.dp).testTag(TestTags.PROFILE_PIC),
-          color = MaterialTheme.colorScheme.secondaryContainer,
-          shape = MaterialTheme.shapes.medium,
+  Surface(
+      modifier = modifier.fillMaxSize(),
+      color = MaterialTheme.colorScheme.background,
+      contentColor = MaterialTheme.colorScheme.onBackground,
+  ) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+      Row(
+          modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically,
       ) {
-        Box {}
-      }
-      Button(
-          onClick = {
-            viewModel.signOut()
-            onLogout()
-          }
-      ) {
-        Text("Log out")
-      }
-    }
-
-    Text(
-        text = "JDRNexus",
-        modifier = Modifier.testTag(TestTags.TITLE),
-        style = MaterialTheme.typography.headlineLarge,
-    )
-
-    Row(
-        modifier =
-            Modifier.testTag(TestTags.OBJECTSROW)
-                .horizontalScroll(rememberScrollState())
-                .padding(vertical = 16.dp)
-    ) {
-      placeholderObjects.forEachIndexed { index, placeholder ->
         Surface(
-            modifier = Modifier.padding(end = 12.dp),
-            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.size(48.dp).testTag(TestTags.PROFILE_PIC),
+            color = MaterialTheme.colorScheme.secondaryContainer,
             shape = MaterialTheme.shapes.medium,
         ) {
-          Text(
-              text = placeholder,
-              modifier =
-                  Modifier.testTag(TestTags.placeholderObjects[index])
-                      .padding(horizontal = 24.dp, vertical = 32.dp),
-              style = MaterialTheme.typography.titleMedium,
-          )
+          // This box will contain the profile picture
+          Box {}
         }
-      }
-    }
-
-    Text(
-        text = "Local Adventures",
-        modifier = Modifier.testTag(TestTags.ADVENTURES),
-        style = MaterialTheme.typography.headlineSmall,
-    )
-
-    Spacer(modifier = Modifier.weight(1f))
-
-    Text(
-        text = "Quicktools",
-        modifier = Modifier.testTag(TestTags.QUICKTOOLS),
-        style = MaterialTheme.typography.headlineSmall,
-    )
-
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-      quicktools.forEachIndexed { index, quicktool ->
         Button(
-            onClick = {},
-            modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.BUTTONS[index]),
+            onClick = {
+              viewModel.signOut()
+              onLogout()
+            }
         ) {
-          Text(quicktool)
+          Text("Log out")
         }
       }
-      Button(
-          onClick = onPersonalSpaceClick,
-          modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.PSPACEBUTTON),
+
+      Text(
+          text = "JDRNexus",
+          modifier = Modifier.testTag(TestTags.TITLE),
+          style = MaterialTheme.typography.headlineLarge,
+      )
+
+      Row(
+          modifier =
+              Modifier.testTag(TestTags.OBJECTSROW)
+                  .horizontalScroll(rememberScrollState())
+                  .padding(vertical = 16.dp)
       ) {
-        Text("Personal Space")
+        placeholderObjects.forEachIndexed { index, placeholder ->
+          Surface(
+              modifier = Modifier.padding(end = 12.dp),
+              color = MaterialTheme.colorScheme.primaryContainer,
+              shape = MaterialTheme.shapes.medium,
+          ) {
+            Text(
+                text = placeholder,
+                modifier =
+                    Modifier.testTag(TestTags.placeholderObjects[index])
+                        .padding(horizontal = 24.dp, vertical = 32.dp),
+                style = MaterialTheme.typography.titleMedium,
+            )
+          }
+        }
+      }
+
+      Text(
+          text = "Local Adventures",
+          modifier = Modifier.testTag(TestTags.ADVENTURES),
+          style = MaterialTheme.typography.headlineSmall,
+      )
+
+      Spacer(modifier = Modifier.weight(1f))
+
+      Text(
+          text = "Quicktools",
+          modifier = Modifier.testTag(TestTags.QUICKTOOLS),
+          style = MaterialTheme.typography.headlineSmall,
+      )
+
+      Row(
+          modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+          horizontalArrangement = Arrangement.spacedBy(12.dp),
+      ) {
+        quicktools.forEachIndexed { index, quicktool ->
+          Button(
+              onClick = {},
+              modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.BUTTONS[index]),
+          ) {
+            Text(quicktool)
+          }
+        }
+        Button(
+            onClick = onPersonalSpaceClick,
+            modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.PSPACEBUTTON),
+        ) {
+          Text("Personal Space")
+        }
       }
     }
   }

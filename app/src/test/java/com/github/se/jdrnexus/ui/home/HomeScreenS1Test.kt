@@ -1,12 +1,18 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.home
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.repository.AuthError
@@ -25,6 +31,21 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class HomeScreenS1Test {
   @get:Rule val composeTestRule = createComposeRule()
+
+  @Test
+  fun usesThemeBackgroundColor() {
+    val background = Color(0xFF123456)
+    composeTestRule.setContent {
+      MaterialTheme(colorScheme = lightColorScheme(background = background)) {
+        HomeScreen(createViewModel())
+      }
+    }
+
+    Assert.assertEquals(
+        background,
+        composeTestRule.onRoot().captureToImage().toPixelMap()[0, 0],
+    )
+  }
 
   @Test
   fun displaysTitleProfilePlaceholderSectionsAndAdventures() {
