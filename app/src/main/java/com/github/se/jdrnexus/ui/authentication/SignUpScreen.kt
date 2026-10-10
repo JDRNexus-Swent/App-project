@@ -98,8 +98,6 @@ fun SignUpScreen(
       ) {
         JdrNexusLogo(
             modifier = Modifier.size(140.dp),
-            color = colors.primary,
-            backGroundColor = colors.onBackground,
         )
       }
       // Application name and subtitle.
