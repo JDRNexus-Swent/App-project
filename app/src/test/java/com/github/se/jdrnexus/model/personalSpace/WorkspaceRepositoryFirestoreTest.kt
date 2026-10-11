@@ -37,18 +37,20 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 
-/** Those test use firebase emulator WITH TEST SETTING, make sure to activate it with
- * "firebase emulators:exec --config firebase.test.json" */
+/**
+ * Those test use firebase emulator WITH TEST SETTING, make sure to activate it with "firebase
+ * emulators:exec --config firebase.test.json"
+ */
 @RunWith(RobolectricTestRunner::class)
 class WorkspaceRepositoryFirestoreTest {
 
   private lateinit var repository: WorkspaceRepository
   private lateinit var firestore: FirebaseFirestore
 
-    companion object {
-        // Defines the maximum time to wait for asynchronous Firebase operations in tests
-        private const val DEFAULT_TIMEOUT_MS = 5000L
-    }
+  companion object {
+    // Defines the maximum time to wait for asynchronous Firebase operations in tests
+    private const val DEFAULT_TIMEOUT_MS = 5000L
+  }
 
   @Before
   fun setUp() {
@@ -318,7 +320,8 @@ class WorkspaceRepositoryFirestoreTest {
     runBlocking {
       val fileId = "non_existent_flow_id"
       // Flow should emit null for a non-existent file
-      val emittedFile = repository.getFileFlow(fileId).waitFor(timeoutMs = DEFAULT_TIMEOUT_MS) { it == null }
+      val emittedFile =
+          repository.getFileFlow(fileId).waitFor(timeoutMs = DEFAULT_TIMEOUT_MS) { it == null }
       assertNull("Flow should emit null for non-existent file", emittedFile)
     }
   }
@@ -342,7 +345,10 @@ class WorkspaceRepositoryFirestoreTest {
 
       // Wait for initial value
       var startTime = System.currentTimeMillis()
-      while (latestName.get() != "Initial" && System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS) {
+      while (
+          latestName.get() != "Initial" &&
+              System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS
+      ) {
         shadowOf(Looper.getMainLooper()).idle()
         delay(50)
       }
@@ -353,7 +359,10 @@ class WorkspaceRepositoryFirestoreTest {
 
       // Wait for the updated value
       startTime = System.currentTimeMillis()
-      while (latestName.get() != "Updated" && System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS) {
+      while (
+          latestName.get() != "Updated" &&
+              System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS
+      ) {
         shadowOf(Looper.getMainLooper()).idle()
         delay(50)
       }
@@ -682,13 +691,13 @@ class WorkspaceRepositoryFirestoreTest {
           throw e
         }
       }
-        // yield() suspends this main coroutine and forces the dispatcher
-        // to execute the 'job' launched just above.
-        // The job will call Firebase and suspend on the await().
-        // Since we are in Robolectric and not actively pumping the MainLooper,
-        // the job will remain frozen there. Control is immediately returned to us.
-        // This makes the cancellation 100% deterministic without relying on arbitrary delays.
-        yield()
+      // yield() suspends this main coroutine and forces the dispatcher
+      // to execute the 'job' launched just above.
+      // The job will call Firebase and suspend on the await().
+      // Since we are in Robolectric and not actively pumping the MainLooper,
+      // the job will remain frozen there. Control is immediately returned to us.
+      // This makes the cancellation 100% deterministic without relying on arbitrary delays.
+      yield()
 
       // Cancel the job immediately before Firestore finishes the network call
       job.cancel()
