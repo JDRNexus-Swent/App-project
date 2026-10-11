@@ -61,7 +61,7 @@ jobs:
             ${{ runner.os }}-firebase-emulators-
 
       - name: Run checks and tests with Firebase Emulator
-        run: firebase emulators:exec --only auth,firestore './gradlew check' --project demo-jdrnexus
+        run: firebase emulators:exec --config firebase.test.json --only auth,firestore './gradlew check' --project demo-jdrnexus
 
       - name: Cache Sonar packages
         uses: actions/cache@v4

@@ -1,17 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /documents/{documentId} {
-      // We only block this specific ID for the getFileFlow emulator test
-      allow get: if documentId != 'access_denied_test';
-
-      // We allow all list queries in the emulator (we will test list errors with MockK)
-      allow list: if true;
-      allow write: if true;
-    }
-
-    match /{collection}/{document=**} {
-      allow read, write: if collection != 'documents';
+    match /{document=**} {
+      allow read, write: if true;
     }
   }
 }
