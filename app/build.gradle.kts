@@ -120,6 +120,7 @@ fun DependencyHandlerScope.globalTestImplementation(dep: Any) {
 dependencies {
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.appcompat)
+  implementation(libs.androidx.navigation.compose)
   implementation(libs.androidx.ui.graphics)
   implementation(libs.googleid)
   implementation(libs.material)
