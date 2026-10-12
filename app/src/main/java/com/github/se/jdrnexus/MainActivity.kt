@@ -21,6 +21,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.authentication.SignInScreen
 import com.github.se.jdrnexus.ui.authentication.SignUpScreen
 import com.github.se.jdrnexus.ui.home.HomeScreen
@@ -49,17 +50,11 @@ enum class AllRoutes {
 }
 
 /**
- * Added parameters let navigation tests invoke the real route callbacks without starting
- * Firebase-backed authentication or home-screen behavior.
+ * The optional ViewModel injection lets navigation tests use the production screens with a
+ * deterministic fake auth repository instead of Firebase.
  */
 @Composable
-fun JDRNexusApp(
-    signInContent: (@Composable (onSignUp: () -> Unit, onSignInSuccess: () -> Unit) -> Unit)? =
-        null,
-    signUpContent: (@Composable (onRegister: () -> Unit, onSignInScreen: () -> Unit) -> Unit)? =
-        null,
-    homeContent: (@Composable (onLogout: () -> Unit) -> Unit)? = null,
-) {
+fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
   val context = LocalContext.current
   val credentialManager = remember(context) { CredentialManager.create(context) }
   val navController = rememberNavController()
@@ -80,7 +75,7 @@ fun JDRNexusApp(
             launchSingleTop = true
           }
         }
-        if (signInContent == null) {
+        if (authViewModel == null) {
           SignInScreen(
               credentialManager = credentialManager,
               onSignUp = onSignUp,
@@ -88,7 +83,13 @@ fun JDRNexusApp(
               forgotPassword = {},
           )
         } else {
-          signInContent(onSignUp, onSignInSuccess)
+          SignInScreen(
+              signInViewModel = authViewModel,
+              credentialManager = credentialManager,
+              onSignUp = onSignUp,
+              onSignInSuccess = onSignInSuccess,
+              forgotPassword = {},
+          )
         }
       }
 
@@ -102,10 +103,14 @@ fun JDRNexusApp(
         }
         // Return to the existing SignIn entry rather than pushing a duplicate.
         val onSignInScreen: () -> Unit = { navController.popBackStack() }
-        if (signUpContent == null) {
+        if (authViewModel == null) {
           SignUpScreen(onRegister = onRegister, onSignInScreen = onSignInScreen)
         } else {
-          signUpContent(onRegister, onSignInScreen)
+          SignUpScreen(
+              signUpViewModel = authViewModel,
+              onRegister = onRegister,
+              onSignInScreen = onSignInScreen,
+          )
         }
       }
 
@@ -117,10 +122,10 @@ fun JDRNexusApp(
             launchSingleTop = true
           }
         }
-        if (homeContent == null) {
+        if (authViewModel == null) {
           HomeScreen(onLogout = onLogout)
         } else {
-          homeContent(onLogout)
+          HomeScreen(viewModel = authViewModel, onLogout = onLogout)
         }
       }
     }
