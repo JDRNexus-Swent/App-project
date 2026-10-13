@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -108,6 +109,24 @@ sonar {
         "sonar.coverage.jacoco.xmlReportPaths",
         "${project.layout.buildDirectory.get()}/reports/coverage/test/debug/*.xml",
     )
+    // Also read the instrumented tests (src/androidTest), which CI runs on an emulator before the
+    // scan. These calls replace the values above with lists that include both kinds of tests.
+    property(
+        "sonar.junit.reportPaths",
+        listOf(
+                "${project.layout.buildDirectory.get()}/test-results/testDebugUnitTest/",
+                "${project.layout.buildDirectory.get()}/outputs/androidTest-results/connected/debug/",
+            )
+            .joinToString(","),
+    )
+    property(
+        "sonar.coverage.jacoco.xmlReportPaths",
+        listOf(
+                "${project.layout.buildDirectory.get()}/reports/coverage/test/debug/*.xml",
+                "${project.layout.buildDirectory.get()}/reports/coverage/androidTest/debug/connected/*.xml",
+            )
+            .joinToString(","),
+    )
   }
 }
 
@@ -137,6 +156,7 @@ dependencies {
 
   implementation(libs.compose.ui)
   implementation(libs.compose.ui.graphics)
+  implementation(libs.androidx.material.icons.extended)
   // Material Design 3
   implementation(libs.compose.material3)
   // Integration with activities
