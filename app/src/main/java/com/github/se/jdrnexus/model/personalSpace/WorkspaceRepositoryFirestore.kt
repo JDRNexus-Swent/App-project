@@ -13,6 +13,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
   companion object {
     private const val COLLECTION_PATH = "documents"
   }
+
   private val collection = firestore.collection(COLLECTION_PATH)
 
   override fun getNewUid(): String {
