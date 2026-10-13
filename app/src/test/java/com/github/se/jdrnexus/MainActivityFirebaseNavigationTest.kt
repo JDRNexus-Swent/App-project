@@ -27,6 +27,43 @@ class MainActivityFirebaseNavigationTest {
   @get:Rule val composeTestRule = createComposeRule()
 
   @Test
+  fun returningFromSignUpToSignInCanNavigateToHome() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val firebaseApp =
+        FirebaseApp.getApps(context).firstOrNull()
+            ?: FirebaseApp.initializeApp(context)
+            ?: error("FirebaseApp could not be initialized for the Auth emulator test.")
+    val firebaseAuth = FirebaseAuth.getInstance(firebaseApp)
+    firebaseAuth.useEmulator("127.0.0.1", 9099)
+    val email = "player-${UUID.randomUUID()}@example.com"
+
+    composeTestRule.setContent { JDRNexusApp() }
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_username).performTextInput("Ranger")
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_email).performTextInput(email)
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
+
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    waitForTag(C.Tag.sign_in_sign_up)
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput(email)
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
+    assertEquals(email, firebaseAuth.currentUser?.email)
+  }
+
+  @Test
   fun emulatorRegistrationLogoutAndSignInNavigateBetweenScreens() {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val firebaseApp =
