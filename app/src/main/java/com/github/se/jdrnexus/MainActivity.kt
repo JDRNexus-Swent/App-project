@@ -108,15 +108,15 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
         val onSignInScreen: () -> Unit = { navController.popBackStack() }
         if (authViewModel == null) {
           SignUpScreen(
-            signUpViewModel = altAuthViewModel,
-            onRegister = onRegister,
-            onSignInScreen = onSignInScreen
+              signUpViewModel = altAuthViewModel,
+              onRegister = onRegister,
+              onSignInScreen = onSignInScreen,
           )
         } else {
           SignUpScreen(
               signUpViewModel = authViewModel,
               onRegister = onRegister,
-              onSignInScreen = onSignInScreen
+              onSignInScreen = onSignInScreen,
           )
         }
       }
