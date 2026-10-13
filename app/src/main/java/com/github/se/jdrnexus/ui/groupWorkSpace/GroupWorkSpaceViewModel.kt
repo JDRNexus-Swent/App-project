@@ -27,11 +27,12 @@ enum class GroupWorkspaceRole {
 }
 
 data class GroupWorkspaceUiState(
+    val currentUserId: String = "",
     val items: List<JDRFile> = emptyList(),
     val currentFolderId: String = "",
     val loadState: LoadState = LoadState.Loading,
     val isOperationInProgress: Boolean = false,
-    val errorMessage: String? = null,
+    val errorMessage: String? = "",
     val canCreateFolder: Boolean = false,
     val canAddFile: Boolean = false,
     val canEditItems: Boolean = false,
@@ -76,6 +77,10 @@ class GroupWorkspaceViewModel(
     }
   }
 
+  fun canEditItem(item: JDRFile, uid: String): Boolean {
+    return role == GroupWorkspaceRole.GAME_MASTER || item.ownerId == uid
+  }
+
   /** make sure the user can edit the file */
   private fun requireCanEdit(item: JDRFile, uid: String) {
     check(role == GroupWorkspaceRole.GAME_MASTER || item.ownerId == uid) {
@@ -88,22 +93,8 @@ class GroupWorkspaceViewModel(
     check(groupId in item.sharedGroupsIds) { "This item does not belong to the current group." }
   }
 
-  private suspend fun isAccessibleFolder(
-      folderId: String,
-      visited: Set<String> = emptySet(),
-  ): Boolean {
-    if (folderId in visited) return false
-
-    val folder = repository.getFile(folderId).getOrThrow() ?: return false
-    if (folder.type != DocumentType.FOLDER || groupId !in folder.sharedGroupsIds) return false
-    if (folder.parentFolderIds.isEmpty()) return true
-
-    val ancestors = visited + folderId
-    return folder.parentFolderIds.any { parentId -> isAccessibleFolder(parentId, ancestors) }
-  }
-
   private suspend fun requireAccessibleFolder(folderId: String) {
-    check(isAccessibleFolder(folderId)) {
+    check(repository.isAccessibleFolder(folderId, groupId)) {
       "This folder is not part of the current group's workspace."
     }
   }
@@ -113,13 +104,17 @@ class GroupWorkspaceViewModel(
       folderId: String,
   ) {
     requireBelongsToGroup(item)
-    if (folderId.isEmpty()) {
-      check(item.parentFolderIds.isEmpty()) { "This item is not in the current workspace folder." }
-    } else {
-      requireAccessibleFolder(folderId)
-      check(folderId in item.parentFolderIds) {
-        "This item is not in the current workspace folder."
-      }
+
+    val itemsInFolder =
+        if (folderId.isEmpty()) {
+          repository.getGroupRootFiles(groupId).first()
+        } else {
+          requireAccessibleFolder(folderId)
+          repository.getDocumentsInFolder(folderId).first()
+        }
+
+    check(itemsInFolder.any { it.id == item.id && groupId in it.sharedGroupsIds }) {
+      "This item is not in the current workspace folder."
     }
   }
 
@@ -138,12 +133,17 @@ class GroupWorkspaceViewModel(
           currentFolderId = folderId,
           items = emptyList(),
           loadState = LoadState.Loading,
-          errorMessage = null,
+          errorMessage = "",
       )
     }
 
     fetchJob = viewModelScope.launch {
       try {
+        val uid =
+            authRepository.authState.first()?.uid
+                ?: throw IllegalStateException("You must be signed in.")
+
+        _uiState.update { it.copy(currentUserId = uid) }
         val source =
             if (folderId.isEmpty()) {
               repository.getGroupRootFiles(groupId)
@@ -154,17 +154,12 @@ class GroupWorkspaceViewModel(
 
         source.collect { items ->
           if (requestGeneration == fetchGeneration) {
-            val visibleItems =
-                if (folderId.isEmpty()) {
-                  items.filter { groupId in it.sharedGroupsIds && it.parentFolderIds.isEmpty() }
-                } else {
-                  items.filter { groupId in it.sharedGroupsIds && folderId in it.parentFolderIds }
-                }
+            val groupItems = items.filter { item -> groupId in item.sharedGroupsIds }
             _uiState.update {
               it.copy(
-                  items = visibleItems,
+                  items = groupItems,
                   loadState = LoadState.Success,
-                  errorMessage = null,
+                  errorMessage = "",
               )
             }
           }
@@ -228,7 +223,7 @@ class GroupWorkspaceViewModel(
    */
   fun addFile(fileId: String) {
     if (fileId.isBlank()) {
-      _uiState.update { it.copy(errorMessage = "File ID cannot be empty.") }
+      showError("File ID cannot be empty.")
       return
     }
 
@@ -243,9 +238,8 @@ class GroupWorkspaceViewModel(
                 ?: throw IllegalArgumentException("File not found.")
 
         check(file.type != DocumentType.FOLDER) { "A folder cannot be added as a file." }
-        if (role == GroupWorkspaceRole.PLAYER) {
-          check(file.ownerId == uid) { "You can only add files that you own." }
-        }
+
+        check(file.ownerId == uid) { "You can only add files that you own." }
 
         val updated =
             file.copy(
@@ -271,6 +265,7 @@ class GroupWorkspaceViewModel(
    */
   fun removeItem(item: JDRFile) {
     val parentId = _uiState.value.currentFolderId
+
     viewModelScope.launch {
       performOperation {
         val uid = requireUid()
@@ -281,20 +276,17 @@ class GroupWorkspaceViewModel(
 
         requireItemInCurrentWorkspace(existing, parentId)
         requireCanEdit(existing, uid)
+
         check(role == GroupWorkspaceRole.GAME_MASTER || existing.type != DocumentType.FOLDER) {
           "Players cannot edit folders."
         }
 
-        val updated =
-            if (parentId.isNotEmpty()) {
-              // Detach only this folder reference.
-              existing.copy(parentFolderIds = existing.parentFolderIds - parentId)
-            } else {
-              // Remove the group's root-level sharing reference.
-              existing.copy(sharedGroupsIds = existing.sharedGroupsIds - groupId)
-            }
-
-        repository.updateFile(updated).getOrThrow()
+        repository
+            .removeItemFromGroup(
+                itemId = existing.id,
+                groupId = groupId,
+            )
+            .getOrThrow()
       }
     }
   }
@@ -315,10 +307,11 @@ class GroupWorkspaceViewModel(
           "Players cannot edit folders."
         }
 
+        require(updatedItem.name.isNotBlank()) { "The item name cannot be blank." }
         repository
             .updateFile(
                 existing.copy(
-                    name = updatedItem.name,
+                    name = updatedItem.name.trim(),
                     content = updatedItem.content,
                 )
             )
@@ -331,7 +324,7 @@ class GroupWorkspaceViewModel(
       operation: suspend () -> Unit,
   ) {
     pendingOperations.incrementAndGet()
-    _uiState.update { it.copy(isOperationInProgress = true, errorMessage = null) }
+    _uiState.update { it.copy(isOperationInProgress = true, errorMessage = "") }
 
     try {
       operationMutex.withLock { operation() }
@@ -352,6 +345,6 @@ class GroupWorkspaceViewModel(
 
   /** clears the current operation error */
   fun clearError() {
-    _uiState.update { it.copy(errorMessage = null) }
+    _uiState.update { it.copy(errorMessage = "") }
   }
 }

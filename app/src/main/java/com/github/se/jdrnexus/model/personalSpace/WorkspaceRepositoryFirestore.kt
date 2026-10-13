@@ -7,6 +7,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
 
 class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : WorkspaceRepository {
@@ -65,6 +66,68 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
 
       val file = documentSnapshot.toObject(JDRFile::class.java)
       Result.success(file)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
+  }
+
+  override suspend fun isAccessibleFolder(
+      folderId: String,
+      groupId: String,
+  ): Boolean {
+    return isAccessibleFolderRecursive(
+        folderId = folderId,
+        groupId = groupId,
+        visited = emptySet(),
+    )
+  }
+
+  override suspend fun removeItemFromGroup(
+      itemId: String,
+      groupId: String,
+  ): Result<Unit> {
+    return try {
+      require(itemId.isNotBlank()) { "Item ID cannot be empty." }
+      require(groupId.isNotBlank()) { "Group ID cannot be empty." }
+
+      val root = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
+
+      check(groupId in root.sharedGroupsIds) { "This item does not belong to the group." }
+
+      // Collect the selected item and all descendants.
+      val itemsToRemove = linkedMapOf<String, JDRFile>()
+      val visited = mutableSetOf<String>()
+
+      suspend fun collectSubtree(file: JDRFile) {
+        if (!visited.add(file.id)) return
+
+        itemsToRemove[file.id] = file
+
+        if (file.type != DocumentType.FOLDER) return
+
+        val children = getDocumentsInFolder(file.id).first()
+
+        children.filter { groupId in it.sharedGroupsIds }.forEach { child -> collectSubtree(child) }
+      }
+
+      collectSubtree(root)
+
+      // Remove group sharing without deleting the underlying documents.
+      val batch = firestore.batch()
+
+      itemsToRemove.values.forEach { file ->
+        val updated = file.copy(sharedGroupsIds = file.sharedGroupsIds - groupId)
+
+        batch.update(
+            collection.document(file.id),
+            updated.toMap(),
+        )
+      }
+
+      batch.commit().await()
+      Result.success(Unit)
     } catch (e: CancellationException) {
       throw e
     } catch (e: Exception) {
@@ -227,5 +290,31 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
 
     // Clean up the listener when the Flow is cancelled.
     awaitClose { listenerRegistration.remove() }
+  }
+
+  private suspend fun isAccessibleFolderRecursive(
+      folderId: String,
+      groupId: String,
+      visited: Set<String>,
+  ): Boolean {
+    if (folderId in visited) return false
+
+    val folder = getFile(folderId).getOrThrow() ?: return false
+
+    if (folder.type != DocumentType.FOLDER || groupId !in folder.sharedGroupsIds) {
+      return false
+    }
+
+    if (folder.parentFolderIds.isEmpty()) return true
+
+    val ancestors = visited + folderId
+
+    return folder.parentFolderIds.any { parentId ->
+      isAccessibleFolderRecursive(
+          folderId = parentId,
+          groupId = groupId,
+          visited = ancestors,
+      )
+    }
   }
 }
