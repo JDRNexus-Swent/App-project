@@ -25,6 +25,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -151,6 +152,16 @@ class GroupRepositoryFirestoreTest {
     throw AssertionError(
         "Timeout waiting for condition. Last value emitted: ${latestValue.get()}, emitted at all: ${hasValue.get()}"
     )
+  }
+
+  /** Tests the creation of a new uid and verifies that it not empty and unique */
+  @Test
+  fun testGetNewUid() {
+    val uid1 = repository.getNewGroupId()
+    val uid2 = repository.getNewGroupId()
+
+    assertTrue("Generated UID should not be empty", uid1.isNotEmpty())
+    assertNotEquals("Generated UIDs should be unique", uid1, uid2)
   }
 
   /** Tests the creation of a new group and verifies that it can be retrieved successfully. */
