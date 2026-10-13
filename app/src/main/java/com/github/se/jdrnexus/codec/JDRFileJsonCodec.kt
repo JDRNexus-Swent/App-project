@@ -67,9 +67,7 @@ internal object JDRFileJsonCodec {
   fun deserializeLore(json: String): LoreFile {
     val root = JSONObject(json)
     validateVersion(root)
-    require(root.getStrictString("type") == "lore") {
-      "The JSON type does not match this file."
-    }
+    require(root.getStrictString("type") == "lore") { "The JSON type does not match this file." }
     val sectionsArray = if (root.has("sections")) root.getJSONArray("sections") else JSONArray()
     val sections = buildList {
       for (index in 0 until sectionsArray.length()) {
@@ -97,9 +95,9 @@ internal object JDRFileJsonCodec {
 
   fun serializeLore(lore: LoreFile?): String = lore?.let(::loreToJson) ?: template("lore")
 
-    /*
-    make sure the JSON use the current version
-     */
+  /*
+  make sure the JSON use the current version
+   */
   private fun validateVersion(root: JSONObject) {
     if (root.has("version")) {
       val version = root.get("version")
@@ -109,9 +107,9 @@ internal object JDRFileJsonCodec {
     }
   }
 
-    /*
-    This is to make sure this is a string (for instance a int will not be auto cast)
-     */
+  /*
+  This is to make sure this is a string (for instance a int will not be auto cast)
+   */
   private fun JSONObject.getStrictString(key: String): String {
     val value = get(key)
     if (value !is String) throw JSONException("$key must be a string.")

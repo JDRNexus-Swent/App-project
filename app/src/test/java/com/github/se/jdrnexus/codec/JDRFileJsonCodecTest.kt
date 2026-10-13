@@ -214,29 +214,27 @@ class JDRFileJsonCodecTest {
 
   @Test
   fun deserializationRejectsWrongTypesInNestedStringFields() {
-    val invalidCharacterJson = listOf(
-        """{"type":7}""",
-        """{"type":"character","character":{"stats":[{"statID":1,"name":"Power","value":1}]}}""",
-        """{"type":"character","character":{"stats":[{"statID":"power","name":{},"value":1}]}}""",
-        """{"type":"character","character":{"actions":[{"actionID":1,"name":"Act","description":"Text"}]}}""",
-        """{"type":"character","character":{"actions":[{"actionID":"act","name":"Act","description":false}]}}""",
-    )
+    val invalidCharacterJson =
+        listOf(
+            """{"type":7}""",
+            """{"type":"character","character":{"stats":[{"statID":1,"name":"Power","value":1}]}}""",
+            """{"type":"character","character":{"stats":[{"statID":"power","name":{},"value":1}]}}""",
+            """{"type":"character","character":{"actions":[{"actionID":1,"name":"Act","description":"Text"}]}}""",
+            """{"type":"character","character":{"actions":[{"actionID":"act","name":"Act","description":false}]}}""",
+        )
     invalidCharacterJson.forEach { json ->
-      assertThrows(JSONException::class.java) {
-        JDRFileJsonCodec.deserializeCharacter(json)
-      }
+      assertThrows(JSONException::class.java) { JDRFileJsonCodec.deserializeCharacter(json) }
     }
 
-    val invalidLoreJson = listOf(
-        """{"type":false}""",
-        """{"type":"lore","sections":[{"sectionID":1,"title":"History","content":"Text"}]}""",
-        """{"type":"lore","sections":[{"sectionID":"history","title":[],"content":"Text"}]}""",
-        """{"type":"lore","sections":[{"sectionID":"history","title":"History","content":{}}]}""",
-    )
+    val invalidLoreJson =
+        listOf(
+            """{"type":false}""",
+            """{"type":"lore","sections":[{"sectionID":1,"title":"History","content":"Text"}]}""",
+            """{"type":"lore","sections":[{"sectionID":"history","title":[],"content":"Text"}]}""",
+            """{"type":"lore","sections":[{"sectionID":"history","title":"History","content":{}}]}""",
+        )
     invalidLoreJson.forEach { json ->
-      assertThrows(JSONException::class.java) {
-        JDRFileJsonCodec.deserializeLore(json)
-      }
+      assertThrows(JSONException::class.java) { JDRFileJsonCodec.deserializeLore(json) }
     }
   }
 
