@@ -25,7 +25,9 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.authentication.SignInScreen
 import com.github.se.jdrnexus.ui.authentication.SignUpScreen
+import com.github.se.jdrnexus.ui.edition.EditFileCharacter
 import com.github.se.jdrnexus.ui.home.HomeScreen
+import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 
 class MainActivity : ComponentActivity() {
@@ -48,6 +50,9 @@ enum class AllRoutes {
   SignIn,
   SignUp,
   Home,
+  PersoSpace,
+  EditChar,
+  EditLore,
 }
 
 /**
@@ -60,6 +65,9 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
   val context = LocalContext.current
   val credentialManager = remember(context) { CredentialManager.create(context) }
   val navController = rememberNavController()
+
+  // Create an editFileViewModel to be able to retreive the file for the edition screens
+  val editFileViewModel: EditFileViewModel = viewModel()
 
   Scaffold { innerPadding ->
     NavHost(
@@ -134,6 +142,31 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
         } else {
           HomeScreen(viewModel = authViewModel, onLogout = onLogout)
         }
+      }
+
+      composable(route = AllRoutes.PersoSpace.name) {
+        val onDocumentClicked: (String) -> Unit = { documentId ->
+          editFileViewModel.loadFile(documentId)
+          if (editFileViewModel.uiState.value.character != null) {
+            navController.navigate(AllRoutes.EditChar.name)
+          } else {
+            navController.navigate(AllRoutes.EditLore.name)
+          }
+        }
+
+        PersonalSpaceScreen(
+            onBackButton = { navController.popBackStack() },
+            onDocumentClicked = onDocumentClicked,
+            onCreateFile = {},
+        )
+      }
+
+      composable(route = AllRoutes.EditChar.name) {
+        EditFileCharacter(
+            viewModel = editFileViewModel,
+            onBack = { navController.popBackStack() },
+            onSaved = { navController.popBackStack() },
+        )
       }
     }
   }
