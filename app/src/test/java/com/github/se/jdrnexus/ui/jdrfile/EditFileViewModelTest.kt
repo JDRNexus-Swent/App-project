@@ -2,14 +2,17 @@
 package com.github.se.jdrnexus.ui.jdrfile
 
 import android.os.Looper
+import com.github.se.jdrnexus.codec.JDRFileCodecException
 import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
+import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -26,10 +29,14 @@ import org.robolectric.Shadows.shadowOf
 @RunWith(RobolectricTestRunner::class)
 class EditFileViewModelTest {
   private val characterJson =
-      """{"version":1,"type":"character","character":{"name":"Jean-claude","stats":[{"statID":"strength","name":"Strength","value":16},{"statID":"dexterity","name":"Dexterity","value":12}],"actions":[{"actionID":"sword_attack","name":"Sword Attack","description":"Attack"},{"actionID":"heavy_strike","name":"Heavy Strike","description":"Strike"}]}}"""
+      """{"version":1,"type":"character","character":{"name":"Jean-claude","stats":[{"statID":"strength","name":"Strength","value":16},{"statID":"dexterity","name":"Dexterity","value":12}],"actions":[{"actionID":"sword_attack","name":"Sword Attack","description":"Attack"},{"actionID":"heavy_strike","name":"Heavy Strike","description":"Strike"}],"hp":{"current":18,"max":24}}}"""
   private val loreJson =
       """{"version":1,"type":"lore","title":"The Kingdom","sections":[{"sectionID":"history","title":"History","content":"Founded long ago."},{"sectionID":"king","title":"The King","content":"Rules today."}]}"""
 
+  /**
+   * idleMainLooper() lets Robolectric process the queued main-thread work so the coroutine started
+   * by the ViewModel can finish.
+   */
   private fun idleMainLooper() {
     shadowOf(Looper.getMainLooper()).idle()
   }
@@ -62,6 +69,7 @@ class EditFileViewModelTest {
                 CharacterAction("sword_attack", "Sword Attack", "Attack"),
                 CharacterAction("heavy_strike", "Heavy Strike", "Strike"),
             ),
+            CharacterHealthPoints(18, 24),
         ),
         viewModel.uiState.value.character,
     )
@@ -127,7 +135,7 @@ class EditFileViewModelTest {
             )
         )
     assertEquals(
-        CharacterFile("", emptyList(), emptyList()),
+        CharacterFile("", emptyList(), emptyList(), CharacterHealthPoints(0, 0)),
         emptyCharacter.uiState.value.character,
     )
 
@@ -147,7 +155,7 @@ class EditFileViewModelTest {
     val missing = EditFileViewModel(FakeRepository())
     missing.loadFile("missing")
     idleMainLooper()
-    assertEquals("File not found.", missing.uiState.value.error)
+    assertEquals(EditFileViewModel.FILE_NOT_FOUND, missing.uiState.value.error)
 
     val repositoryFailure =
         EditFileViewModel(FakeRepository(getFailure = IllegalStateException("Offline")))
@@ -157,10 +165,10 @@ class EditFileViewModelTest {
 
     val mismatched =
         loadedViewModel(JDRFile(id = "mismatch", type = DocumentType.TEXT, content = characterJson))
-    assertEquals("The JSON type does not match this file.", mismatched.uiState.value.error)
+    assertEquals(JDRFileCodecException.INVALID_FILE_MESSAGE, mismatched.uiState.value.error)
 
     val folder = loadedViewModel(JDRFile(id = "folder", type = DocumentType.FOLDER, content = ""))
-    assertEquals("Folders cannot be edited as files.", folder.uiState.value.error)
+    assertEquals(EditFileViewModel.FOLDER_ERROR, folder.uiState.value.error)
 
     val malformed = loadedViewModel(JDRFile(id = "broken", type = DocumentType.TEXT, content = "{"))
     assertTrue(malformed.uiState.value.error?.isNotBlank() == true)
@@ -200,6 +208,7 @@ class EditFileViewModelTest {
                 CharacterAction("sword_attack", "Slash", "A precise cut"),
                 addedAction,
             ),
+            CharacterHealthPoints(18, 24),
         ),
         character,
     )
@@ -216,45 +225,98 @@ class EditFileViewModelTest {
     viewModel.addCharacterStat("Luck", Double.NaN)
     assertEquals(initial, viewModel.uiState.value.character)
     assertEquals(
-        "Stat value must be a finite number.",
+        EditFileViewModel.STAT_VALUE_ERROR,
         viewModel.uiState.value.fieldErrors.values.single(),
     )
 
     viewModel.addCharacterStat(" ", 1.0)
     assertEquals(
-        "Stat name cannot be empty.",
+        EditFileViewModel.STAT_NAME_ERROR,
         viewModel.uiState.value.fieldErrors.values.single(),
     )
     viewModel.updateCharacterStatName("strength", "")
     assertEquals(
-        "Stat name cannot be empty.",
+        EditFileViewModel.STAT_NAME_ERROR,
         viewModel.uiState.value.fieldErrors[EditFileField.CharacterStatName("strength")],
     )
     viewModel.updateCharacterStatValue("strength", Double.POSITIVE_INFINITY)
     assertEquals(
-        "Stat value must be a finite number.",
+        EditFileViewModel.STAT_VALUE_ERROR,
         viewModel.uiState.value.fieldErrors[EditFileField.CharacterStatValue("strength")],
     )
 
     viewModel.updateCharacterStatValue("missing", 1.0)
-    assertEquals("Stat not found.", viewModel.uiState.value.error)
+    assertEquals(EditFileViewModel.STAT_NOT_FOUND_ERROR, viewModel.uiState.value.error)
     assertEquals(
-        "Stat value must be a finite number.",
+        EditFileViewModel.STAT_VALUE_ERROR,
         viewModel.uiState.value.fieldErrors[EditFileField.CharacterStatValue("strength")],
     )
 
     viewModel.addCharacterAction(" ", "Description")
     assertEquals(
-        "Action name cannot be empty.",
+        EditFileViewModel.ACTION_NAME_ERROR,
         viewModel.uiState.value.fieldErrors.values.single(),
     )
     viewModel.updateCharacterActionName("sword_attack", "")
     assertEquals(
-        "Action name cannot be empty.",
+        EditFileViewModel.ACTION_NAME_ERROR,
         viewModel.uiState.value.fieldErrors.values.single(),
     )
     viewModel.removeCharacterAction("missing")
-    assertEquals("Action not found.", viewModel.uiState.value.error)
+    assertEquals(EditFileViewModel.ACTION_NOT_FOUND_ERROR, viewModel.uiState.value.error)
+  }
+
+  @Test
+  fun healthPointUpdatesValidateBoundsAndClampCurrentWhenMaximumDrops() {
+    val viewModel =
+        loadedViewModel(
+            JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
+        )
+
+    viewModel.updateCharacterCurrentHp(-1)
+    assertEquals(
+        EditFileViewModel.CURRENT_HP_ERROR,
+        viewModel.uiState.value.fieldErrors[EditFileField.CharacterCurrentHp],
+    )
+    assertEquals(CharacterHealthPoints(18, 24), viewModel.uiState.value.character?.hp)
+
+    viewModel.updateCharacterCurrentHp(25)
+    assertEquals(
+        EditFileViewModel.CURRENT_HP_EXCEEDS_MAX_ERROR,
+        viewModel.uiState.value.fieldErrors[EditFileField.CharacterCurrentHp],
+    )
+
+    viewModel.updateCharacterCurrentHp(20)
+    assertEquals(CharacterHealthPoints(20, 24), viewModel.uiState.value.character?.hp)
+    viewModel.updateCharacterMaxHp(16)
+    assertEquals(CharacterHealthPoints(16, 16), viewModel.uiState.value.character?.hp)
+
+    viewModel.updateCharacterMaxHp(-1)
+    assertEquals(
+        EditFileViewModel.MAX_HP_ERROR,
+        viewModel.uiState.value.fieldErrors[EditFileField.CharacterMaxHp],
+    )
+    assertEquals(CharacterHealthPoints(16, 16), viewModel.uiState.value.character?.hp)
+  }
+
+  @Test
+  fun loadingInvalidHealthPointsExposesFieldErrorsAndPreventsSaving() {
+    val invalidFile =
+        JDRFile(
+            id = "character",
+            type = DocumentType.CHARACTER,
+            content =
+                """{"version":1,"type":"character","character":{"hp":{"current":12,"max":10}}}""",
+        )
+    val repository = FakeRepository(invalidFile)
+    val viewModel = loadedViewModel(invalidFile, repository)
+
+    assertEquals(
+        EditFileViewModel.CURRENT_HP_EXCEEDS_MAX_ERROR,
+        viewModel.uiState.value.fieldErrors[EditFileField.CharacterCurrentHp],
+    )
+    viewModel.saveJDRfile()
+    assertTrue(repository.updatedFiles.isEmpty())
   }
 
   @Test
@@ -289,15 +351,15 @@ class EditFileViewModelTest {
 
     viewModel.addLoreSection(" ", "Text")
     assertEquals(
-        "Section title cannot be empty.",
+        EditFileViewModel.SECTION_TITLE_ERROR,
         viewModel.uiState.value.fieldErrors.values.single(),
     )
     viewModel.updateLoreSectionTitle("missing", "Title")
-    assertEquals("Section not found.", viewModel.uiState.value.error)
+    assertEquals(EditFileViewModel.SECTION_NOT_FOUND_ERROR, viewModel.uiState.value.error)
     viewModel.updateLoreSectionDescription("missing", "Description")
-    assertEquals("Section not found.", viewModel.uiState.value.error)
+    assertEquals(EditFileViewModel.SECTION_NOT_FOUND_ERROR, viewModel.uiState.value.error)
     viewModel.removeLoreSection("missing")
-    assertEquals("Section not found.", viewModel.uiState.value.error)
+    assertEquals(EditFileViewModel.SECTION_NOT_FOUND_ERROR, viewModel.uiState.value.error)
   }
 
   @Test
@@ -330,6 +392,8 @@ class EditFileViewModelTest {
     val savedStat = savedContent.getJSONArray("stats").getJSONObject(2)
     assertEquals("Willpower", savedStat.getString("name"))
     assertEquals(17, savedStat.getInt("value"))
+    assertEquals(18, savedContent.getJSONObject("hp").getInt("current"))
+    assertEquals(24, savedContent.getJSONObject("hp").getInt("max"))
     assertTrue(viewModel.uiState.value.isSaved)
     assertFalse(viewModel.uiState.value.isSaving)
     assertNull(viewModel.uiState.value.error)
@@ -344,7 +408,7 @@ class EditFileViewModelTest {
     invalid.saveJDRfile()
     idleMainLooper()
     assertEquals(
-        "Section title cannot be empty.",
+        EditFileViewModel.SECTION_TITLE_ERROR,
         invalid.uiState.value.fieldErrors[EditFileField.LoreSectionTitle("history")],
     )
     assertTrue(validationRepo.updatedFiles.isEmpty())
@@ -361,6 +425,21 @@ class EditFileViewModelTest {
     assertEquals("Write denied", failing.uiState.value.error)
     assertFalse(failing.uiState.value.isSaved)
     assertFalse(failing.uiState.value.isSaving)
+  }
+
+  @Test
+  fun cancelledSaveResetsSavingFlagWithoutReportingAnError() {
+    val file = JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
+    val repository = FakeRepository(file, updateFailure = CancellationException("Save cancelled"))
+    val viewModel = loadedViewModel(file, repository)
+
+    viewModel.updateCharacterName("Updated")
+    viewModel.saveJDRfile()
+    idleMainLooper()
+
+    assertFalse(viewModel.uiState.value.isSaving)
+    assertFalse(viewModel.uiState.value.isSaved)
+    assertNull(viewModel.uiState.value.error)
   }
 
   @Test
@@ -399,7 +478,7 @@ class EditFileViewModelTest {
 
     viewModel.saveJDRfile()
 
-    assertEquals("Load a file before saving.", viewModel.uiState.value.error)
+    assertEquals(EditFileViewModel.LOAD_BEFORE_SAVE_ERROR, viewModel.uiState.value.error)
   }
 
   private fun loadedViewModel(

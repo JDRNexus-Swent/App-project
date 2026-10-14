@@ -12,6 +12,10 @@ sealed interface EditFileField {
 
   data class CharacterStatValue(val statID: String) : EditFileField
 
+  data object CharacterCurrentHp : EditFileField
+
+  data object CharacterMaxHp : EditFileField
+
   data class CharacterActionName(val actionID: String) : EditFileField
 
   data class LoreSectionTitle(val sectionID: String) : EditFileField
@@ -39,6 +43,12 @@ interface EditFileInterfaceVM {
 
   /** Replaces the character's display name. */
   fun updateCharacterName(name: String)
+
+  /** Updates current HP without allowing negative values or values above max HP. */
+  fun updateCharacterCurrentHp(current: Int)
+
+  /** Updates max HP without allowing negative values, clamping current HP when necessary. */
+  fun updateCharacterMaxHp(max: Int)
 
   /** Adds a named stat under a generated ID if [value] is finite. */
   fun addCharacterStat(name: String, value: Double)

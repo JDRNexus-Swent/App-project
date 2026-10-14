@@ -3,9 +3,11 @@ package com.github.se.jdrnexus.ui.jdrfile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.se.jdrnexus.codec.JDRFileCodecException
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
 import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
+import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
@@ -56,9 +58,12 @@ class EditFileViewModel(
               DocumentType.TEXT -> null to JDRFileJsonCodec.deserializeLore(file.content)
               DocumentType.FOLDER -> throw IllegalArgumentException(FOLDER_ERROR)
             }
-        _uiState.value = EditFileUiState(file = file, character = character, lore = lore)
+        val loadedState = EditFileUiState(file = file, character = character, lore = lore)
+        _uiState.value = loadedState.copy(fieldErrors = collectFieldErrors(loadedState))
       } catch (e: CancellationException) {
         throw e
+      } catch (e: JDRFileCodecException) {
+        _uiState.value = EditFileUiState(file = file, error = e.message)
       } catch (e: IllegalArgumentException) {
         _uiState.value =
             EditFileUiState(
@@ -73,6 +78,27 @@ class EditFileViewModel(
 
   override fun updateCharacterName(name: String) {
     mutateCharacter { it.copy(name = name) }
+  }
+
+  override fun updateCharacterCurrentHp(current: Int) {
+    val hp = _uiState.value.character?.hp ?: return reportError(CHARACTER_REQUIRED_ERROR)
+    when {
+      current < 0 -> rejectField(EditFileField.CharacterCurrentHp, CURRENT_HP_ERROR)
+      current > hp.max ->
+          rejectField(EditFileField.CharacterCurrentHp, CURRENT_HP_EXCEEDS_MAX_ERROR)
+      else -> mutateCharacter { it.copy(hp = hp.copy(current = current)) }
+    }
+  }
+
+  override fun updateCharacterMaxHp(max: Int) {
+    val hp = _uiState.value.character?.hp ?: return reportError(CHARACTER_REQUIRED_ERROR)
+    when {
+      max < 0 -> rejectField(EditFileField.CharacterMaxHp, MAX_HP_ERROR)
+      else ->
+          mutateCharacter {
+            it.copy(hp = CharacterHealthPoints(current = minOf(hp.current, max), max = max))
+          }
+    }
   }
 
   override fun addCharacterStat(name: String, value: Double) {
@@ -229,6 +255,8 @@ class EditFileViewModel(
             DocumentType.TEXT -> JDRFileJsonCodec.serializeLore(state.lore)
             DocumentType.FOLDER -> return reportError(FOLDER_ERROR)
           }
+        } catch (e: JDRFileCodecException) {
+          return reportError(e.message ?: SAVE_ERROR)
         } catch (e: Exception) {
           return reportError(e.message?.takeIf(String::isNotBlank) ?: SAVE_ERROR)
         }
@@ -248,6 +276,14 @@ class EditFileViewModel(
         }
       } catch (e: CancellationException) {
         throw e
+      } catch (e: JDRFileCodecException) {
+        _uiState.update {
+          it.copy(
+              isSaving = false,
+              isSaved = false,
+              error = e.message,
+          )
+        }
       } catch (e: Exception) {
         _uiState.update {
           it.copy(
@@ -255,6 +291,10 @@ class EditFileViewModel(
               isSaved = false,
               error = e.message?.takeIf(String::isNotBlank) ?: SAVE_ERROR,
           )
+        }
+      } finally {
+        _uiState.update { current ->
+          if (current.isSaving) current.copy(isSaving = false) else current
         }
       }
     }
@@ -318,6 +358,15 @@ class EditFileViewModel(
 
   private fun collectFieldErrors(state: EditFileUiState): Map<EditFileField, String> = buildMap {
     state.character?.let { character ->
+      if (character.hp.current < 0) {
+        put(EditFileField.CharacterCurrentHp, CURRENT_HP_ERROR)
+      }
+      if (character.hp.max < 0) {
+        put(EditFileField.CharacterMaxHp, MAX_HP_ERROR)
+      }
+      if (character.hp.current > character.hp.max) {
+        put(EditFileField.CharacterCurrentHp, CURRENT_HP_EXCEEDS_MAX_ERROR)
+      }
       character.stats.forEach { stat ->
         if (stat.name.isBlank()) {
           put(EditFileField.CharacterStatName(stat.statID), STAT_NAME_ERROR)
@@ -345,16 +394,19 @@ class EditFileViewModel(
     _uiState.update { it.copy(error = message, isSaved = false) }
   }
 
-  private companion object {
+  internal companion object {
     const val ACTION_NOT_FOUND_ERROR = "Action not found."
     const val ACTION_NAME_ERROR = "Action name cannot be empty."
     const val CHARACTER_REQUIRED_ERROR = "Load a character file before editing."
+    const val CURRENT_HP_ERROR = "Current HP must be a non-negative number."
+    const val CURRENT_HP_EXCEEDS_MAX_ERROR = "Current HP cannot exceed maximum HP."
     const val FILE_NOT_FOUND = "File not found."
     const val FOLDER_ERROR = "Folders cannot be edited as files."
     const val INVALID_JSON_ERROR = "Unable to read this file. Check its JSON format."
     const val LOAD_BEFORE_SAVE_ERROR = "Load a file before saving."
     const val LOAD_ERROR = "Unable to load this file."
     const val LORE_REQUIRED_ERROR = "Load a lore file before editing."
+    const val MAX_HP_ERROR = "Maximum HP must be a non-negative number."
     const val SAVE_ERROR = "Unable to save this file."
     const val SECTION_NOT_FOUND_ERROR = "Section not found."
     const val SECTION_TITLE_ERROR = "Section title cannot be empty."
