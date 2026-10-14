@@ -98,20 +98,6 @@ class PersonalSpaceViewModelTest {
     override suspend fun deleteFile(fileId: String): Result<Unit> = Result.success(Unit)
 
     override suspend fun getFile(fileId: String): Result<JDRFile?> = Result.success(null)
-
-    override suspend fun isAccessibleFolder(
-        folderId: String,
-        groupId: String,
-    ): Boolean {
-      TODO("Not yet implemented")
-    }
-
-    override suspend fun removeItemFromGroup(
-        itemId: String,
-        groupId: String,
-    ): Result<Unit> {
-      TODO("Not yet implemented")
-    }
   }
 
   private class FakeAuthRepository(
