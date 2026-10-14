@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -217,13 +218,13 @@ class WorkspaceRepositoryFirestoreTest {
     }
   }
 
-  /** Ensures that attempting to fetch a non-existent document returns a failure. */
+  /** Ensures that a missing document is distinct from a Firestore retrieval failure. */
   @Test
   fun testGetFile_NotFound() {
     runBlocking {
       val result = repository.getFile("non_existent_id")
-      assertTrue("getFile should fail when document is not found", result.isFailure)
-      assertEquals("Document not found in Firestore", result.exceptionOrNull()?.message)
+      assertTrue("getFile should succeed when the document is not found", result.isSuccess)
+      assertNull(result.getOrNull())
     }
   }
 
@@ -240,10 +241,10 @@ class WorkspaceRepositoryFirestoreTest {
 
       val getResult = repository.getFile(fileId)
       assertTrue(
-          "getFile should fail after delete since the document no longer exists",
-          getResult.isFailure,
+          "getFile should return null after delete since the document no longer exists",
+          getResult.isSuccess,
       )
-      assertEquals("Document not found in Firestore", getResult.exceptionOrNull()?.message)
+      assertNull(getResult.getOrNull())
     }
   }
 
@@ -422,18 +423,240 @@ class WorkspaceRepositoryFirestoreTest {
               name = "Group Child File",
               parentFolderIds = listOf("parent1"),
           )
+      val parentFolder =
+          JDRFile(
+              id = "parent1",
+              sharedGroupsIds = listOf(groupId),
+              type = DocumentType.FOLDER,
+          )
 
       repository.createFile(file1)
       repository.createFile(file2)
       repository.createFile(fileOtherGroup)
       repository.createFile(fileWithParent)
+      repository.createFile(parentFolder)
 
-      val files = repository.getGroupRootFiles(groupId).waitFor { it.size == 2 }
+      val files = repository.getGroupRootFiles(groupId).waitFor { it.size == 3 }
 
-      assertEquals("Should retrieve exactly 2 files for the group at root", 2, files.size)
+      assertEquals("Should retrieve exactly 3 items for the group at root", 3, files.size)
       assertTrue(files.contains(file1))
       assertTrue(files.contains(file2))
+      assertTrue(files.contains(parentFolder))
+      assertTrue(files.none { it.id == fileWithParent.id })
     }
+  }
+
+  @Test
+  fun removingFolderDetachesCurrentGroupAndAllowsChildAtRoot() = runBlocking {
+    val groupId = UUID.randomUUID().toString()
+    val otherGroupId = UUID.randomUUID().toString()
+    val folder =
+        JDRFile(
+            id = UUID.randomUUID().toString(),
+            name = "Removed folder",
+            sharedGroupsIds = listOf(groupId),
+            type = DocumentType.FOLDER,
+        )
+    val otherFolder =
+        JDRFile(
+            id = UUID.randomUUID().toString(),
+            name = "Other group folder",
+            sharedGroupsIds = listOf(otherGroupId),
+            type = DocumentType.FOLDER,
+        )
+    val textFile =
+        JDRFile(
+            id = UUID.randomUUID().toString(),
+            name = "Notes.txt",
+            ownerId = "owner",
+            sharedGroupsIds = listOf(groupId, otherGroupId),
+            parentFolderIds = listOf(folder.id, otherFolder.id),
+            type = DocumentType.TEXT,
+            content = "Notes",
+        )
+
+    repository.createFile(folder).getOrThrow()
+    repository.createFile(otherFolder).getOrThrow()
+    repository.createFile(textFile).getOrThrow()
+    val removal = async(Dispatchers.IO) { repository.removeItemFromGroup(folder.id, groupId) }
+    while (!removal.isCompleted) {
+      shadowOf(Looper.getMainLooper()).idle()
+      delay(50)
+    }
+    removal.await().getOrThrow()
+
+    val detachedFolder = repository.getFile(folder.id).getOrThrow()
+    val detachedTextFile = repository.getFile(textFile.id).getOrThrow()
+    assertEquals(emptyList<String>(), detachedFolder?.sharedGroupsIds)
+    assertEquals(listOf(otherGroupId), detachedTextFile?.sharedGroupsIds)
+    assertEquals(listOf(otherFolder.id), detachedTextFile?.parentFolderIds)
+
+    val readdedTextFile =
+        detachedTextFile!!.copy(
+            sharedGroupsIds = (detachedTextFile.sharedGroupsIds + groupId).distinct()
+        )
+    repository.updateFile(readdedTextFile).getOrThrow()
+
+    val rootFiles =
+        repository.getGroupRootFiles(groupId).waitFor { files ->
+          files.any { it.id == textFile.id }
+        }
+    assertTrue(rootFiles.any { it.id == textFile.id })
+    assertEquals(readdedTextFile, repository.getFile(textFile.id).getOrThrow())
+
+    val otherGroupContents =
+        repository.getDocumentsInFolder(otherFolder.id).waitFor { files ->
+          files.any { it.id == textFile.id }
+        }
+    assertTrue(otherGroupContents.any { it.id == textFile.id })
+  }
+
+  @Test
+  fun removingFolderRecursivelyDetachesDescendantsAndPreservesPersonalAndOtherGroupData() =
+      runBlocking {
+        val groupId = UUID.randomUUID().toString()
+        val otherGroupId = UUID.randomUUID().toString()
+        val ownerId = UUID.randomUUID().toString()
+        val rootFolder =
+            JDRFile(
+                id = UUID.randomUUID().toString(),
+                name = "Shared root",
+                ownerId = ownerId,
+                sharedGroupsIds = listOf(groupId, otherGroupId),
+                type = DocumentType.FOLDER,
+            )
+        val nestedFolder =
+            JDRFile(
+                id = UUID.randomUUID().toString(),
+                name = "Shared nested folder",
+                ownerId = ownerId,
+                sharedGroupsIds = listOf(groupId, otherGroupId),
+                parentFolderIds = listOf(rootFolder.id),
+                type = DocumentType.FOLDER,
+            )
+        val directText =
+            JDRFile(
+                id = UUID.randomUUID().toString(),
+                name = "Root notes.txt",
+                ownerId = ownerId,
+                sharedGroupsIds = listOf(groupId, otherGroupId),
+                parentFolderIds = listOf(rootFolder.id),
+                personalParentId = "",
+                type = DocumentType.TEXT,
+                content = "Personal root document",
+            )
+        val nestedText =
+            JDRFile(
+                id = UUID.randomUUID().toString(),
+                name = "Nested notes.txt",
+                ownerId = ownerId,
+                sharedGroupsIds = listOf(groupId, otherGroupId),
+                parentFolderIds = listOf(nestedFolder.id),
+                personalParentId = "personal-folder",
+                type = DocumentType.TEXT,
+                content = "Nested document",
+            )
+        val unrelatedRoot =
+            JDRFile(
+                id = UUID.randomUUID().toString(),
+                name = "Unrelated",
+                sharedGroupsIds = listOf(groupId),
+            )
+
+        listOf(rootFolder, nestedFolder, directText, nestedText, unrelatedRoot).forEach {
+          repository.createFile(it).getOrThrow()
+        }
+        val removal =
+            async(Dispatchers.IO) { repository.removeItemFromGroup(rootFolder.id, groupId) }
+        while (!removal.isCompleted) {
+          shadowOf(Looper.getMainLooper()).idle()
+          delay(50)
+        }
+        removal.await().getOrThrow()
+
+        val rootAfterRemoval = repository.getFile(rootFolder.id).getOrThrow()
+        val nestedFolderAfterRemoval = repository.getFile(nestedFolder.id).getOrThrow()
+        val directTextAfterRemoval = repository.getFile(directText.id).getOrThrow()
+        val nestedTextAfterRemoval = repository.getFile(nestedText.id).getOrThrow()
+
+        assertEquals(listOf(otherGroupId), rootAfterRemoval?.sharedGroupsIds)
+        assertEquals(listOf(otherGroupId), nestedFolderAfterRemoval?.sharedGroupsIds)
+        assertEquals(listOf(otherGroupId), directTextAfterRemoval?.sharedGroupsIds)
+        assertEquals(listOf(otherGroupId), nestedTextAfterRemoval?.sharedGroupsIds)
+        assertEquals(listOf(rootFolder.id), nestedFolderAfterRemoval?.parentFolderIds)
+        assertEquals(listOf(rootFolder.id), directTextAfterRemoval?.parentFolderIds)
+        assertEquals(listOf(nestedFolder.id), nestedTextAfterRemoval?.parentFolderIds)
+        assertEquals(ownerId, directTextAfterRemoval?.ownerId)
+        assertEquals("", directTextAfterRemoval?.personalParentId)
+        assertEquals(directText.content, directTextAfterRemoval?.content)
+        assertEquals(ownerId, nestedTextAfterRemoval?.ownerId)
+        assertEquals("personal-folder", nestedTextAfterRemoval?.personalParentId)
+        assertEquals(nestedText.content, nestedTextAfterRemoval?.content)
+
+        val currentGroupRoot =
+            repository.getGroupRootFiles(groupId).waitFor { files ->
+              files.any { it.id == unrelatedRoot.id }
+            }
+        assertEquals(listOf(unrelatedRoot), currentGroupRoot)
+
+        val readdedDirectText =
+            directTextAfterRemoval!!.copy(
+                sharedGroupsIds = directTextAfterRemoval.sharedGroupsIds + groupId
+            )
+        repository.updateFile(readdedDirectText).getOrThrow()
+        val rootAfterReAdding =
+            repository.getGroupRootFiles(groupId).waitFor { files ->
+              files.any { it.id == directText.id }
+            }
+        assertEquals(
+            setOf(unrelatedRoot.id, directText.id),
+            rootAfterReAdding.map { it.id }.toSet(),
+        )
+
+        val personalRoot =
+            repository.getPersonalRootFiles(ownerId).waitFor { files ->
+              files.any { it.id == directText.id }
+            }
+        assertTrue(personalRoot.any { it.id == directText.id })
+
+        val otherGroupContents =
+            repository.getDocumentsInFolder(rootFolder.id).waitFor { files ->
+              files.any { it.id == nestedFolder.id } && files.any { it.id == directText.id }
+            }
+        assertEquals(
+            setOf(nestedFolder.id, directText.id),
+            otherGroupContents.filter { otherGroupId in it.sharedGroupsIds }.map { it.id }.toSet(),
+        )
+
+        val otherGroupNestedContents =
+            repository.getDocumentsInFolder(nestedFolder.id).waitFor { files ->
+              files.any { it.id == nestedText.id }
+            }
+        assertEquals(
+            setOf(nestedText.id),
+            otherGroupNestedContents
+                .filter { otherGroupId in it.sharedGroupsIds }
+                .map { it.id }
+                .toSet(),
+        )
+      }
+
+  @Test
+  fun groupRootFlowContinuesWhenParentFolderDocumentIsMissing() = runBlocking {
+    val groupId = UUID.randomUUID().toString()
+    val file =
+        JDRFile(
+            id = UUID.randomUUID().toString(),
+            name = "Orphaned reference",
+            sharedGroupsIds = listOf(groupId),
+            parentFolderIds = listOf("missing-folder"),
+        )
+    repository.createFile(file).getOrThrow()
+
+    val rootFiles =
+        repository.getGroupRootFiles(groupId).waitFor { files -> files.any { it.id == file.id } }
+
+    assertTrue(rootFiles.any { it.id == file.id })
   }
 
   /** Ensures that an empty list is emitted if a campaign group has no root documents. */

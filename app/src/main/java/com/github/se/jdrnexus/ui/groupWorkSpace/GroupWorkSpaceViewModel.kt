@@ -1,5 +1,7 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
+import android.util.Log.e
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
@@ -237,28 +239,54 @@ class GroupWorkspaceViewModel(
     }
 
     val parentId = _uiState.value.currentFolderId
+
     return viewModelScope.launch {
       performOperation {
         val uid = requireUid()
-        if (parentId.isNotEmpty()) requireAccessibleFolder(parentId)
+
+        if (parentId.isNotEmpty()) {
+          requireAccessibleFolder(parentId)
+        }
 
         val file =
             repository.getFile(fileId).getOrThrow()
                 ?: throw IllegalArgumentException("File not found.")
 
         check(file.type != DocumentType.FOLDER) { "A folder cannot be added as a file." }
-
         check(file.ownerId == uid) { "You can only add files that you own." }
+
+        // Remove old placements in this group and stale folder references.
+        // Keep references to folders belonging to other groups.
+
+        val parentIdsToRemove = mutableSetOf<String>()
+
+        for (folderId in file.parentFolderIds) {
+          // Never remove the current destination folder here.
+          if (folderId == parentId) continue
+
+          val parent = repository.getFile(folderId).getOrThrow()
+
+          // Remove only a confirmed folder belonging to this group.
+          // Preserve unknown references and references to other groups.
+          if (
+              parent != null &&
+                  parent.type == DocumentType.FOLDER &&
+                  groupId in parent.sharedGroupsIds &&
+                  (parent.sharedGroupsIds - groupId).isEmpty()
+          ) {
+            parentIdsToRemove.add(folderId)
+          }
+        }
+
+        val updatedParentIds =
+            (file.parentFolderIds - parentIdsToRemove +
+                    listOfNotNull(parentId.takeIf { it.isNotEmpty() }))
+                .distinct()
 
         val updated =
             file.copy(
                 sharedGroupsIds = (file.sharedGroupsIds + groupId).distinct(),
-                parentFolderIds =
-                    if (parentId.isEmpty()) {
-                      emptyList()
-                    } else {
-                      listOf(parentId)
-                    },
+                parentFolderIds = updatedParentIds,
             )
 
         repository.updateFile(updated).getOrThrow()
@@ -294,6 +322,7 @@ class GroupWorkspaceViewModel(
             .removeItemFromGroup(
                 itemId = existing.id,
                 groupId = groupId,
+                parentFolderId = parentId.takeIf { it.isNotEmpty() },
             )
             .getOrThrow()
         if (existing.type == DocumentType.FOLDER && _uiState.value.currentFolderId == existing.id) {
