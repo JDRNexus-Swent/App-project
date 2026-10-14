@@ -6,7 +6,11 @@ data class CharacterFile(
     val name: String,
     val stats: List<CharacterStat>,
     val actions: List<CharacterAction>,
+    val hp: CharacterHealthPoints,
 )
+
+/** Current and maximum health points. */
+data class CharacterHealthPoints(val current: Int, val max: Int)
 
 /** A named, numeric stat stored under its stable identifier. */
 data class CharacterStat(val statID: String, val name: String, val value: Double)
