@@ -88,6 +88,13 @@ class GameManagementViewModel(
       authRepository.authState
           .map { it?.uid }
           .distinctUntilChanged()
+          .catch { failure ->
+            groupsJob?.cancel()
+            groupsJob = null
+            currentUserId = null
+            val message = failure.message?.takeIf(String::isNotBlank) ?: "Unable to load groups."
+            _uiState.value = GameManagementUiState(loadState = GroupLoadState.Error(message))
+          }
           .collect { userId ->
             currentUserId = userId
             if (userId == null) {

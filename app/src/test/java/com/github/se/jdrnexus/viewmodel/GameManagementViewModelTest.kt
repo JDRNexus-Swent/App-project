@@ -34,6 +34,7 @@ class GameManagementViewModelTest {
     val viewModel = GameManagementViewModel(repository, FakeAuthRepository(user))
 
     assertEquals(GroupLoadState.Loading, viewModel.uiState.value.loadState)
+    assertTrue(viewModel.uiState.value.groups.isEmpty())
     advanceUntilIdle()
 
     assertEquals(GroupLoadState.Success, viewModel.uiState.value.loadState)
@@ -87,6 +88,22 @@ class GameManagementViewModelTest {
 
     assertEquals(listOf("user-1", "user-1"), requests)
     assertEquals("recovered", viewModel.uiState.value.groups.single().group.id)
+    assertEquals(GroupLoadState.Success, viewModel.uiState.value.loadState)
+  }
+
+  @Test
+  fun exposesFailureWhenAuthStateCannotBeObserved() = runTest {
+    val authState = flow<AuthUser?> { throw IllegalStateException("auth offline") }
+    val viewModel =
+        GameManagementViewModel(
+            FakeGroupRepository { flowOf(emptyList()) },
+            FakeAuthRepository(authState = authState),
+        )
+
+    advanceUntilIdle()
+
+    assertEquals(GroupLoadState.Error("auth offline"), viewModel.uiState.value.loadState)
+    assertTrue(viewModel.uiState.value.groups.isEmpty())
   }
 
   @Test
@@ -152,10 +169,12 @@ class GameManagementViewModelTest {
     assertTrue(repository.activeUsers.isEmpty())
   }
 
-  private class FakeAuthRepository(user: AuthUser? = AuthUser("user-1", null, null)) :
-      AuthRepository {
+  private class FakeAuthRepository(
+      user: AuthUser? = AuthUser("user-1", null, null),
+      authState: Flow<AuthUser?>? = null,
+  ) : AuthRepository {
     val currentUser = MutableStateFlow(user)
-    override val authState: Flow<AuthUser?> = currentUser
+    override val authState: Flow<AuthUser?> = authState ?: currentUser
 
     override suspend fun signUpWithEmail(email: String, password: String, username: String) =
         AuthResult.Failure(com.github.se.jdrnexus.model.repository.AuthError.UNKNOWN)
