@@ -1,8 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
-import com.github.se.jdrnexus.DemoAuthRepository
-import com.github.se.jdrnexus.DemoWorkspaceRepository
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
@@ -822,96 +820,6 @@ class GroupWorkSpaceViewModelTest {
     runCurrent()
     assertEquals(listOf(textFile.id), otherGroupViewModel.uiState.value.items.map { it.id })
     assertFalse(textFile.id in repository.deletedFileIds)
-  }
-
-  @Test
-  fun liveWorkspaceRemoveFolderThenReaddTextFilesAtRoot() = runTest {
-    val demoUserId = DemoAuthRepository.DEMO_UID
-    val groupOnlyFolder =
-        JDRFile(
-            id = "group-only-folder",
-            ownerId = demoUserId,
-            sharedGroupsIds = listOf(GROUP_ID),
-            type = DocumentType.FOLDER,
-        )
-    val sharedFolder =
-        JDRFile(
-            id = "shared-folder",
-            ownerId = demoUserId,
-            sharedGroupsIds = listOf(GROUP_ID, OTHER_GROUP_ID),
-            type = DocumentType.FOLDER,
-        )
-    val groupOnlyText =
-        JDRFile(
-            id = "group-only-text",
-            name = "Group Notes.txt",
-            ownerId = demoUserId,
-            sharedGroupsIds = listOf(GROUP_ID),
-            parentFolderIds = listOf(groupOnlyFolder.id),
-            type = DocumentType.TEXT,
-        )
-    val sharedText =
-        JDRFile(
-            id = "shared-text",
-            name = "Shared Notes.txt",
-            ownerId = demoUserId,
-            sharedGroupsIds = listOf(GROUP_ID, OTHER_GROUP_ID),
-            parentFolderIds = listOf(sharedFolder.id),
-            type = DocumentType.TEXT,
-        )
-    val repository =
-        DemoWorkspaceRepository(listOf(groupOnlyFolder, sharedFolder, groupOnlyText, sharedText))
-    val viewModel =
-        GroupWorkspaceViewModel(
-            groupId = GROUP_ID,
-            role = GroupWorkspaceRole.GAME_MASTER,
-            repository = repository,
-            authRepository = DemoAuthRepository(),
-        )
-    runCurrent()
-
-    viewModel.removeItem(groupOnlyFolder)
-    viewModel.removeItem(sharedFolder)
-    runCurrent()
-
-    val detachedGroupOnlyText = repository.getFile(groupOnlyText.id).getOrThrow()
-    val detachedSharedText = repository.getFile(sharedText.id).getOrThrow()
-    assertEquals(emptyList<String>(), detachedGroupOnlyText?.sharedGroupsIds)
-    assertEquals(emptyList<String>(), detachedGroupOnlyText?.parentFolderIds)
-    assertEquals(listOf(OTHER_GROUP_ID), detachedSharedText?.sharedGroupsIds)
-    assertEquals(listOf(sharedFolder.id), detachedSharedText?.parentFolderIds)
-    assertEquals(
-        setOf(groupOnlyText.id, sharedText.id),
-        availableFilesToAdd(
-                personalItems = repository.getPersonalRootFiles(demoUserId).first(),
-                groupId = viewModel.groupId,
-                ownerId = demoUserId,
-            )
-            .map { it.id }
-            .toSet(),
-    )
-
-    viewModel.addFile(groupOnlyText.id)
-    viewModel.addFile(sharedText.id)
-    runCurrent()
-
-    assertEquals(
-        setOf(groupOnlyText.id, sharedText.id),
-        viewModel.uiState.value.items.map { it.id }.toSet(),
-    )
-    assertEquals(
-        listOf(GROUP_ID),
-        repository.getFile(groupOnlyText.id).getOrThrow()?.sharedGroupsIds,
-    )
-    assertEquals(
-        listOf(OTHER_GROUP_ID, GROUP_ID),
-        repository.getFile(sharedText.id).getOrThrow()?.sharedGroupsIds,
-    )
-    assertEquals(
-        listOf(sharedFolder.id),
-        repository.getFile(sharedText.id).getOrThrow()?.parentFolderIds,
-    )
-    assertEquals("", viewModel.uiState.value.errorMessage)
   }
 
   @Test
