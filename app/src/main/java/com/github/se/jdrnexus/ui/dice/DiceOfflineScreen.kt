@@ -61,7 +61,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.se.jdrnexus.R
@@ -304,6 +303,9 @@ private fun DieDisplay(uiState: DiceUiState, colors: DiceThemeColors) {
       )
     } else {
       // Sized in dp so the number always fits its face, whatever the user's font scale.
+
+      // textheight is an empirical value found by the agent to fit the number in the die and
+      // make it look nice
       val fontSize = with(LocalDensity.current) { (DIE_SIZE * face.textHeight).toSp() }
       Text(
           text = result?.rawValue?.toString() ?: "?",
@@ -571,55 +573,3 @@ private fun regularPolygon(center: Offset, radius: Float, sides: Int, startDegre
 /** Formats a modifier with an explicit sign, e.g. "+4", "-2" or "+0". */
 internal fun formatModifier(modifier: Int): String =
     if (modifier >= 0) "+$modifier" else modifier.toString()
-
-/** Does nothing; only used to render the previews below. */
-private object PreviewDiceViewModel : DiceInterfaceVM {
-  override fun selectDice(diceType: DiceType) = Unit
-
-  override fun setModifier(modifier: Int) = Unit
-
-  override fun increaseModifier(modifier: Int) = Unit
-
-  override fun rollDice() = Unit
-
-  override fun dismissError() = Unit
-}
-
-private val previewState =
-    DiceUiState(
-        selectedDice = DiceType.D20,
-        modifier = 4,
-        currentResult = DiceRollResult(DiceType.D20, rawValue = 13, modifier = 4, totalValue = 17),
-    )
-
-@Preview(name = "Dice offline · Dark", widthDp = 412, heightDp = 917)
-@Composable
-private fun DiceOfflineScreenDarkPreview() {
-  DiceOfflineScreen(uiState = previewState, diceViewModel = PreviewDiceViewModel, darkTheme = true)
-}
-
-@Preview(name = "Dice offline · Light", widthDp = 412, heightDp = 917)
-@Composable
-private fun DiceOfflineScreenLightPreview() {
-  DiceOfflineScreen(uiState = previewState, diceViewModel = PreviewDiceViewModel, darkTheme = false)
-}
-
-@Preview(name = "Dice offline · Pre-roll", widthDp = 412, heightDp = 917)
-@Composable
-private fun DiceOfflineScreenPreRollPreview() {
-  DiceOfflineScreen(
-      uiState = DiceUiState(selectedDice = DiceType.D8),
-      diceViewModel = PreviewDiceViewModel,
-      darkTheme = true,
-  )
-}
-
-@Preview(name = "Dice offline · Rolling with error", widthDp = 412, heightDp = 917)
-@Composable
-private fun DiceOfflineScreenRollingPreview() {
-  DiceOfflineScreen(
-      uiState = previewState.copy(isRolling = true, errorMessage = "Couldn't roll, please retry."),
-      diceViewModel = PreviewDiceViewModel,
-      darkTheme = false,
-  )
-}
