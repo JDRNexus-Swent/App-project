@@ -64,7 +64,7 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
   Scaffold { innerPadding ->
     NavHost(
         navController = navController,
-        // Keep this stable instead of deriving it from the current destination.
+        // Use instead of deriving it from the current destination.
         startDestination = AllRoutes.SignIn.name,
         modifier = Modifier.padding(innerPadding),
     ) {
