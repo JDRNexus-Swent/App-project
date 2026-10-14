@@ -25,7 +25,7 @@ interface DiceInterfaceVM {
    *
    * @param modifier The increase (can be positive or negative).
    */
-  fun increaseModifiyer(modifier: Int)
+  fun increaseModifier(modifier: Int)
 
   /** Initiates a dice roll. */
   fun rollDice()
