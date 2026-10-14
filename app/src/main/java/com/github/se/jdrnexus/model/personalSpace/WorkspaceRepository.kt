@@ -67,7 +67,8 @@ interface WorkspaceRepository {
    * If the item is a folder, its descendants are also removed from the group. Sharing with other
    * groups and ownership in the personal space must be preserved.
    */
-  suspend fun removeItemFromGroup(itemId: String, groupId: String): Result<Unit>  = Result.success(Unit)
+  suspend fun removeItemFromGroup(itemId: String, groupId: String): Result<Unit> =
+      Result.success(Unit)
 
   // ==========================================
   // REAL-TIME SYNCHRONIZATION (Flows)
