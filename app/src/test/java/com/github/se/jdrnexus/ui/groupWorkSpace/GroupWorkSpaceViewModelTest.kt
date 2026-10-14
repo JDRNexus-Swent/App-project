@@ -342,6 +342,7 @@ class GroupWorkSpaceViewModelTest {
     val targetFolder =
         JDRFile(
             id = "target-folder",
+            name = "Target Folder",
             type = DocumentType.FOLDER,
             sharedGroupsIds = listOf(GROUP_ID),
         )
@@ -357,8 +358,9 @@ class GroupWorkSpaceViewModelTest {
         )
     val repository = FakeWorkspaceRepository(listOf(file, targetFolder))
     val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
     viewModel.loadWorkspace("target-folder")
+    runCurrent()
+    assertEquals("Target Folder", viewModel.uiState.value.currentFolderName)
     runCurrent()
 
     viewModel.addFile(file.id)
@@ -367,7 +369,7 @@ class GroupWorkSpaceViewModelTest {
     assertEquals(
         file.copy(
             sharedGroupsIds = listOf(OTHER_GROUP_ID, GROUP_ID),
-            parentFolderIds = listOf("other-folder", "target-folder"),
+            parentFolderIds = listOf("target-folder"),
         ),
         repository.updatedFiles.single(),
     )
