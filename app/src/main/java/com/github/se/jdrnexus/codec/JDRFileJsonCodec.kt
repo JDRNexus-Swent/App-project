@@ -3,6 +3,7 @@ package com.github.se.jdrnexus.codec
 
 import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
+import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
@@ -12,7 +13,10 @@ import org.json.JSONObject
 
 /** Internal JSON mapping for the character and lore file conventions. */
 internal object JDRFileJsonCodec {
-  fun deserializeCharacter(json: String): CharacterFile {
+  fun deserializeCharacter(json: String): CharacterFile =
+      withCodecErrors(JDRFileCodecException.INVALID_FILE_MESSAGE) { deserializeCharacterJson(json) }
+
+  private fun deserializeCharacterJson(json: String): CharacterFile {
     val root = JSONObject(json)
     validateVersion(root)
     require(root.getStrictString("type") == "character") {
@@ -61,10 +65,23 @@ internal object JDRFileJsonCodec {
       }
     }
     val name = if (character.has("name")) character.getStrictString("name") else ""
-    return CharacterFile(name, stats, actions)
+    val hp =
+        if (character.has("hp")) {
+          val hpJson = character.getJSONObject("hp")
+          val current = hpJson.get("current")
+          val max = hpJson.get("max")
+          require(current is Int && max is Int) { "Health point values must be integers." }
+          CharacterHealthPoints(current, max)
+        } else {
+          CharacterHealthPoints(0, 0)
+        }
+    return CharacterFile(name, stats, actions, hp)
   }
 
-  fun deserializeLore(json: String): LoreFile {
+  fun deserializeLore(json: String): LoreFile =
+      withCodecErrors(JDRFileCodecException.INVALID_FILE_MESSAGE) { deserializeLoreJson(json) }
+
+  private fun deserializeLoreJson(json: String): LoreFile {
     val root = JSONObject(json)
     validateVersion(root)
     require(root.getStrictString("type") == "lore") { "The JSON type does not match this file." }
@@ -91,13 +108,28 @@ internal object JDRFileJsonCodec {
   }
 
   fun serializeCharacter(character: CharacterFile?): String =
-      character?.let(::characterToJson) ?: template("character")
+      withCodecErrors(JDRFileCodecException.SERIALIZATION_MESSAGE) {
+        character?.let(::characterToJson) ?: template("character")
+      }
 
-  fun serializeLore(lore: LoreFile?): String = lore?.let(::loreToJson) ?: template("lore")
+  fun serializeLore(lore: LoreFile?): String =
+      withCodecErrors(JDRFileCodecException.SERIALIZATION_MESSAGE) {
+        lore?.let(::loreToJson) ?: template("lore")
+      }
+
+  private inline fun <T> withCodecErrors(message: String, block: () -> T): T =
+      try {
+        block()
+      } catch (e: JSONException) {
+        throw JDRFileCodecException(message, e)
+      } catch (e: IllegalArgumentException) {
+        throw JDRFileCodecException(message, e)
+      }
 
   /*
   make sure the JSON use the current version
    */
+  // TODO: Add document migrations when introducing a newer schema version.
   private fun validateVersion(root: JSONObject) {
     if (root.has("version")) {
       val version = root.get("version")
@@ -148,7 +180,14 @@ internal object JDRFileJsonCodec {
         .put("type", "character")
         .put(
             "character",
-            JSONObject().put("name", character.name).put("stats", stats).put("actions", actions),
+            JSONObject()
+                .put("name", character.name)
+                .put("stats", stats)
+                .put("actions", actions)
+                .put(
+                    "hp",
+                    JSONObject().put("current", character.hp.current).put("max", character.hp.max),
+                ),
         )
         .toString()
   }

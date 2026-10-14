@@ -3,13 +3,14 @@ package com.github.se.jdrnexus.codec
 
 import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
+import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
-import org.json.JSONException
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -17,7 +18,7 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class JDRFileJsonCodecTest {
   private val characterJson =
-      """{"version":1,"type":"character","character":{"name":"Jean-claude","stats":[{"statID":"strength","name":"Strength","value":16},{"statID":"dexterity","name":"Dexterity","value":12}],"actions":[{"actionID":"sword_attack","name":"Sword Attack","description":"Attack"}]}}"""
+      """{"version":1,"type":"character","character":{"name":"Jean-claude","stats":[{"statID":"strength","name":"Strength","value":16},{"statID":"dexterity","name":"Dexterity","value":12}],"actions":[{"actionID":"sword_attack","name":"Sword Attack","description":"Attack"}],"hp":{"current":18,"max":24}}}"""
   private val loreJson =
       """{"version":1,"type":"lore","title":"The Kingdom","sections":[{"sectionID":"history","title":"History","content":"Founded long ago."},{"sectionID":"king","title":"The King","content":"Rules today."}]}"""
 
@@ -37,12 +38,13 @@ class JDRFileJsonCodecTest {
         listOf(CharacterAction("sword_attack", "Sword Attack", "Attack")),
         character.actions,
     )
+    assertEquals(CharacterHealthPoints(18, 24), character.hp)
   }
 
   @Test
   fun deserializesCharacterWithoutStatsOrActions() {
     assertEquals(
-        CharacterFile("", emptyList(), emptyList()),
+        CharacterFile("", emptyList(), emptyList(), CharacterHealthPoints(0, 0)),
         JDRFileJsonCodec.deserializeCharacter("""{"type":"character"}"""),
     )
   }
@@ -80,6 +82,8 @@ class JDRFileJsonCodecTest {
     assertEquals("strength", stat.getString("statID"))
     assertEquals("Strength", stat.getString("name"))
     assertEquals(16, stat.getInt("value"))
+    assertEquals(18, body.getJSONObject("hp").getInt("current"))
+    assertEquals(24, body.getJSONObject("hp").getInt("max"))
     assertEquals("sword_attack", action.getString("actionID"))
     assertEquals("Sword Attack", action.getString("name"))
     assertEquals("Attack", action.getString("description"))
@@ -106,13 +110,29 @@ class JDRFileJsonCodecTest {
 
   @Test
   fun serializationRoundTripsCharacterAndLoreModels() {
-    val character = JDRFileJsonCodec.deserializeCharacter(characterJson)
+    val character =
+        CharacterFile(
+            "Jean-claude",
+            listOf(
+                CharacterStat("strength", "Strength", 16.0),
+                CharacterStat("dexterity", "Dexterity", 12.0),
+            ),
+            listOf(CharacterAction("sword_attack", "Sword Attack", "Attack")),
+            CharacterHealthPoints(18, 24),
+        )
     assertEquals(
         character,
         JDRFileJsonCodec.deserializeCharacter(JDRFileJsonCodec.serializeCharacter(character)),
     )
 
-    val lore = JDRFileJsonCodec.deserializeLore(loreJson)
+    val lore =
+        LoreFile(
+            "The Kingdom",
+            listOf(
+                LoreSection("history", "History", "Founded long ago."),
+                LoreSection("king", "The King", "Rules today."),
+            ),
+        )
     assertEquals(lore, JDRFileJsonCodec.deserializeLore(JDRFileJsonCodec.serializeLore(lore)))
   }
 
@@ -129,15 +149,15 @@ class JDRFileJsonCodecTest {
 
   @Test
   fun deserializationRejectsMismatchedTypesMalformedJsonAndNonNumericValues() {
-    assertThrows(IllegalArgumentException::class.java) {
+    assertThrows(JDRFileCodecException::class.java) {
       JDRFileJsonCodec.deserializeCharacter("""{"type":"lore"}""")
     }
-    assertThrows(IllegalArgumentException::class.java) {
+    assertThrows(JDRFileCodecException::class.java) {
       JDRFileJsonCodec.deserializeLore("""{"type":"character"}""")
     }
-    assertThrows(JSONException::class.java) { JDRFileJsonCodec.deserializeCharacter("{") }
-    assertThrows(JSONException::class.java) { JDRFileJsonCodec.deserializeLore("{}") }
-    assertThrows(IllegalArgumentException::class.java) {
+    assertThrows(JDRFileCodecException::class.java) { JDRFileJsonCodec.deserializeCharacter("{") }
+    assertThrows(JDRFileCodecException::class.java) { JDRFileJsonCodec.deserializeLore("{}") }
+    assertThrows(JDRFileCodecException::class.java) {
       JDRFileJsonCodec.deserializeCharacter(
           """{"type":"character","character":{"stats":[{"statID":"str","name":"Strength","value":"strong"}]}}"""
       )
@@ -145,14 +165,25 @@ class JDRFileJsonCodecTest {
   }
 
   @Test
+  fun invalidInputUsesSafeCodecExceptionAndPreservesCause() {
+    val error =
+        assertThrows(JDRFileCodecException::class.java) {
+          JDRFileJsonCodec.deserializeCharacter("{")
+        }
+
+    assertEquals(JDRFileCodecException.INVALID_FILE_MESSAGE, error.message)
+    assertTrue(error.cause is org.json.JSONException)
+  }
+
+  @Test
   fun deserializationRejectsUnsupportedVersions() {
-    assertThrows(IllegalArgumentException::class.java) {
-      JDRFileJsonCodec.deserializeCharacter("""{"version":2,"type":"character"}""")
+    assertThrows(JDRFileCodecException::class.java) {
+      JDRFileJsonCodec.deserializeCharacter("""{"version":-1,"type":"character"}""")
     }
-    assertThrows(IllegalArgumentException::class.java) {
-      JDRFileJsonCodec.deserializeLore("""{"version":2,"type":"lore"}""")
+    assertThrows(JDRFileCodecException::class.java) {
+      JDRFileJsonCodec.deserializeLore("""{"version":-1,"type":"lore"}""")
     }
-    assertThrows(IllegalArgumentException::class.java) {
+    assertThrows(JDRFileCodecException::class.java) {
       JDRFileJsonCodec.deserializeCharacter("""{"version":"1","type":"character"}""")
     }
   }
@@ -169,45 +200,62 @@ class JDRFileJsonCodecTest {
     val blankSectionId =
         """{"type":"lore","sections":[{"sectionID":"","title":"History","content":"Text"}]}"""
 
-    assertThrows(JSONException::class.java) { JDRFileJsonCodec.deserializeCharacter(missingStatId) }
-    assertThrows(IllegalArgumentException::class.java) {
+    assertThrows(JDRFileCodecException::class.java) {
+      JDRFileJsonCodec.deserializeCharacter(missingStatId)
+    }
+    assertThrows(JDRFileCodecException::class.java) {
       JDRFileJsonCodec.deserializeCharacter(blankActionId)
     }
-    assertThrows(IllegalArgumentException::class.java) {
+    assertThrows(JDRFileCodecException::class.java) {
       JDRFileJsonCodec.deserializeCharacter(duplicateStatIds)
     }
-    assertThrows(JSONException::class.java) { JDRFileJsonCodec.deserializeLore(missingSectionId) }
-    assertThrows(IllegalArgumentException::class.java) {
+    assertThrows(JDRFileCodecException::class.java) {
+      JDRFileJsonCodec.deserializeLore(missingSectionId)
+    }
+    assertThrows(JDRFileCodecException::class.java) {
       JDRFileJsonCodec.deserializeLore(blankSectionId)
     }
   }
 
   @Test
   fun deserializationRejectsPresentFieldsWithWrongContainerTypes() {
-    assertThrows(JSONException::class.java) {
+    assertThrows(JDRFileCodecException::class.java) {
       JDRFileJsonCodec.deserializeCharacter("""{"type":"character","character":"broken"}""")
     }
-    assertThrows(JSONException::class.java) {
+    assertThrows(JDRFileCodecException::class.java) {
       JDRFileJsonCodec.deserializeCharacter(
           """{"type":"character","character":{"stats":"broken","actions":[]}}"""
       )
     }
-    assertThrows(JSONException::class.java) {
+    assertThrows(JDRFileCodecException::class.java) {
       JDRFileJsonCodec.deserializeCharacter(
           """{"type":"character","character":{"stats":[],"actions":{}}}"""
       )
     }
-    assertThrows(JSONException::class.java) {
+    assertThrows(JDRFileCodecException::class.java) {
       JDRFileJsonCodec.deserializeLore("""{"type":"lore","sections":"broken"}""")
     }
   }
 
   @Test
+  fun healthPointsMustBeJsonIntegers() {
+    listOf(
+            """{"type":"character","character":{"hp":{"current":1.5,"max":10}}}""",
+            """{"type":"character","character":{"hp":{"current":"1","max":10}}}""",
+        )
+        .forEach { json ->
+          assertThrows(JDRFileCodecException::class.java) {
+            JDRFileJsonCodec.deserializeCharacter(json)
+          }
+        }
+  }
+
+  @Test
   fun deserializationRejectsPresentNamesAndTitlesWithWrongTypes() {
-    assertThrows(JSONException::class.java) {
+    assertThrows(JDRFileCodecException::class.java) {
       JDRFileJsonCodec.deserializeCharacter("""{"type":"character","character":{"name":7}}""")
     }
-    assertThrows(JSONException::class.java) {
+    assertThrows(JDRFileCodecException::class.java) {
       JDRFileJsonCodec.deserializeLore("""{"type":"lore","title":{}}""")
     }
   }
@@ -223,7 +271,9 @@ class JDRFileJsonCodecTest {
             """{"type":"character","character":{"actions":[{"actionID":"act","name":"Act","description":false}]}}""",
         )
     invalidCharacterJson.forEach { json ->
-      assertThrows(JSONException::class.java) { JDRFileJsonCodec.deserializeCharacter(json) }
+      assertThrows(JDRFileCodecException::class.java) {
+        JDRFileJsonCodec.deserializeCharacter(json)
+      }
     }
 
     val invalidLoreJson =
@@ -234,32 +284,46 @@ class JDRFileJsonCodecTest {
             """{"type":"lore","sections":[{"sectionID":"history","title":"History","content":{}}]}""",
         )
     invalidLoreJson.forEach { json ->
-      assertThrows(JSONException::class.java) { JDRFileJsonCodec.deserializeLore(json) }
+      assertThrows(JDRFileCodecException::class.java) { JDRFileJsonCodec.deserializeLore(json) }
     }
   }
 
   @Test
   fun serializationRejectsInvalidIdentifiersAndStatValues() {
-    assertThrows(IllegalArgumentException::class.java) {
+    val error =
+        assertThrows(JDRFileCodecException::class.java) {
+          JDRFileJsonCodec.serializeCharacter(
+              CharacterFile(
+                  "",
+                  listOf(CharacterStat("", "Power", 1.0)),
+                  emptyList(),
+                  CharacterHealthPoints(0, 0),
+              )
+          )
+        }
+    assertEquals(JDRFileCodecException.SERIALIZATION_MESSAGE, error.message)
+    assertTrue(error.cause is IllegalArgumentException)
+    assertThrows(JDRFileCodecException::class.java) {
       JDRFileJsonCodec.serializeCharacter(
-          CharacterFile("", listOf(CharacterStat("", "Power", 1.0)), emptyList())
+          CharacterFile(
+              "",
+              listOf(CharacterStat("luck", "Luck", Double.NaN)),
+              emptyList(),
+              CharacterHealthPoints(0, 0),
+          )
       )
     }
-    assertThrows(IllegalArgumentException::class.java) {
-      JDRFileJsonCodec.serializeCharacter(
-          CharacterFile("", listOf(CharacterStat("luck", "Luck", Double.NaN)), emptyList())
-      )
-    }
-    assertThrows(IllegalArgumentException::class.java) {
+    assertThrows(JDRFileCodecException::class.java) {
       JDRFileJsonCodec.serializeCharacter(
           CharacterFile(
               "",
               emptyList(),
               listOf(CharacterAction("", "Act", "Text")),
+              CharacterHealthPoints(0, 0),
           )
       )
     }
-    assertThrows(IllegalArgumentException::class.java) {
+    assertThrows(JDRFileCodecException::class.java) {
       JDRFileJsonCodec.serializeLore(
           LoreFile(
               "",
