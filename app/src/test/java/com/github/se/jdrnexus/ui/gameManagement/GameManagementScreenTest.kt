@@ -131,3 +131,4 @@ class GameManagementScreenTest {
           loadState = if (groups.isEmpty()) GroupLoadState.Empty else GroupLoadState.Success,
       )
 }
+
