@@ -36,13 +36,14 @@ data class GroupWorkspaceUiState(
     val canCreateFolder: Boolean = false,
     val canAddFile: Boolean = false,
     val canEditItems: Boolean = false,
+    val currentFolderName: String = "",
 )
 
 class GroupWorkspaceViewModel(
-    private val groupId: String,
-    private val role: GroupWorkspaceRole,
-    private val repository: WorkspaceRepository = WorkspaceRepositoryProvider.repository,
-    private val authRepository: AuthRepository = AuthRepositoryFirebase(),
+     val groupId: String,
+    val role: GroupWorkspaceRole,
+    val repository: WorkspaceRepository = WorkspaceRepositoryProvider.repository,
+    val authRepository: AuthRepository = AuthRepositoryFirebase(),
 ) : ViewModel() {
 
   private val _uiState =
@@ -128,6 +129,7 @@ class GroupWorkspaceViewModel(
     val requestGeneration = ++fetchGeneration
     fetchJob?.cancel()
 
+
     _uiState.update {
       it.copy(
           currentFolderId = folderId,
@@ -144,6 +146,17 @@ class GroupWorkspaceViewModel(
                 ?: throw IllegalStateException("You must be signed in.")
 
         _uiState.update { it.copy(currentUserId = uid) }
+          val folderName =
+              if (folderId.isEmpty()) {
+                  ""
+              } else {
+                  repository.getFile(folderId).getOrThrow()?.name
+                      ?: throw IllegalStateException("Folder not found.")
+              }
+
+          _uiState.update {
+              it.copy(currentFolderName = folderName)
+          }
         val source =
             if (folderId.isEmpty()) {
               repository.getGroupRootFiles(groupId)
@@ -183,20 +196,23 @@ class GroupWorkspaceViewModel(
   }
 
   /** Creates a folder in the currently displayed folder. Only the GameMaster may create folders. */
-  fun createFolder(name: String) {
+  fun createFolder(name: String): Job? {
     val folderName = name.trim()
+      if (folderName.isEmpty()) {
+          showError("Folder name cannot be empty.")
+          return null
+      }
 
-    if (folderName.isEmpty()) {
-      showError("Folder name cannot be empty.")
-      return
-    }
+
 
     val parentId = _uiState.value.currentFolderId
-    viewModelScope.launch {
+    return viewModelScope.launch {
+
       performOperation {
         requireGameMaster()
         if (parentId.isNotEmpty()) requireAccessibleFolder(parentId)
         val uid = requireUid()
+
 
         val folder =
             JDRFile(
@@ -221,14 +237,14 @@ class GroupWorkspaceViewModel(
    * The document itself is not duplicated. Its group-sharing and folder references are updated
    * instead.
    */
-  fun addFile(fileId: String) {
+  fun addFile(fileId: String) : Job? {
     if (fileId.isBlank()) {
       showError("File ID cannot be empty.")
-      return
+      return null
     }
 
-    val parentId = _uiState.value.currentFolderId
-    viewModelScope.launch {
+     val parentId = _uiState.value.currentFolderId
+     return viewModelScope.launch {
       performOperation {
         val uid = requireUid()
         if (parentId.isNotEmpty()) requireAccessibleFolder(parentId)
@@ -246,9 +262,9 @@ class GroupWorkspaceViewModel(
                 sharedGroupsIds = (file.sharedGroupsIds + groupId).distinct(),
                 parentFolderIds =
                     if (parentId.isEmpty()) {
-                      file.parentFolderIds
+                      emptyList()
                     } else {
-                      (file.parentFolderIds + parentId).distinct()
+                      listOf(parentId)
                     },
             )
 
@@ -263,10 +279,10 @@ class GroupWorkspaceViewModel(
    * Removing a reference does not permanently delete the underlying document, which may also be
    * used elsewhere.
    */
-  fun removeItem(item: JDRFile) {
+  fun removeItem(item: JDRFile): Job {
     val parentId = _uiState.value.currentFolderId
 
-    viewModelScope.launch {
+    return viewModelScope.launch {
       performOperation {
         val uid = requireUid()
 
@@ -287,14 +303,19 @@ class GroupWorkspaceViewModel(
                 groupId = groupId,
             )
             .getOrThrow()
+          if (existing.type == DocumentType.FOLDER &&
+              _uiState.value.currentFolderId == existing.id
+          ) {
+              loadWorkspace("")
+          }
       }
     }
   }
 
   /** Edits an item's name/content while preserving its ownership and workspace references. */
-  fun editItem(updatedItem: JDRFile) {
+  fun editItem(updatedItem: JDRFile): Job {
     val folderId = _uiState.value.currentFolderId
-    viewModelScope.launch {
+    return viewModelScope.launch {
       performOperation {
         val uid = requireUid()
         val existing =
