@@ -234,7 +234,3 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
 }
 
 tasks.named("sonar") { dependsOn("createDebugUnitTestCoverageReport") }
-
-// Instrumented tests (src/androidTest) need a device, so check cannot run them; it compiles them
-// instead so that a broken test fails check rather than only the emulator step in CI.
-tasks.named("check") { dependsOn("compileDebugAndroidTestKotlin") }
