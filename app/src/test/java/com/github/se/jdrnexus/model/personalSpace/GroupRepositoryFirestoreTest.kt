@@ -483,4 +483,85 @@ class GroupRepositoryFirestoreTest {
       assertTrue(e.message?.contains("Simulated Permission Denied") == true)
     }
   }
+
+  /**
+   * Tests the reactivity of the user groups list. If a user is added to or removed from a campaign
+   * group dynamically, the flow should instantly emit the updated list.
+   */
+  @Test
+  fun testGetUserGroups_MembershipUpdates() = runBlocking {
+    val userId = "dynamic_user"
+    val group1 =
+        CampaignGroup(
+            id = UUID.randomUUID().toString(),
+            name = "Initial Campaign",
+            participantIds = listOf(userId),
+        )
+    repository.createGroup(group1)
+
+    val group2Id = UUID.randomUUID().toString()
+    val group2 =
+        CampaignGroup(
+            id = group2Id,
+            name = "Secret Campaign",
+            participantIds = listOf("game_master_only"),
+        )
+    repository.createGroup(group2)
+
+    val latestList = AtomicReference(emptyList<CampaignGroup>())
+    val hasEmitted = AtomicBoolean(false)
+
+    // 2. Start collecting the flow in a background job
+    val job =
+        launch(Dispatchers.Default) {
+          repository.getUserGroups(userId).collect {
+            latestList.set(it)
+            hasEmitted.set(true)
+          }
+        }
+
+    // Wait for the initial emission (User should only see group1)
+    var startTime = System.currentTimeMillis()
+    while (
+        (!hasEmitted.get() || latestList.get().size != 1) &&
+            System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS
+    ) {
+      shadowOf(Looper.getMainLooper()).idle()
+      delay(50)
+    }
+    assertEquals("List should initially contain 1 group", 1, latestList.get().size)
+    assertEquals("The group should be group1", group1.id, latestList.get().first().id)
+
+    // 3. Action: Add the user to the second group
+    repository.addUserToGroup(group2Id, userId)
+
+    // Wait for the flow to react and emit the new list of size 2
+    startTime = System.currentTimeMillis()
+    while (
+        latestList.get().size != 2 && System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS
+    ) {
+      shadowOf(Looper.getMainLooper()).idle()
+      delay(50)
+    }
+    assertEquals("List should update to contain 2 groups", 2, latestList.get().size)
+    assertTrue("Group 2 should now be present", latestList.get().any { it.id == group2Id })
+
+    // 4. Action: Remove the user from the first group
+    repository.removeUserFromGroup(group1.id, userId)
+
+    // Wait for the flow to react and emit the list of size 1 (only group2 remaining)
+    startTime = System.currentTimeMillis()
+    while (
+        (latestList.get().size != 1 || latestList.get().first().id != group2Id) &&
+            System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS
+    ) {
+      shadowOf(Looper.getMainLooper()).idle()
+      delay(50)
+    }
+    assertEquals("List should drop to 1 group after removal", 1, latestList.get().size)
+    assertEquals("The remaining group should be group2", group2Id, latestList.get().first().id)
+
+    // Cleanup
+    job.cancel()
+  }
 }
