@@ -1,3 +1,4 @@
+# Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 name: Android CI
 
 on:
@@ -62,6 +63,23 @@ jobs:
 
       - name: Run checks and tests with Firebase Emulator
         run: firebase emulators:exec --config firebase.test.json --only auth,firestore './gradlew check' --project demo-jdrnexus
+
+      # Instrumented tests (app/src/androidTest) need an Android emulator, which needs KVM.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # Runs the instrumented tests and writes their JUnit results and JaCoCo XML report under
+      # app/build/, where the Sonar scan below reads them.
+      - name: Run instrumented tests with coverage
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          script: ./gradlew createDebugAndroidTestCoverageReport
 
       - name: Cache Sonar packages
         uses: actions/cache@v4
