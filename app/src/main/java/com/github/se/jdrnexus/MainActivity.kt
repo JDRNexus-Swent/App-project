@@ -26,6 +26,7 @@ import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.authentication.SignInScreen
 import com.github.se.jdrnexus.ui.authentication.SignUpScreen
 import com.github.se.jdrnexus.ui.edition.EditFileCharacter
+import com.github.se.jdrnexus.ui.edition.EditFileLore
 import com.github.se.jdrnexus.ui.home.HomeScreen
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
@@ -167,6 +168,13 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
             onBack = { navController.popBackStack() },
             onSaved = { navController.popBackStack() },
         )
+      }
+
+      composable(route = AllRoutes.EditLore.name) {
+          EditFileLore(viewModel = editFileViewModel,
+              onBack = { navController.popBackStack() },
+              onSaved = { navController.popBackStack() },
+          )
       }
     }
   }
