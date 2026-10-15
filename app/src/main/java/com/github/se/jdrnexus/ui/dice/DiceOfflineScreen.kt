@@ -8,10 +8,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,6 +32,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,7 +48,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -61,11 +66,15 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
+import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -91,43 +100,28 @@ private data class DiceThemeColors(
     val errorText: Color,
 )
 
-private val darkDiceTheme =
-    DiceThemeColors(
-        backgroundColor = Color(0xFF0F0B09),
-        cardColor = Color(0xFF1E1714),
-        cardBorder = Color(0xFF5A4630),
-        panelColor = Color(0xFF241C18),
-        panelBorder = Color(0xFF4A3B2E),
-        primaryText = Color(0xFFF2EEE9),
-        secondaryText = Color(0xFFA99A8A),
-        accentColor = Color(0xFFD4B95D),
-        dieText = Color(0xFFD4B95D),
-        selectedDiceBackground = Color(0xFF3A2E22),
-        rollGradient = listOf(Color(0xFFF0D77A), Color(0xFFC9A63E)),
-        rollBorder = Color(0xFFF5E3A0),
-        rollText = Color(0xFF2E2520),
-        errorBackground = Color(0xFF4A1F1A),
-        errorText = Color(0xFFF5C9C0),
-    )
-
-private val lightDiceTheme =
-    DiceThemeColors(
-        backgroundColor = Color(0xFFE9DFD6),
-        cardColor = Color(0xFFF2E6DA),
-        cardBorder = Color(0xFFDCCBBB),
-        panelColor = Color(0xFFEFE2D6),
-        panelBorder = Color(0xFFD6C4B3),
-        primaryText = Color(0xFF2E2520),
-        secondaryText = Color(0xFF8E7A68),
-        accentColor = Color(0xFF6F5138),
-        dieText = Color(0xFFD4B95D),
-        selectedDiceBackground = Color(0xFFE2D0BE),
-        rollGradient = listOf(Color(0xFF5A3E26), Color(0xFFA77A3A)),
-        rollBorder = Color(0xFFD4B95D),
-        rollText = Color(0xFFF7EDE4),
-        errorBackground = Color(0xFFF6D9D3),
-        errorText = Color(0xFF7A2318),
-    )
+/** Maps the roles used by this screen onto the app's [MaterialTheme] color scheme. */
+@Composable
+private fun diceThemeColors(): DiceThemeColors {
+  val scheme = MaterialTheme.colorScheme
+  return DiceThemeColors(
+      backgroundColor = scheme.background,
+      cardColor = scheme.surface,
+      cardBorder = scheme.onBackground,
+      panelColor = scheme.background,
+      panelBorder = scheme.onBackground,
+      primaryText = scheme.onSecondary,
+      secondaryText = scheme.tertiary,
+      accentColor = scheme.primary,
+      dieText = scheme.secondary,
+      selectedDiceBackground = scheme.primary.copy(alpha = 0.15f),
+      rollGradient = listOf(scheme.primary, lerp(scheme.primary, scheme.secondary, 0.5f)),
+      rollBorder = scheme.secondary,
+      rollText = scheme.onPrimary,
+      errorBackground = scheme.errorContainer,
+      errorText = scheme.onErrorContainer,
+  )
+}
 
 /**
  * Offline dice roller: lets the user pick a die, adjust the modifier and roll, without saving the
@@ -137,63 +131,146 @@ private val lightDiceTheme =
  * @param uiState The current dice state exposed by the ViewModel.
  * @param diceViewModel The ViewModel handling dice selection, modifiers and rolls.
  * @param onClose Called when the user closes the dice roller.
- * @param darkTheme Whether to use the dark palette; follows the system setting by default.
  */
 @Composable
 fun DiceOfflineScreen(
     uiState: DiceUiState,
     diceViewModel: DiceInterfaceVM,
     onClose: () -> Unit = {},
-    darkTheme: Boolean = isSystemInDarkTheme(),
 ) {
-  val colors = if (darkTheme) darkDiceTheme else lightDiceTheme
+  val colors = diceThemeColors()
   val controlsEnabled = !uiState.isRolling
 
-  Box(
+  BoxWithConstraints(
       modifier =
           Modifier.fillMaxSize()
               .background(colors.backgroundColor)
-              .padding(horizontal = 16.dp, vertical = 24.dp)
               .testTag(C.Tag.dice_offline_screen),
   ) {
+    val dimens = DiceDimens(screenHeight = maxHeight)
     Surface(
-        modifier = Modifier.fillMaxSize(),
+        modifier =
+            Modifier.fillMaxSize()
+                .padding(horizontal = dimens.scaled(16.dp), vertical = dimens.scaled(24.dp)),
         shape = RoundedCornerShape(24.dp),
         color = colors.cardColor,
         border = BorderStroke(1.dp, colors.cardBorder),
     ) {
-      Column(
-          modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-          horizontalAlignment = Alignment.CenterHorizontally,
-      ) {
-        DiceHeader(uiState = uiState, colors = colors, onClose = onClose)
+      BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val contentPadding = dimens.scaled(16.dp)
+        DieFillingColumn(
+            viewportHeight = maxHeight - contentPadding * 2,
+            modifier =
+                Modifier.fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(contentPadding),
+            top = {
+              DiceHeader(uiState = uiState, colors = colors, onClose = onClose)
+              Spacer(Modifier.height(dimens.scaled(16.dp)))
+            },
+            die = { DieImage(uiState = uiState, colors = colors) },
+        ) {
+          DieResultText(uiState = uiState, colors = colors)
 
-        Spacer(Modifier.height(16.dp))
-        DieDisplay(uiState = uiState, colors = colors)
+          Spacer(Modifier.height(dimens.scaled(24.dp)))
+          ModifierControls(
+              modifier = uiState.modifier,
+              enabled = controlsEnabled,
+              colors = colors,
+              onChange = diceViewModel::increaseModifier,
+          )
 
-        Spacer(Modifier.height(24.dp))
-        ModifierControls(
-            modifier = uiState.modifier,
-            enabled = controlsEnabled,
-            colors = colors,
-            onChange = diceViewModel::increaseModifier,
-        )
+          Spacer(Modifier.height(dimens.scaled(20.dp)))
+          DiceSelector(
+              selected = uiState.selectedDice,
+              enabled = controlsEnabled,
+              colors = colors,
+              dimens = dimens,
+              onSelect = diceViewModel::selectDice,
+          )
 
-        Spacer(Modifier.height(20.dp))
-        DiceSelector(
-            selected = uiState.selectedDice,
-            enabled = controlsEnabled,
-            colors = colors,
-            onSelect = diceViewModel::selectDice,
-        )
+          uiState.errorMessage?.let { message ->
+            Spacer(Modifier.height(dimens.scaled(16.dp)))
+            ErrorBanner(message = message, colors = colors, onDismiss = diceViewModel::dismissError)
+          }
 
-        uiState.errorMessage?.let { message ->
-          Spacer(Modifier.height(16.dp))
-          ErrorBanner(message = message, colors = colors, onDismiss = diceViewModel::dismissError)
+          Spacer(Modifier.height(dimens.scaled(20.dp)))
+          RollButton(
+              enabled = controlsEnabled,
+              colors = colors,
+              dimens = dimens,
+              onClick = diceViewModel::rollDice,
+          )
         }
+      }
+    }
+  }
+}
 
-        Spacer(Modifier.height(20.dp))
-        RollButton(enabled = controlsEnabled, colors = colors, onClick = diceViewModel::rollDice)
+/** Height of the phone the screen was designed on; its spacing is defined for this height. */
+private val REFERENCE_SCREEN_HEIGHT = 917.dp
+
+/** Smallest fraction of the designed spacing kept on short screens. */
+private const val MIN_SCALE = 0.5f
+
+/** Material's minimum size for anything the user taps. */
+private val MIN_TOUCH_TARGET = 48.dp
+
+/**
+ * Spacing of the dice screen, scaled from the reference design to the [screenHeight] so short
+ * phones keep every control on screen. Text stays in sp so it follows the user's font size, and
+ * touch targets never shrink below [MIN_TOUCH_TARGET].
+ */
+private class DiceDimens(screenHeight: Dp) {
+  private val scale = (screenHeight / REFERENCE_SCREEN_HEIGHT).coerceIn(MIN_SCALE, 1f)
+
+  /** [designed] spacing as it should be on this screen. */
+  fun scaled(designed: Dp): Dp = designed * scale
+
+  /** [designed] size of a tappable element, never below [MIN_TOUCH_TARGET]. */
+  fun touchTarget(designed: Dp): Dp = scaled(designed).coerceAtLeast(MIN_TOUCH_TARGET)
+}
+
+/**
+ * Stacks [top], the die and [bottom] vertically, all centered horizontally. The die gets whatever
+ * height the [viewportHeight] has left once [top] and [bottom] are laid out, so the controls stay
+ * on screen on short phones. It never gets narrower than [MIN_DIE_HEIGHT_FRACTION] of the viewport
+ * nor wider than [MAX_DIE_WIDTH_FRACTION] of the screen; if the controls still do not fit, the
+ * caller's scroll takes over.
+ */
+@Composable
+private fun DieFillingColumn(
+    viewportHeight: Dp,
+    modifier: Modifier = Modifier,
+    top: @Composable ColumnScope.() -> Unit,
+    die: @Composable () -> Unit,
+    bottom: @Composable ColumnScope.() -> Unit,
+) {
+  Layout(
+      content = {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, content = top)
+        Box { die() }
+        Column(horizontalAlignment = Alignment.CenterHorizontally, content = bottom)
+      },
+      modifier = modifier,
+  ) { measurables, constraints ->
+    val width = constraints.maxWidth
+    val loose = Constraints(maxWidth = width)
+    val topPlaceable = measurables[0].measure(loose)
+    val bottomPlaceable = measurables[2].measure(loose)
+    val viewport = viewportHeight.roundToPx()
+    val maxDieSize = (width * MAX_DIE_WIDTH_FRACTION).roundToInt()
+    val minDieSize = min((viewport * MIN_DIE_HEIGHT_FRACTION).roundToInt(), maxDieSize)
+    val dieSize =
+        (viewport - topPlaceable.height - bottomPlaceable.height).coerceIn(minDieSize, maxDieSize)
+    val diePlaceable = measurables[1].measure(Constraints.fixed(dieSize, dieSize))
+
+    val height = topPlaceable.height + dieSize + bottomPlaceable.height
+    layout(width, height) {
+      var y = 0
+      listOf(topPlaceable, diePlaceable, bottomPlaceable).forEach {
+        it.place((width - it.width) / 2, y)
+        y += it.height
       }
     }
   }
@@ -249,14 +326,18 @@ private fun DiceHeader(uiState: DiceUiState, colors: DiceThemeColors, onClose: (
   }
 }
 
-private val DIE_SIZE = 270.dp
+/** The die never takes more than this fraction of the content width. */
+private const val MAX_DIE_WIDTH_FRACTION = 0.78f
+
+/** The die never shrinks below this fraction of the viewport height. */
+private const val MIN_DIE_HEIGHT_FRACTION = 0.15f
 
 /**
  * Where the blank front face sits in a die image, as fractions of the image size, and how tall the
  * number engraved on it should be.
  */
 private data class DieFace(
-    @DrawableRes val image: Int,
+    @param:DrawableRes val image: Int,
     val centerX: Float,
     val centerY: Float,
     val textHeight: Float,
@@ -272,18 +353,23 @@ private fun dieFace(diceType: DiceType): DieFace =
       DiceType.D20 -> DieFace(R.drawable.dice_d20, 0.50f, 0.50f, 0.18f)
     }
 
+/** Result of the current roll if it was made with the selected die, null otherwise. */
+private fun DiceUiState.displayedResult(): DiceRollResult? = currentResult?.takeIf {
+  it.diceType == selectedDice
+}
+
 /**
- * Big die image with the raw roll engraved on its front face ("?" before the first roll, or a
- * loading indicator while rolling), followed by the computation including the modifier.
+ * Big die image, filling the size it is given, with the raw roll engraved on its front face ("?"
+ * before the first roll, or a loading indicator while rolling).
  */
 @Composable
-private fun DieDisplay(uiState: DiceUiState, colors: DiceThemeColors) {
-  val result = uiState.currentResult?.takeIf { it.diceType == uiState.selectedDice }
+private fun DieImage(uiState: DiceUiState, colors: DiceThemeColors) {
+  val result = uiState.displayedResult()
   val face = dieFace(uiState.selectedDice)
 
-  Box(
+  BoxWithConstraints(
       modifier =
-          Modifier.size(DIE_SIZE).testTag(C.Tag.dice_offline_die).semantics {
+          Modifier.fillMaxSize().testTag(C.Tag.dice_offline_die).semantics {
             contentDescription = "${uiState.selectedDice.name} die"
           },
   ) {
@@ -306,7 +392,7 @@ private fun DieDisplay(uiState: DiceUiState, colors: DiceThemeColors) {
 
       // textheight is an empirical value found by the agent to fit the number in the die and
       // make it look nice
-      val fontSize = with(LocalDensity.current) { (DIE_SIZE * face.textHeight).toSp() }
+      val fontSize = with(LocalDensity.current) { (maxWidth * face.textHeight).toSp() }
       Text(
           text = result?.rawValue?.toString() ?: "?",
           style =
@@ -322,6 +408,12 @@ private fun DieDisplay(uiState: DiceUiState, colors: DiceThemeColors) {
       )
     }
   }
+}
+
+/** The computation of the current roll including the modifier, or a hint before the first roll. */
+@Composable
+private fun DieResultText(uiState: DiceUiState, colors: DiceThemeColors) {
+  val result = uiState.displayedResult()
 
   Spacer(Modifier.height(8.dp))
   Text(
@@ -422,54 +514,83 @@ private fun SquareIconButton(
   }
 }
 
-/** One selection button per [DiceType]; the selected one is highlighted. */
+/**
+ * Below this width, the six dice buttons no longer fit on one row and wrap into two rows of three.
+ */
+private val MIN_ONE_ROW_TILE_WIDTH = 64.dp
+
+/** Size of a die outline relative to its button width. */
+private const val DICE_ICON_WIDTH_FRACTION = 0.4f
+
+/** Largest die outline, so the buttons do not grow huge on tablets. */
+private val MAX_DICE_ICON_SIZE = 32.dp
+
+/**
+ * One selection button per [DiceType]; the selected one is highlighted. The buttons share the
+ * available width evenly, on one row when it is wide enough and on two rows of three otherwise.
+ */
 @Composable
 private fun DiceSelector(
     selected: DiceType,
     enabled: Boolean,
     colors: DiceThemeColors,
+    dimens: DiceDimens,
     onSelect: (DiceType) -> Unit,
 ) {
-  Row(
-      modifier =
-          Modifier.fillMaxWidth()
-              .clip(RoundedCornerShape(12.dp))
-              .background(colors.panelColor)
-              .border(1.dp, colors.panelBorder, RoundedCornerShape(12.dp))
-              .padding(6.dp),
-  ) {
-    DiceType.entries.forEach { type ->
-      val isSelected = type == selected
-      Column(
-          horizontalAlignment = Alignment.CenterHorizontally,
-          modifier =
-              Modifier.weight(1f)
-                  .clip(RoundedCornerShape(8.dp))
-                  .then(
-                      if (isSelected)
-                          Modifier.background(colors.selectedDiceBackground)
-                              .border(1.dp, colors.accentColor, RoundedCornerShape(8.dp))
-                      else Modifier
-                  )
-                  .clickable(enabled = enabled, role = Role.Tab) { onSelect(type) }
-                  .semantics { this.selected = isSelected }
-                  .padding(vertical = 8.dp)
-                  .testTag(C.Tag.diceOfflineSelect(type.name)),
-      ) {
-        DiceShape(
-            diceType = type,
-            fill = Color.Transparent,
-            outline = if (isSelected) colors.accentColor else colors.secondaryText,
-            strokeWidth = 2f,
-            modifier = Modifier.size(26.dp),
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = type.name,
-            color = if (isSelected) colors.accentColor else colors.primaryText,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-            fontSize = 12.sp,
-        )
+  val padding = dimens.scaled(8.dp)
+  val gap = dimens.scaled(8.dp)
+  BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+    val rowWidth = maxWidth - padding * 2
+    val diceCount = DiceType.entries.size
+    val oneRowTileWidth = (rowWidth - gap * (diceCount - 1)) / diceCount
+    val perRow = if (oneRowTileWidth >= MIN_ONE_ROW_TILE_WIDTH) diceCount else diceCount / 2
+    val tileWidth = (rowWidth - gap * (perRow - 1)) / perRow
+    val iconSize = (tileWidth * DICE_ICON_WIDTH_FRACTION).coerceAtMost(MAX_DICE_ICON_SIZE)
+
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(gap),
+        maxItemsInEachRow = perRow,
+        modifier =
+            Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.panelColor)
+                .border(1.dp, colors.panelBorder, RoundedCornerShape(12.dp))
+                .padding(padding),
+    ) {
+      DiceType.entries.forEach { type ->
+        val isSelected = type == selected
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier =
+                Modifier.width(tileWidth)
+                    .clip(RoundedCornerShape(8.dp))
+                    .then(
+                        if (isSelected)
+                            Modifier.background(colors.selectedDiceBackground)
+                                .border(1.dp, colors.accentColor, RoundedCornerShape(8.dp))
+                        else Modifier
+                    )
+                    .clickable(enabled = enabled, role = Role.Tab) { onSelect(type) }
+                    .semantics { this.selected = isSelected }
+                    .padding(vertical = dimens.scaled(10.dp))
+                    .testTag(C.Tag.diceOfflineSelect(type.name)),
+        ) {
+          DiceShape(
+              diceType = type,
+              fill = Color.Transparent,
+              outline = if (isSelected) colors.accentColor else colors.secondaryText,
+              strokeWidth = 2f,
+              modifier = Modifier.size(iconSize),
+          )
+          Spacer(Modifier.height(dimens.scaled(4.dp)))
+          Text(
+              text = type.name,
+              color = if (isSelected) colors.accentColor else colors.primaryText,
+              fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+              fontSize = 12.sp,
+          )
+        }
       }
     }
   }
@@ -494,7 +615,12 @@ private fun ErrorBanner(message: String, colors: DiceThemeColors, onDismiss: () 
 }
 
 @Composable
-private fun RollButton(enabled: Boolean, colors: DiceThemeColors, onClick: () -> Unit) {
+private fun RollButton(
+    enabled: Boolean,
+    colors: DiceThemeColors,
+    dimens: DiceDimens,
+    onClick: () -> Unit,
+) {
   Surface(
       onClick = onClick,
       enabled = enabled,
@@ -503,7 +629,7 @@ private fun RollButton(enabled: Boolean, colors: DiceThemeColors, onClick: () ->
       border = BorderStroke(1.dp, colors.rollBorder),
       modifier =
           Modifier.fillMaxWidth()
-              .height(58.dp)
+              .height(dimens.touchTarget(58.dp))
               .testTag(C.Tag.dice_offline_roll)
               .alpha(if (enabled) 1f else 0.6f),
   ) {
@@ -573,3 +699,71 @@ private fun regularPolygon(center: Offset, radius: Float, sides: Int, startDegre
 /** Formats a modifier with an explicit sign, e.g. "+4", "-2" or "+0". */
 internal fun formatModifier(modifier: Int): String =
     if (modifier >= 0) "+$modifier" else modifier.toString()
+
+/** No-op ViewModel so the previews can render without real dice logic. */
+private object PreviewDiceViewModel : DiceInterfaceVM {
+  override fun selectDice(diceType: DiceType) = Unit
+
+  override fun setModifier(modifier: Int) = Unit
+
+  override fun increaseModifier(modifier: Int) = Unit
+
+  override fun rollDice() = Unit
+
+  override fun dismissError() = Unit
+}
+
+/** Preview state for [diceType] showing a roll of [rawValue] with a +4 modifier. */
+private fun previewState(diceType: DiceType, rawValue: Int) =
+    DiceUiState(
+        selectedDice = diceType,
+        modifier = 4,
+        currentResult =
+            DiceRollResult(diceType, rawValue = rawValue, modifier = 4, totalValue = rawValue + 4),
+    )
+
+@Preview(name = "Dice offline · Dark · D4", widthDp = 412, heightDp = 917)
+@Composable
+private fun DiceOfflineScreenDarkPreview() {
+  SampleAppTheme(darkTheme = true) {
+    DiceOfflineScreen(
+        uiState = previewState(DiceType.D4, rawValue = 3),
+        diceViewModel = PreviewDiceViewModel,
+    )
+  }
+}
+
+@Preview(name = "Dice offline · Light · D6", widthDp = 412, heightDp = 917)
+@Composable
+private fun DiceOfflineScreenLightPreview() {
+  SampleAppTheme(darkTheme = false) {
+    DiceOfflineScreen(
+        uiState = previewState(DiceType.D6, rawValue = 5),
+        diceViewModel = PreviewDiceViewModel,
+    )
+  }
+}
+
+@Preview(name = "Dice offline · Small phone · D10", widthDp = 320, heightDp = 640)
+@Composable
+private fun DiceOfflineScreenSmallPhonePreview() {
+  SampleAppTheme(darkTheme = true) {
+    DiceOfflineScreen(
+        uiState = DiceUiState(selectedDice = DiceType.D10),
+        diceViewModel = PreviewDiceViewModel,
+    )
+  }
+}
+
+@Preview(name = "Dice offline · Rolling with error · D12", widthDp = 412, heightDp = 917)
+@Composable
+private fun DiceOfflineScreenRollingPreview() {
+  SampleAppTheme(darkTheme = false) {
+    DiceOfflineScreen(
+        uiState =
+            previewState(DiceType.D12, rawValue = 9)
+                .copy(isRolling = true, errorMessage = "Couldn't roll, please retry."),
+        diceViewModel = PreviewDiceViewModel,
+    )
+  }
+}

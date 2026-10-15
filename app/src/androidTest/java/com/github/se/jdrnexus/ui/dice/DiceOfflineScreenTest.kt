@@ -1,20 +1,27 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.dice
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -72,12 +79,9 @@ class DiceOfflineScreenTest {
   ) {
     composeTestRule.setContent {
       val uiState by vm.state.collectAsState()
-      DiceOfflineScreen(
-          uiState = uiState,
-          diceViewModel = vm,
-          onClose = onClose,
-          darkTheme = darkTheme,
-      )
+      SampleAppTheme(darkTheme = darkTheme) {
+        DiceOfflineScreen(uiState = uiState, diceViewModel = vm, onClose = onClose)
+      }
     }
   }
 
@@ -234,9 +238,23 @@ class DiceOfflineScreenTest {
   }
 
   @Test
-  fun formatModifierAddsExplicitSign() {
-    assertEquals("+0", formatModifier(0))
-    assertEquals("+4", formatModifier(4))
-    assertEquals("-3", formatModifier(-3))
+  fun smallPhoneShrinksTheDieSoTheDiceSelectorFitsOnScreen() {
+    val screenHeight = 640.dp
+    composeTestRule.setContent {
+      SampleAppTheme {
+        Box(Modifier.size(width = 320.dp, height = screenHeight)) {
+          DiceOfflineScreen(uiState = DiceUiState(), diceViewModel = FakeDiceViewModel())
+        }
+      }
+    }
+
+    val dieHeight = node(C.Tag.dice_offline_die).getUnclippedBoundsInRoot().height
+    assertTrue("Die should shrink, was $dieHeight", dieHeight < 270.dp)
+    DiceType.entries.forEach { type ->
+      val tile = node(C.Tag.diceOfflineSelect(type.name))
+      tile.assertIsDisplayed()
+      val bottom = tile.getUnclippedBoundsInRoot().bottom
+      assertTrue("$type tile ends at $bottom, off screen", bottom <= screenHeight)
+    }
   }
 }
