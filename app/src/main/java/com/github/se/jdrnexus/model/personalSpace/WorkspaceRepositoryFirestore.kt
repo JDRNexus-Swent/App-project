@@ -62,7 +62,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       val documentSnapshot = collection.document(fileId).get().await()
 
       if (!documentSnapshot.exists()) {
-        return Result.success(null)
+        return Result.failure(Exception("Document not found in Firestore"))
       }
 
       val file = documentSnapshot.toObject(JDRFile::class.java)
@@ -72,17 +72,6 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     } catch (e: Exception) {
       Result.failure(e)
     }
-  }
-
-  override suspend fun isAccessibleFolder(
-      folderId: String,
-      groupId: String,
-  ): Boolean {
-    return isAccessibleFolderRecursive(
-        folderId = folderId,
-        groupId = groupId,
-        visited = emptySet(),
-    )
   }
 
   override suspend fun removeItemFromGroup(
@@ -329,32 +318,6 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
 
     // Clean up the listener when the Flow is cancelled.
     awaitClose { listenerRegistration.remove() }
-  }
-
-  private suspend fun isAccessibleFolderRecursive(
-      folderId: String,
-      groupId: String,
-      visited: Set<String>,
-  ): Boolean {
-    if (folderId in visited) return false
-
-    val folder = getFile(folderId).getOrThrow() ?: return false
-
-    if (folder.type != DocumentType.FOLDER || groupId !in folder.sharedGroupsIds) {
-      return false
-    }
-
-    if (folder.parentFolderIds.isEmpty()) return true
-
-    val ancestors = visited + folderId
-
-    return folder.parentFolderIds.any { parentId ->
-      isAccessibleFolderRecursive(
-          folderId = parentId,
-          groupId = groupId,
-          visited = ancestors,
-      )
-    }
   }
 
   private suspend fun isAtGroupRoot(

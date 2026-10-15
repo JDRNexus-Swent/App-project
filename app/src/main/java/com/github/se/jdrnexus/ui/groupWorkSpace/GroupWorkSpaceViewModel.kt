@@ -11,12 +11,14 @@ import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import com.github.se.jdrnexus.viewmodel.LoadState
+import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -36,7 +38,6 @@ data class GroupWorkspaceUiState(
     val isOperationInProgress: Boolean = false,
     val errorMessage: String? = "",
     val canCreateFolder: Boolean = false,
-    val canAddFile: Boolean = false,
     val canEditItems: Boolean = false,
     val currentFolderName: String = "",
 )
@@ -52,7 +53,6 @@ class GroupWorkspaceViewModel(
       MutableStateFlow(
           GroupWorkspaceUiState(
               canCreateFolder = role == GroupWorkspaceRole.GAME_MASTER,
-              canAddFile = true,
               canEditItems = role == GroupWorkspaceRole.GAME_MASTER,
           )
       )
@@ -96,10 +96,43 @@ class GroupWorkspaceViewModel(
     check(groupId in item.sharedGroupsIds) { "This item does not belong to the current group." }
   }
 
-  private suspend fun requireAccessibleFolder(folderId: String) {
-    check(repository.isAccessibleFolder(folderId, groupId)) {
-      "This folder is not part of the current group's workspace."
+  private suspend fun requireAccessibleFolder(folderId: String): JDRFile {
+    val foldersToVisit = ArrayDeque<String>()
+    val visited = mutableSetOf<String>()
+    val rootFolders =
+        repository.getGroupRootFiles(groupId).first().filter { folder ->
+          folder.type == DocumentType.FOLDER &&
+              groupId in folder.sharedGroupsIds &&
+              folder.parentFolderIds.isEmpty()
+        }
+
+    rootFolders.forEach { foldersToVisit.addLast(it.id) }
+    rootFolders
+        .firstOrNull { it.id == folderId }
+        ?.let {
+          return it
+        }
+
+    while (foldersToVisit.isNotEmpty()) {
+      val currentFolderId = foldersToVisit.removeFirst()
+      if (!visited.add(currentFolderId)) continue
+
+      val children =
+          repository.getDocumentsInFolder(currentFolderId).first().filter { child ->
+            child.type == DocumentType.FOLDER &&
+                groupId in child.sharedGroupsIds &&
+                currentFolderId in child.parentFolderIds
+          }
+
+      children
+          .firstOrNull { it.id == folderId }
+          ?.let {
+            return it
+          }
+      children.forEach { foldersToVisit.addLast(it.id) }
     }
+
+    throw IllegalStateException("This folder is not part of the current group's workspace.")
   }
 
   private suspend fun requireItemInCurrentWorkspace(
@@ -151,8 +184,7 @@ class GroupWorkspaceViewModel(
             if (folderId.isEmpty()) {
               ""
             } else {
-              repository.getFile(folderId).getOrThrow()?.name
-                  ?: throw IllegalStateException("Folder not found.")
+              requireAccessibleFolder(folderId).name
             }
 
         _uiState.update { it.copy(currentFolderName = folderName) }
@@ -160,12 +192,17 @@ class GroupWorkspaceViewModel(
             if (folderId.isEmpty()) {
               repository.getGroupRootFiles(groupId)
             } else {
-              requireAccessibleFolder(folderId)
-              repository.getDocumentsInFolder(folderId)
+              combine(
+                  repository.getGroupRootFiles(groupId),
+                  repository.getDocumentsInFolder(folderId),
+              ) { _, items ->
+                items
+              }
             }
 
         source.collect { items ->
           if (requestGeneration == fetchGeneration) {
+            if (folderId.isNotEmpty()) requireAccessibleFolder(folderId)
             val groupItems = items.filter { item -> groupId in item.sharedGroupsIds }
             _uiState.update {
               it.copy(
@@ -186,7 +223,9 @@ class GroupWorkspaceViewModel(
                     LoadState.Error(
                         e.message?.takeIf(String::isNotBlank)
                             ?: "Unable to load the group workspace."
-                    )
+                    ),
+                items = emptyList(),
+                currentFolderName = "",
             )
           }
         }

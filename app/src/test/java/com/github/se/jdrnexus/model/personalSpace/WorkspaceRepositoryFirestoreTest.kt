@@ -218,13 +218,13 @@ class WorkspaceRepositoryFirestoreTest {
     }
   }
 
-  /** Ensures that a missing document is distinct from a Firestore retrieval failure. */
+  /** Ensures that attempting to fetch a non-existent document returns a failure. */
   @Test
   fun testGetFile_NotFound() {
     runBlocking {
       val result = repository.getFile("non_existent_id")
-      assertTrue("getFile should succeed when the document is not found", result.isSuccess)
-      assertNull(result.getOrNull())
+      assertTrue("getFile should fail when document is not found", result.isFailure)
+      assertEquals("Document not found in Firestore", result.exceptionOrNull()?.message)
     }
   }
 
@@ -241,10 +241,10 @@ class WorkspaceRepositoryFirestoreTest {
 
       val getResult = repository.getFile(fileId)
       assertTrue(
-          "getFile should return null after delete since the document no longer exists",
-          getResult.isSuccess,
+          "getFile should fail after delete since the document no longer exists",
+          getResult.isFailure,
       )
-      assertNull(getResult.getOrNull())
+      assertEquals("Document not found in Firestore", getResult.exceptionOrNull()?.message)
     }
   }
 
@@ -640,24 +640,6 @@ class WorkspaceRepositoryFirestoreTest {
                 .toSet(),
         )
       }
-
-  @Test
-  fun groupRootFlowContinuesWhenParentFolderDocumentIsMissing() = runBlocking {
-    val groupId = UUID.randomUUID().toString()
-    val file =
-        JDRFile(
-            id = UUID.randomUUID().toString(),
-            name = "Orphaned reference",
-            sharedGroupsIds = listOf(groupId),
-            parentFolderIds = listOf("missing-folder"),
-        )
-    repository.createFile(file).getOrThrow()
-
-    val rootFiles =
-        repository.getGroupRootFiles(groupId).waitFor { files -> files.any { it.id == file.id } }
-
-    assertTrue(rootFiles.any { it.id == file.id })
-  }
 
   /** Ensures that an empty list is emitted if a campaign group has no root documents. */
   @Test

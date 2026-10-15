@@ -64,7 +64,6 @@ class GroupWorkSpaceViewModelTest {
     assertEquals(LoadState.Loading, viewModel.uiState.value.loadState)
     assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
     assertTrue(viewModel.uiState.value.canCreateFolder)
-    assertTrue(viewModel.uiState.value.canAddFile)
     assertTrue(viewModel.uiState.value.canEditItems)
 
     runCurrent()
@@ -85,7 +84,6 @@ class GroupWorkSpaceViewModelTest {
     assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
     assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
     assertFalse(viewModel.uiState.value.canCreateFolder)
-    assertTrue(viewModel.uiState.value.canAddFile)
     assertFalse(viewModel.uiState.value.canEditItems)
   }
 
@@ -233,12 +231,16 @@ class GroupWorkSpaceViewModelTest {
     runCurrent()
     assertEquals(listOf(child), viewModel.uiState.value.items)
     assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-    assertEquals(
-        listOf("nested" to GROUP_ID, "root" to GROUP_ID),
-        repository.accessibleFolderRequests,
-    )
+    assertEquals(listOf(root.id, nested.id, root.id), repository.folderRequests)
 
     repository.replaceFiles(listOf(root.copy(sharedGroupsIds = emptyList()), nested, child))
+    runCurrent()
+    assertEquals(
+        LoadState.Error("This folder is not part of the current group's workspace."),
+        viewModel.uiState.value.loadState,
+    )
+    assertTrue(viewModel.uiState.value.items.isEmpty())
+
     viewModel.loadWorkspace(nested.id)
     runCurrent()
 
@@ -279,7 +281,29 @@ class GroupWorkSpaceViewModelTest {
             sharedGroupsIds = listOf(GROUP_ID),
             parentFolderIds = listOf("missing-parent"),
         )
-    val repository = FakeWorkspaceRepository(listOf(cycleA, cycleB, missingParentFolder))
+    val otherGroupParent =
+        JDRFile(
+            id = "other-group-parent",
+            type = DocumentType.FOLDER,
+            sharedGroupsIds = listOf(OTHER_GROUP_ID),
+        )
+    val folderWithOtherGroupParent =
+        JDRFile(
+            id = "folder-with-other-group-parent",
+            type = DocumentType.FOLDER,
+            sharedGroupsIds = listOf(GROUP_ID),
+            parentFolderIds = listOf(otherGroupParent.id),
+        )
+    val repository =
+        FakeWorkspaceRepository(
+            listOf(
+                cycleA,
+                cycleB,
+                missingParentFolder,
+                otherGroupParent,
+                folderWithOtherGroupParent,
+            )
+        )
     val viewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
     runCurrent()
 
@@ -290,13 +314,8 @@ class GroupWorkSpaceViewModelTest {
         LoadState.Error("This folder is not part of the current group's workspace."),
         viewModel.uiState.value.loadState,
     )
-    assertEquals(
-        listOf("cycle-a" to GROUP_ID, "cycle-b" to GROUP_ID),
-        repository.accessibleFolderRequests,
-    )
     assertTrue(repository.folderRequests.isEmpty())
 
-    repository.accessibleFolderRequests.clear()
     viewModel.loadWorkspace(missingParentFolder.id)
     runCurrent()
     assertEquals(missingParentFolder.id, viewModel.uiState.value.currentFolderId)
@@ -304,9 +323,13 @@ class GroupWorkSpaceViewModelTest {
         LoadState.Error("This folder is not part of the current group's workspace."),
         viewModel.uiState.value.loadState,
     )
+    assertTrue(repository.folderRequests.isEmpty())
+
+    viewModel.loadWorkspace(folderWithOtherGroupParent.id)
+    runCurrent()
     assertEquals(
-        listOf("missing-parent-child" to GROUP_ID, "missing-parent" to GROUP_ID),
-        repository.accessibleFolderRequests,
+        LoadState.Error("This folder is not part of the current group's workspace."),
+        viewModel.uiState.value.loadState,
     )
     assertTrue(repository.folderRequests.isEmpty())
 
@@ -1133,13 +1156,55 @@ class GroupWorkSpaceViewModelTest {
     runCurrent()
     assertTrue(viewModel.uiState.value.items.isEmpty())
     assertTrue(viewModel.uiState.value.loadState is LoadState.Error)
-    assertTrue(repository.folderRequests.isEmpty())
+    assertFalse(foreignFolder.id in repository.folderRequests)
 
     viewModel.loadWorkspace(visibleFolder.id)
     runCurrent()
     assertEquals(listOf(visibleFile), viewModel.uiState.value.items)
     assertFalse(crossGroupFile in viewModel.uiState.value.items)
     assertFalse(hiddenFile in viewModel.uiState.value.items)
+  }
+
+  @Test
+  fun folderWithMultipleParentsIsAccessibleThroughAnyValidGroupPath() = runTest {
+    val root =
+        JDRFile(
+            id = "shared-root",
+            type = DocumentType.FOLDER,
+            sharedGroupsIds = listOf(GROUP_ID),
+        )
+    val foreignRoot =
+        JDRFile(
+            id = "foreign-root",
+            type = DocumentType.FOLDER,
+            sharedGroupsIds = listOf(OTHER_GROUP_ID),
+        )
+    val nested =
+        JDRFile(
+            id = "multi-parent-folder",
+            type = DocumentType.FOLDER,
+            sharedGroupsIds = listOf(GROUP_ID),
+            parentFolderIds = listOf("missing-parent", foreignRoot.id, root.id),
+        )
+    val child =
+        JDRFile(
+            id = "nested-child",
+            sharedGroupsIds = listOf(GROUP_ID),
+            parentFolderIds = listOf(nested.id),
+        )
+    val repository = FakeWorkspaceRepository(listOf(root, foreignRoot, nested, child))
+    val viewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    viewModel.loadWorkspace(nested.id)
+    runCurrent()
+
+    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
+    assertEquals(listOf(child), viewModel.uiState.value.items)
+    assertEquals(
+        listOf("missing-parent", foreignRoot.id, root.id),
+        repository.files[nested.id]?.parentFolderIds,
+    )
   }
 
   @Test
@@ -1613,7 +1678,6 @@ class GroupWorkSpaceViewModelTest {
     val groupRootRequests = mutableListOf<String>()
     val folderRequests = mutableListOf<String>()
     val fileRequests = mutableListOf<String>()
-    val accessibleFolderRequests = mutableListOf<Pair<String, String>>()
     val createdFiles = mutableListOf<JDRFile>()
     val updatedFiles = mutableListOf<JDRFile>()
     val deletedFileIds = mutableListOf<String>()
@@ -1668,21 +1732,6 @@ class GroupWorkSpaceViewModelTest {
     override suspend fun getFile(fileId: String): Result<JDRFile?> {
       fileRequests += fileId
       return Result.success(files[fileId])
-    }
-
-    override suspend fun isAccessibleFolder(folderId: String, groupId: String): Boolean {
-      fun isAccessible(id: String, visited: Set<String> = emptySet()): Boolean {
-        if (id in visited) return false
-
-        accessibleFolderRequests += id to groupId
-        val folder = files[id] ?: return false
-        if (folder.type != DocumentType.FOLDER || groupId !in folder.sharedGroupsIds) return false
-        if (folder.parentFolderIds.isEmpty()) return true
-
-        return folder.parentFolderIds.any { parentId -> isAccessible(parentId, visited + id) }
-      }
-
-      return isAccessible(folderId)
     }
 
     override suspend fun removeItemFromGroup(

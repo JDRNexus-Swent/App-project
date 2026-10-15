@@ -55,15 +55,6 @@ interface WorkspaceRepository {
   suspend fun getFile(fileId: String): Result<JDRFile?>
 
   /**
-   * Checks whether a folder is accessible within a group.
-   *
-   * @param folderId ID of the folder to check.
-   * @param groupId ID of the group in which the folder must be accessible.
-   * @return true if the folder is accessible in the group, false otherwise.
-   */
-  suspend fun isAccessibleFolder(folderId: String, groupId: String): Boolean = false
-
-  /**
    * Removes an item from a group workspace.
    *
    * If the item is a folder, its descendants are also removed from the group. Sharing with other
