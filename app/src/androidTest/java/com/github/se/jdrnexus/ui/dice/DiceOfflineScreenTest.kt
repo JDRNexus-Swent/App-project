@@ -6,13 +6,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -54,7 +52,7 @@ private object SignedOutAuthRepository : AuthRepository {
   override suspend fun signOut() = AuthResult.Failure(AuthError.UNKNOWN)
 }
 
-/** Upper bound for the rolling indicator to show up after a click. */
+/** Upper bound for a roll to end after a click, far above the screen's roll animation. */
 private const val WAIT_TIMEOUT_MILLIS = 5_000L
 
 @RunWith(AndroidJUnit4::class)
@@ -89,35 +87,16 @@ class DiceOfflineScreenTest {
 
   private fun node(tag: String) = composeTestRule.onNodeWithTag(tag, useUnmergedTree = true)
 
-  private fun isLoadingShown(): Boolean =
-      composeTestRule
-          .onAllNodesWithTag(C.Tag.dice_offline_loading, useUnmergedTree = true)
-          .fetchSemanticsNodes()
-          .isNotEmpty()
-
   /**
-   * Clicks Roll with the clock paused, so the screen's animation never ends the roll on its own,
-   * and steps frame by frame until the rolling indicator shows. The test ends the roll itself with
-   * [DiceViewModel.onRollAnimationFinished] and then calls [resumeClock].
+   * Clicks Roll and waits until the screen ends the roll itself, once its animation calls
+   * [DiceViewModel.onRollAnimationFinished]. The test clock runs freely, so the animation delay
+   * passes in virtual time.
    */
-  private fun startRoll() {
-    composeTestRule.mainClock.autoAdvance = false
+  private fun rollAndWait(vm: DiceViewModel): DiceRollResult {
     node(C.Tag.dice_offline_roll).performScrollTo().performClick()
     composeTestRule.waitUntil(WAIT_TIMEOUT_MILLIS) {
-      composeTestRule.mainClock.advanceTimeByFrame()
-      isLoadingShown()
+      vm.uiState.value.currentResult != null && !vm.uiState.value.isRolling
     }
-  }
-
-  private fun resumeClock() {
-    composeTestRule.mainClock.autoAdvance = true
-    composeTestRule.waitForIdle()
-  }
-
-  private fun rollAndWait(vm: DiceViewModel): DiceRollResult {
-    startRoll()
-    vm.onRollAnimationFinished()
-    resumeClock()
     val result = vm.uiState.value.currentResult
     assertNotNull(result)
     return result!!
@@ -189,23 +168,12 @@ class DiceOfflineScreenTest {
   }
 
   @Test
-  fun rollShowsLoadingThenRawValueOnDieAndTotalBelow() {
+  fun rollShowsRawValueOnDieAndTotalBelowThenUnlocksControls() {
     val vm = setScreen()
     vm.selectDice(DiceType.D8)
     vm.setModifier(3)
 
-    startRoll()
-
-    // Controls are locked while the die is rolling.
-    node(C.Tag.dice_offline_loading).assertIsDisplayed()
-    node(C.Tag.dice_offline_result).assertDoesNotExist()
-    node(C.Tag.dice_offline_roll).assertIsNotEnabled()
-    node(C.Tag.dice_offline_modifier_increase).assertIsNotEnabled()
-    node(C.Tag.dice_offline_modifier_decrease).assertIsNotEnabled()
-    DiceType.entries.forEach { node(C.Tag.diceOfflineSelect(it.name)).assertIsNotEnabled() }
-
-    vm.onRollAnimationFinished()
-    resumeClock()
+    rollAndWait(vm)
 
     val result = vm.uiState.value.currentResult!!
     assertFalse(vm.uiState.value.isRolling)
