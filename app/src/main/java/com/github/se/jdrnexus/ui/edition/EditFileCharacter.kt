@@ -60,6 +60,9 @@ object EditFileCharacterTestTags {
   const val ACTIONS_LIST = "edit_character_actions"
 
   const val BACK = "edit_character_back"
+  const val CURRENT_HP = "edit_character_current_hp"
+  const val MAX_HP = "edit_character_max_hp"
+  const val LIST = "edit_character_list"
 }
 
 /**
@@ -96,11 +99,29 @@ fun EditFileCharacter(
         }
       }
       state.character == null -> {
-        Text(
-            text = state.error ?: "No character is loaded.",
-            modifier = Modifier.padding(24.dp),
-            color = MaterialTheme.colorScheme.error,
-        )
+        Column(modifier = Modifier.fillMaxSize()) {
+          Row(
+              modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+              verticalAlignment = Alignment.CenterVertically,
+          ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.testTag(EditFileCharacterTestTags.BACK),
+            ) {
+              Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            }
+            Text(
+                text = "CHARACTER SHEET",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+          }
+          Text(
+              text = state.error ?: "No character is loaded.",
+              modifier = Modifier.padding(24.dp),
+              color = MaterialTheme.colorScheme.error,
+          )
+        }
       }
       else -> {
         val character = state.character!!
@@ -111,7 +132,10 @@ fun EditFileCharacter(
 
         LazyColumn(
             modifier =
-                Modifier.fillMaxSize().imePadding().padding(horizontal = 12.dp, vertical = 8.dp),
+                Modifier.fillMaxSize()
+                    .imePadding()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .testTag(EditFileCharacterTestTags.LIST),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
           item(key = "top-bar") {
@@ -140,6 +164,32 @@ fun EditFileCharacter(
                 label = { Text("Character name") },
                 singleLine = true,
             )
+          }
+          item(key = "character-hp") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+              NumberField(
+                  label = "Current HP",
+                  value = character.hp.current.toString(),
+                  stateKey = "current-hp",
+                  error = state.fieldErrors[EditFileField.CharacterCurrentHp],
+                  modifier = Modifier.weight(1f).testTag(EditFileCharacterTestTags.CURRENT_HP),
+                  keyboardType = KeyboardType.Number,
+                  onValueChange = { viewModel.updateCharacterCurrentHp(it.toIntOrNull() ?: -1) },
+              )
+              NumberField(
+                  label = "Max HP",
+                  value = character.hp.max.toString(),
+                  stateKey = "max-hp",
+                  error = state.fieldErrors[EditFileField.CharacterMaxHp],
+                  modifier = Modifier.weight(1f).testTag(EditFileCharacterTestTags.MAX_HP),
+                  keyboardType = KeyboardType.Number,
+                  onValueChange = { viewModel.updateCharacterMaxHp(it.toIntOrNull() ?: -1) },
+              )
+            }
           }
           item(key = "stats-heading") {
             SectionTitle(
@@ -264,16 +314,6 @@ fun EditFileCharacter(
               )
             }
           }
-          state.fieldErrors.values.distinct().forEachIndexed { index, error ->
-            item(key = "field-error-$index") {
-              Text(
-                  text = error,
-                  color = MaterialTheme.colorScheme.error,
-                  style = MaterialTheme.typography.bodySmall,
-                  modifier = Modifier.testTag("edit_character_field_error"),
-              )
-            }
-          }
           item(key = "save") {
             if (state.isSaving) {
               CircularProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -356,7 +396,10 @@ private fun StatRow(
         modifier = Modifier.weight(0.55f).testTag("stat_value_${stat.statID}"),
         onValueChange = onValueChange,
     )
-    IconButton(onClick = onRemove, modifier = Modifier.size(40.dp)) {
+    IconButton(
+        onClick = onRemove,
+        modifier = Modifier.size(40.dp).testTag("remove_stat_${stat.statID}"),
+    ) {
       Icon(Icons.Default.Close, contentDescription = "Remove ${stat.name}")
     }
   }
@@ -399,7 +442,10 @@ private fun ActionRow(
             isError = nameError != null,
             supportingText = nameError?.let { message -> ({ Text(message) }) },
         )
-        IconButton(onClick = onRemove, modifier = Modifier.size(40.dp)) {
+        IconButton(
+            onClick = onRemove,
+            modifier = Modifier.size(40.dp).testTag("remove_action_${action.actionID}"),
+        ) {
           Icon(Icons.Default.Close, contentDescription = "Remove ${action.name}")
         }
       }
@@ -432,6 +478,7 @@ private fun NumberField(
     stateKey: String,
     error: String?,
     modifier: Modifier = Modifier,
+    keyboardType: KeyboardType = KeyboardType.Decimal,
     onValueChange: (String) -> Unit,
 ) {
   var draft by remember(stateKey) { mutableStateOf(value) }
@@ -448,7 +495,7 @@ private fun NumberField(
       label = { Text(label) },
       singleLine = true,
       isError = error != null,
-      keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+      keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
       supportingText = error?.let { message -> ({ Text(message) }) },
   )
 }

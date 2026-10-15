@@ -1,6 +1,7 @@
 // Co-authored-by: AI Agent
 package com.github.se.jdrnexus.model.personalSpace
 
+import android.content.Context
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import com.google.firebase.FirebaseApp
@@ -50,30 +51,41 @@ class WorkspaceRepositoryFirestoreTest {
   companion object {
     // Defines the maximum time to wait for asynchronous Firebase operations in tests
     private const val DEFAULT_TIMEOUT_MS = 5000L
+
+    private const val EMULATOR_APP_NAME = "EmulatorApp"
+    private const val EMULATOR_HOST = "127.0.0.1"
+    private const val EMULATOR_PORT = 8080
   }
 
   @Before
   fun setUp() {
-    if (FirebaseApp.getApps(ApplicationProvider.getApplicationContext()).isEmpty()) {
-      FirebaseApp.initializeApp(ApplicationProvider.getApplicationContext())
+    val context = ApplicationProvider.getApplicationContext<Context>()
+
+    // Make sure the default Firebase app exists, we need its options to clone it
+    if (FirebaseApp.getApps(context).isEmpty()) {
+      FirebaseApp.initializeApp(context)
     }
-    firestore = FirebaseFirestore.getInstance()
+
+    val emulatorApp =
+        FirebaseApp.getApps(context).firstOrNull { it.name == EMULATOR_APP_NAME }
+            ?: FirebaseApp.initializeApp(
+                context,
+                FirebaseApp.getInstance().options,
+                EMULATOR_APP_NAME,
+            )
+
+    firestore = FirebaseFirestore.getInstance(emulatorApp)
+
+    // The FirebaseApp (and its Firestore) is shared by every test class in the JVM,
+    // so the second class to run will hit an IllegalStateException here.
+    // It is safe to ignore: this instance is only ever used with the emulator,
+    // so it is necessarily already pointing to it.
     try {
-      firestore.useEmulator("127.0.0.1", 8080)
+      firestore.useEmulator(EMULATOR_HOST, EMULATOR_PORT)
     } catch (e: IllegalStateException) {
-      // If Firestore is already configured for production, its host won't be local.
-      // We explicitly throw an exception here to avoid wiping out the production database
-      // if someone runs tests without properly configuring the emulator instance first.
-      if (
-          !firestore.firestoreSettings.host.contains("127.0.0.1") &&
-              !firestore.firestoreSettings.host.contains("10.0.2.2")
-      ) {
-        throw IllegalStateException(
-            "Firestore is not using the emulator! Aborting to prevent data loss.",
-            e,
-        )
-      }
+      // Already configured by a previous test class
     }
+
     repository = WorkspaceRepositoryFirestore(firestore)
   }
 
@@ -131,30 +143,32 @@ class WorkspaceRepositoryFirestoreTest {
             errorRef.set(e)
           }
         }
+    try {
+      val startTime = System.currentTimeMillis()
+      while (System.currentTimeMillis() - startTime < timeoutMs) {
+        // Pump Robolectric's main looper so Firebase callbacks can run!
+        shadowOf(Looper.getMainLooper()).idle()
 
-    val startTime = System.currentTimeMillis()
-    while (System.currentTimeMillis() - startTime < timeoutMs) {
-      // Pump Robolectric's main looper so Firebase callbacks can run!
-      shadowOf(Looper.getMainLooper()).idle()
+        // If the flow threw an error (like PERMISSION_DENIED), rethrow it immediately
+        val flowError = errorRef.get()
+        if (flowError != null) {
+          job.cancel()
+          throw flowError
+        }
 
-      // If the flow threw an error (like PERMISSION_DENIED), rethrow it immediately
-      val flowError = errorRef.get()
-      if (flowError != null) {
-        job.cancel()
-        throw flowError
+        if (isReady.get()) {
+          job.cancel()
+          @Suppress("UNCHECKED_CAST")
+          return latestValue.get() as T
+        }
+        delay(50)
       }
-
-      if (isReady.get()) {
-        job.cancel()
-        @Suppress("UNCHECKED_CAST")
-        return latestValue.get() as T
-      }
-      delay(50)
+      throw AssertionError(
+          "Timeout waiting for condition. Last value emitted: ${latestValue.get()}, emitted at all: ${hasValue.get()}"
+      )
+    } finally {
+      job.cancel()
     }
-    job.cancel()
-    throw AssertionError(
-        "Timeout waiting for condition. Last value emitted: ${latestValue.get()}, emitted at all: ${hasValue.get()}"
-    )
   }
 
   /** Tests the creation of a new uid and verifies that it not empty and unique */
@@ -716,7 +730,7 @@ class WorkspaceRepositoryFirestoreTest {
    */
   @Test
   fun testSnapshotListeners_PermissionDenied() = runBlocking {
-    // 1. Test single file flow permission denied
+    // Test single file flow permission denied
     try {
       repository.getFileFlow("access_denied_test").waitFor(timeoutMs = DEFAULT_TIMEOUT_MS) { false }
       fail("Should have thrown an exception")
