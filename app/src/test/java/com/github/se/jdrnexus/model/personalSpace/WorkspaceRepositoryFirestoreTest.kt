@@ -1,9 +1,11 @@
-// Co-authored-by: AI Agent
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.model.personalSpace
 
 import android.content.Context
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
+import com.google.android.gms.tasks.TaskCompletionSource
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
@@ -14,16 +16,22 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
+import com.google.firebase.firestore.WriteBatch
+import io.mockk.confirmVerified
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.spyk
+import io.mockk.verify
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
@@ -171,6 +179,494 @@ class WorkspaceRepositoryFirestoreTest {
     } finally {
       job.cancel()
     }
+  }
+
+  private suspend fun persistFiles(vararg files: JDRFile) {
+    files.forEach { file -> firestore.collection("documents").document(file.id).set(file).await() }
+  }
+
+  private suspend fun getPersistedFile(fileId: String): JDRFile? =
+      firestore.collection("documents").document(fileId).get().await().toObject(JDRFile::class.java)
+
+  private suspend fun removeItemFromGroupAndPumpMainLooper(
+      itemId: String,
+      groupId: String,
+      parentFolderId: String? = null,
+      targetRepository: WorkspaceRepository = repository,
+  ): Result<Unit> {
+    val operation =
+        CoroutineScope(Dispatchers.Default).async {
+          targetRepository.removeItemFromGroup(itemId, groupId, parentFolderId)
+        }
+    val startTime = System.currentTimeMillis()
+    while (!operation.isCompleted && System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS) {
+      shadowOf(Looper.getMainLooper()).idle()
+      delay(50)
+    }
+    if (!operation.isCompleted) {
+      operation.cancel()
+      throw AssertionError("removeItemFromGroup did not complete within $DEFAULT_TIMEOUT_MS ms")
+    }
+    shadowOf(Looper.getMainLooper()).idle()
+    return operation.await()
+  }
+
+  @Test
+  fun removeItemFromGroup_rejectsBlankItemId() = runBlocking {
+    val result = repository.removeItemFromGroup("", "group-${UUID.randomUUID()}", null)
+
+    assertTrue(result.isFailure)
+    assertTrue(result.exceptionOrNull() is IllegalArgumentException)
+  }
+
+  @Test
+  fun removeItemFromGroup_rejectsBlankGroupId() = runBlocking {
+    val result = repository.removeItemFromGroup("item-${UUID.randomUUID()}", " ", null)
+
+    assertTrue(result.isFailure)
+    assertTrue(result.exceptionOrNull() is IllegalArgumentException)
+  }
+
+  @Test
+  fun removeItemFromGroup_failsWhenItemDoesNotExist() = runBlocking {
+    val result =
+        removeItemFromGroupAndPumpMainLooper(
+            itemId = "missing-${UUID.randomUUID()}",
+            groupId = "group-${UUID.randomUUID()}",
+        )
+
+    assertTrue(result.isFailure)
+  }
+
+  @Test
+  fun removeItemFromGroup_failsWhenItemIsNotSharedWithGroup() = runBlocking {
+    val groupId = "group-${UUID.randomUUID()}"
+    val file = JDRFile(id = "file-${UUID.randomUUID()}", sharedGroupsIds = listOf("other-group"))
+    persistFiles(file)
+
+    val result = removeItemFromGroupAndPumpMainLooper(file.id, groupId)
+
+    assertTrue(result.isFailure)
+    assertEquals(file, getPersistedFile(file.id))
+  }
+
+  @Test
+  fun removeItemFromGroup_failsWhenFetchingItemFails() = runBlocking {
+    val itemId = "item-${UUID.randomUUID()}"
+    val firestoreMock = mockk<FirebaseFirestore>()
+    val collectionMock = mockk<CollectionReference>()
+    val documentMock = mockk<DocumentReference>()
+    every { firestoreMock.collection("documents") } returns collectionMock
+    every { collectionMock.document(itemId) } returns documentMock
+    every { documentMock.get() } returns Tasks.forException(IllegalStateException("read failed"))
+
+    val result =
+        WorkspaceRepositoryFirestore(firestoreMock)
+            .removeItemFromGroup(itemId, "group-${UUID.randomUUID()}", null)
+
+    assertTrue(result.isFailure)
+  }
+
+  @Test
+  fun removeItemFromGroup_propagatesCoroutineCancellation() = runBlocking {
+    val itemId = "item-${UUID.randomUUID()}"
+    val firestoreMock = mockk<FirebaseFirestore>()
+    val collectionMock = mockk<CollectionReference>()
+    val documentMock = mockk<DocumentReference>()
+    val pendingRead = TaskCompletionSource<DocumentSnapshot>()
+    every { firestoreMock.collection("documents") } returns collectionMock
+    every { collectionMock.document(itemId) } returns documentMock
+    every { documentMock.get() } returns pendingRead.task
+    val mockRepository = WorkspaceRepositoryFirestore(firestoreMock)
+
+    val job = launch {
+      mockRepository.removeItemFromGroup(itemId, "group-${UUID.randomUUID()}", null)
+    }
+    yield()
+    job.cancel()
+    job.join()
+
+    assertTrue(job.isCancelled)
+  }
+
+  @Test
+  fun removeItemFromGroup_failsWhenFetchingDescendantsFails() = runBlocking {
+    val groupId = "group-${UUID.randomUUID()}"
+    val folder =
+        JDRFile(
+            id = "folder-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId),
+            type = DocumentType.FOLDER,
+        )
+    persistFiles(folder)
+
+    val failingRepository = spyk(WorkspaceRepositoryFirestore(firestore))
+    every { failingRepository.getDocumentsInFolder(folder.id) } returns
+        flow { throw IllegalStateException("descendant read failed") }
+
+    val result =
+        removeItemFromGroupAndPumpMainLooper(
+            itemId = folder.id,
+            groupId = groupId,
+            targetRepository = failingRepository,
+        )
+
+    assertTrue(result.isFailure)
+    assertEquals(folder, getPersistedFile(folder.id))
+  }
+
+  @Test
+  fun removeItemFromGroup_returnsFailureWhenBatchCommitFails() = runBlocking {
+    val itemId = "item-${UUID.randomUUID()}"
+    val groupId = "group-${UUID.randomUUID()}"
+    val file = JDRFile(id = itemId, sharedGroupsIds = listOf(groupId))
+    val firestoreMock = mockk<FirebaseFirestore>()
+    val collectionMock = mockk<CollectionReference>()
+    val documentMock = mockk<DocumentReference>()
+    val snapshotMock = mockk<DocumentSnapshot>()
+    val batchMock = mockk<WriteBatch>()
+    every { firestoreMock.collection("documents") } returns collectionMock
+    every { collectionMock.document(itemId) } returns documentMock
+    every { documentMock.get() } returns Tasks.forResult(snapshotMock)
+    every { snapshotMock.exists() } returns true
+    every { snapshotMock.toObject(JDRFile::class.java) } returns file
+    every { firestoreMock.batch() } returns batchMock
+    every { batchMock.update(any(), any()) } returns batchMock
+    every { batchMock.commit() } returns
+        Tasks.forException(IllegalStateException("batch commit failed"))
+
+    val result =
+        WorkspaceRepositoryFirestore(firestoreMock).removeItemFromGroup(itemId, groupId, null)
+
+    assertTrue(result.isFailure)
+    verify(exactly = 1) { batchMock.update(documentMock, any()) }
+    verify(exactly = 1) { batchMock.commit() }
+    confirmVerified(batchMock)
+  }
+
+  @Test
+  fun removeItemFromGroup_removesSingleFileWithoutDeletingOrChangingOtherMemberships() =
+      runBlocking {
+        val groupId = "group-${UUID.randomUUID()}"
+        val otherGroupId = "other-group-${UUID.randomUUID()}"
+        val unrelatedParentId = "parent-${UUID.randomUUID()}"
+        val file =
+            JDRFile(
+                id = "file-${UUID.randomUUID()}",
+                sharedGroupsIds = listOf(groupId, otherGroupId),
+                parentFolderIds = listOf(groupId, unrelatedParentId),
+            )
+        persistFiles(file)
+
+        val result = removeItemFromGroupAndPumpMainLooper(file.id, groupId)
+
+        assertTrue(result.isSuccess)
+        assertEquals(
+            file.copy(
+                sharedGroupsIds = listOf(otherGroupId),
+                parentFolderIds = listOf(unrelatedParentId),
+            ),
+            getPersistedFile(file.id),
+        )
+      }
+
+  @Test
+  fun removeItemFromGroup_removesFolderAndDescendantsAtMultipleDepths() = runBlocking {
+    val groupId = "group-${UUID.randomUUID()}"
+    val root =
+        JDRFile(
+            id = "root-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId),
+            parentFolderIds = listOf(groupId),
+            type = DocumentType.FOLDER,
+        )
+    val nestedFolder =
+        JDRFile(
+            id = "nested-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId),
+            parentFolderIds = listOf(root.id),
+            type = DocumentType.FOLDER,
+        )
+    val nestedFile =
+        JDRFile(
+            id = "nested-file-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId),
+            parentFolderIds = listOf(nestedFolder.id),
+        )
+    val unrelatedFile = JDRFile(id = "unrelated-${UUID.randomUUID()}", name = "Untouched")
+    persistFiles(root, nestedFolder, nestedFile, unrelatedFile)
+
+    val result = removeItemFromGroupAndPumpMainLooper(root.id, groupId)
+
+    assertTrue(result.isSuccess)
+    assertEquals(
+        root.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        getPersistedFile(root.id),
+    )
+    assertEquals(
+        nestedFolder.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        getPersistedFile(nestedFolder.id),
+    )
+    assertEquals(
+        nestedFile.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        getPersistedFile(nestedFile.id),
+    )
+    assertEquals(unrelatedFile, getPersistedFile(unrelatedFile.id))
+  }
+
+  @Test
+  fun removeItemFromGroup_detachesNestedFolderFromExclusiveParent() = runBlocking {
+    val groupId = "group-${UUID.randomUUID()}"
+    val parent =
+        JDRFile(
+            id = "parent-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId),
+            type = DocumentType.FOLDER,
+        )
+    val nestedFolder =
+        JDRFile(
+            id = "nested-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId),
+            parentFolderIds = listOf(groupId, parent.id),
+            type = DocumentType.FOLDER,
+        )
+    persistFiles(parent, nestedFolder)
+
+    val result = removeItemFromGroupAndPumpMainLooper(nestedFolder.id, groupId, parent.id)
+
+    assertTrue(result.isSuccess)
+    assertEquals(
+        nestedFolder.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        getPersistedFile(nestedFolder.id),
+    )
+    assertEquals(parent, getPersistedFile(parent.id))
+  }
+
+  @Test
+  fun removeItemFromGroup_preservesParentReferenceWhenParentIsSharedWithAnotherGroup() =
+      runBlocking {
+        val groupId = "group-${UUID.randomUUID()}"
+        val otherGroupId = "other-group-${UUID.randomUUID()}"
+        val parent =
+            JDRFile(
+                id = "parent-${UUID.randomUUID()}",
+                sharedGroupsIds = listOf(groupId, otherGroupId),
+                type = DocumentType.FOLDER,
+            )
+        val nestedFile =
+            JDRFile(
+                id = "file-${UUID.randomUUID()}",
+                sharedGroupsIds = listOf(groupId, otherGroupId),
+                parentFolderIds = listOf(groupId, parent.id),
+            )
+        persistFiles(parent, nestedFile)
+
+        val result = removeItemFromGroupAndPumpMainLooper(nestedFile.id, groupId, parent.id)
+
+        assertTrue(result.isSuccess)
+        assertEquals(
+            nestedFile.copy(
+                sharedGroupsIds = listOf(otherGroupId),
+                parentFolderIds = listOf(parent.id),
+            ),
+            getPersistedFile(nestedFile.id),
+        )
+        assertEquals(parent, getPersistedFile(parent.id))
+      }
+
+  @Test
+  fun removeItemFromGroup_removesParentReferenceWhenParentIsExclusiveToGroup() = runBlocking {
+    val groupId = "group-${UUID.randomUUID()}"
+    val parent =
+        JDRFile(
+            id = "parent-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId),
+            type = DocumentType.FOLDER,
+        )
+    val nestedFile =
+        JDRFile(
+            id = "file-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId),
+            parentFolderIds = listOf(groupId, parent.id),
+        )
+    persistFiles(parent, nestedFile)
+
+    val result = removeItemFromGroupAndPumpMainLooper(nestedFile.id, groupId, parent.id)
+
+    assertTrue(result.isSuccess)
+    assertEquals(
+        nestedFile.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        getPersistedFile(nestedFile.id),
+    )
+  }
+
+  @Test
+  fun removeItemFromGroup_leavesChildrenNotSharedWithGroupUnchanged() = runBlocking {
+    val groupId = "group-${UUID.randomUUID()}"
+    val childGroupId = "other-group-${UUID.randomUUID()}"
+    val root =
+        JDRFile(
+            id = "root-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId),
+            type = DocumentType.FOLDER,
+        )
+    val child =
+        JDRFile(
+            id = "child-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(childGroupId),
+            parentFolderIds = listOf(root.id),
+        )
+    persistFiles(root, child)
+
+    val result = removeItemFromGroupAndPumpMainLooper(root.id, groupId)
+
+    assertTrue(result.isSuccess)
+    assertEquals(root.copy(sharedGroupsIds = emptyList()), getPersistedFile(root.id))
+    assertEquals(child, getPersistedFile(child.id))
+  }
+
+  @Test
+  fun removeItemFromGroup_handlesEmptyFolder() = runBlocking {
+    val groupId = "group-${UUID.randomUUID()}"
+    val folder =
+        JDRFile(
+            id = "empty-folder-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId),
+            parentFolderIds = listOf(groupId),
+            type = DocumentType.FOLDER,
+        )
+    persistFiles(folder)
+
+    val result = removeItemFromGroupAndPumpMainLooper(folder.id, groupId)
+
+    assertTrue(result.isSuccess)
+    assertEquals(
+        folder.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        getPersistedFile(folder.id),
+    )
+  }
+
+  @Test
+  fun removeItemFromGroup_preservesOtherMembershipsOnDescendantFoldersAndFiles() = runBlocking {
+    val groupId = "group-${UUID.randomUUID()}"
+    val otherGroupId = "other-group-${UUID.randomUUID()}"
+    val root =
+        JDRFile(
+            id = "root-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId),
+            parentFolderIds = listOf(groupId),
+            type = DocumentType.FOLDER,
+        )
+    val childFolder =
+        JDRFile(
+            id = "folder-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId, otherGroupId),
+            parentFolderIds = listOf(root.id),
+            type = DocumentType.FOLDER,
+        )
+    val childFile =
+        JDRFile(
+            id = "file-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId, otherGroupId),
+            parentFolderIds = listOf(childFolder.id),
+        )
+    persistFiles(root, childFolder, childFile)
+
+    val result = removeItemFromGroupAndPumpMainLooper(root.id, groupId)
+
+    assertTrue(result.isSuccess)
+    assertEquals(
+        root.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        getPersistedFile(root.id),
+    )
+    assertEquals(
+        childFolder.copy(sharedGroupsIds = listOf(otherGroupId), parentFolderIds = emptyList()),
+        getPersistedFile(childFolder.id),
+    )
+    assertEquals(
+        childFile.copy(
+            sharedGroupsIds = listOf(otherGroupId),
+            parentFolderIds = listOf(childFolder.id),
+        ),
+        getPersistedFile(childFile.id),
+    )
+  }
+
+  @Test
+  fun removeItemFromGroup_doesNotProcessRepeatedDocumentsMoreThanOnce() = runBlocking {
+    val groupId = "group-${UUID.randomUUID()}"
+    val root =
+        JDRFile(
+            id = "root-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId),
+            parentFolderIds = listOf(groupId),
+            type = DocumentType.FOLDER,
+        )
+    val child =
+        JDRFile(
+            id = "child-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId),
+            parentFolderIds = listOf(root.id),
+            type = DocumentType.FOLDER,
+        )
+    val repeatedRoot = root.copy(parentFolderIds = listOf(child.id))
+    persistFiles(repeatedRoot, child)
+
+    val collection = firestore.collection("documents")
+    val firestoreMock = mockk<FirebaseFirestore>()
+    val batchMock = mockk<WriteBatch>()
+    every { firestoreMock.collection("documents") } returns collection
+    every { firestoreMock.batch() } returns batchMock
+    every { batchMock.update(any(), any()) } returns batchMock
+    every { batchMock.commit() } returns Tasks.forResult(null)
+
+    val repositoryMock = WorkspaceRepositoryFirestore(firestoreMock)
+    val result =
+        removeItemFromGroupAndPumpMainLooper(
+            root.id,
+            groupId,
+            child.id,
+            targetRepository = repositoryMock,
+        )
+
+    assertTrue(result.isSuccess)
+    verify(exactly = 1) { batchMock.update(collection.document(root.id), any()) }
+    verify(exactly = 1) { batchMock.update(collection.document(child.id), any()) }
+    verify(exactly = 1) { batchMock.commit() }
+    confirmVerified(batchMock)
+    assertEquals(repeatedRoot, getPersistedFile(root.id))
+    assertEquals(child, getPersistedFile(child.id))
+  }
+
+  @Test
+  fun removeItemFromGroup_preservesOtherGroupWorkspaceAndUnrelatedDocuments() = runBlocking {
+    val groupId = "group-${UUID.randomUUID()}"
+    val otherGroupId = "other-group-${UUID.randomUUID()}"
+    val item =
+        JDRFile(
+            id = "item-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId, otherGroupId),
+            parentFolderIds = listOf(groupId, otherGroupId),
+        )
+    val unrelated =
+        JDRFile(
+            id = "unrelated-${UUID.randomUUID()}",
+            name = "Unchanged",
+            sharedGroupsIds = listOf(otherGroupId),
+        )
+    persistFiles(item, unrelated)
+
+    val result = removeItemFromGroupAndPumpMainLooper(item.id, groupId)
+
+    assertTrue(result.isSuccess)
+    assertEquals(
+        item.copy(
+            sharedGroupsIds = listOf(otherGroupId),
+            parentFolderIds = listOf(otherGroupId),
+        ),
+        getPersistedFile(item.id),
+    )
+    assertEquals(unrelated, getPersistedFile(unrelated.id))
   }
 
   /** Tests the creation of a new uid and verifies that it not empty and unique */
