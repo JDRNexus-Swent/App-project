@@ -51,6 +51,7 @@ import kotlinx.coroutines.flow.emptyFlow
 
 /** Test tags exposed by the lore editor for UI tests. */
 object EditFileLoreTestTags {
+  const val LIST = "edit_lore_list"
   const val SECTIONS_LIST = "edit_lore_sections"
   const val BACK = "edit_lore_back"
 }
@@ -121,7 +122,10 @@ fun EditFileLore(
 
         LazyColumn(
             modifier =
-                Modifier.fillMaxSize().imePadding().padding(horizontal = 12.dp, vertical = 8.dp),
+                Modifier.fillMaxSize()
+                    .imePadding()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .testTag(EditFileLoreTestTags.LIST),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
           item(key = "top-bar") {

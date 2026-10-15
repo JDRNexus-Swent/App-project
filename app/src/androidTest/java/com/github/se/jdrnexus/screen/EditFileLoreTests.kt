@@ -9,7 +9,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -65,15 +65,19 @@ class EditFileLoreTests {
         .onNodeWithTag("section_description_history")
         .performTextInput("Founded before the first age.")
 
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).performScrollToKey("add-section")
     composeTestRule.onNodeWithTag("add_section_title").performTextInput("The prophecy")
     composeTestRule.onNodeWithTag("add_section_description").performTextInput("A warning.")
-    composeTestRule.onNodeWithTag("confirm_add_section").performScrollTo().performClick()
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).performScrollToKey("add-section")
+    composeTestRule.onNodeWithTag("confirm_add_section").performClick()
     composeTestRule.onNodeWithText("The prophecy").assertIsDisplayed()
 
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).performScrollToKey("section-king")
     composeTestRule.onNodeWithContentDescription("Remove The King").performClick()
     composeTestRule.onNodeWithText("The King").assertIsNotDisplayed()
 
-    composeTestRule.onNodeWithTag("edit_lore_save").performScrollTo().performClick()
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).performScrollToKey("save")
+    composeTestRule.onNodeWithTag("edit_lore_save").performClick()
     composeTestRule.waitUntil(timeoutMillis = 5_000) { viewModel.uiState.value.isSaved }
 
     assertEquals(true, savedClicked)
@@ -93,6 +97,7 @@ class EditFileLoreTests {
         },
     )
 
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).performScrollToKey("top-bar")
     composeTestRule.onNodeWithTag(EditFileLoreTestTags.BACK).performClick()
     assertEquals(true, backClicked)
   }
@@ -116,7 +121,8 @@ class EditFileLoreTests {
     sectionTitle.performTextClearance()
     sectionTitle.assertTextEquals("")
 
-    composeTestRule.onNodeWithTag("edit_lore_save").performScrollTo().performClick()
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).performScrollToKey("save")
+    composeTestRule.onNodeWithTag("edit_lore_save").performClick()
     composeTestRule.onNodeWithText("Section title cannot be empty.").assertIsDisplayed()
     assertEquals(false, viewModel.uiState.value.isSaved)
   }
