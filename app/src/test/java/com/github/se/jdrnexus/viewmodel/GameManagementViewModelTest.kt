@@ -300,7 +300,10 @@ class GameManagementViewModelTest {
 
     createGate.complete(Unit)
     advanceUntilIdle()
-    assertEquals(GroupActionState.Success("new-group"), viewModel.uiState.value.createState)
+    assertEquals(
+        GroupActionState.Success("new-group", "Campaign was created."),
+        viewModel.uiState.value.createState,
+    )
   }
 
   @Test
