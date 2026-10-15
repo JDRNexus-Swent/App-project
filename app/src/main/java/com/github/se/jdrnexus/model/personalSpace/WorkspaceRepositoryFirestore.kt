@@ -96,6 +96,8 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       ) {
         if (!visited.add(file.id)) return
 
+        // Log each visited item to debug recursive removal and verify its
+        // parent-folder relationships and group-sharing references.
         Log.d(
             "GroupWorkspace",
             "Visiting ${file.name} (${file.id}), " +
