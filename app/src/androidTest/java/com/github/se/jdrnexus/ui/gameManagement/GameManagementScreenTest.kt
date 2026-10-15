@@ -18,6 +18,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementUiState
+import com.github.se.jdrnexus.viewmodel.GroupActionState
 import com.github.se.jdrnexus.viewmodel.GroupLoadState
 import com.github.se.jdrnexus.viewmodel.GroupRole
 import com.github.se.jdrnexus.viewmodel.UserGroup
@@ -203,7 +204,7 @@ class GameManagementScreenTest {
                 .copy(
                     isCreateDialogOpen = true,
                     groupName = "Keep this name",
-                    createError = "Offline",
+                    createState = GroupActionState.Error("Offline"),
                 ),
         onCreateGroup = { createClicks++ },
     )
@@ -224,7 +225,7 @@ class GameManagementScreenTest {
                 .copy(
                     isCreateDialogOpen = true,
                     groupName = "In progress",
-                    isCreatingGroup = true,
+                    createState = GroupActionState.Loading,
                 ),
         onCreateGroup = { createClicks++ },
         onDismissCreateDialog = { dismissClicks++ },
@@ -242,7 +243,15 @@ class GameManagementScreenTest {
   fun successBannerDismissActionInvokesCallback() {
     var dismissClicks = 0
     setContent(
-        uiState = stateFor().copy(successMessage = "New campaign was created."),
+        uiState =
+            stateFor()
+                .copy(
+                    createState =
+                        GroupActionState.Success(
+                            groupId = "new-campaign",
+                            message = "New campaign was created.",
+                        )
+                ),
         onDismissSuccess = { dismissClicks++ },
     )
 
