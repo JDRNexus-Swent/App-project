@@ -47,7 +47,9 @@ class EditFileCharacterTests {
         )
     val viewModel = EditFileViewModel(FakeWorkspaceRepository(file))
     viewModel.loadFile(file.id)
-    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) { viewModel.uiState.value.character != null }
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      viewModel.uiState.value.character != null
+    }
 
     composeTestRule.setContent {
       EditFileCharacter(viewModel = viewModel, onBack = {}, onSaved = {})
@@ -76,7 +78,9 @@ class EditFileCharacterTests {
         )
     val viewModel = EditFileViewModel(FakeWorkspaceRepository(file))
     viewModel.loadFile(file.id)
-    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) { viewModel.uiState.value.character != null }
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      viewModel.uiState.value.character != null
+    }
 
     composeTestRule.setContent {
       EditFileCharacter(viewModel = viewModel, onBack = {}, onSaved = {})
@@ -115,7 +119,9 @@ class EditFileCharacterTests {
     var backClicked = false
     var savedClicked = false
     viewModel.loadFile(file.id)
-    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) { viewModel.uiState.value.character != null }
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      viewModel.uiState.value.character != null
+    }
 
     composeTestRule.setContent {
       EditFileCharacter(
@@ -207,7 +213,9 @@ class EditFileCharacterTests {
     val viewModel = EditFileViewModel(FakeWorkspaceRepository(file))
     var backClicked = false
     viewModel.loadFile("non-existent-id")
-    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) { !viewModel.uiState.value.isLoading }
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      !viewModel.uiState.value.isLoading
+    }
 
     composeTestRule.setContent {
       EditFileCharacter(
@@ -246,7 +254,9 @@ class EditFileCharacterTests {
 
     composeTestRule.onNodeWithText("Loading character...").assertIsDisplayed()
     loadGate.complete(Unit)
-    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) { !viewModel.uiState.value.isLoading }
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      !viewModel.uiState.value.isLoading
+    }
   }
 
   @Test
@@ -262,7 +272,9 @@ class EditFileCharacterTests {
     val repository = FakeWorkspaceRepository(file)
     val viewModel = EditFileViewModel(repository)
     viewModel.loadFile(file.id)
-    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) { viewModel.uiState.value.character != null }
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      viewModel.uiState.value.character != null
+    }
 
     composeTestRule.setContent {
       EditFileCharacter(viewModel = viewModel, onBack = {}, onSaved = {})
