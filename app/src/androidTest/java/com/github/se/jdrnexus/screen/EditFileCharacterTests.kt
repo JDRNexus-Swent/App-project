@@ -156,8 +156,8 @@ class EditFileCharacterTests {
     composeTestRule.onNodeWithTag("add_action_description").performTextInput("Restore hit points")
     composeTestRule.onNodeWithTag("confirm_add_action").performScrollTo().performClick()
     composeTestRule.onNodeWithText("Healing Word").assertIsDisplayed()
-    composeTestRule.onNodeWithTag("remove_stat_dexterity").performClick()
-    composeTestRule.onNodeWithTag("remove_action_longbow").performClick()
+    composeTestRule.onNodeWithTag("remove_stat_dexterity").performScrollTo().performClick()
+    composeTestRule.onNodeWithTag("remove_action_longbow").performScrollTo().performClick()
     composeTestRule.onNodeWithText("Dexterity").assertIsNotDisplayed()
     composeTestRule.onNodeWithText("Arcane Longbow").assertIsNotDisplayed()
 
