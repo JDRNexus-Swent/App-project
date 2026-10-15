@@ -8,7 +8,10 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -51,11 +54,11 @@ class EditFileCharacterTests {
     val valueField = composeTestRule.onNodeWithTag("stat_value_decimal-stat")
     valueField.performTextClearance()
     valueField.performTextInput("1.")
-    valueField.assertTextEquals("1.")
+    valueField.assertTextEquals("Value", "1.")
     assertEquals(1.0, viewModel.uiState.value.character!!.stats.single().value, 0.0)
 
     valueField.performTextInput("5")
-    valueField.assertTextEquals("1.5")
+    valueField.assertTextEquals("Value", "1.5")
     assertEquals(1.5, viewModel.uiState.value.character!!.stats.single().value, 0.0)
   }
 
@@ -109,19 +112,18 @@ class EditFileCharacterTests {
 
     composeTestRule.onNodeWithTag("add_action_name").performTextInput("Hunter's Mark")
     composeTestRule.onNodeWithTag("add_action_description").performTextInput("Mark a target")
-    composeTestRule.onNodeWithTag("confirm_add_action").performClick()
+    composeTestRule.onNodeWithTag("confirm_add_action").performScrollTo().performClick()
     composeTestRule.onNodeWithText("Hunter's Mark").assertIsDisplayed()
     composeTestRule.onNodeWithTag("add_action_name").performTextInput("Healing Word")
     composeTestRule.onNodeWithTag("add_action_description").performTextInput("Restore hit points")
-    composeTestRule.onNodeWithTag("confirm_add_action").performClick()
+    composeTestRule.onNodeWithTag("confirm_add_action").performScrollTo().performClick()
     composeTestRule.onNodeWithText("Healing Word").assertIsDisplayed()
-
     composeTestRule.onNodeWithContentDescription("Remove Dexterity").performClick()
     composeTestRule.onNodeWithContentDescription("Remove Arcane Longbow").performClick()
     composeTestRule.onNodeWithText("Dexterity").assertIsNotDisplayed()
     composeTestRule.onNodeWithText("Arcane Longbow").assertIsNotDisplayed()
 
-    composeTestRule.onNodeWithTag("edit_character_save").performClick()
+    composeTestRule.onNodeWithTag("edit_character_save").performScrollTo().performClick()
     composeTestRule.waitUntil(timeoutMillis = 5_000) { repository.updatedFiles.isNotEmpty() }
     assertEquals(false, savedClicked)
     updateGate.complete(Unit)
@@ -139,6 +141,7 @@ class EditFileCharacterTests {
         saved.actions.map { it.description },
     )
 
+    composeTestRule.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
     composeTestRule.onNodeWithTag(EditFileCharacterTestTags.BACK).performClick()
     assertEquals(true, backClicked)
   }
