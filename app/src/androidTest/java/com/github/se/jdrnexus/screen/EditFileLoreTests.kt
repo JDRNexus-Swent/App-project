@@ -3,7 +3,6 @@ package com.github.se.jdrnexus.screen
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -29,6 +28,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class EditFileLoreTests {
   @get:Rule val composeTestRule = createComposeRule()
+  private val testTimeoutMillis = 2_000L
 
   @Test
   fun editsAddsRemovesAndSavesLoreSections() {
@@ -45,7 +45,9 @@ class EditFileLoreTests {
     var backClicked = false
     var savedClicked = false
     viewModel.loadFile(file.id)
-    composeTestRule.waitUntil(timeoutMillis = 5_000) { viewModel.uiState.value.lore != null }
+    composeTestRule.waitUntil(timeoutMillis = testTimeoutMillis) {
+      viewModel.uiState.value.lore != null
+    }
 
     composeTestRule.setContent {
       EditFileLore(
@@ -78,9 +80,10 @@ class EditFileLoreTests {
 
     composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).performScrollToKey("save")
     composeTestRule.onNodeWithTag("edit_lore_save").performClick()
-    composeTestRule.waitUntil(timeoutMillis = 5_000) { viewModel.uiState.value.isSaved }
+    composeTestRule.waitUntil(timeoutMillis = testTimeoutMillis) {
+      viewModel.uiState.value.isSaved && savedClicked
+    }
 
-    assertEquals(true, savedClicked)
     assertEquals("The Lost Kingdom", viewModel.uiState.value.lore!!.title)
     assertEquals(
         listOf("Ancient history", "The prophecy"),
@@ -114,12 +117,14 @@ class EditFileLoreTests {
         )
     val viewModel = EditFileViewModel(FakeWorkspaceRepository(file))
     viewModel.loadFile(file.id)
-    composeTestRule.waitUntil(timeoutMillis = 5_000) { viewModel.uiState.value.lore != null }
+    composeTestRule.waitUntil(timeoutMillis = testTimeoutMillis) {
+      viewModel.uiState.value.lore != null
+    }
 
     composeTestRule.setContent { EditFileLore(viewModel = viewModel, onBack = {}, onSaved = {}) }
     val sectionTitle = composeTestRule.onNodeWithTag("section_title_history")
     sectionTitle.performTextClearance()
-    sectionTitle.assertTextEquals("")
+    composeTestRule.onNodeWithText("Section title cannot be empty.").assertIsDisplayed()
 
     composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).performScrollToKey("save")
     composeTestRule.onNodeWithTag("edit_lore_save").performClick()
@@ -139,7 +144,9 @@ class EditFileLoreTests {
     val viewModel = EditFileViewModel(FakeWorkspaceRepository(file))
     var backClicked = false
     viewModel.loadFile("non-existent-id")
-    composeTestRule.waitUntil(timeoutMillis = 5_000) { !viewModel.uiState.value.isLoading }
+    composeTestRule.waitUntil(timeoutMillis = testTimeoutMillis) {
+      !viewModel.uiState.value.isLoading
+    }
 
     composeTestRule.setContent {
       EditFileLore(
