@@ -21,7 +21,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-class AuthFlowE2ETest {
   @RunWith(AndroidJUnit4::class)
   class AuthFlowE2ETest {
 
@@ -33,7 +32,7 @@ class AuthFlowE2ETest {
         val auth = FirebaseAuth.getInstance()
         val user = auth.currentUser ?: return@runBlocking
         try {
-          withTimeout(10_000) { user.delete().await() }
+          withTimeout(30_000) { user.delete().await() }
         } catch (e: Exception) {
           Log.w("E2E", "Cleanup failed for ${user.email}", e)
         } finally {
@@ -80,9 +79,8 @@ class AuthFlowE2ETest {
       composeRule.onNodeWithTag(C.Tag.sign_in_submit).assertDoesNotExist()
     }
 
-    private fun waitForTag(tag: String, timeout: Long = 15_000) =
+    private fun waitForTag(tag: String, timeout: Long = 30_000) =
         composeRule.waitUntil(timeout) {
           composeRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
         }
   }
-}

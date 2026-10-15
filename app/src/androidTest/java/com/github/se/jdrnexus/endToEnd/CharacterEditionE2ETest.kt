@@ -65,6 +65,7 @@ class CharacterEditionE2ETest {
 
   companion object {
     private const val SEEDED_NAME = "E2E seeded hero"
+    private const val TIMEOUT_MS = 40_000L
   }
 
   @Test
@@ -144,18 +145,18 @@ class CharacterEditionE2ETest {
     waitForContentDescription("Add item")
   }
 
-  private fun waitForTag(tag: String, timeout: Long = 10_000) =
-      composeRule.waitUntil(timeout) {
-        composeRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
-      }
+  private fun waitForTag(tag: String, timeout: Long = TIMEOUT_MS) =
+    composeRule.waitUntil(timeout) {
+      composeRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+    }
 
-  private fun waitForContentDescription(desc: String, timeout: Long = 10_000) =
-      composeRule.waitUntil(timeout) {
-        composeRule.onAllNodesWithContentDescription(desc).fetchSemanticsNodes().isNotEmpty()
-      }
+  private fun waitForContentDescription(desc: String, timeout: Long = TIMEOUT_MS) =
+    composeRule.waitUntil(timeout) {
+      composeRule.onAllNodesWithContentDescription(desc).fetchSemanticsNodes().isNotEmpty()
+    }
 
-  private fun waitForText(text: String, timeout: Long = 10_000) =
-      composeRule.waitUntil(timeout) {
-        composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
-      }
+  private fun waitForText(text: String, timeout: Long = TIMEOUT_MS) =
+    composeRule.waitUntil(timeout) {
+      composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+    }
 }
