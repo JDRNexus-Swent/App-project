@@ -31,16 +31,10 @@ class AuthFlowE2ETest {
     fun cleanUp() {
       runBlocking {
         val auth = FirebaseAuth.getInstance()
-        val user =
-            auth.currentUser ?: return@runBlocking // rien à nettoyer (échec avant le sign up)
+        val user = auth.currentUser ?: return@runBlocking
         try {
-          withTimeout(10_000) {
-            // TODO: si l'app crée un document pour l'utilisateur, le supprimer AVANT le compte :
-            // FirebaseFirestore.getInstance().collection("users").document(user.uid).delete().await()
-            user.delete().await()
-          }
+          withTimeout(10_000) { user.delete().await() }
         } catch (e: Exception) {
-          // Ne pas faire échouer le test à cause du nettoyage, mais garder une trace
           Log.w("E2E", "Cleanup failed for ${user.email}", e)
         } finally {
           auth.signOut()
@@ -65,7 +59,7 @@ class AuthFlowE2ETest {
       composeRule.onNodeWithTag(C.Tag.sign_up_password).performTextInput(password)
       composeRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
 
-      // 2. go to home
+      // 2. Go to home
       waitForTag(TestTags.TITLE)
       composeRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
       composeRule.onNodeWithTag(TestTags.PSPACEBUTTON).assertIsDisplayed()
