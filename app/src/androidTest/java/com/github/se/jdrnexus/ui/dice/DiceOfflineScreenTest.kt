@@ -269,4 +269,21 @@ class DiceOfflineScreenTest {
       assertTrue("$type tile ends at $bottom, off screen", bottom <= screenHeight)
     }
   }
+
+  @Test
+  fun defaultViewModelFromTheFactoryDrivesTheScreen() {
+    // No ViewModel passed: the screen builds its own through DiceViewModelFactory, as in the app.
+    // No roll here, so the test never depends on the roll animation.
+    composeTestRule.setContent { SampleAppTheme { DiceOfflineScreen() } }
+
+    node(C.Tag.dice_offline_selected_type).assertTextEquals("D20")
+    node(C.Tag.dice_offline_result).assertTextEquals("?")
+
+    node(C.Tag.diceOfflineSelect("D6")).performScrollTo().performClick()
+    node(C.Tag.dice_offline_modifier_increase).performScrollTo().performClick()
+
+    node(C.Tag.dice_offline_selected_type).assertTextEquals("D6")
+    node(C.Tag.dice_offline_modifier_value).assertTextEquals("+1")
+    node(C.Tag.dice_offline_range).assertTextEquals("Range: 2 – 7")
+  }
 }
