@@ -314,16 +314,6 @@ fun EditFileCharacter(
               )
             }
           }
-          state.fieldErrors.values.distinct().forEach { error ->
-            item(key = "field-error-$error") {
-              Text(
-                  text = error,
-                  color = MaterialTheme.colorScheme.error,
-                  style = MaterialTheme.typography.bodySmall,
-                  modifier = Modifier.testTag("edit_character_field_error"),
-              )
-            }
-          }
           item(key = "save") {
             if (state.isSaving) {
               CircularProgressIndicator(modifier = Modifier.fillMaxWidth())

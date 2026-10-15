@@ -33,6 +33,8 @@ import org.junit.runner.RunWith
 class EditFileCharacterTests {
   @get:Rule val composeTestRule = createComposeRule()
 
+  val timeOutConstant = 1000L
+
   @Test
   fun preservesDecimalPointWhileTypingStatValue() {
     val file =
@@ -45,7 +47,7 @@ class EditFileCharacterTests {
         )
     val viewModel = EditFileViewModel(FakeWorkspaceRepository(file))
     viewModel.loadFile(file.id)
-    composeTestRule.waitUntil(timeoutMillis = 5_000) { viewModel.uiState.value.character != null }
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) { viewModel.uiState.value.character != null }
 
     composeTestRule.setContent {
       EditFileCharacter(viewModel = viewModel, onBack = {}, onSaved = {})
@@ -74,7 +76,7 @@ class EditFileCharacterTests {
         )
     val viewModel = EditFileViewModel(FakeWorkspaceRepository(file))
     viewModel.loadFile(file.id)
-    composeTestRule.waitUntil(timeoutMillis = 5_000) { viewModel.uiState.value.character != null }
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) { viewModel.uiState.value.character != null }
 
     composeTestRule.setContent {
       EditFileCharacter(viewModel = viewModel, onBack = {}, onSaved = {})
@@ -113,7 +115,7 @@ class EditFileCharacterTests {
     var backClicked = false
     var savedClicked = false
     viewModel.loadFile(file.id)
-    composeTestRule.waitUntil(timeoutMillis = 5_000) { viewModel.uiState.value.character != null }
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) { viewModel.uiState.value.character != null }
 
     composeTestRule.setContent {
       EditFileCharacter(
@@ -205,7 +207,7 @@ class EditFileCharacterTests {
     val viewModel = EditFileViewModel(FakeWorkspaceRepository(file))
     var backClicked = false
     viewModel.loadFile("non-existent-id")
-    composeTestRule.waitUntil(timeoutMillis = 5_000) { !viewModel.uiState.value.isLoading }
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) { !viewModel.uiState.value.isLoading }
 
     composeTestRule.setContent {
       EditFileCharacter(
@@ -220,9 +222,67 @@ class EditFileCharacterTests {
     assertEquals(true, backClicked)
   }
 
+  @Test
+  fun displaysLoadingStateWhenFileIsLoading() {
+    val file =
+        JDRFile(
+            id = "character-1",
+            name = "Elara Moonwhisper",
+            type = DocumentType.CHARACTER,
+            content = "{}",
+        )
+    val loadGate = CompletableDeferred<Unit>()
+    val repository = FakeWorkspaceRepository(file, loadGate = loadGate)
+    val viewModel = EditFileViewModel(repository)
+    viewModel.loadFile("character-1")
+
+    composeTestRule.setContent {
+      EditFileCharacter(
+          viewModel = viewModel,
+          onBack = {},
+          onSaved = {},
+      )
+    }
+
+    composeTestRule.onNodeWithText("Loading character...").assertIsDisplayed()
+    loadGate.complete(Unit)
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) { !viewModel.uiState.value.isLoading }
+  }
+
+  @Test
+  fun failingSaveWithInvalidFieldDoesNotAllowSubsequentSaveWithoutFixingField() {
+    val file =
+        JDRFile(
+            id = "character-1",
+            name = "Elara Moonwhisper",
+            type = DocumentType.CHARACTER,
+            content =
+                """{"version":1,"type":"character","character":{"name":"Elara Moonwhisper","stats":[{"statID":"strength","name":"Strength","value":16}],"actions":[],"hp":{"current":18,"max":24}}}""",
+        )
+    val repository = FakeWorkspaceRepository(file)
+    val viewModel = EditFileViewModel(repository)
+    viewModel.loadFile(file.id)
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) { viewModel.uiState.value.character != null }
+
+    composeTestRule.setContent {
+      EditFileCharacter(viewModel = viewModel, onBack = {}, onSaved = {})
+    }
+
+    composeTestRule.onNodeWithTag("stat_name_strength").performTextClearance()
+
+    composeTestRule.onNodeWithTag("edit_character_save").performScrollTo().performClick()
+    assertEquals(0, repository.updatedFiles.size)
+    assertEquals(false, viewModel.uiState.value.isSaved)
+
+    composeTestRule.onNodeWithTag("edit_character_save").performScrollTo().performClick()
+    assertEquals(0, repository.updatedFiles.size)
+    assertEquals(false, viewModel.uiState.value.isSaved)
+  }
+
   private class FakeWorkspaceRepository(
       private val file: JDRFile,
       private val updateGate: CompletableDeferred<Unit>? = null,
+      private val loadGate: CompletableDeferred<Unit>? = null,
   ) : WorkspaceRepository {
     val updatedFiles = mutableListOf<JDRFile>()
 
@@ -238,8 +298,10 @@ class EditFileCharacterTests {
 
     override suspend fun deleteFile(fileId: String): Result<Unit> = Result.success(Unit)
 
-    override suspend fun getFile(fileId: String): Result<JDRFile?> =
-        Result.success(file.takeIf { it.id == fileId })
+    override suspend fun getFile(fileId: String): Result<JDRFile?> {
+      loadGate?.await()
+      return Result.success(file.takeIf { it.id == fileId })
+    }
 
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = emptyFlow()
 
