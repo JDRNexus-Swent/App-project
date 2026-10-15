@@ -139,10 +139,17 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
             file.copy(
                 sharedGroupsIds = file.sharedGroupsIds - groupId,
                 parentFolderIds =
-                    if (!parentId.isNullOrBlank() && parentIsExclusiveToGroup) {
-                      file.parentFolderIds - parentId
-                    } else {
-                      file.parentFolderIds
+                    file.parentFolderIds.filterNot { folderId ->
+                      // Remove the virtual root marker for this group.
+                      if (folderId == groupId) {
+                        true
+                      } else {
+                        // Remove a real parent only when it belongs exclusively
+                        // to this group and is the parent being detached.
+                        !parentId.isNullOrBlank() &&
+                            folderId == parentId &&
+                            parentIsExclusiveToGroup
+                      }
                     },
             )
 

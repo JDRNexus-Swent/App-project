@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -95,44 +97,45 @@ class GroupWorkspaceViewModel(
     check(groupId in item.sharedGroupsIds) { "This item does not belong to the current group." }
   }
 
-  private suspend fun requireAccessibleFolder(folderId: String): JDRFile {
-    val foldersToVisit = ArrayDeque<String>()
+  private suspend fun requireAccessibleFolderPath(folderId: String): List<JDRFile> {
+    val pathsToVisit = ArrayDeque<List<JDRFile>>()
     val visited = mutableSetOf<String>()
     val rootFolders =
-        repository.getGroupRootFiles(groupId).first().filter { folder ->
-          folder.type == DocumentType.FOLDER &&
+        repository.getDocumentsInFolder(groupId).first().filter { folder ->
+          folder.id != groupId &&
+              folder.type == DocumentType.FOLDER &&
               groupId in folder.sharedGroupsIds &&
-              folder.parentFolderIds.isEmpty()
+              groupId in folder.parentFolderIds
         }
 
-    rootFolders.forEach { foldersToVisit.addLast(it.id) }
     rootFolders
         .firstOrNull { it.id == folderId }
         ?.let {
-          return it
+          return listOf(it)
         }
 
-    while (foldersToVisit.isNotEmpty()) {
-      val currentFolderId = foldersToVisit.removeFirst()
-      if (!visited.add(currentFolderId)) continue
+    rootFolders.forEach { pathsToVisit.addLast(listOf(it)) }
+    while (pathsToVisit.isNotEmpty()) {
+      val path = pathsToVisit.removeFirst()
+      val currentFolder = path.last()
+      if (!visited.add(currentFolder.id)) continue
+      if (currentFolder.id == folderId) return path
 
       val children =
-          repository.getDocumentsInFolder(currentFolderId).first().filter { child ->
-            child.type == DocumentType.FOLDER &&
+          repository.getDocumentsInFolder(currentFolder.id).first().filter { child ->
+            child.id != groupId &&
+                child.type == DocumentType.FOLDER &&
                 groupId in child.sharedGroupsIds &&
-                currentFolderId in child.parentFolderIds
+                currentFolder.id in child.parentFolderIds
           }
-
-      children
-          .firstOrNull { it.id == folderId }
-          ?.let {
-            return it
-          }
-      children.forEach { foldersToVisit.addLast(it.id) }
+      children.forEach { pathsToVisit.addLast(path + it) }
     }
 
     throw IllegalStateException("This folder is not part of the current group's workspace.")
   }
+
+  private suspend fun requireAccessibleFolder(folderId: String): JDRFile =
+      requireAccessibleFolderPath(folderId).last()
 
   private suspend fun requireItemInCurrentWorkspace(
       item: JDRFile,
@@ -140,13 +143,9 @@ class GroupWorkspaceViewModel(
   ) {
     requireBelongsToGroup(item)
 
-    val itemsInFolder =
-        if (folderId.isEmpty()) {
-          repository.getGroupRootFiles(groupId).first()
-        } else {
-          requireAccessibleFolder(folderId)
-          repository.getDocumentsInFolder(folderId).first()
-        }
+    val effectiveFolderId = folderId.ifEmpty { groupId }
+    if (folderId.isNotEmpty()) requireAccessibleFolder(folderId)
+    val itemsInFolder = repository.getDocumentsInFolder(effectiveFolderId).first()
 
     check(itemsInFolder.any { it.id == item.id && groupId in it.sharedGroupsIds }) {
       "This item is not in the current workspace folder."
@@ -187,19 +186,24 @@ class GroupWorkspaceViewModel(
             }
 
         _uiState.update { it.copy(currentFolderName = folderName) }
-        val source =
+        val effectiveFolderId = folderId.ifEmpty { groupId }
+        val source = repository.getDocumentsInFolder(effectiveFolderId)
+        val updates =
             if (folderId.isEmpty()) {
-              repository.getGroupRootFiles(groupId)
+              source
             } else {
-              combine(
-                  repository.getGroupRootFiles(groupId),
-                  repository.getDocumentsInFolder(folderId),
-              ) { _, items ->
-                items
-              }
+              val path = requireAccessibleFolderPath(folderId)
+              val accessChanges =
+                  merge(
+                      repository.getDocumentsInFolder(groupId).map { Unit },
+                      *path
+                          .map { folder -> repository.getFileFlow(folder.id).map { Unit } }
+                          .toTypedArray(),
+                  )
+              combine(source, accessChanges) { items, _ -> items }
             }
 
-        source.collect { items ->
+        updates.collect { items ->
           if (requestGeneration == fetchGeneration) {
             if (folderId.isNotEmpty()) requireAccessibleFolder(folderId)
             val groupItems = items.filter { item -> groupId in item.sharedGroupsIds }
@@ -253,7 +257,7 @@ class GroupWorkspaceViewModel(
                 name = folderName,
                 ownerId = uid,
                 sharedGroupsIds = listOf(groupId),
-                parentFolderIds = if (parentId.isEmpty()) emptyList() else listOf(parentId),
+                parentFolderIds = listOf(parentId.ifEmpty { groupId }),
                 personalParentId = "",
                 type = DocumentType.FOLDER,
                 content = "",
@@ -301,6 +305,10 @@ class GroupWorkspaceViewModel(
         for (folderId in file.parentFolderIds) {
           // Never remove the current destination folder here.
           if (folderId == parentId) continue
+          if (folderId == groupId) {
+            if (parentId.isNotEmpty()) parentIdsToRemove.add(folderId)
+            continue
+          }
 
           val parent = repository.getFile(folderId).getOrThrow()
 
@@ -317,8 +325,7 @@ class GroupWorkspaceViewModel(
         }
 
         val updatedParentIds =
-            (file.parentFolderIds - parentIdsToRemove +
-                    listOfNotNull(parentId.takeIf { it.isNotEmpty() }))
+            (file.parentFolderIds - parentIdsToRemove + listOf(parentId.ifEmpty { groupId }))
                 .distinct()
 
         val updated =

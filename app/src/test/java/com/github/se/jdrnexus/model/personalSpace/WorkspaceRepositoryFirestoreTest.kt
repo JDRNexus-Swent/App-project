@@ -6,6 +6,8 @@ import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -935,14 +937,36 @@ class WorkspaceRepositoryFirestoreTest {
    */
   @Test
   fun testSnapshotListeners_PermissionDenied() = runBlocking {
-    // Test single file flow permission denied
+    val firestoreMock = mockk<FirebaseFirestore>()
+    val collectionMock = mockk<CollectionReference>()
+    val documentMock = mockk<DocumentReference>()
+    val registrationMock = mockk<ListenerRegistration>(relaxed = true)
+
+    every { firestoreMock.collection("documents") } returns collectionMock
+    every { collectionMock.document("access_denied_test") } returns documentMock
+
+    every { documentMock.addSnapshotListener(any<EventListener<DocumentSnapshot>>()) } answers
+        {
+          val listener = firstArg<EventListener<DocumentSnapshot>>()
+          listener.onEvent(
+              null,
+              FirebaseFirestoreException(
+                  "Simulated Permission Denied",
+                  FirebaseFirestoreException.Code.PERMISSION_DENIED,
+              ),
+          )
+          registrationMock
+        }
+
+    val mockRepository = WorkspaceRepositoryFirestore(firestoreMock)
+
     try {
-      repository.getFileFlow("access_denied_test").waitFor(timeoutMs = DEFAULT_TIMEOUT_MS) { false }
-      fail("Should have thrown an exception")
-    } catch (e: Exception) {
-      assertTrue(
-          "Should throw permission denied",
-          e.message?.contains("PERMISSION_DENIED") == true,
+      mockRepository.getFileFlow("access_denied_test").collect {}
+      fail("getFileFlow should have thrown a permission-denied exception")
+    } catch (e: FirebaseFirestoreException) {
+      assertEquals(
+          FirebaseFirestoreException.Code.PERMISSION_DENIED,
+          e.code,
       )
     }
   }
