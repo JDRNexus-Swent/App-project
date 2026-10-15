@@ -21,6 +21,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.authentication.SignInScreen
@@ -146,12 +148,12 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
       }
 
       composable(route = AllRoutes.PersoSpace.name) {
-        val onDocumentClicked: (String) -> Unit = { documentId ->
-          editFileViewModel.loadFile(documentId)
-          if (editFileViewModel.uiState.value.character != null) {
-            navController.navigate(AllRoutes.EditChar.name)
-          } else {
-            navController.navigate(AllRoutes.EditLore.name)
+        val onDocumentClicked: (JDRFile) -> Unit = { document ->
+          editFileViewModel.loadFile(document.id)
+          when (document.type) {
+            DocumentType.CHARACTER -> navController.navigate(AllRoutes.EditChar.name)
+            DocumentType.TEXT -> navController.navigate(AllRoutes.EditLore.name)
+            DocumentType.FOLDER -> Unit
           }
         }
 
