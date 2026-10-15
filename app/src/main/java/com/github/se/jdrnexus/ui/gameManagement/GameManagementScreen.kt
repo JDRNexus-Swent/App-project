@@ -65,7 +65,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.resources.JdrNexusLogo
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
@@ -119,9 +118,9 @@ private val darkGameManagementColors =
 @Composable
 fun GameManagementScreen(
     onEnterWorkspace: (String) -> Unit,
+    gameManagementViewModel: GameManagementViewModel,
     onManageGroup: (String) -> Unit = {},
     onTabSelected: (String) -> Unit = {},
-    gameManagementViewModel: GameManagementViewModel = viewModel(),
 ) {
   val uiState by gameManagementViewModel.uiState.collectAsState()
   LaunchedEffect(gameManagementViewModel) { gameManagementViewModel.loadGroups() }
@@ -655,6 +654,11 @@ private fun OutlinedActionButton(
   }
 }
 
+@Composable
+internal fun CreateGroupErrorMessage(message: String) {
+  Text(message, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+}
+
 /** Collects the required group name and reports validation, progress, and creation errors. */
 @Composable
 private fun CreateGroupDialog(
@@ -738,11 +742,7 @@ private fun CreateGroupDialog(
         Text("Creating your group. Please wait...", color = colors.secondaryText, fontSize = 11.sp)
       }
       if (isFailure) {
-        Text(
-            "Couldn't create your group.",
-            color = MaterialTheme.colorScheme.error,
-            fontSize = 12.sp,
-        )
+        CreateGroupErrorMessage(uiState.createError)
         Text(
             "Check your connection and try again. Your group name is still here.",
             color = colors.secondaryText,

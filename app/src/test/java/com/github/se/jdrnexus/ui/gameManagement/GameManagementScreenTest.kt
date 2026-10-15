@@ -5,7 +5,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -88,6 +88,17 @@ class GameManagementScreenTest {
 
     composeTestRule.onNodeWithText("Your party awaits").assertIsDisplayed()
     composeTestRule.onNodeWithText("Create your first group").assertIsDisplayed()
+  }
+
+  @Test
+  fun createGroupFailureDisplaysViewModelError() {
+    composeTestRule.setContent {
+      SampleAppTheme(darkTheme = false) {
+        CreateGroupErrorMessage("A group with this name already exists.")
+      }
+    }
+
+    composeTestRule.onNodeWithText("A group with this name already exists.").assertIsDisplayed()
   }
 
   private fun setContent(
