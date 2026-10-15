@@ -54,6 +54,7 @@ android {
   packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
 
   testOptions {
+    animationsDisabled = true
     unitTests {
       isIncludeAndroidResources = true
       isReturnDefaultValues = true
@@ -158,6 +159,8 @@ dependencies {
   implementation(libs.compose.ui)
   implementation(libs.compose.ui.graphics)
   implementation(libs.androidx.material.icons.extended)
+
+  androidTestImplementation("androidx.test.ext:junit:1.2.1")
   // Material Design 3
   implementation(libs.compose.material3)
   // Integration with activities
@@ -191,6 +194,11 @@ dependencies {
   implementation(libs.kotlinx.serialization.core)
   implementation(libs.kotlinx.coroutines.play.services)
 }
+
+// Kaspresso pulls an old protobuf-lite that clashes with the protobuf-javalite used by Firestore
+configurations
+    .matching { it.name.contains("androidTest", ignoreCase = true) }
+    .all { exclude(group = "com.google.protobuf", module = "protobuf-lite") }
 
 tasks.withType<Test> {
   // Configure Jacoco for each tests
