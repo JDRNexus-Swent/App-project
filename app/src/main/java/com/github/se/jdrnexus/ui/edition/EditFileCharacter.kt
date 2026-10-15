@@ -57,6 +57,8 @@ object EditFileCharacterTestTags {
   const val STATS_LIST = "edit_character_stats"
   const val ACTIONS_LIST = "edit_character_actions"
   const val BACK = "edit_character_back"
+  const val CURRENT_HP = "edit_character_current_hp"
+  const val MAX_HP = "edit_character_max_hp"
 }
 
 /**
@@ -140,6 +142,34 @@ fun EditFileCharacter(
                 label = { Text("Character name") },
                 singleLine = true,
             )
+          }
+          item(key = "character-hp") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+              NumberField(
+                  label = "Current HP",
+                  value = character.hp.current.toString(),
+                  stateKey = "current-hp",
+                  error = state.fieldErrors[EditFileField.CharacterCurrentHp],
+                  modifier =
+                      Modifier.weight(1f).testTag(EditFileCharacterTestTags.CURRENT_HP),
+                  keyboardType = KeyboardType.Number,
+                  onValueChange = { viewModel.updateCharacterCurrentHp(it.toIntOrNull() ?: -1) },
+              )
+              NumberField(
+                  label = "Max HP",
+                  value = character.hp.max.toString(),
+                  stateKey = "max-hp",
+                  error = state.fieldErrors[EditFileField.CharacterMaxHp],
+                  modifier =
+                      Modifier.weight(1f).testTag(EditFileCharacterTestTags.MAX_HP),
+                  keyboardType = KeyboardType.Number,
+                  onValueChange = { viewModel.updateCharacterMaxHp(it.toIntOrNull() ?: -1) },
+              )
+            }
           }
           item(key = "stats-heading") {
             SectionTitle(
@@ -395,6 +425,7 @@ private fun NumberField(
     stateKey: String,
     error: String?,
     modifier: Modifier = Modifier,
+    keyboardType: KeyboardType = KeyboardType.Decimal,
     onValueChange: (String) -> Unit,
 ) {
   var draft by remember(stateKey) { mutableStateOf(value) }
@@ -411,7 +442,7 @@ private fun NumberField(
       label = { Text(label) },
       singleLine = true,
       isError = error != null,
-      keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+      keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
       supportingText = error?.let { message -> ({ Text(message) }) },
   )
 }

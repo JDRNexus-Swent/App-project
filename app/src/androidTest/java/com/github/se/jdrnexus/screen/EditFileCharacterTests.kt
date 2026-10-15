@@ -63,6 +63,41 @@ class EditFileCharacterTests {
   }
 
   @Test
+  fun displaysAndEditsCharacterHp() {
+    val file =
+        JDRFile(
+            id = "hp-character",
+            name = "HP Test",
+            type = DocumentType.CHARACTER,
+            content =
+                """{"version":1,"type":"character","character":{"name":"HP Test","stats":[],"actions":[],"hp":{"current":15,"max":20}}}""",
+        )
+    val viewModel = EditFileViewModel(FakeWorkspaceRepository(file))
+    viewModel.loadFile(file.id)
+    composeTestRule.waitUntil(timeoutMillis = 5_000) { viewModel.uiState.value.character != null }
+
+    composeTestRule.setContent {
+      EditFileCharacter(viewModel = viewModel, onBack = {}, onSaved = {})
+    }
+
+    val currentHpField = composeTestRule.onNodeWithTag(EditFileCharacterTestTags.CURRENT_HP)
+    val maxHpField = composeTestRule.onNodeWithTag(EditFileCharacterTestTags.MAX_HP)
+
+    currentHpField.assertIsDisplayed()
+    maxHpField.assertIsDisplayed()
+    currentHpField.assertTextEquals("Current HP", "15")
+    maxHpField.assertTextEquals("Max HP", "20")
+
+    currentHpField.performTextClearance()
+    currentHpField.performTextInput("18")
+    assertEquals(18, viewModel.uiState.value.character!!.hp.current)
+
+    maxHpField.performTextClearance()
+    maxHpField.performTextInput("25")
+    assertEquals(25, viewModel.uiState.value.character!!.hp.max)
+  }
+
+  @Test
   fun editsAddsRemovesAndSavesCharacterStatsAndActions() {
     val file =
         JDRFile(
@@ -92,6 +127,10 @@ class EditFileCharacterTests {
 
     composeTestRule.onNodeWithTag("edit_character_name").performTextClearance()
     composeTestRule.onNodeWithTag("edit_character_name").performTextInput("Elara Starwhisper")
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.CURRENT_HP).performTextClearance()
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.CURRENT_HP).performTextInput("20")
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.MAX_HP).performTextClearance()
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.MAX_HP).performTextInput("30")
     composeTestRule.onNodeWithTag("stat_name_strength").performTextClearance()
     composeTestRule.onNodeWithTag("stat_name_strength").performTextInput("Wisdom")
     composeTestRule.onNodeWithTag("stat_value_strength").performTextClearance()
@@ -103,11 +142,11 @@ class EditFileCharacterTests {
 
     composeTestRule.onNodeWithTag("add_entry_name").performTextInput("Perception")
     composeTestRule.onNodeWithTag("add_entry_value").performTextInput("14")
-    composeTestRule.onNodeWithTag("confirm_add_stat").performClick()
+    composeTestRule.onNodeWithTag("confirm_add_stat").performScrollTo().performClick()
     composeTestRule.onNodeWithText("Perception").assertIsDisplayed()
     composeTestRule.onNodeWithTag("add_entry_name").performTextInput("Intelligence")
     composeTestRule.onNodeWithTag("add_entry_value").performTextInput("15")
-    composeTestRule.onNodeWithTag("confirm_add_stat").performClick()
+    composeTestRule.onNodeWithTag("confirm_add_stat").performScrollTo().performClick()
     composeTestRule.onNodeWithText("Intelligence").assertIsDisplayed()
 
     composeTestRule.onNodeWithTag("add_action_name").performTextInput("Hunter's Mark")
@@ -133,6 +172,8 @@ class EditFileCharacterTests {
 
     val saved = viewModel.uiState.value.character!!
     assertEquals("Elara Starwhisper", saved.name)
+    assertEquals(20, saved.hp.current)
+    assertEquals(30, saved.hp.max)
     assertEquals(listOf("Wisdom", "Perception", "Intelligence"), saved.stats.map { it.name })
     assertEquals(listOf(18.0, 14.0, 15.0), saved.stats.map { it.value })
     assertEquals(listOf("Hunter's Mark", "Healing Word"), saved.actions.map { it.name })
