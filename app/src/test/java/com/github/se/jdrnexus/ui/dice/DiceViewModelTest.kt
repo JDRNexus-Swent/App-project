@@ -1,6 +1,7 @@
 // Co-authored-by: Gemini
 package com.github.se.jdrnexus.ui.dice
 
+import androidx.lifecycle.ViewModel
 import com.github.se.jdrnexus.model.repository.DiceLogic
 import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
 import io.mockk.coEvery
@@ -18,8 +19,10 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 
@@ -53,6 +56,28 @@ class DiceViewModelTest {
     assertNull(state.currentResult)
     assertFalse(state.isRolling)
     assertNull(state.errorMessage)
+  }
+
+  @Test
+  fun `factory creates DiceViewModel successfully`() {
+    val factory = DiceViewModelFactory(diceLogic, diceRepository, "group_1")
+    val viewModel = factory.create(DiceViewModel::class.java)
+    assertNotNull(viewModel)
+  }
+
+  @Test
+  fun `factory throws exception for unknown ViewModel class`() {
+    val factory = DiceViewModelFactory(diceLogic, diceRepository, null)
+
+    class DummyViewModel : ViewModel()
+
+    try {
+      factory.create(DummyViewModel::class.java)
+      fail("An IllegalArgumentException should have been thrown")
+    } catch (e: IllegalArgumentException) {
+      // Check the fail message is the good one
+      assertTrue(e.message?.contains("Unknown ViewModel class") == true)
+    }
   }
 
   @Test
@@ -177,5 +202,25 @@ class DiceViewModelTest {
 
     viewModel.dismissError()
     assertNull(viewModel.uiState.value.errorMessage)
+  }
+
+  @Test
+  fun `rollDice formats error message correctly on repository failure`() = runTest {
+    val viewModel = DiceViewModel(diceLogic, diceRepository, groupId = "group_1")
+    val result = DiceRollResult(DiceType.D20, 10, 0, 10)
+    val simulatedError = "Permission denied"
+
+    every { diceLogic.roll(any(), any()) } returns result
+    // Simulate an error
+    coEvery { diceRepository.saveRollResult(any(), any()) } returns
+        Result.failure(Exception(simulatedError))
+
+    viewModel.rollDice()
+    advanceUntilIdle()
+
+    assertEquals(
+        "Failed to sync roll: $simulatedError",
+        viewModel.uiState.value.errorMessage,
+    )
   }
 }
