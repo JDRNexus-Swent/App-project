@@ -98,11 +98,29 @@ fun EditFileCharacter(
         }
       }
       state.character == null -> {
-        Text(
-            text = state.error ?: "No character is loaded.",
-            modifier = Modifier.padding(24.dp),
-            color = MaterialTheme.colorScheme.error,
-        )
+        Column(modifier = Modifier.fillMaxSize()) {
+          Row(
+              modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+              verticalAlignment = Alignment.CenterVertically,
+          ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.testTag(EditFileCharacterTestTags.BACK),
+            ) {
+              Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            }
+            Text(
+                text = "CHARACTER SHEET",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+          }
+          Text(
+              text = state.error ?: "No character is loaded.",
+              modifier = Modifier.padding(24.dp),
+              color = MaterialTheme.colorScheme.error,
+          )
+        }
       }
       else -> {
         val character = state.character!!
@@ -292,8 +310,8 @@ fun EditFileCharacter(
               )
             }
           }
-          state.fieldErrors.values.distinct().forEachIndexed { index, error ->
-            item(key = "field-error-$index") {
+          state.fieldErrors.values.distinct().forEach { error ->
+            item(key = "field-error-$error") {
               Text(
                   text = error,
                   color = MaterialTheme.colorScheme.error,

@@ -187,6 +187,33 @@ class EditFileCharacterTests {
     assertEquals(true, backClicked)
   }
 
+  @Test
+  fun displaysErrorStateWhenCharacterIsNullAndAllowsBackNavigation() {
+    val file =
+        JDRFile(
+            id = "character-1",
+            name = "Elara Moonwhisper",
+            type = DocumentType.CHARACTER,
+            content = "{}",
+        )
+    val viewModel = EditFileViewModel(FakeWorkspaceRepository(file))
+    var backClicked = false
+    viewModel.loadFile("non-existent-id")
+    composeTestRule.waitUntil(timeoutMillis = 5_000) { !viewModel.uiState.value.isLoading }
+
+    composeTestRule.setContent {
+      EditFileCharacter(
+          viewModel = viewModel,
+          onBack = { backClicked = true },
+          onSaved = {},
+      )
+    }
+
+    composeTestRule.onNodeWithText("File not found.").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.BACK).performClick()
+    assertEquals(true, backClicked)
+  }
+
   private class FakeWorkspaceRepository(
       private val file: JDRFile,
       private val updateGate: CompletableDeferred<Unit>? = null,
