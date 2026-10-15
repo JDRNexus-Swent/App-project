@@ -154,8 +154,7 @@ fun EditFileCharacter(
                   value = character.hp.current.toString(),
                   stateKey = "current-hp",
                   error = state.fieldErrors[EditFileField.CharacterCurrentHp],
-                  modifier =
-                      Modifier.weight(1f).testTag(EditFileCharacterTestTags.CURRENT_HP),
+                  modifier = Modifier.weight(1f).testTag(EditFileCharacterTestTags.CURRENT_HP),
                   keyboardType = KeyboardType.Number,
                   onValueChange = { viewModel.updateCharacterCurrentHp(it.toIntOrNull() ?: -1) },
               )
@@ -164,8 +163,7 @@ fun EditFileCharacter(
                   value = character.hp.max.toString(),
                   stateKey = "max-hp",
                   error = state.fieldErrors[EditFileField.CharacterMaxHp],
-                  modifier =
-                      Modifier.weight(1f).testTag(EditFileCharacterTestTags.MAX_HP),
+                  modifier = Modifier.weight(1f).testTag(EditFileCharacterTestTags.MAX_HP),
                   keyboardType = KeyboardType.Number,
                   onValueChange = { viewModel.updateCharacterMaxHp(it.toIntOrNull() ?: -1) },
               )
