@@ -1,6 +1,8 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.dice
 
+// import androidx.compose.ui.tooling.preview.Preview
+// import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -37,6 +39,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -66,21 +71,25 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.R
+import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
+import com.github.se.jdrnexus.model.repository.DiceLogic
+import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
-import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlinx.coroutines.delay
 
 private data class DiceThemeColors(
     val backgroundColor: Color,
@@ -123,23 +132,58 @@ private fun diceThemeColors(): DiceThemeColors {
   )
 }
 
+/** How long the die shows its rolling indicator before revealing the result. */
+internal const val ROLL_ANIMATION_MILLIS = 600L
+
 /**
  * Offline dice roller: lets the user pick a die, adjust the modifier and roll, without saving the
- * result anywhere. All the dice logic lives in [diceViewModel]; this screen only renders [uiState]
- * and forwards user intents.
+ * result anywhere. All the dice logic lives in [diceViewModel]; without a group id it keeps every
+ * roll local and never touches the repository. This screen only renders its state and forwards user
+ * intents.
  *
- * @param uiState The current dice state exposed by the ViewModel.
  * @param diceViewModel The ViewModel handling dice selection, modifiers and rolls.
  * @param onClose Called when the user closes the dice roller.
  */
 @Composable
 fun DiceOfflineScreen(
+    diceViewModel: DiceViewModel =
+        viewModel(
+            factory =
+                DiceViewModelFactory(
+                    diceLogic = DiceLogic(),
+                    diceRepository =
+                        DiceRepositoryFirestore(
+                            FirebaseFirestore.getInstance(),
+                            AuthRepositoryFirebase(),
+                        ),
+                )
+        ),
+    onClose: () -> Unit = {},
+) {
+  val uiState by diceViewModel.uiState.collectAsState()
+  DiceOfflineContent(uiState = uiState, diceViewModel = diceViewModel, onClose = onClose)
+}
+
+/**
+ * Stateless body of [DiceOfflineScreen], split out so previews can render it with a fixed [uiState]
+ * and no Firebase.
+ */
+@Composable
+private fun DiceOfflineContent(
     uiState: DiceUiState,
     diceViewModel: DiceInterfaceVM,
-    onClose: () -> Unit = {},
+    onClose: () -> Unit,
 ) {
   val colors = diceThemeColors()
   val controlsEnabled = !uiState.isRolling
+
+  // A roll stays "rolling" until the UI says its animation is over.
+  LaunchedEffect(uiState.isRolling) {
+    if (uiState.isRolling) {
+      delay(ROLL_ANIMATION_MILLIS)
+      diceViewModel.onRollAnimationFinished()
+    }
+  }
 
   BoxWithConstraints(
       modifier =
@@ -700,70 +744,77 @@ private fun regularPolygon(center: Offset, radius: Float, sides: Int, startDegre
 internal fun formatModifier(modifier: Int): String =
     if (modifier >= 0) "+$modifier" else modifier.toString()
 
-/** No-op ViewModel so the previews can render without real dice logic. */
-private object PreviewDiceViewModel : DiceInterfaceVM {
-  override fun selectDice(diceType: DiceType) = Unit
-
-  override fun setModifier(modifier: Int) = Unit
-
-  override fun increaseModifier(modifier: Int) = Unit
-
-  override fun rollDice() = Unit
-
-  override fun dismissError() = Unit
-}
-
-/** Preview state for [diceType] showing a roll of [rawValue] with a +4 modifier. */
-private fun previewState(diceType: DiceType, rawValue: Int) =
-    DiceUiState(
-        selectedDice = diceType,
-        modifier = 4,
-        currentResult =
-            DiceRollResult(diceType, rawValue = rawValue, modifier = 4, totalValue = rawValue + 4),
-    )
-
-@Preview(name = "Dice offline · Dark · D4", widthDp = 412, heightDp = 917)
-@Composable
-private fun DiceOfflineScreenDarkPreview() {
-  SampleAppTheme(darkTheme = true) {
-    DiceOfflineScreen(
-        uiState = previewState(DiceType.D4, rawValue = 3),
-        diceViewModel = PreviewDiceViewModel,
-    )
-  }
-}
-
-@Preview(name = "Dice offline · Light · D6", widthDp = 412, heightDp = 917)
-@Composable
-private fun DiceOfflineScreenLightPreview() {
-  SampleAppTheme(darkTheme = false) {
-    DiceOfflineScreen(
-        uiState = previewState(DiceType.D6, rawValue = 5),
-        diceViewModel = PreviewDiceViewModel,
-    )
-  }
-}
-
-@Preview(name = "Dice offline · Small phone · D10", widthDp = 320, heightDp = 640)
-@Composable
-private fun DiceOfflineScreenSmallPhonePreview() {
-  SampleAppTheme(darkTheme = true) {
-    DiceOfflineScreen(
-        uiState = DiceUiState(selectedDice = DiceType.D10),
-        diceViewModel = PreviewDiceViewModel,
-    )
-  }
-}
-
-@Preview(name = "Dice offline · Rolling with error · D12", widthDp = 412, heightDp = 917)
-@Composable
-private fun DiceOfflineScreenRollingPreview() {
-  SampleAppTheme(darkTheme = false) {
-    DiceOfflineScreen(
-        uiState =
-            previewState(DiceType.D12, rawValue = 9)
-                .copy(isRolling = true, errorMessage = "Couldn't roll, please retry."),
-        diceViewModel = PreviewDiceViewModel,
-    )
-  }
-}
+// /** No-op ViewModel so the previews can render without real dice logic. */
+// private object PreviewDiceViewModel : DiceInterfaceVM {
+//   override fun selectDice(diceType: DiceType) = Unit
+//
+//   override fun setModifier(modifier: Int) = Unit
+//
+//   override fun increaseModifier(modifier: Int) = Unit
+//
+//   override fun rollDice() = Unit
+//
+//   override fun onRollAnimationFinished() = Unit
+//
+//   override fun dismissError() = Unit
+// }
+//
+// /** Preview state for [diceType] showing a roll of [rawValue] with a +4 modifier. */
+// private fun previewState(diceType: DiceType, rawValue: Int) =
+//     DiceUiState(
+//         selectedDice = diceType,
+//         modifier = 4,
+//         currentResult =
+//             DiceRollResult(diceType, rawValue = rawValue, modifier = 4, totalValue = rawValue +
+// 4),
+//     )
+//
+// @Preview(name = "Dice offline · Dark · D4", widthDp = 412, heightDp = 917)
+// @Composable
+// private fun DiceOfflineScreenDarkPreview() {
+//   SampleAppTheme(darkTheme = true) {
+//     DiceOfflineContent(
+//         uiState = previewState(DiceType.D4, rawValue = 3),
+//         diceViewModel = PreviewDiceViewModel,
+//         onClose = {},
+//     )
+//   }
+// }
+//
+// @Preview(name = "Dice offline · Light · D6", widthDp = 412, heightDp = 917)
+// @Composable
+// private fun DiceOfflineScreenLightPreview() {
+//   SampleAppTheme(darkTheme = false) {
+//     DiceOfflineContent(
+//         uiState = previewState(DiceType.D6, rawValue = 5),
+//         diceViewModel = PreviewDiceViewModel,
+//         onClose = {},
+//     )
+//   }
+// }
+//
+// @Preview(name = "Dice offline · Small phone · D10", widthDp = 320, heightDp = 640)
+// @Composable
+// private fun DiceOfflineScreenSmallPhonePreview() {
+//   SampleAppTheme(darkTheme = true) {
+//     DiceOfflineContent(
+//         uiState = DiceUiState(selectedDice = DiceType.D10),
+//         diceViewModel = PreviewDiceViewModel,
+//         onClose = {},
+//     )
+//   }
+// }
+//
+// @Preview(name = "Dice offline · Rolling with error · D12", widthDp = 412, heightDp = 917)
+// @Composable
+// private fun DiceOfflineScreenRollingPreview() {
+//   SampleAppTheme(darkTheme = false) {
+//     DiceOfflineContent(
+//         uiState =
+//             previewState(DiceType.D12, rawValue = 9)
+//                 .copy(isRolling = true, errorMessage = "Couldn't roll, please retry."),
+//         diceViewModel = PreviewDiceViewModel,
+//         onClose = {},
+//     )
+//   }
+// }
