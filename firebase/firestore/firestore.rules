@@ -1,7 +1,55 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
+    /**
+     * Campaign group access policy:
+     * - Signed-in group members may read groups; membership queries must include participantIds.
+     * - A creator must make themselves both Game Master and a participant.
+     * - Only the existing Game Master may update or delete a group. Updates may change members,
+     *   but cannot transfer Game Master ownership or remove the Game Master from the group.
+     *
+     * Invitation codes are not implemented yet. Add rules for their data when that feature lands.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidGroup(groupId) {
+      return request.resource.data.id == groupId
+          && request.resource.data.name is string
+          && request.resource.data.description is string
+          && request.resource.data.gameMasterId is string
+          && request.resource.data.participantIds is list;
+    }
+
+    function isGroupMaster(group) {
+      return isSignedIn() && group.gameMasterId == request.auth.uid;
+    }
+
+    match /campaign_groups/{groupId} {
+      // Membership is part of the query used by GroupRepositoryFirestore.getUserGroups.
+      allow read: if isSignedIn()
+          && request.auth.uid in resource.data.participantIds;
+
+      // The creator must become the group's Game Master and a participant in the same write.
+      allow create: if isSignedIn()
+          && isValidGroup(groupId)
+          && request.resource.data.gameMasterId == request.auth.uid
+          && request.auth.uid in request.resource.data.participantIds;
+
+      // A Game Master may set updated group data, including adding/removing participants, while
+      // keeping the same document ID and Game Master identity.
+      allow update: if isGroupMaster(resource.data)
+          && isValidGroup(groupId)
+          && request.resource.data.gameMasterId == resource.data.gameMasterId
+          && request.auth.uid in request.resource.data.participantIds;
+
+      allow delete: if isGroupMaster(resource.data);
+    }
+
+    // Preserve the existing workspace behavior; document-level access rules are outside this
+    // group-management change and need to account for both personal and shared-group documents.
+    match /documents/{documentId} {
       allow read, write: if true;
     }
   }

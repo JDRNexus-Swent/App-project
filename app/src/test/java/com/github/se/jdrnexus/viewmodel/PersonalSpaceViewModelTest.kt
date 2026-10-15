@@ -237,12 +237,12 @@ class PersonalSpaceViewModelTest {
     val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
     idleMainLooper()
 
-    val openedDocuments = mutableListOf<String>()
+    val openedDocuments = mutableListOf<JDRFile>()
     viewModel.onItemClicked(rootFile) { openedDocuments.add(it) }
     viewModel.onItemClicked(characterFile) { openedDocuments.add(it) }
 
     assertEquals("", viewModel.uiState.value.currentFolderId)
-    assertEquals(listOf(rootFile.id, characterFile.id), openedDocuments)
+    assertEquals(listOf(rootFile, characterFile), openedDocuments)
     assertEquals(listOf(ownerId), repository.requestedRootOwners)
   }
 
