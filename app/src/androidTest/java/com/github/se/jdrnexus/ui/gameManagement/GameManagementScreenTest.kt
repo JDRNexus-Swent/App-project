@@ -173,6 +173,20 @@ class GameManagementScreenTest {
   }
 
   @Test
+  fun successWithNoGroupsShowsCreateFirstGroupCallToAction() {
+    var createClicks = 0
+    setContent(
+        uiState = GameManagementUiState(loadState = GroupLoadState.Success),
+        onCreateGroupClick = { createClicks++ },
+    )
+
+    composeTestRule.onNodeWithText("Your party awaits").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Create your first group").performClick()
+
+    assertEquals(1, createClicks)
+  }
+
+  @Test
   fun headerCreateActionInvokesDialogCallback() {
     var createClicks = 0
     setContent(uiState = stateFor(), onCreateGroupClick = { createClicks++ })
