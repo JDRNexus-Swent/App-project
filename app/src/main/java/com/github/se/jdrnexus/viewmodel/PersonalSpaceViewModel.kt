@@ -116,12 +116,12 @@ class PersonalSpaceViewModel(
   // ============ Seelction/Navigation functions ============
 
   /** Folders open in this screen; every other JDR file is opened as a document. */
-  fun onItemClicked(item: JDRFile, navigateToDocument: (documentId: String) -> Unit) {
+  fun onItemClicked(item: JDRFile, navigateToDocument: (document: JDRFile) -> Unit) {
     if (item.type == DocumentType.FOLDER) {
       navigationPath.addLast(_uiState.value.currentFolderId)
       fetchItems(personalParentId = item.id)
     } else {
-      navigateToDocument(item.id)
+      navigateToDocument(item)
     }
   }
 

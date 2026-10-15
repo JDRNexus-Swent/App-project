@@ -127,7 +127,7 @@ class PersonalSpaceScreenTests {
   private fun setScreen(
       viewModel: PersonalSpaceViewModel = viewModel(),
       onBackButton: () -> Unit = {},
-      onDocumentClicked: (String) -> Unit = {},
+      onDocumentClicked: (JDRFile) -> Unit = {},
       onCreateFile: (String) -> Unit = {},
   ) {
     composeTestRule.setContent {
@@ -401,12 +401,13 @@ class PersonalSpaceScreenTests {
 
   @Test
   fun clickingDocumentInvokesDocumentNavigationCallback() {
-    var openedDocumentId: String? = null
-    setScreen(onDocumentClicked = { openedDocumentId = it })
+    var openedDocument: JDRFile? = null
+    setScreen(onDocumentClicked = { openedDocument = it })
 
     composeTestRule.onNodeWithText("Elara Moonwhisper").performClick()
 
-    assertEquals("elara-moonwhisper", openedDocumentId)
+    assertEquals("elara-moonwhisper", openedDocument?.id)
+    assertEquals(DocumentType.CHARACTER, openedDocument?.type)
   }
 
   @Test

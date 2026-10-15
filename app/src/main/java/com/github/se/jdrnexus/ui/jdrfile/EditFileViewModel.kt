@@ -241,7 +241,7 @@ class EditFileViewModel(
       reportError(generalValidationError)
       return
     }
-    val fieldErrors = collectFieldErrors(state)
+    val fieldErrors = collectFieldErrors(state) + state.fieldErrors
     if (fieldErrors.isNotEmpty()) {
       _uiState.update { it.copy(error = null, isSaved = false, fieldErrors = fieldErrors) }
       return
