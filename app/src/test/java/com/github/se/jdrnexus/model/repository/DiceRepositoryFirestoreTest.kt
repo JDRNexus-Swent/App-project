@@ -1,6 +1,7 @@
 // Co-authored-by: AI Agent
 package com.github.se.jdrnexus.model.repository
 
+import android.content.Context
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import com.github.se.jdrnexus.ui.dice.DiceRollResult
@@ -43,22 +44,38 @@ class DiceRepositoryFirestoreTest {
 
   companion object {
     private const val DEFAULT_TIMEOUT_MS = 5000L
+    private const val EMULATOR_APP_NAME = "EmulatorApp"
+    private const val EMULATOR_HOST = "127.0.0.1"
+    private const val EMULATOR_PORT = 8080
   }
 
   @Before
   fun setUp() {
     testGroupId = UUID.randomUUID().toString()
-    if (FirebaseApp.getApps(ApplicationProvider.getApplicationContext()).isEmpty()) {
-      FirebaseApp.initializeApp(ApplicationProvider.getApplicationContext())
+    val context = ApplicationProvider.getApplicationContext<Context>()
+
+    // Make sure the default Firebase app exists, we need its options to clone it
+    if (FirebaseApp.getApps(context).isEmpty()) {
+      FirebaseApp.initializeApp(context)
     }
-    firestore = FirebaseFirestore.getInstance()
+
+    // Dedicated FirebaseApp shared by all the emulator-based test classes of the JVM
+    val emulatorApp =
+        FirebaseApp.getApps(context).firstOrNull { it.name == EMULATOR_APP_NAME }
+            ?: FirebaseApp.initializeApp(
+                context,
+                FirebaseApp.getInstance().options,
+                EMULATOR_APP_NAME,
+            )
+
+    firestore = FirebaseFirestore.getInstance(emulatorApp)
+
     try {
-      firestore.useEmulator("127.0.0.1", 8080)
+      firestore.useEmulator(EMULATOR_HOST, EMULATOR_PORT)
     } catch (e: IllegalStateException) {
-      if (
-          !firestore.firestoreSettings.host.contains("127.0.0.1") &&
-              !firestore.firestoreSettings.host.contains("10.0.2.2")
-      ) {
+      // Already configured by a previous test class. Safety net: abort if, for any reason,
+      // this instance is not pointing to the emulator.
+      if (!firestore.firestoreSettings.host.contains(EMULATOR_HOST)) {
         throw IllegalStateException(
             "Firestore is not using the emulator! Aborting to prevent data loss.",
             e,
@@ -75,17 +92,29 @@ class DiceRepositoryFirestoreTest {
   @After
   fun tearDown() {
     runBlocking {
+      // Re-enable network in case a test disabled it
       try {
         firestore.enableNetwork().await()
       } catch (_: Exception) {
         // ignore
       }
 
-      // Clean up campaign_groups test collection safely
+      // we remove the dice_rolls documents explicitly
       try {
-        firestore.collection("campaign_groups").document(testGroupId).delete().await()
-      } catch (_: Exception) {
-        // ignore
+        val rolls =
+            firestore
+                .collection("campaign_groups")
+                .document(testGroupId)
+                .collection("dice_rolls")
+                .get()
+                .await()
+        if (!rolls.isEmpty) {
+          val batch = firestore.batch()
+          rolls.documents.forEach { batch.delete(it.reference) }
+          batch.commit().await()
+        }
+      } catch (e: Exception) {
+        println("tearDown failed: $e")
       }
     }
   }
@@ -111,26 +140,23 @@ class DiceRepositoryFirestoreTest {
             errorRef.set(e)
           }
         }
+    try {
+      val startTime = System.currentTimeMillis()
+      while (System.currentTimeMillis() - startTime < timeoutMs) {
+        shadowOf(Looper.getMainLooper()).idle()
 
-    val startTime = System.currentTimeMillis()
-    while (System.currentTimeMillis() - startTime < timeoutMs) {
-      shadowOf(Looper.getMainLooper()).idle()
+        errorRef.get()?.let { throw it }
 
-      val flowError = errorRef.get()
-      if (flowError != null) {
-        job.cancel()
-        throw flowError
+        if (isReady.get()) {
+          @Suppress("UNCHECKED_CAST")
+          return latestValue.get() as T
+        }
+        delay(50)
       }
-
-      if (isReady.get()) {
-        job.cancel()
-        @Suppress("UNCHECKED_CAST")
-        return latestValue.get() as T
-      }
-      delay(50)
+      throw AssertionError("Timeout waiting for condition.")
+    } finally {
+      job.cancel()
     }
-    job.cancel()
-    throw AssertionError("Timeout waiting for condition.")
   }
 
   @Test
