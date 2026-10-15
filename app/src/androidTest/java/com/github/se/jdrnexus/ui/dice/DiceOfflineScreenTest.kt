@@ -2,6 +2,7 @@
 package com.github.se.jdrnexus.ui.dice
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
@@ -268,5 +269,26 @@ class DiceOfflineScreenTest {
       val bottom = tile.getUnclippedBoundsInRoot().bottom
       assertTrue("$type tile ends at $bottom, off screen", bottom <= screenHeight)
     }
+  }
+
+  @Test
+  fun wideScreenShowsAllDiceOnOneRow() {
+    val vm = createViewModel()
+    composeTestRule.setContent {
+      SampleAppTheme {
+        // Tablet-sized, larger than the test device, so the selector has room for one row.
+        Box(Modifier.requiredSize(width = 800.dp, height = 1280.dp)) {
+          DiceOfflineScreen(diceViewModel = vm)
+        }
+      }
+    }
+
+    val tops =
+        DiceType.entries.map {
+          node(C.Tag.diceOfflineSelect(it.name)).getUnclippedBoundsInRoot().top
+        }
+    assertEquals("All dice should share one row, tops were $tops", 1, tops.distinct().size)
+    val dieHeight = node(C.Tag.dice_offline_die).getUnclippedBoundsInRoot().height
+    assertTrue("Die should keep its full size, was $dieHeight", dieHeight >= 270.dp)
   }
 }

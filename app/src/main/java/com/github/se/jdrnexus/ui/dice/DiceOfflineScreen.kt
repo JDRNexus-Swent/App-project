@@ -614,8 +614,10 @@ private fun DiceSelector(
         val isSelected = type == selected
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
+            // Weight rather than a computed width: the row splits its exact pixel width, so
+            // rounding can never push the last die onto a new row.
             modifier =
-                Modifier.width(tileWidth)
+                Modifier.weight(1f)
                     .clip(RoundedCornerShape(8.dp))
                     .then(
                         if (isSelected)
