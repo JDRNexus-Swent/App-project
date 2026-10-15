@@ -282,11 +282,13 @@ class EditFileCharacterTests {
 
     composeTestRule.onNodeWithTag("stat_name_strength").performTextClearance()
 
-    composeTestRule.onNodeWithTag("edit_character_save").performScrollTo().performClick()
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.LIST).performScrollToKey("save")
+    composeTestRule.onNodeWithTag("edit_character_save").performClick()
     assertEquals(0, repository.updatedFiles.size)
     assertEquals(false, viewModel.uiState.value.isSaved)
 
-    composeTestRule.onNodeWithTag("edit_character_save").performScrollTo().performClick()
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.LIST).performScrollToKey("save")
+    composeTestRule.onNodeWithTag("edit_character_save").performClick()
     assertEquals(0, repository.updatedFiles.size)
     assertEquals(false, viewModel.uiState.value.isSaved)
   }
