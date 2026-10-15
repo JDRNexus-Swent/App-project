@@ -6,7 +6,6 @@ import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -157,8 +156,8 @@ class EditFileCharacterTests {
     composeTestRule.onNodeWithTag("add_action_description").performTextInput("Restore hit points")
     composeTestRule.onNodeWithTag("confirm_add_action").performScrollTo().performClick()
     composeTestRule.onNodeWithText("Healing Word").assertIsDisplayed()
-    composeTestRule.onNodeWithContentDescription("Remove Dexterity").performClick()
-    composeTestRule.onNodeWithContentDescription("Remove Arcane Longbow").performClick()
+    composeTestRule.onNodeWithTag("remove_stat_dexterity").performClick()
+    composeTestRule.onNodeWithTag("remove_action_longbow").performClick()
     composeTestRule.onNodeWithText("Dexterity").assertIsNotDisplayed()
     composeTestRule.onNodeWithText("Arcane Longbow").assertIsNotDisplayed()
 

@@ -385,7 +385,10 @@ private fun StatRow(
         modifier = Modifier.weight(0.55f).testTag("stat_value_${stat.statID}"),
         onValueChange = onValueChange,
     )
-    IconButton(onClick = onRemove, modifier = Modifier.size(40.dp)) {
+    IconButton(
+        onClick = onRemove,
+        modifier = Modifier.size(40.dp).testTag("remove_stat_${stat.statID}"),
+    ) {
       Icon(Icons.Default.Close, contentDescription = "Remove ${stat.name}")
     }
   }
@@ -419,7 +422,10 @@ private fun ActionRow(
             isError = nameError != null,
             supportingText = nameError?.let { message -> ({ Text(message) }) },
         )
-        IconButton(onClick = onRemove, modifier = Modifier.size(40.dp)) {
+        IconButton(
+            onClick = onRemove,
+            modifier = Modifier.size(40.dp).testTag("remove_action_${action.actionID}"),
+        ) {
           Icon(Icons.Default.Close, contentDescription = "Remove ${action.name}")
         }
       }
