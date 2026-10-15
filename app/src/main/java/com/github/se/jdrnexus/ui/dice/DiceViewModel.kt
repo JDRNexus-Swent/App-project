@@ -56,7 +56,7 @@ class DiceViewModel(
   }
 
   override fun setModifier(modifier: Int) {
-    val newModifier =modifier.coerceIn(-20, 20)
+    val newModifier = modifier.coerceIn(-20, 20)
     _uiState.update { currentState -> currentState.copy(modifier = newModifier) }
   }
 
