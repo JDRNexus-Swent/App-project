@@ -133,7 +133,7 @@ private fun diceThemeColors(): DiceThemeColors {
 }
 
 /** How long the die shows its rolling indicator before revealing the result. */
-internal const val ROLL_ANIMATION_MILLIS = 600L
+private const val ROLL_ANIMATION_MILLIS = 1000L
 
 /**
  * Offline dice roller: lets the user pick a die, adjust the modifier and roll, without saving the
@@ -177,14 +177,6 @@ private fun DiceOfflineContent(
   val colors = diceThemeColors()
   val controlsEnabled = !uiState.isRolling
 
-  // A roll stays "rolling" until the UI says its animation is over.
-  LaunchedEffect(uiState.isRolling) {
-    if (uiState.isRolling) {
-      delay(ROLL_ANIMATION_MILLIS)
-      diceViewModel.onRollAnimationFinished()
-    }
-  }
-
   BoxWithConstraints(
       modifier =
           Modifier.fillMaxSize()
@@ -212,7 +204,13 @@ private fun DiceOfflineContent(
               DiceHeader(uiState = uiState, colors = colors, onClose = onClose)
               Spacer(Modifier.height(dimens.scaled(16.dp)))
             },
-            die = { DieImage(uiState = uiState, colors = colors) },
+            die = {
+              DieImage(
+                  uiState = uiState,
+                  colors = colors,
+                  onRollAnimationFinished = diceViewModel::onRollAnimationFinished,
+              )
+            },
         ) {
           DieResultText(uiState = uiState, colors = colors)
 
@@ -404,10 +402,15 @@ private fun DiceUiState.displayedResult(): DiceRollResult? = currentResult?.take
 
 /**
  * Big die image, filling the size it is given, with the raw roll engraved on its front face ("?"
- * before the first roll, or a loading indicator while rolling).
+ * before the first roll, or a loading indicator while rolling). [onRollAnimationFinished] is called
+ * once the loading indicator has been shown for [ROLL_ANIMATION_MILLIS].
  */
 @Composable
-private fun DieImage(uiState: DiceUiState, colors: DiceThemeColors) {
+private fun DieImage(
+    uiState: DiceUiState,
+    colors: DiceThemeColors,
+    onRollAnimationFinished: () -> Unit,
+) {
   val result = uiState.displayedResult()
   val face = dieFace(uiState.selectedDice)
 
@@ -431,6 +434,11 @@ private fun DieImage(uiState: DiceUiState, colors: DiceThemeColors) {
                   .size(40.dp)
                   .testTag(C.Tag.dice_offline_loading),
       )
+      // A roll stays "rolling" until the UI says its animation is over.
+      LaunchedEffect(key1 = uiState.isRolling) {
+        delay(ROLL_ANIMATION_MILLIS)
+        onRollAnimationFinished()
+      }
     } else {
       // Sized in dp so the number always fits its face, whatever the user's font scale.
 
