@@ -65,8 +65,8 @@ interface WorkspaceRepository {
   suspend fun removeItemFromGroup(
       itemId: String,
       groupId: String,
-      parentFolderId: String? = null,
-  ): Result<Unit> = Result.success(Unit)
+      parentFolderId: String? = "",
+  ): Result<Unit>
 
   // ==========================================
   // REAL-TIME SYNCHRONIZATION (Flows)

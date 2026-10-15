@@ -120,7 +120,10 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
             }
       }
 
-      collectSubtree(root, parentFolderId)
+      collectSubtree(
+          root,
+          parentId = parentFolderId?.takeUnless { it.isBlank() },
+      )
 
       // Remove group sharing without deleting the underlying documents.
       val batch = firestore.batch()
@@ -135,7 +138,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
             file.copy(
                 sharedGroupsIds = file.sharedGroupsIds - groupId,
                 parentFolderIds =
-                    if (parentId != null && parentIsExclusiveToGroup) {
+                    if (!parentId.isNullOrBlank() && parentIsExclusiveToGroup) {
                       file.parentFolderIds - parentId
                     } else {
                       file.parentFolderIds

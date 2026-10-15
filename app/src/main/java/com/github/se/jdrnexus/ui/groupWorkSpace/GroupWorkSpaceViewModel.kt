@@ -1,7 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
-import android.util.Log.e
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
