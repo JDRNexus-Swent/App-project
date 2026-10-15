@@ -39,6 +39,7 @@ object TestTags {
   const val ADVENTURES = "home_local_adventures"
   const val QUICKTOOLS = "home_quicktools"
   const val PSPACEBUTTON = "home_to_pspace"
+  const val LOGOUT = "home_logout"
   val BUTTONS = listOf("home_quicktool_1", "home_quicktool_2")
   val placeholderObjects = listOf("home_placeholder_1", "home_placeholder_2", "home_placeholder_3")
 }
@@ -90,7 +91,8 @@ fun HomeScreen(
             onClick = {
               logoutRequested = true
               viewModel.signOut()
-            }
+            },
+            modifier = Modifier.testTag(TestTags.LOGOUT),
         ) {
           Text("Log out")
         }

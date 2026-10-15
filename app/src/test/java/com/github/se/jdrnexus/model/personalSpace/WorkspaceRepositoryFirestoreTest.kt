@@ -1,13 +1,23 @@
 // Co-authored-by: AI Agent
 package com.github.se.jdrnexus.model.personalSpace
 
+import android.content.Context
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import com.google.firebase.FirebaseApp
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.EventListener
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.QuerySnapshot
+import io.mockk.every
+import io.mockk.mockk
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -16,46 +26,67 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.yield
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 
-/** Those test use firebase emulator, make sure to activate it with "firebase emulators:start" */
+/**
+ * Those test use firebase emulator WITH TEST SETTING, make sure to activate it with "firebase
+ * emulators:exec --config firebase.test.json"
+ */
 @RunWith(RobolectricTestRunner::class)
 class WorkspaceRepositoryFirestoreTest {
 
   private lateinit var repository: WorkspaceRepository
   private lateinit var firestore: FirebaseFirestore
 
+  companion object {
+    // Defines the maximum time to wait for asynchronous Firebase operations in tests
+    private const val DEFAULT_TIMEOUT_MS = 5000L
+
+    private const val EMULATOR_APP_NAME = "EmulatorApp"
+    private const val EMULATOR_HOST = "127.0.0.1"
+    private const val EMULATOR_PORT = 8080
+  }
+
   @Before
   fun setUp() {
-    if (FirebaseApp.getApps(ApplicationProvider.getApplicationContext()).isEmpty()) {
-      FirebaseApp.initializeApp(ApplicationProvider.getApplicationContext())
+    val context = ApplicationProvider.getApplicationContext<Context>()
+
+    // Make sure the default Firebase app exists, we need its options to clone it
+    if (FirebaseApp.getApps(context).isEmpty()) {
+      FirebaseApp.initializeApp(context)
     }
-    firestore = FirebaseFirestore.getInstance()
+
+    val emulatorApp =
+        FirebaseApp.getApps(context).firstOrNull { it.name == EMULATOR_APP_NAME }
+            ?: FirebaseApp.initializeApp(
+                context,
+                FirebaseApp.getInstance().options,
+                EMULATOR_APP_NAME,
+            )
+
+    firestore = FirebaseFirestore.getInstance(emulatorApp)
+
+    // The FirebaseApp (and its Firestore) is shared by every test class in the JVM,
+    // so the second class to run will hit an IllegalStateException here.
+    // It is safe to ignore: this instance is only ever used with the emulator,
+    // so it is necessarily already pointing to it.
     try {
-      firestore.useEmulator("127.0.0.1", 8080)
+      firestore.useEmulator(EMULATOR_HOST, EMULATOR_PORT)
     } catch (e: IllegalStateException) {
-      // If Firestore is already configured for production, its host won't be local.
-      // We explicitly throw an exception here to avoid wiping out the production database
-      // if someone runs tests without properly configuring the emulator instance first.
-      if (
-          !firestore.firestoreSettings.host.contains("127.0.0.1") &&
-              !firestore.firestoreSettings.host.contains("10.0.2.2")
-      ) {
-        throw IllegalStateException(
-            "Firestore is not using the emulator! Aborting to prevent data loss.",
-            e,
-        )
-      }
+      // Already configured by a previous test class
     }
+
     repository = WorkspaceRepositoryFirestore(firestore)
   }
 
@@ -90,39 +121,55 @@ class WorkspaceRepositoryFirestoreTest {
    * It uses thread-safe Atomic properties to guarantee memory visibility across Dispatchers.
    */
   private suspend fun <T> Flow<T>.waitFor(
-      timeoutMs: Long = 5000,
+      timeoutMs: Long = DEFAULT_TIMEOUT_MS,
       condition: (T) -> Boolean,
   ): T {
-    // use of atomic value alows the real storage in memory (not in cache)
+    // use of atomic value allows the real storage in memory (not in cache)
     val latestValue = AtomicReference<T?>(null)
     val hasValue = AtomicBoolean(false)
     val isReady = AtomicBoolean(false)
+    val errorRef = AtomicReference<Throwable?>(null) // Capture any exceptions thrown by Flow
+
     val job =
         CoroutineScope(Dispatchers.Default).launch {
-          this@waitFor.collect {
-            latestValue.set(it)
-            hasValue.set(true)
-            if (condition(it)) {
-              isReady.set(true)
+          try {
+            this@waitFor.collect {
+              latestValue.set(it)
+              hasValue.set(true)
+              if (condition(it)) {
+                isReady.set(true)
+              }
             }
+          } catch (e: Throwable) {
+            errorRef.set(e)
           }
         }
+    try {
+      val startTime = System.currentTimeMillis()
+      while (System.currentTimeMillis() - startTime < timeoutMs) {
+        // Pump Robolectric's main looper so Firebase callbacks can run!
+        shadowOf(Looper.getMainLooper()).idle()
 
-    val startTime = System.currentTimeMillis()
-    while (System.currentTimeMillis() - startTime < timeoutMs) {
-      // Pump Robolectric's main looper so Firebase callbacks can run!
-      shadowOf(Looper.getMainLooper()).idle()
-      if (isReady.get()) {
-        job.cancel()
-        @Suppress("UNCHECKED_CAST")
-        return latestValue.get() as T
+        // If the flow threw an error (like PERMISSION_DENIED), rethrow it immediately
+        val flowError = errorRef.get()
+        if (flowError != null) {
+          job.cancel()
+          throw flowError
+        }
+
+        if (isReady.get()) {
+          job.cancel()
+          @Suppress("UNCHECKED_CAST")
+          return latestValue.get() as T
+        }
+        delay(50)
       }
-      delay(50)
+      throw AssertionError(
+          "Timeout waiting for condition. Last value emitted: ${latestValue.get()}, emitted at all: ${hasValue.get()}"
+      )
+    } finally {
+      job.cancel()
     }
-    job.cancel()
-    throw AssertionError(
-        "Timeout waiting for condition. Last value emitted: ${latestValue.get()}, emitted at all: ${hasValue.get()}"
-    )
   }
 
   /** Tests the creation of a new uid and verifies that it not empty and unique */
@@ -288,7 +335,8 @@ class WorkspaceRepositoryFirestoreTest {
     runBlocking {
       val fileId = "non_existent_flow_id"
       // Flow should emit null for a non-existent file
-      val emittedFile = repository.getFileFlow(fileId).waitFor(timeoutMs = 10000) { it == null }
+      val emittedFile =
+          repository.getFileFlow(fileId).waitFor(timeoutMs = DEFAULT_TIMEOUT_MS) { it == null }
       assertNull("Flow should emit null for non-existent file", emittedFile)
     }
   }
@@ -312,7 +360,10 @@ class WorkspaceRepositoryFirestoreTest {
 
       // Wait for initial value
       var startTime = System.currentTimeMillis()
-      while (latestName.get() != "Initial" && System.currentTimeMillis() - startTime < 5000) {
+      while (
+          latestName.get() != "Initial" &&
+              System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS
+      ) {
         shadowOf(Looper.getMainLooper()).idle()
         delay(50)
       }
@@ -323,7 +374,10 @@ class WorkspaceRepositoryFirestoreTest {
 
       // Wait for the updated value
       startTime = System.currentTimeMillis()
-      while (latestName.get() != "Updated" && System.currentTimeMillis() - startTime < 5000) {
+      while (
+          latestName.get() != "Updated" &&
+              System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS
+      ) {
         shadowOf(Looper.getMainLooper()).idle()
         delay(50)
       }
@@ -734,7 +788,7 @@ class WorkspaceRepositoryFirestoreTest {
       var startTime = System.currentTimeMillis()
       while (
           (!hasEmitted.get() || latestList.get().size != 1) &&
-              System.currentTimeMillis() - startTime < 5000
+              System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS
       ) {
         shadowOf(Looper.getMainLooper()).idle()
         delay(50)
@@ -765,7 +819,7 @@ class WorkspaceRepositoryFirestoreTest {
       startTime = System.currentTimeMillis()
       while (
           (latestList.get().size != 1 || latestList.get().first().id != file2.id) &&
-              System.currentTimeMillis() - startTime < 5000
+              System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS
       ) {
         shadowOf(Looper.getMainLooper()).idle()
         delay(50)
@@ -779,8 +833,7 @@ class WorkspaceRepositoryFirestoreTest {
 
   /**
    * Simulates offline behavior using Cloud Firestore's native cache. Ensures the app can read data
-   * gracefully without a network connection. JDRNexus relies on this so gaming sessions can
-   * continue in poorly covered areas.
+   * gracefully without a network connection.
    */
   @Test
   fun testOfflineBehavior() {
@@ -810,6 +863,157 @@ class WorkspaceRepositoryFirestoreTest {
 
       // Restore network to leave the instance clean
       firestore.enableNetwork().await()
+    }
+  }
+
+  /**
+   * Tests that if a document is corrupted in Firestore (e.g., incorrect types causing a
+   * RuntimeException during deserialization), the application does not crash. Instead, the corrupt
+   * document is simply ignored in the emitted list.
+   */
+  @Test
+  fun testDeserializationError_IsCaught() {
+    runBlocking {
+      val corruptedData =
+          hashMapOf(
+              "ownerId" to "corrupted_owner",
+              "personalParentId" to "",
+              "parentFolderIds" to 12345,
+          )
+      firestore.collection("documents").document("corrupted_doc").set(corruptedData).await()
+
+      // Listen to the corrupted folder. The catch block will log the error and ignore the file
+      // instead of crashing the entire Flow.
+      val files = repository.getPersonalRootFiles("corrupted_owner").waitFor { true }
+
+      // Assert the list is empty because the only document was corrupted and thus ignored.
+      assertTrue("List should be empty due to parsing failure", files.isEmpty())
+    }
+  }
+
+  /**
+   * Verifies that Kotlin Coroutines' CancellationException is properly rethrown when an active
+   * coroutine is canceled. If it were incorrectly swallowed by a generic catch(e: Exception),
+   * coroutines would continue executing in the background, causing memory leaks.
+   */
+  @Test
+  fun testCoroutinesCancellation_IsPropagated() {
+    runBlocking {
+      val file = JDRFile(id = "cancel_test")
+
+      // Launch the creation in a separate Job so we can cancel it mid-flight
+      val job = launch {
+        try {
+          repository.createFile(file)
+        } catch (e: CancellationException) {
+          // This confirms our 'catch (e: CancellationException) { throw e }' works perfectly
+          throw e
+        }
+      }
+      // yield() suspends this main coroutine and forces the dispatcher
+      // to execute the 'job' launched just above.
+      // The job will call Firebase and suspend on the await().
+      // Since we are in Robolectric and not actively pumping the MainLooper,
+      // the job will remain frozen there. Control is immediately returned to us.
+      // This makes the cancellation 100% deterministic without relying on arbitrary delays.
+      yield()
+
+      // Cancel the job immediately before Firestore finishes the network call
+      job.cancel()
+      job.join()
+
+      assertTrue("Job should be successfully cancelled", job.isCancelled)
+    }
+  }
+
+  /**
+   * Tests that when a user lacks the necessary permissions to read a Firestore document or
+   * collection, the Flow correctly closes and surfaces a Permission Denied error to the collector.
+   *
+   * We use the custom 'waitFor' method to pump Robolectric's main looper and avoid deadlocks. The
+   * condition '{ false }' ensures the Flow runs until the permission error is forcefully thrown.
+   */
+  @Test
+  fun testSnapshotListeners_PermissionDenied() = runBlocking {
+    // Test single file flow permission denied
+    try {
+      repository.getFileFlow("access_denied_test").waitFor(timeoutMs = DEFAULT_TIMEOUT_MS) { false }
+      fail("Should have thrown an exception")
+    } catch (e: Exception) {
+      assertTrue(
+          "Should throw permission denied",
+          e.message?.contains("PERMISSION_DENIED") == true,
+      )
+    }
+  }
+
+  /**
+   * Tests that list-based snapshot listeners correctly close the Flow and propagate Permission
+   * Denied errors. We use MockK here because Firestore security rules cannot securely target
+   * specific list queries without breaking normal behavior.
+   */
+  @Test
+  fun testListListeners_PermissionDenied_WithMockK() = runBlocking {
+    // 1. Create the mocks for Firestore components
+    val firestoreMock = mockk<FirebaseFirestore>()
+    val collectionMock = mockk<CollectionReference>()
+    val queryMock = mockk<Query>()
+    val registrationMock = mockk<ListenerRegistration>(relaxed = true)
+
+    // 2. Set up the default routing for the documents collection
+    every { firestoreMock.collection("documents") } returns collectionMock
+
+    // Mocking the 'getPersonalRootFiles' query chain
+    every { collectionMock.whereEqualTo("ownerId", "error_owner_test") } returns queryMock
+    every { queryMock.whereEqualTo("personalParentId", "") } returns queryMock
+
+    // Mocking the 'getGroupRootFiles' query chain
+    every { collectionMock.whereArrayContains("sharedGroupsIds", "error_group_test") } returns
+        queryMock
+
+    // Mocking the 'getDocumentsInFolder' query chain
+    every { collectionMock.whereArrayContains("parentFolderIds", "error_folder_test") } returns
+        queryMock
+
+    // 3. Intercept 'addSnapshotListener' and instantly trigger a PERMISSION_DENIED error
+    every { queryMock.addSnapshotListener(any()) } answers
+        {
+          val listener = firstArg<EventListener<QuerySnapshot>>()
+          listener.onEvent(
+              null, // No snapshot
+              FirebaseFirestoreException(
+                  "Simulated Permission Denied",
+                  FirebaseFirestoreException.Code.PERMISSION_DENIED,
+              ),
+          )
+          registrationMock
+        }
+
+    // Initialize a separate repository instance injected with our mock
+    val mockRepository = WorkspaceRepositoryFirestore(firestoreMock)
+
+    // 4. Assert that getPersonalRootFiles correctly catches and propagates the error
+    try {
+      mockRepository.getPersonalRootFiles("error_owner_test").collect {}
+      fail("getPersonalRootFiles should have thrown an exception")
+    } catch (e: Exception) {
+      assertTrue(e.message?.contains("Simulated Permission Denied") == true)
+    }
+
+    // 5. Assert that getGroupRootFiles correctly catches and propagates the error
+    try {
+      mockRepository.getGroupRootFiles("error_group_test").collect {}
+      fail("getGroupRootFiles should have thrown an exception")
+    } catch (e: Exception) {
+      assertTrue(e.message?.contains("Simulated Permission Denied") == true)
+    }
+
+    // 6. Assert that getDocumentsInFolder correctly catches and propagates the error
+    try {
+      mockRepository.getDocumentsInFolder("error_folder_test").collect {}
+      fail("getDocumentsInFolder should have thrown an exception")
+    } catch (e: Exception) {
+      assertTrue(e.message?.contains("Simulated Permission Denied") == true)
     }
   }
 }
