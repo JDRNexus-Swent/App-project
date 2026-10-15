@@ -173,10 +173,11 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
       }
 
       composable(route = AllRoutes.EditLore.name) {
-          EditFileLore(viewModel = editFileViewModel,
-              onBack = { navController.popBackStack() },
-              onSaved = { navController.popBackStack() },
-          )
+        EditFileLore(
+            viewModel = editFileViewModel,
+            onBack = { navController.popBackStack() },
+            onSaved = { navController.popBackStack() },
+        )
       }
     }
   }
