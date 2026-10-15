@@ -52,12 +52,23 @@ import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
+/** Test tags for UI nodes in the [EditFileCharacter] screen. */
 object EditFileCharacterTestTags {
   const val STATS_LIST = "edit_character_stats"
   const val ACTIONS_LIST = "edit_character_actions"
   const val BACK = "edit_character_back"
 }
 
+/**
+ * Composable screen for viewing and editing a character sheet document.
+ *
+ * Displays loading, error, or editing states. Users can edit character details (name, stats, and
+ * actions) and save changes via the provided [viewModel].
+ *
+ * @param viewModel The [EditFileViewModel] handling character sheet state and persistence.
+ * @param onBack Callback triggered when the back button is clicked.
+ * @param onSaved Callback triggered when the character sheet has been successfully saved.
+ */
 @Composable
 fun EditFileCharacter(
     viewModel: EditFileViewModel,
