@@ -177,10 +177,12 @@ class EditFileCharacterTests {
     composeTestRule.onNodeWithText("Arcane Longbow").assertIsNotDisplayed()
 
     composeTestRule.onNodeWithTag("edit_character_save").performScrollTo().performClick()
-    composeTestRule.waitUntil(timeoutMillis = 5_000) { repository.updatedFiles.isNotEmpty() }
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      repository.updatedFiles.isNotEmpty()
+    }
     assertEquals(false, savedClicked)
     updateGate.complete(Unit)
-    composeTestRule.waitUntil(timeoutMillis = 5_000) {
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
       viewModel.uiState.value.isSaved && savedClicked
     }
 

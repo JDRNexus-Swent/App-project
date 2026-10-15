@@ -11,8 +11,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.semantics
@@ -23,6 +21,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.authentication.SignInScreen
@@ -31,8 +31,6 @@ import com.github.se.jdrnexus.ui.edition.EditFileCharacter
 import com.github.se.jdrnexus.ui.home.HomeScreen
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,7 +67,6 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
   val context = LocalContext.current
   val credentialManager = remember(context) { CredentialManager.create(context) }
   val navController = rememberNavController()
-  val coroutineScope = rememberCoroutineScope()
 
   // Create an editFileViewModel to be able to retreive the file for the edition screens
   val editFileViewModel: EditFileViewModel = viewModel()
@@ -150,15 +147,12 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
       }
 
       composable(route = AllRoutes.PersoSpace.name) {
-        val onDocumentClicked: (String) -> Unit = { documentId ->
-          coroutineScope.launch {
-            editFileViewModel.loadFile(documentId)
-            val state = snapshotFlow { editFileViewModel.uiState.value }.first { !it.isLoading }
-            if (state.character != null) {
-              navController.navigate(AllRoutes.EditChar.name)
-            } else if (state.lore != null) {
-              navController.navigate(AllRoutes.EditLore.name)
-            }
+        val onDocumentClicked: (JDRFile) -> Unit = { document ->
+          editFileViewModel.loadFile(document.id)
+          when (document.type) {
+            DocumentType.CHARACTER -> navController.navigate(AllRoutes.EditChar.name)
+            DocumentType.TEXT -> navController.navigate(AllRoutes.EditLore.name)
+            DocumentType.FOLDER -> Unit
           }
         }
 

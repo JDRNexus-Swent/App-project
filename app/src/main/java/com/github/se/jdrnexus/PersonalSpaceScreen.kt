@@ -99,7 +99,7 @@ private val lightPersonalSpaceTheme =
 fun PersonalSpaceScreen(
     onBackButton: () -> Unit,
     personalSpaceViewModel: PersonalSpaceViewModel = viewModel(),
-    onDocumentClicked: (String) -> Unit,
+    onDocumentClicked: (JDRFile) -> Unit,
     onCreateFile: (String) -> Unit,
 ) {
   val uiState by personalSpaceViewModel.uiState.collectAsState()
