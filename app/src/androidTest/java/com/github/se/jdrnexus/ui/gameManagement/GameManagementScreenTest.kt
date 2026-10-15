@@ -16,12 +16,22 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
+import com.github.se.jdrnexus.model.personalSpace.GroupRepository
+import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import com.github.se.jdrnexus.model.repository.AuthError
+import com.github.se.jdrnexus.model.repository.AuthRepository
+import com.github.se.jdrnexus.model.repository.AuthResult
+import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementUiState
+import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.GroupActionState
 import com.github.se.jdrnexus.viewmodel.GroupLoadState
 import com.github.se.jdrnexus.viewmodel.GroupRole
 import com.github.se.jdrnexus.viewmodel.UserGroup
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -271,6 +281,60 @@ class GameManagementScreenTest {
     assertEquals("Files", selectedTab)
   }
 
+  @Test
+  fun screenConnectsViewModelAndNavigationActions() {
+    val group =
+        CampaignGroup(
+            id = "campaign-1",
+            name = "The Sunken Crown",
+            gameMasterId = "user-1",
+            participantIds = listOf("user-1"),
+        )
+    val groupRepository = ScreenGroupRepository(listOf(group))
+    val workspaceRepository = ScreenWorkspaceRepository()
+    val viewModel =
+        GameManagementViewModel(
+            groupRepository,
+            ScreenAuthRepository(),
+            workspaceRepository,
+        )
+    var enteredGroupId = ""
+    var managedGroupId = ""
+    var selectedTab = ""
+
+    composeTestRule.setContent {
+      SampleAppTheme(darkTheme = false) {
+        GameManagementScreen(
+            onEnterWorkspace = { enteredGroupId = it },
+            onManageGroup = { managedGroupId = it },
+            onTabSelected = { selectedTab = it },
+            gameManagementViewModel = viewModel,
+        )
+      }
+    }
+
+    composeTestRule.waitUntil(5_000) { viewModel.uiState.value.loadState == GroupLoadState.Success }
+    composeTestRule.onNodeWithText("The Sunken Crown").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Enter workspace").performClick()
+    composeTestRule.onNodeWithText("Manage group").performClick()
+    composeTestRule.onNodeWithText("Files").performClick()
+    assertEquals("campaign-1", enteredGroupId)
+    assertEquals("campaign-1", managedGroupId)
+    assertEquals("Files", selectedTab)
+
+    composeTestRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_DIALOG).assertIsDisplayed()
+    val groupNameField = composeTestRule.onNodeWithTag(GameManagementTestTags.GROUP_NAME_FIELD)
+    groupNameField.performTextInput("New campaign")
+    composeTestRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_CONFIRM).performClick()
+    composeTestRule.waitUntil(5_000) { viewModel.uiState.value.successMessage.isNotEmpty() }
+    composeTestRule.onNodeWithText("New campaign was created.").assertIsDisplayed()
+    assertEquals("New campaign", groupRepository.createdGroups.single().name)
+    assertEquals("New campaign", workspaceRepository.createdFiles.single().name)
+    composeTestRule.onNodeWithText("Dismiss").performClick()
+    composeTestRule.onAllNodesWithText("New campaign was created.").assertCountEquals(0)
+  }
+
   private fun setContent(
       uiState: GameManagementUiState,
       onEnterWorkspace: (String) -> Unit = {},
@@ -323,4 +387,88 @@ class GameManagementScreenTest {
               },
           loadState = if (groups.isEmpty()) GroupLoadState.Empty else GroupLoadState.Success,
       )
+
+  private class ScreenAuthRepository : AuthRepository {
+    override val authState: Flow<AuthUser?> = flowOf(AuthUser("user-1", null, null))
+
+    override suspend fun signUpWithEmail(
+        email: String,
+        password: String,
+        username: String,
+    ): AuthResult<AuthUser> = AuthResult.Failure(AuthError.UNKNOWN)
+
+    override suspend fun signInWithEmail(email: String, password: String): AuthResult<AuthUser> =
+        AuthResult.Failure(AuthError.UNKNOWN)
+
+    override suspend fun signInWithGoogle(idToken: String): AuthResult<AuthUser> =
+        AuthResult.Failure(AuthError.UNKNOWN)
+
+    override suspend fun signOut(): AuthResult<Unit> = AuthResult.Success(Unit)
+  }
+
+  private class ScreenGroupRepository(private val groups: List<CampaignGroup>) :
+      GroupRepository by unusedGroupRepository {
+    val createdGroups = mutableListOf<CampaignGroup>()
+
+    override suspend fun createGroup(group: CampaignGroup): Result<Unit> {
+      createdGroups += group
+      return Result.success(Unit)
+    }
+
+    override fun getUserGroups(userId: String): Flow<List<CampaignGroup>> = flowOf(groups)
+  }
+
+  private class ScreenWorkspaceRepository : WorkspaceRepository {
+    val createdFiles = mutableListOf<JDRFile>()
+
+    override fun getNewUid(): String = "new-campaign"
+
+    override suspend fun createFile(file: JDRFile): Result<Unit> {
+      createdFiles += file
+      return Result.success(Unit)
+    }
+
+    override suspend fun updateFile(file: JDRFile): Result<Unit> = error("Not used")
+
+    override suspend fun deleteFile(fileId: String): Result<Unit> = error("Not used")
+
+    override suspend fun getFile(fileId: String): Result<JDRFile?> = error("Not used")
+
+    override fun getFileFlow(fileId: String): Flow<JDRFile?> = error("Not used")
+
+    override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = error("Not used")
+
+    override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> = error("Not used")
+
+    override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> = error("Not used")
+  }
+
+  private companion object {
+    val unusedGroupRepository =
+        object : GroupRepository {
+          override fun getNewGroupId(): String = error("Not used")
+
+          override suspend fun createGroup(group: CampaignGroup): Result<Unit> = error("Not used")
+
+          override suspend fun updateGroup(group: CampaignGroup): Result<Unit> = error("Not used")
+
+          override suspend fun deleteGroup(groupId: String): Result<Unit> = error("Not used")
+
+          override suspend fun getGroup(groupId: String): Result<CampaignGroup> = error("Not used")
+
+          override suspend fun addUserToGroup(
+              groupId: String,
+              userId: String,
+          ): Result<Unit> = error("Not used")
+
+          override suspend fun removeUserFromGroup(
+              groupId: String,
+              userId: String,
+          ): Result<Unit> = error("Not used")
+
+          override fun getGroupFlow(groupId: String): Flow<CampaignGroup?> = error("Not used")
+
+          override fun getUserGroups(userId: String): Flow<List<CampaignGroup>> = error("Not used")
+        }
+  }
 }
