@@ -137,6 +137,25 @@ class GameManagementViewModelTest {
   }
 
   @Test
+  fun loadGroupsWhileFirstEmissionIsPendingKeepsTheSameSubscription() = runTest {
+    var subscriptions = 0
+    val repository = FakeGroupRepository {
+      flow {
+        subscriptions += 1
+        awaitCancellation()
+      }
+    }
+    val viewModel = createViewModel(repository, FakeAuthRepository())
+    runCurrent()
+
+    viewModel.loadGroups()
+    runCurrent()
+
+    assertEquals(GroupLoadState.Loading, viewModel.uiState.value.loadState)
+    assertEquals(1, subscriptions)
+  }
+
+  @Test
   fun accountSwitchCancelsOldSubscriptionAndClearsOldGroups() = runTest {
     val auth = FakeAuthRepository(AuthUser("first", null, null))
     val repository = TrackingGroupRepository()
@@ -183,8 +202,7 @@ class GameManagementViewModelTest {
   @Test
   fun createGroupTrimsNameAndAssignsTheSignedInUserAsGameMasterAndParticipant() = runTest {
     val user = AuthUser("gm-1", "gm@example.com", "GM")
-    val repository =
-        FakeGroupRepository(newGroupId = "created-group", groups = { flowOf(emptyList()) })
+    val repository = FakeGroupRepository { flowOf(emptyList()) }
     val workspaceRepository = FakeWorkspaceRepository(newUid = "created-group")
     val viewModel = createViewModel(repository, FakeAuthRepository(user), workspaceRepository)
     advanceUntilIdle()
@@ -224,6 +242,56 @@ class GameManagementViewModelTest {
   }
 
   @Test
+  fun createDialogClearsValidationErrorAndUsesTheEditedName() = runTest {
+    val repository = FakeGroupRepository { flowOf(emptyList()) }
+    val viewModel = createViewModel(repository, FakeAuthRepository())
+    advanceUntilIdle()
+
+    viewModel.openCreateDialog()
+    viewModel.createGroup()
+    assertEquals(
+        GroupActionState.Error("A group name is required."),
+        viewModel.uiState.value.createState,
+    )
+
+    viewModel.onGroupNameChanged("New campaign")
+    assertEquals(GroupActionState.Idle, viewModel.uiState.value.createState)
+    viewModel.createGroup()
+    advanceUntilIdle()
+
+    assertEquals("New campaign", repository.createdGroups.single().name)
+    assertEquals(
+        GroupActionState.Success("new-group", "New campaign was created."),
+        viewModel.uiState.value.createState,
+    )
+    assertFalse(viewModel.uiState.value.isCreateDialogOpen)
+    assertEquals("", viewModel.uiState.value.groupName)
+
+    viewModel.dismissSuccessMessage()
+    assertEquals(GroupActionState.Idle, viewModel.uiState.value.createState)
+  }
+
+  @Test
+  fun createDialogCannotCloseWhileGroupWriteIsPending() = runTest {
+    val createGate = CompletableDeferred<Unit>()
+    val repository = FakeGroupRepository(createGate = createGate, groups = { flowOf(emptyList()) })
+    val viewModel = createViewModel(repository, FakeAuthRepository())
+    advanceUntilIdle()
+
+    viewModel.openCreateDialog()
+    viewModel.onGroupNameChanged("Campaign")
+    viewModel.createGroup()
+    runCurrent()
+    viewModel.closeCreateDialog()
+
+    assertTrue(viewModel.uiState.value.isCreateDialogOpen)
+    assertEquals(GroupActionState.Loading, viewModel.uiState.value.createState)
+    createGate.complete(Unit)
+    advanceUntilIdle()
+    assertFalse(viewModel.uiState.value.isCreateDialogOpen)
+  }
+
+  @Test
   fun createGroupRejectsBlankNameWithoutCallingRepository() = runTest {
     val repository = FakeGroupRepository { flowOf(emptyList()) }
     val workspaceRepository = FakeWorkspaceRepository()
@@ -239,7 +307,7 @@ class GameManagementViewModelTest {
     )
     assertTrue(repository.createdGroups.isEmpty())
     assertTrue(workspaceRepository.createdFiles.isEmpty())
-    assertEquals(0, repository.newGroupIdRequests)
+    assertEquals(0, workspaceRepository.newUidRequests)
   }
 
   @Test
@@ -258,7 +326,7 @@ class GameManagementViewModelTest {
     )
     assertTrue(repository.createdGroups.isEmpty())
     assertTrue(workspaceRepository.createdFiles.isEmpty())
-    assertEquals(0, repository.newGroupIdRequests)
+    assertEquals(0, workspaceRepository.newUidRequests)
   }
 
   @Test
@@ -280,6 +348,45 @@ class GameManagementViewModelTest {
         viewModel.uiState.value.createState,
     )
     assertEquals(1, repository.createdGroups.size)
+    assertEquals(listOf("new-group"), workspaceRepository.deletedFiles)
+  }
+
+  @Test
+  fun failedRootFolderWritePreventsGroupCreationAndReportsFailure() = runTest {
+    val repository = FakeGroupRepository { flowOf(emptyList()) }
+    val workspaceRepository =
+        FakeWorkspaceRepository(
+            createResult = Result.failure(IllegalStateException("Disk offline"))
+        )
+    val viewModel = createViewModel(repository, FakeAuthRepository(), workspaceRepository)
+    advanceUntilIdle()
+
+    viewModel.createGroup("Campaign")
+    advanceUntilIdle()
+
+    assertEquals(GroupActionState.Error("Disk offline"), viewModel.uiState.value.createState)
+    assertTrue(repository.createdGroups.isEmpty())
+    assertTrue(workspaceRepository.deletedFiles.isEmpty())
+  }
+
+  @Test
+  fun signingOutDuringGroupCreationCancelsTheWriteAndRemovesItsRootFolder() = runTest {
+    val createGate = CompletableDeferred<Unit>()
+    val auth = FakeAuthRepository()
+    val repository = FakeGroupRepository(createGate = createGate, groups = { flowOf(emptyList()) })
+    val workspaceRepository = FakeWorkspaceRepository()
+    val viewModel = createViewModel(repository, auth, workspaceRepository)
+    advanceUntilIdle()
+
+    viewModel.createGroup("Campaign")
+    runCurrent()
+    assertEquals(GroupActionState.Loading, viewModel.uiState.value.createState)
+
+    auth.currentUser.value = null
+    advanceUntilIdle()
+
+    assertEquals(GroupLoadState.Empty, viewModel.uiState.value.loadState)
+    assertEquals(GroupActionState.Idle, viewModel.uiState.value.createState)
     assertEquals(listOf("new-group"), workspaceRepository.deletedFiles)
   }
 
@@ -379,6 +486,20 @@ class GameManagementViewModelTest {
     )
   }
 
+  @Test
+  fun blankInvitationSelectionShowsAnActionableError() = runTest {
+    val viewModel =
+        createViewModel(FakeGroupRepository { flowOf(emptyList()) }, FakeAuthRepository())
+    advanceUntilIdle()
+
+    viewModel.requestInvitationPlaceholder(" ")
+
+    assertEquals(
+        GroupActionState.Error("Select a group to manage invitations."),
+        viewModel.uiState.value.invitationState,
+    )
+  }
+
   private class FakeAuthRepository(
       user: AuthUser? = AuthUser("user-1", null, null),
       authState: Flow<AuthUser?>? = null,
@@ -399,18 +520,11 @@ class GameManagementViewModelTest {
   }
 
   private class FakeGroupRepository(
-      private val newGroupId: String = "new-group",
       private val createResult: Result<Unit> = Result.success(Unit),
       private val createGate: CompletableDeferred<Unit>? = null,
       private val groups: (String) -> Flow<List<CampaignGroup>>,
   ) : GroupRepository by UnusedGroupRepository {
     val createdGroups = mutableListOf<CampaignGroup>()
-    var newGroupIdRequests = 0
-
-    override fun getNewGroupId(): String {
-      newGroupIdRequests += 1
-      return newGroupId
-    }
 
     override suspend fun createGroup(group: CampaignGroup): Result<Unit> {
       createdGroups += group
