@@ -140,10 +140,19 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
             launchSingleTop = true
           }
         }
+        val onPersonalSpaceClicked = { navController.navigate(AllRoutes.PersoSpace.name) }
         if (authViewModel == null) {
-          HomeScreen(viewModel = altAuthViewModel, onLogout = onLogout)
+          HomeScreen(
+              viewModel = altAuthViewModel,
+              onLogout = onLogout,
+              onPersonalSpaceClick = onPersonalSpaceClicked,
+          )
         } else {
-          HomeScreen(viewModel = authViewModel, onLogout = onLogout)
+          HomeScreen(
+              viewModel = authViewModel,
+              onLogout = onLogout,
+              onPersonalSpaceClick = onPersonalSpaceClicked,
+          )
         }
       }
 
