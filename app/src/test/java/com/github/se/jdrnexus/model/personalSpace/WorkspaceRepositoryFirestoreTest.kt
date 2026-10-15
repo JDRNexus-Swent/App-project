@@ -478,7 +478,7 @@ class WorkspaceRepositoryFirestoreTest {
     repository.createFile(folder).getOrThrow()
     repository.createFile(otherFolder).getOrThrow()
     repository.createFile(textFile).getOrThrow()
-    val removal = async(Dispatchers.IO) { repository.removeItemFromGroup(folder.id, groupId) }
+    val removal = async(Dispatchers.IO) { repository.removeItemFromGroup(folder.id, groupId, "") }
     while (!removal.isCompleted) {
       shadowOf(Looper.getMainLooper()).idle()
       delay(50)
@@ -567,7 +567,7 @@ class WorkspaceRepositoryFirestoreTest {
           repository.createFile(it).getOrThrow()
         }
         val removal =
-            async(Dispatchers.IO) { repository.removeItemFromGroup(rootFolder.id, groupId) }
+            async(Dispatchers.IO) { repository.removeItemFromGroup(rootFolder.id, groupId, "") }
         while (!removal.isCompleted) {
           shadowOf(Looper.getMainLooper()).idle()
           delay(50)

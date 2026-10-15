@@ -65,7 +65,7 @@ interface WorkspaceRepository {
   suspend fun removeItemFromGroup(
       itemId: String,
       groupId: String,
-      parentFolderId: String? = "",
+      parentFolderId: String?,
   ): Result<Unit>
 
   // ==========================================
