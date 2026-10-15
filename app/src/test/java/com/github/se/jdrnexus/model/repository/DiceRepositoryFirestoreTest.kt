@@ -43,10 +43,10 @@ class DiceRepositoryFirestoreTest {
   private lateinit var testGroupId: String
 
   companion object {
-      private const val DEFAULT_TIMEOUT_MS = 5000L
-      private const val EMULATOR_APP_NAME = "EmulatorApp"
-      private const val EMULATOR_HOST = "127.0.0.1"
-      private const val EMULATOR_PORT = 8080
+    private const val DEFAULT_TIMEOUT_MS = 5000L
+    private const val EMULATOR_APP_NAME = "EmulatorApp"
+    private const val EMULATOR_HOST = "127.0.0.1"
+    private const val EMULATOR_PORT = 8080
   }
 
   @Before
@@ -61,9 +61,12 @@ class DiceRepositoryFirestoreTest {
 
     // Dedicated FirebaseApp shared by all the emulator-based test classes of the JVM
     val emulatorApp =
-      FirebaseApp.getApps(context).firstOrNull { it.name == EMULATOR_APP_NAME }
-        ?: FirebaseApp.initializeApp(
-          context, FirebaseApp.getInstance().options, EMULATOR_APP_NAME)
+        FirebaseApp.getApps(context).firstOrNull { it.name == EMULATOR_APP_NAME }
+            ?: FirebaseApp.initializeApp(
+                context,
+                FirebaseApp.getInstance().options,
+                EMULATOR_APP_NAME,
+            )
 
     firestore = FirebaseFirestore.getInstance(emulatorApp)
 
@@ -74,7 +77,9 @@ class DiceRepositoryFirestoreTest {
       // this instance is not pointing to the emulator.
       if (!firestore.firestoreSettings.host.contains(EMULATOR_HOST)) {
         throw IllegalStateException(
-          "Firestore is not using the emulator! Aborting to prevent data loss.", e)
+            "Firestore is not using the emulator! Aborting to prevent data loss.",
+            e,
+        )
       }
     }
 
@@ -97,12 +102,12 @@ class DiceRepositoryFirestoreTest {
       // we remove the dice_rolls documents explicitly
       try {
         val rolls =
-          firestore
-            .collection("campaign_groups")
-            .document(testGroupId)
-            .collection("dice_rolls")
-            .get()
-            .await()
+            firestore
+                .collection("campaign_groups")
+                .document(testGroupId)
+                .collection("dice_rolls")
+                .get()
+                .await()
         if (!rolls.isEmpty) {
           val batch = firestore.batch()
           rolls.documents.forEach { batch.delete(it.reference) }
@@ -150,8 +155,8 @@ class DiceRepositoryFirestoreTest {
       }
       throw AssertionError("Timeout waiting for condition.")
     } finally {
-    job.cancel()
-  }
+      job.cancel()
+    }
   }
 
   @Test
