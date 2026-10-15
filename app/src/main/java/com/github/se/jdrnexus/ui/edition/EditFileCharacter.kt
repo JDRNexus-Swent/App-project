@@ -59,6 +59,7 @@ object EditFileCharacterTestTags {
   const val BACK = "edit_character_back"
   const val CURRENT_HP = "edit_character_current_hp"
   const val MAX_HP = "edit_character_max_hp"
+  const val LIST = "edit_character_list"
 }
 
 /**
@@ -131,7 +132,10 @@ fun EditFileCharacter(
 
         LazyColumn(
             modifier =
-                Modifier.fillMaxSize().imePadding().padding(horizontal = 12.dp, vertical = 8.dp),
+                Modifier.fillMaxSize()
+                    .imePadding()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .testTag(EditFileCharacterTestTags.LIST),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
           item(key = "top-bar") {

@@ -5,12 +5,14 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -156,8 +158,14 @@ class EditFileCharacterTests {
     composeTestRule.onNodeWithTag("add_action_description").performTextInput("Restore hit points")
     composeTestRule.onNodeWithTag("confirm_add_action").performScrollTo().performClick()
     composeTestRule.onNodeWithText("Healing Word").assertIsDisplayed()
-    composeTestRule.onNodeWithTag("remove_stat_dexterity").performScrollTo().performClick()
-    composeTestRule.onNodeWithTag("remove_action_longbow").performScrollTo().performClick()
+    composeTestRule
+        .onNodeWithTag(EditFileCharacterTestTags.LIST)
+        .performScrollToNode(hasTestTag("remove_stat_dexterity"))
+    composeTestRule.onNodeWithTag("remove_stat_dexterity").performClick()
+    composeTestRule
+        .onNodeWithTag(EditFileCharacterTestTags.LIST)
+        .performScrollToNode(hasTestTag("remove_action_longbow"))
+    composeTestRule.onNodeWithTag("remove_action_longbow").performClick()
     composeTestRule.onNodeWithText("Dexterity").assertIsNotDisplayed()
     composeTestRule.onNodeWithText("Arcane Longbow").assertIsNotDisplayed()
 
