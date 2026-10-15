@@ -8,7 +8,6 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : WorkspaceRepository {
@@ -240,9 +239,9 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     awaitClose { listenerRegistration.remove() }
   }
 
-  override fun getGroupRootFiles(
-      groupId: String,
-  ): Flow<List<JDRFile>> = callbackFlow {
+  override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> = callbackFlow {
+    // Listen for changes on documents shared with this group.
+    // 'whereArrayContains' checks if the 'groupId' exists inside the 'sharedGroupsIds' list.
     val listenerRegistration =
         collection.whereArrayContains("sharedGroupsIds", groupId).addSnapshotListener {
             snapshot,
@@ -252,43 +251,37 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
             return@addSnapshotListener
           }
 
-          if (snapshot == null) {
-            trySend(emptyList())
-            return@addSnapshotListener
-          }
+          // Similar to personal root files, we parse the documents and enforce the root-level
+          // condition
+          // (parentFolderIds.isEmpty()) on the client side since Firestore doesn't easily support
+          // multiple array/inequality filters in a single query without complex composite indexes.
+          if (snapshot != null) {
+            val files = mutableListOf<JDRFile>()
 
-          launch {
-            try {
-              val sharedFiles =
-                  snapshot.documents.mapNotNull { document ->
-                    try {
-                      document.toObject(JDRFile::class.java)
-                    } catch (e: Exception) {
-                      Log.e(
-                          "WorkspaceRepository",
-                          "Error deserializing group doc ${document.id}",
-                          e,
-                      )
-                      null
-                    }
-                  }
+            for (document in snapshot.documents) {
+              try {
+                val file = document.toObject(JDRFile::class.java)
 
-              val rootFiles = sharedFiles.filter { file -> isAtGroupRoot(file, groupId) }
-
-              trySend(rootFiles)
-            } catch (e: CancellationException) {
-              throw e
-            } catch (e: Exception) {
-              Log.e(
-                  "WorkspaceRepository",
-                  "Error loading root files for group $groupId",
-                  e,
-              )
-              close(e)
+                // La vérification "root" se fait ici de manière explicite :
+                // On s'assure que le fichier existe ET qu'il n'a pas de dossier parent
+                if (file != null && file.parentFolderIds.isEmpty()) {
+                  files.add(file)
+                }
+              } catch (e: Exception) {
+                // Keep the flow alive even if we have a corruption problem.
+                Log.e(
+                    "WorkspaceRepository",
+                    "Error in the deserialization of group doc ${document.id}",
+                    e,
+                )
+              }
             }
+            // Emit the updated list.
+            trySend(files)
           }
         }
 
+    // Clean up the listener when the Flow is cancelled.
     awaitClose { listenerRegistration.remove() }
   }
 
@@ -329,20 +322,5 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
 
     // Clean up the listener when the Flow is cancelled.
     awaitClose { listenerRegistration.remove() }
-  }
-
-  private suspend fun isAtGroupRoot(
-      file: JDRFile,
-      groupId: String,
-  ): Boolean {
-    for (parentId in file.parentFolderIds) {
-      val parent = getFile(parentId).getOrThrow() ?: continue
-
-      if (parent.type == DocumentType.FOLDER && groupId in parent.sharedGroupsIds) {
-        return false
-      }
-    }
-
-    return true
   }
 }
