@@ -8,7 +8,6 @@ import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
-import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -45,7 +44,7 @@ sealed interface GroupActionState {
   data object Loading : GroupActionState
 
   /** Success may include a message for the screen to display. */
-  data class Success(val groupId: String, val message: String? = null) : GroupActionState
+  data class Success(val groupId: String, val message: String = "") : GroupActionState
 
   data class Error(val message: String) : GroupActionState
 }
@@ -103,11 +102,12 @@ data class GameManagementUiState(
  *
  * @param groupRepository Provides the real-time group list for a user UID.
  * @param authRepository Provides the current signed-in user and account changes.
+ * @param workspaceRepository Provides a new group ID and creates its root folder.
  */
 class GameManagementViewModel(
     private val groupRepository: GroupRepository,
     private val authRepository: AuthRepository,
-    private val workspaceRepository: WorkspaceRepository = WorkspaceRepositoryProvider.repository,
+    private val workspaceRepository: WorkspaceRepository,
 ) : ViewModel() {
 
   private val _uiState = MutableStateFlow(GameManagementUiState())
