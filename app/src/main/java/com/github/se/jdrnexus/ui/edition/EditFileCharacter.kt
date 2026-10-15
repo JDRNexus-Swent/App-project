@@ -52,12 +52,23 @@ import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
+/** Semantic test tags used to locate elements in the character editor. */
 object EditFileCharacterTestTags {
+
   const val STATS_LIST = "edit_character_stats"
+
   const val ACTIONS_LIST = "edit_character_actions"
+
   const val BACK = "edit_character_back"
 }
 
+/**
+ * Displays an editor for a character file, including its name, stats, actions, and save state.
+ *
+ * @param viewModel supplies the character data and handles edits and saving.
+ * @param onBack is called when the user requests to leave the editor.
+ * @param onSaved is called when the view model reports a successful save.
+ */
 @Composable
 fun EditFileCharacter(
     viewModel: EditFileViewModel,
@@ -281,6 +292,13 @@ fun EditFileCharacter(
   }
 }
 
+/**
+ * Displays a section heading with its item count.
+ *
+ * @param title section title.
+ * @param count number of items in the section.
+ * @param modifier modifier applied to the heading row.
+ */
 @Composable
 private fun SectionTitle(title: String, count: Int, modifier: Modifier = Modifier) {
   Row(
@@ -297,6 +315,16 @@ private fun SectionTitle(title: String, count: Int, modifier: Modifier = Modifie
   }
 }
 
+/**
+ * Displays an editable stat row with name and value fields and a removal button.
+ *
+ * @param stat stat represented by this row.
+ * @param nameError validation message for the stat name, if any.
+ * @param valueError validation message for the stat value, if any.
+ * @param onNameChange called with an updated stat name.
+ * @param onValueChange called with an updated stat value string.
+ * @param onRemove called when the stat is requested to be removed.
+ */
 @Composable
 private fun StatRow(
     stat: CharacterStat,
@@ -334,6 +362,15 @@ private fun StatRow(
   }
 }
 
+/**
+ * Displays an editable action card with name and description fields and a removal button.
+ *
+ * @param action action represented by this card.
+ * @param nameError validation message for the action name, if any.
+ * @param onNameChange called with an updated action name.
+ * @param onDescriptionChange called with an updated action description.
+ * @param onRemove called when the action is requested to be removed.
+ */
 @Composable
 private fun ActionRow(
     action: CharacterAction,
@@ -377,6 +414,17 @@ private fun ActionRow(
   }
 }
 
+/**
+ * Displays a decimal input that keeps its draft while focused and shows an optional validation
+ * message.
+ *
+ * @param label text shown as the field label.
+ * @param value current committed value displayed when the field is not being edited.
+ * @param stateKey stable key used to retain input state for this field.
+ * @param error validation message to display, if any.
+ * @param modifier modifier applied to the input field.
+ * @param onValueChange called whenever the user changes the input text.
+ */
 @Composable
 private fun NumberField(
     label: String,
@@ -405,6 +453,18 @@ private fun NumberField(
   )
 }
 
+/**
+ * Displays a text input that keeps a local draft and reports edits to its owner.
+ *
+ * @param value current text value.
+ * @param onValueChange called whenever the user changes the text.
+ * @param modifier modifier applied to the input field.
+ * @param label composable field label.
+ * @param singleLine whether the input is restricted to one line.
+ * @param minLines minimum number of visible text lines.
+ * @param isError whether the field should use its error presentation.
+ * @param supportingText optional composable supporting text, commonly a validation message.
+ */
 @Composable
 private fun EditableTextField(
     value: String,
@@ -432,6 +492,7 @@ private fun EditableTextField(
   )
 }
 
+/** Previews the character editor using a sample character and an in-memory repository. */
 @Preview(showBackground = true, heightDp = 820)
 @Composable
 private fun EditFileCharacterPreview() {
@@ -450,7 +511,9 @@ private fun EditFileCharacterPreview() {
   SampleAppTheme { EditFileCharacter(viewModel = viewModel, onBack = {}, onSaved = {}) }
 }
 
+/** Supplies the sample character to the preview without accessing persistent storage. */
 private class PreviewWorkspaceRepository(private val previewFile: JDRFile) : WorkspaceRepository {
+
   override fun getNewUid(): String = "preview-id"
 
   override suspend fun createFile(file: JDRFile): Result<Unit> = Result.success(Unit)
