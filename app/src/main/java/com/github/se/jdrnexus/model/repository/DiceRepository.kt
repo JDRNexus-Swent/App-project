@@ -1,8 +1,11 @@
 package com.github.se.jdrnexus.model.repository
 
 import com.github.se.jdrnexus.ui.dice.DiceRollResult
+import com.google.firebase.firestore.DocumentId
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.ServerTimestamp
+import java.util.Date
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -11,13 +14,13 @@ import kotlinx.coroutines.tasks.await
 
 /** Data class representing a dice roll as it is stored in Cloud Firestore. */
 data class DiceRollEntity(
-    val id: String = "",
+    @DocumentId val documentId: String = "",
     val userId: String = "",
     val username: String = "",
     val diceType: String = "",
     val modifier: Int = 0,
     val totalValue: Int = 0,
-    val timestamp: Long = System.currentTimeMillis(), // Used to sort rolls by recency.
+    @ServerTimestamp val timestamp: Date? = null, // Firestore will fill this automatically
 )
 
 /**
@@ -34,7 +37,7 @@ fun DiceRollResult.toEntity(user: AuthUser): DiceRollEntity {
       diceType = this.diceType.name,
       modifier = this.modifier,
       totalValue = this.totalValue,
-      timestamp = System.currentTimeMillis(),
+      // Timestamp will be put in the server side
   )
 }
 
@@ -99,10 +102,7 @@ class DiceRepositoryFirestore(
               .get() // .get() fetches the data once instead of listening
               .await()
 
-      val rolls =
-          snapshot.documents.mapNotNull { doc ->
-            doc.toObject(DiceRollEntity::class.java)?.copy(id = doc.id)
-          }
+      val rolls = snapshot.documents.mapNotNull { doc -> doc.toObject(DiceRollEntity::class.java) }
       Result.success(rolls)
     } catch (e: Exception) {
       Result.failure(e)
@@ -134,9 +134,7 @@ class DiceRepositoryFirestore(
 
       if (snapshot != null) {
         val rolls =
-            snapshot.documents.mapNotNull { doc ->
-              doc.toObject(DiceRollEntity::class.java)?.copy(id = doc.id)
-            }
+            snapshot.documents.mapNotNull { doc -> doc.toObject(DiceRollEntity::class.java) }
         trySend(rolls)
       }
     }
