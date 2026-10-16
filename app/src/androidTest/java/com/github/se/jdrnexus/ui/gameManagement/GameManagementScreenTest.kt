@@ -119,6 +119,31 @@ class GameManagementScreenTest {
   }
 
   @Test
+  fun multipleGroupsShowPluralCountAndFallbackCampaignDetails() {
+    setContent(
+        uiState =
+            stateFor(
+                CampaignGroup(
+                    id = "campaign-1",
+                    name = "The Sunken Crown",
+                    gameMasterId = "user-1",
+                    participantIds = listOf("user-1"),
+                ),
+                CampaignGroup(
+                    id = "campaign-2",
+                    name = "Clockwork Dominion",
+                    gameMasterId = "another-user",
+                    participantIds = listOf("user-1", "another-user"),
+                ),
+            )
+    )
+
+    composeTestRule.onNodeWithText("2 groups · Your next chapter, together.").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Campaign system not set · 1 member").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Player").assertIsDisplayed()
+  }
+
+  @Test
   fun enterWorkspacePassesSelectedGroupIdToNavigation() {
     var navigatedTo = ""
     setContent(
@@ -220,6 +245,26 @@ class GameManagementScreenTest {
   }
 
   @Test
+  fun emptyCreateGroupNameShowsValidationAndCanBeDismissed() {
+    var dismissClicks = 0
+    setContent(
+        uiState = stateFor().copy(isCreateDialogOpen = true),
+        onDismissCreateDialog = { dismissClicks++ },
+    )
+
+    composeTestRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_CONFIRM).assertIsNotEnabled()
+    val nameField = composeTestRule.onNodeWithTag(GameManagementTestTags.GROUP_NAME_FIELD)
+    nameField.performTextInput("Campaign")
+    nameField.performTextClearance()
+
+    composeTestRule.onNodeWithText("A group name is required.").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_CONFIRM).assertIsNotEnabled()
+    composeTestRule.onNodeWithText("Cancel").performClick()
+
+    assertEquals(1, dismissClicks)
+  }
+
+  @Test
   fun createDialogShowsCreationFailureAndKeepsRetryAvailable() {
     var createClicks = 0
     setContent(
@@ -296,6 +341,14 @@ class GameManagementScreenTest {
   }
 
   @Test
+  fun darkThemeRendersScreenContent() {
+    setContent(uiState = stateFor(), darkTheme = true)
+
+    composeTestRule.onNodeWithText("Your groups").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Your party awaits").assertIsDisplayed()
+  }
+
+  @Test
   fun screenConnectsViewModelAndNavigationActions() {
     val group =
         CampaignGroup(
@@ -360,9 +413,10 @@ class GameManagementScreenTest {
       onRetryLoad: () -> Unit = {},
       onDismissSuccess: () -> Unit = {},
       onTabSelected: (String) -> Unit = {},
+      darkTheme: Boolean = false,
   ) {
     composeTestRule.setContent {
-      SampleAppTheme(darkTheme = false) {
+      SampleAppTheme(darkTheme = darkTheme) {
         val currentUiState = remember { mutableStateOf(uiState) }
         GameManagementScreenContent(
             uiState = currentUiState.value,
@@ -379,7 +433,7 @@ class GameManagementScreenTest {
             onManageGroup = onManageGroup,
             onInvite = {},
             onTabSelected = onTabSelected,
-            darkTheme = false,
+            darkTheme = darkTheme,
         )
       }
     }
