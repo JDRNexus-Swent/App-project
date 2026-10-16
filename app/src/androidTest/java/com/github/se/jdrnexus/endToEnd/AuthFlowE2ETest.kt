@@ -1,11 +1,14 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.endToEnd
 
 import android.util.Log
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -57,12 +60,18 @@ class AuthFlowE2ETest {
 
     // 1. Sign Up
     waitForTag(C.Tag.sign_in_sign_up)
+    composeRule
+        .onNodeWithTag("sign_in_scroll_container")
+        .performScrollToNode(hasTestTag(C.Tag.sign_in_sign_up))
     composeRule.onNodeWithTag(C.Tag.sign_in_sign_up).performClick()
     waitForTag(C.Tag.sign_up_submit)
 
     composeRule.onNodeWithTag(C.Tag.sign_up_username).performTextInput(username)
     composeRule.onNodeWithTag(C.Tag.sign_up_email).performTextInput(email)
     composeRule.onNodeWithTag(C.Tag.sign_up_password).performTextInput(password)
+    composeRule
+        .onNodeWithTag("sign_up_scroll_container")
+        .performScrollToNode(hasTestTag(C.Tag.sign_up_submit))
     composeRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
 
     // 2. Go to home
@@ -80,6 +89,9 @@ class AuthFlowE2ETest {
     // 4. Sign In with the new account
     composeRule.onNodeWithTag(C.Tag.sign_in_email).performTextReplacement(email)
     composeRule.onNodeWithTag(C.Tag.sign_in_password).performTextReplacement(password)
+    composeRule
+        .onNodeWithTag("sign_in_scroll_container")
+        .performScrollToNode(hasTestTag(C.Tag.sign_in_submit))
     composeRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
 
     waitForTag(TestTags.TITLE)

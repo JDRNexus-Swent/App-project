@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.endToEnd
 
 import android.util.Log
@@ -133,12 +134,18 @@ class CharacterEditionE2ETest {
   private fun signUpNewUser() {
     val suffix = System.currentTimeMillis()
     waitForTag(C.Tag.sign_in_sign_up)
+    composeRule
+        .onNodeWithTag("sign_in_scroll_container")
+        .performScrollToNode(hasTestTag(C.Tag.sign_in_sign_up))
     composeRule.onNodeWithTag(C.Tag.sign_in_sign_up).performClick()
 
     waitForTag(C.Tag.sign_up_username)
     composeRule.onNodeWithTag(C.Tag.sign_up_username).performTextInput("e2e_user_$suffix")
     composeRule.onNodeWithTag(C.Tag.sign_up_email).performTextInput("e2e_$suffix@example.com")
     composeRule.onNodeWithTag(C.Tag.sign_up_password).performTextInput("Passw0rd123")
+    composeRule
+        .onNodeWithTag("sign_up_scroll_container")
+        .performScrollToNode(hasTestTag(C.Tag.sign_up_submit))
     composeRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
   }
 
