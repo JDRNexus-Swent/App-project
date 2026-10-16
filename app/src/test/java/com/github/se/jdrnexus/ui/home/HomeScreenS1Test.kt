@@ -71,7 +71,9 @@ class HomeScreenS1Test {
     TestTags.BUTTONS.forEachIndexed { index, tag ->
       val button = composeTestRule.onNodeWithTag(tag)
       button.assertIsDisplayed()
-      composeTestRule.onNodeWithText("Tool ${index + 1}").assertIsDisplayed()
+      composeTestRule
+          .onNodeWithText(listOf("Dice", "Group Management")[index])
+          .assertIsDisplayed()
       val bounds = button.fetchSemanticsNode().boundsInRoot
       Assert.assertEquals(bounds.width, bounds.height, 1f)
       button.performClick()

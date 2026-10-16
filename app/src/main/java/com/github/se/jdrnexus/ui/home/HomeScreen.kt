@@ -39,8 +39,10 @@ object TestTags {
   const val ADVENTURES = "home_local_adventures"
   const val QUICKTOOLS = "home_quicktools"
   const val PSPACEBUTTON = "home_to_pspace"
+  const val DICEBUTTON = "home_to_dice"
+  const val GROUPMANAGEMENTBUTTON = "home_to_group_management"
   const val LOGOUT = "home_logout"
-  val BUTTONS = listOf("home_quicktool_1", "home_quicktool_2")
+  val BUTTONS = listOf(DICEBUTTON, GROUPMANAGEMENTBUTTON)
   val placeholderObjects = listOf("home_placeholder_1", "home_placeholder_2", "home_placeholder_3")
 }
 
@@ -50,6 +52,8 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     onLogout: () -> Unit = {},
     onPersonalSpaceClick: () -> Unit = {},
+    onDiceClick: () -> Unit = {},
+    onGroupManagementClick: () -> Unit = {},
 ) {
 
   val uiState by viewModel.uiState.collectAsState()
@@ -145,13 +149,18 @@ fun HomeScreen(
           modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
           horizontalArrangement = Arrangement.spacedBy(12.dp),
       ) {
-        quicktools.forEachIndexed { index, quicktool ->
-          Button(
-              onClick = {},
-              modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.BUTTONS[index]),
-          ) {
-            Text(quicktool)
-          }
+        Button(
+            onClick = onDiceClick,
+            modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.DICEBUTTON),
+        ) {
+          Text("Dice")
+        }
+        Button(
+            onClick = onGroupManagementClick,
+            modifier =
+                Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.GROUPMANAGEMENTBUTTON),
+        ) {
+          Text("Group Management")
         }
         Button(
             onClick = onPersonalSpaceClick,
@@ -165,4 +174,3 @@ fun HomeScreen(
 }
 
 private val placeholderObjects = listOf("Adventure 1", "Adventure 2", "Adventure 3")
-private val quicktools = listOf("Tool 1", "Tool 2")
