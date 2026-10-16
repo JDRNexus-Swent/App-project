@@ -117,39 +117,37 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
         }
       }
 
-        composable(route = AllRoutes.Home.name) {
-            val onLogout = {
-                navController.navigate(AllRoutes.SignIn.name) {
-                    // Sign-in may no longer be on the stack after authentication succeeds.
-                    popUpTo(AllRoutes.Home.name) { inclusive = true }
-                    launchSingleTop = true
-                }
-            }
-            val onPersonalSpaceClicked = { navController.navigate(AllRoutes.PersoSpace.name) }
-            val onDiceClicked = { navController.navigate(AllRoutes.Dice.name) }
-            val onGroupManagementClicked = {
-                navController.navigate(AllRoutes.GroupManagement.name)
-            }
-            if (authViewModel == null) {
-                HomeScreen(
-                    viewModel = altAuthViewModel,
-                    onLogout = onLogout,
-                    onPersonalSpaceClick = onPersonalSpaceClicked,
-                    onDiceClick = onDiceClicked,
-                    onGroupManagementClick = onGroupManagementClicked,
-                )
-            } else {
-                HomeScreen(
-                    viewModel = authViewModel,
-                    onLogout = onLogout,
-                    onPersonalSpaceClick = onPersonalSpaceClicked,
-                    onDiceClick = onDiceClicked,
-                    onGroupManagementClick = onGroupManagementClicked,
-                )
-            }
+      composable(route = AllRoutes.Home.name) {
+        val onLogout = {
+          navController.navigate(AllRoutes.SignIn.name) {
+            // Sign-in may no longer be on the stack after authentication succeeds.
+            popUpTo(AllRoutes.Home.name) { inclusive = true }
+            launchSingleTop = true
+          }
         }
+        val onPersonalSpaceClicked = { navController.navigate(AllRoutes.PersoSpace.name) }
+        val onDiceClicked = { navController.navigate(AllRoutes.Dice.name) }
+        val onGroupManagementClicked = { navController.navigate(AllRoutes.GroupManagement.name) }
+        if (authViewModel == null) {
+          HomeScreen(
+              viewModel = altAuthViewModel,
+              onLogout = onLogout,
+              onPersonalSpaceClick = onPersonalSpaceClicked,
+              onDiceClick = onDiceClicked,
+              onGroupManagementClick = onGroupManagementClicked,
+          )
+        } else {
+          HomeScreen(
+              viewModel = authViewModel,
+              onLogout = onLogout,
+              onPersonalSpaceClick = onPersonalSpaceClicked,
+              onDiceClick = onDiceClicked,
+              onGroupManagementClick = onGroupManagementClicked,
+          )
+        }
+      }
 
-        composable(route = AllRoutes.SignUp.name) {
+      composable(route = AllRoutes.SignUp.name) {
         val onRegister = {
           navController.navigate(AllRoutes.Home.name) {
             // The signed-in back stack starts at Home, not the registration flow.

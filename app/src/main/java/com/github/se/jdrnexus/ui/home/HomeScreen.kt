@@ -157,8 +157,7 @@ fun HomeScreen(
         }
         Button(
             onClick = onGroupManagementClick,
-            modifier =
-                Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.GROUPMANAGEMENTBUTTON),
+            modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.GROUPMANAGEMENTBUTTON),
         ) {
           Text("Group Management")
         }

@@ -239,13 +239,14 @@ class PersonalSpaceViewModel(
       val file =
           try {
             JDRFile(
-                id = repository.getNewUid(),
-                name = "New character",
-                ownerId = requireUid(),
-                personalParentId = parentFolderId,
-                type = DocumentType.CHARACTER,
-                content = JDRFileJsonCodec.serializeCharacter(null),
-            ).also { repository.createFile(it).getOrThrow() }
+                    id = repository.getNewUid(),
+                    name = "New character",
+                    ownerId = requireUid(),
+                    personalParentId = parentFolderId,
+                    type = DocumentType.CHARACTER,
+                    content = JDRFileJsonCodec.serializeCharacter(null),
+                )
+                .also { repository.createFile(it).getOrThrow() }
           } catch (e: CancellationException) {
             throw e
           } catch (e: Exception) {
