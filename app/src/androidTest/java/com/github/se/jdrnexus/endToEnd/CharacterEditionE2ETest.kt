@@ -28,6 +28,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 import org.junit.After
+import org.junit.BeforeClass
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,6 +39,8 @@ class CharacterEditionE2ETest {
 
     private const val SEEDED_NAME = "E2E seeded hero"
     private const val TIMEOUT_MS = 40_000L
+
+    @BeforeClass @JvmStatic fun configureFirebaseEmulators() = TestFirebaseEmulators.configure()
   }
 
   @get:Rule val composeRule = createAndroidComposeRule<MainActivity>()

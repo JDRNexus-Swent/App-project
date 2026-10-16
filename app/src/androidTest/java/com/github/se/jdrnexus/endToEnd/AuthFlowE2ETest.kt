@@ -13,11 +13,13 @@ import com.github.se.jdrnexus.MainActivity
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import junit.framework.TestCase.assertEquals
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 import org.junit.After
+import org.junit.BeforeClass
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,13 +29,17 @@ class AuthFlowE2ETest {
 
   @get:Rule val composeRule = createAndroidComposeRule<MainActivity>()
 
+  companion object {
+    @BeforeClass @JvmStatic fun configureFirebaseEmulators() = TestFirebaseEmulators.configure()
+  }
+
   @After
   fun cleanUp() {
     runBlocking {
       val auth = FirebaseAuth.getInstance()
       val user = auth.currentUser ?: return@runBlocking
       try {
-        withTimeout(30_000) { user.delete().await() }
+        withTimeout(5_000) { user.delete().await() }
       } catch (e: Exception) {
         Log.w("E2E", "Cleanup failed for ${user.email}", e)
       } finally {
@@ -86,4 +92,17 @@ class AuthFlowE2ETest {
       composeRule.waitUntil(timeout) {
         composeRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
       }
+}
+
+internal object TestFirebaseEmulators {
+  private var configured = false
+
+  @Synchronized
+  fun configure() {
+    if (configured) return
+
+    FirebaseAuth.getInstance().useEmulator("10.0.2.2", 9099)
+    FirebaseFirestore.getInstance().useEmulator("10.0.2.2", 8080)
+    configured = true
+  }
 }
