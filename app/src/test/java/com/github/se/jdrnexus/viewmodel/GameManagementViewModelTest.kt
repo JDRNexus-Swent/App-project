@@ -562,6 +562,14 @@ class GameManagementViewModelTest {
 
     override suspend fun getFile(fileId: String): Result<JDRFile?> = error("Not used")
 
+    override suspend fun removeItemFromGroup(
+        itemId: String,
+        groupId: String,
+        parentFolderId: String?,
+    ): Result<Unit> {
+      error("not used")
+    }
+
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = error("Not used")
 
     override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = error("Not used")
