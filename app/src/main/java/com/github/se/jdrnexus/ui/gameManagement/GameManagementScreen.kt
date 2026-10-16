@@ -66,7 +66,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.resources.JdrNexusLogo
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
@@ -129,7 +128,7 @@ fun GameManagementScreen(
     onEnterWorkspace: (String) -> Unit,
     onManageGroup: (String) -> Unit = {},
     onTabSelected: (String) -> Unit = {},
-    gameManagementViewModel: GameManagementViewModel = viewModel(),
+    gameManagementViewModel: GameManagementViewModel,
 ) {
   val uiState by gameManagementViewModel.uiState.collectAsState()
   LaunchedEffect(gameManagementViewModel) { gameManagementViewModel.loadGroups() }
