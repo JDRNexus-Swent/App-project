@@ -79,7 +79,7 @@ jobs:
           api-level: 34
           arch: x86_64
           target: google_apis
-          script: ./gradlew createDebugAndroidTestCoverageReport
+          script: firebase emulators:exec --config firebase.test.json --only auth,firestore './gradlew createDebugAndroidTestCoverageReport' --project demo-jdrnexus
 
       - name: Cache Sonar packages
         uses: actions/cache@v4

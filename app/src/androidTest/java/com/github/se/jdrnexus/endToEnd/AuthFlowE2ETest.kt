@@ -13,17 +13,34 @@ import com.github.se.jdrnexus.MainActivity
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import junit.framework.TestCase.assertEquals
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 import org.junit.After
+import org.junit.BeforeClass
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AuthFlowE2ETest {
+
+  companion object {
+    @BeforeClass
+    @JvmStatic
+    fun useFirebaseEmulators() {
+      try {
+        FirebaseAuth.getInstance().useEmulator("10.0.2.2", 9099)
+      } catch (e: IllegalStateException) {}
+      try {
+        FirebaseFirestore.getInstance().useEmulator("10.0.2.2", 8080)
+      } catch (e: IllegalStateException) {
+        // idem
+      }
+    }
+  }
 
   @get:Rule val composeRule = createAndroidComposeRule<MainActivity>()
 

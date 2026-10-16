@@ -23,17 +23,34 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.edition.EditFileCharacterTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 import org.junit.After
+import org.junit.BeforeClass
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class CharacterEditionE2ETest {
+  companion object {
+    @BeforeClass
+    @JvmStatic
+    fun useFirebaseEmulators() {
+      try {
+        FirebaseAuth.getInstance().useEmulator("10.0.2.2", 9099)
+      } catch (e: IllegalStateException) {}
+      try {
+        FirebaseFirestore.getInstance().useEmulator("10.0.2.2", 8080)
+      } catch (e: IllegalStateException) {}
+    }
+
+    private const val SEEDED_NAME = "E2E seeded hero"
+    private const val TIMEOUT_MS = 40_000L
+  }
 
   @get:Rule val composeRule = createAndroidComposeRule<MainActivity>()
 
@@ -61,11 +78,6 @@ class CharacterEditionE2ETest {
         auth.signOut()
       }
     }
-  }
-
-  companion object {
-    private const val SEEDED_NAME = "E2E seeded hero"
-    private const val TIMEOUT_MS = 40_000L
   }
 
   @Test
