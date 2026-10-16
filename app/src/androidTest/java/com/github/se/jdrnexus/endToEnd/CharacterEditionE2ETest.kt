@@ -146,17 +146,17 @@ class CharacterEditionE2ETest {
   }
 
   private fun waitForTag(tag: String, timeout: Long = TIMEOUT_MS) =
-    composeRule.waitUntil(timeout) {
-      composeRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
-    }
+      composeRule.waitUntil(timeout) {
+        composeRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+      }
 
   private fun waitForContentDescription(desc: String, timeout: Long = TIMEOUT_MS) =
-    composeRule.waitUntil(timeout) {
-      composeRule.onAllNodesWithContentDescription(desc).fetchSemanticsNodes().isNotEmpty()
-    }
+      composeRule.waitUntil(timeout) {
+        composeRule.onAllNodesWithContentDescription(desc).fetchSemanticsNodes().isNotEmpty()
+      }
 
   private fun waitForText(text: String, timeout: Long = TIMEOUT_MS) =
-    composeRule.waitUntil(timeout) {
-      composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
-    }
+      composeRule.waitUntil(timeout) {
+        composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+      }
 }
