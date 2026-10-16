@@ -3,6 +3,7 @@ package com.github.se.jdrnexus.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.se.jdrnexus.codec.JDRFileJsonCodec
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
@@ -228,12 +229,33 @@ class PersonalSpaceViewModel(
   }
 
   /**
-   * Call when the user chooses "New file" from the add menu. Closes the menu and invokes the UI's
-   * navigation callback with the current folder ID; it is empty when the user is at the root. The
-   * UI can pass this ID to the create-file screen.
+   * Creates an empty character file in the current folder, then passes its ID to the UI for
+   * navigation to the editor.
    */
-  fun onNewFileSelected(navigateToCreateFile: (parentFolderId: String) -> Unit) {
+  fun onNewFileSelected(navigateToEditFile: (fileId: String) -> Unit) {
     _uiState.update { it.copy(isAddMenuExpanded = false) }
-    navigateToCreateFile(_uiState.value.currentFolderId)
+    val parentFolderId = _uiState.value.currentFolderId
+    viewModelScope.launch {
+      val file =
+          try {
+            JDRFile(
+                    id = repository.getNewUid(),
+                    name = "New character",
+                    ownerId = requireUid(),
+                    personalParentId = parentFolderId,
+                    type = DocumentType.CHARACTER,
+                    content = JDRFileJsonCodec.serializeCharacter(null),
+                )
+                .also { repository.createFile(it).getOrThrow() }
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            val message =
+                e.message?.takeIf(String::isNotBlank) ?: "Unable to create the character file."
+            _uiState.update { it.copy(loadState = LoadState.Error(message)) }
+            return@launch
+          }
+      navigateToEditFile(file.id)
+    }
   }
 }
