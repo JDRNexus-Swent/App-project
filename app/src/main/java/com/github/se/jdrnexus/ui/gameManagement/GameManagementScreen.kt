@@ -57,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -109,6 +110,13 @@ private val darkGameManagementColors =
         accentContent = Color(0xFF17100D),
     )
 
+internal object GameManagementTestTags {
+  const val CREATE_GROUP_BUTTON = "game_management_create_group"
+  const val CREATE_GROUP_DIALOG = "game_management_create_group_dialog"
+  const val GROUP_NAME_FIELD = "game_management_group_name"
+  const val CREATE_GROUP_CONFIRM = "game_management_create_group_confirm"
+}
+
 /**
  * Displays the signed-in user's campaign groups and their available actions.
  *
@@ -118,9 +126,9 @@ private val darkGameManagementColors =
 @Composable
 fun GameManagementScreen(
     onEnterWorkspace: (String) -> Unit,
-    gameManagementViewModel: GameManagementViewModel,
     onManageGroup: (String) -> Unit = {},
     onTabSelected: (String) -> Unit = {},
+    gameManagementViewModel: GameManagementViewModel,
 ) {
   val uiState by gameManagementViewModel.uiState.collectAsState()
   LaunchedEffect(gameManagementViewModel) { gameManagementViewModel.loadGroups() }
@@ -177,7 +185,10 @@ internal fun GameManagementScreenContent(
       item {
         Button(
             onClick = onCreateGroupClick,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+            modifier =
+                Modifier.fillMaxWidth()
+                    .height(48.dp)
+                    .testTag(GameManagementTestTags.CREATE_GROUP_BUTTON),
             shape = RoundedCornerShape(50),
             colors =
                 ButtonDefaults.buttonColors(
@@ -654,11 +665,6 @@ private fun OutlinedActionButton(
   }
 }
 
-@Composable
-internal fun CreateGroupErrorMessage(message: String) {
-  Text(message, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-}
-
 /** Collects the required group name and reports validation, progress, and creation errors. */
 @Composable
 private fun CreateGroupDialog(
@@ -679,7 +685,8 @@ private fun CreateGroupDialog(
                 .clip(RoundedCornerShape(18.dp))
                 .background(colors.card)
                 .border(1.dp, colors.outline, RoundedCornerShape(18.dp))
-                .padding(18.dp),
+                .padding(18.dp)
+                .testTag(GameManagementTestTags.CREATE_GROUP_DIALOG),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
       Row(verticalAlignment = Alignment.CenterVertically) {
@@ -736,13 +743,17 @@ private fun CreateGroupDialog(
                   unfocusedTextColor = colors.text,
                   cursorColor = colors.accent,
               ),
-          modifier = Modifier.fillMaxWidth(),
+          modifier = Modifier.fillMaxWidth().testTag(GameManagementTestTags.GROUP_NAME_FIELD),
       )
       if (uiState.isCreatingGroup) {
         Text("Creating your group. Please wait...", color = colors.secondaryText, fontSize = 11.sp)
       }
       if (isFailure) {
-        CreateGroupErrorMessage(uiState.createError)
+        Text(
+            "Couldn't create your group.",
+            color = MaterialTheme.colorScheme.error,
+            fontSize = 12.sp,
+        )
         Text(
             "Check your connection and try again. Your group name is still here.",
             color = colors.secondaryText,
@@ -752,7 +763,10 @@ private fun CreateGroupDialog(
       Button(
           onClick = onCreate,
           enabled = !nameIsEmpty && !uiState.isCreatingGroup,
-          modifier = Modifier.fillMaxWidth().height(44.dp),
+          modifier =
+              Modifier.fillMaxWidth()
+                  .height(44.dp)
+                  .testTag(GameManagementTestTags.CREATE_GROUP_CONFIRM),
           shape = RoundedCornerShape(10.dp),
           colors =
               ButtonDefaults.buttonColors(

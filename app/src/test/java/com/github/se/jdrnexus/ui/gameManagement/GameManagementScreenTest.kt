@@ -90,17 +90,6 @@ class GameManagementScreenTest {
     composeTestRule.onNodeWithText("Create your first group").assertIsDisplayed()
   }
 
-  @Test
-  fun createGroupFailureDisplaysViewModelError() {
-    composeTestRule.setContent {
-      SampleAppTheme(darkTheme = false) {
-        CreateGroupErrorMessage("A group with this name already exists.")
-      }
-    }
-
-    composeTestRule.onNodeWithText("A group with this name already exists.").assertIsDisplayed()
-  }
-
   private fun setContent(
       uiState: GameManagementUiState,
       onEnterWorkspace: (String) -> Unit = {},
