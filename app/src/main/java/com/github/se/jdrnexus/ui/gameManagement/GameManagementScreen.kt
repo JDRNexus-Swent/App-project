@@ -127,9 +127,9 @@ internal object GameManagementTestTags {
 @Composable
 fun GameManagementScreen(
     onEnterWorkspace: (String) -> Unit,
+    gameManagementViewModel: GameManagementViewModel,
     onManageGroup: (String) -> Unit = {},
     onTabSelected: (String) -> Unit = {},
-    gameManagementViewModel: GameManagementViewModel = viewModel(),
 ) {
   val uiState by gameManagementViewModel.uiState.collectAsState()
   LaunchedEffect(gameManagementViewModel) { gameManagementViewModel.loadGroups() }
