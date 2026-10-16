@@ -35,5 +35,23 @@ object C {
     const val sign_up_password_visibility = "auth_sign_up_password_visibility"
     const val sign_up_submit = "auth_sign_up_submit"
     const val sign_up_sign_in = "auth_sign_up_sign_in"
+
+    const val dice_offline_screen = "dice_offline_screen"
+    const val dice_offline_close = "dice_offline_close"
+    const val dice_offline_selected_type = "dice_offline_selected_type"
+    const val dice_offline_range = "dice_offline_range"
+    const val dice_offline_die = "dice_offline_die"
+    const val dice_offline_result = "dice_offline_result"
+    const val dice_offline_result_detail = "dice_offline_result_detail"
+    const val dice_offline_loading = "dice_offline_loading"
+    const val dice_offline_modifier_value = "dice_offline_modifier_value"
+    const val dice_offline_modifier_decrease = "dice_offline_modifier_decrease"
+    const val dice_offline_modifier_increase = "dice_offline_modifier_increase"
+    const val dice_offline_roll = "dice_offline_roll"
+    const val dice_offline_error = "dice_offline_error"
+    const val dice_offline_error_dismiss = "dice_offline_error_dismiss"
+
+    /** Tag of the selection button for [diceName] (e.g. "D20"). */
+    fun diceOfflineSelect(diceName: String) = "dice_offline_select_$diceName"
   }
 }
