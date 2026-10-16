@@ -66,7 +66,17 @@ class HomeScreenS1Test {
 
   @Test
   fun quickToolButtonsAreSquareAndClickable() {
-    composeTestRule.setContent { SampleAppTheme { HomeScreen(createViewModel()) } }
+    var diceClicked = false
+    var groupManagementClicked = false
+    composeTestRule.setContent {
+      SampleAppTheme {
+        HomeScreen(
+            viewModel = createViewModel(),
+            onDiceClick = { diceClicked = true },
+            onGroupManagementClick = { groupManagementClicked = true },
+        )
+      }
+    }
 
     TestTags.BUTTONS.forEachIndexed { index, tag ->
       val button = composeTestRule.onNodeWithTag(tag)
@@ -76,6 +86,8 @@ class HomeScreenS1Test {
       Assert.assertEquals(bounds.width, bounds.height, 1f)
       button.performClick()
     }
+    Assert.assertTrue(diceClicked)
+    Assert.assertTrue(groupManagementClicked)
   }
 
   @Test
