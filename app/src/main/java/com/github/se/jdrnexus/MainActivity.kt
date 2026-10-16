@@ -74,7 +74,7 @@ enum class AllRoutes {
  */
 @Composable
 fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
-  val altAuthViewModel: AuthViewModel = viewModel(factory = AuthViewModel.Factory)
+  val altAuthViewModel = authViewModel ?: viewModel(factory = AuthViewModel.Factory)
   val context = LocalContext.current
   val credentialManager = remember(context) { CredentialManager.create(context) }
   val navController = rememberNavController()
@@ -168,30 +168,6 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
               signUpViewModel = authViewModel,
               onRegister = onRegister,
               onSignInScreen = onSignInScreen,
-          )
-        }
-      }
-
-      composable(route = AllRoutes.Home.name) {
-        val onLogout = {
-          navController.navigate(AllRoutes.SignIn.name) {
-            // Sign-in may no longer be on the stack after authentication succeeds.
-            popUpTo(AllRoutes.Home.name) { inclusive = true }
-            launchSingleTop = true
-          }
-        }
-        val onPersonalSpaceClicked = { navController.navigate(AllRoutes.PersoSpace.name) }
-        if (authViewModel == null) {
-          HomeScreen(
-              viewModel = altAuthViewModel,
-              onLogout = onLogout,
-              onPersonalSpaceClick = onPersonalSpaceClicked,
-          )
-        } else {
-          HomeScreen(
-              viewModel = authViewModel,
-              onLogout = onLogout,
-              onPersonalSpaceClick = onPersonalSpaceClicked,
           )
         }
       }

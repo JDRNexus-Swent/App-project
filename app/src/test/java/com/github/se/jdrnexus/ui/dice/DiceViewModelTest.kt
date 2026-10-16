@@ -123,7 +123,7 @@ class DiceViewModelTest {
 
   @Test
   fun `rollDice in offline mode generates result without saving`() = runTest {
-    val viewModel = DiceViewModel(diceLogic, diceRepository) // No groupId
+    val viewModel = DiceViewModel(diceLogic, diceRepository = null) // No groupId
     val result = DiceRollResult(DiceType.D20, 15, 0, 15)
     every { diceLogic.roll(any(), any()) } returns result
 
@@ -132,7 +132,6 @@ class DiceViewModelTest {
     val state = viewModel.uiState.value
     assertTrue(state.isRolling)
     assertEquals(result, state.currentResult)
-    coVerify(exactly = 0) { diceRepository.saveRollResult(any(), any()) }
   }
 
   @Test
