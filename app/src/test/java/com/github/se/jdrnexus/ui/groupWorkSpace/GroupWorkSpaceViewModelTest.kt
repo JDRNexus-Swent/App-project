@@ -650,36 +650,6 @@ class GroupWorkSpaceViewModelTest {
   }
 
   @Test
-  fun removeAtRootDetachesOnlyGroupSharingReference() = runTest {
-    val file =
-        groupFile(
-            id = "file",
-            ownerId = OWNER_ID,
-            sharedGroupsIds = listOf(OTHER_GROUP_ID, GROUP_ID),
-            parentFolderIds = listOf(OTHER_GROUP_ID, GROUP_ID),
-        )
-    val repository = FakeWorkspaceRepository(listOf(file))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    viewModel.removeItem(file)
-    runCurrent()
-
-    assertEquals(
-        file.copy(sharedGroupsIds = listOf(OTHER_GROUP_ID)),
-        repository.files[file.id],
-    )
-    assertEquals(listOf(file.id to GROUP_ID), repository.groupRemovalRequests)
-    assertTrue(viewModel.uiState.value.items.isEmpty())
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-
-    val otherGroupViewModel =
-        viewModel(repository, GroupWorkspaceRole.GAME_MASTER, groupId = OTHER_GROUP_ID)
-    runCurrent()
-    assertEquals(listOf(file.id), otherGroupViewModel.uiState.value.items.map { it.id })
-  }
-
-  @Test
   fun removingFileFromOneGroupPreservesSharingWithOtherGroups() = runTest {
     val file =
         groupFile(
@@ -717,6 +687,7 @@ class GroupWorkSpaceViewModelTest {
 
     assertEquals(expectedFile, repository.files[file.id])
     assertEquals(listOf(file.id to GROUP_ID), repository.groupRemovalRequests)
+    assertFalse(groupOneViewModel.uiState.value.isOperationInProgress)
 
     // The file disappears from Group 1.
     assertTrue(groupOneViewModel.uiState.value.items.isEmpty())
@@ -927,7 +898,7 @@ class GroupWorkSpaceViewModelTest {
   }
 
   @Test
-  fun playerCannotRemoveAnotherUsersItem() = runTest {
+  fun playerCannotRemoveForeignItemUsingForgedOwnership() = runTest {
     val folder = groupFolder(id = "folder")
     val foreignFile =
         groupFile(id = "foreign", ownerId = "another-user", parentFolderIds = listOf(folder.id))
@@ -939,21 +910,10 @@ class GroupWorkSpaceViewModelTest {
 
     viewModel.removeItem(foreignFile)
     runCurrent()
-
     assertTrue(repository.updatedFiles.isEmpty())
     assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-  }
 
-  @Test
-  fun playerCannotRemoveForeignItemUsingForgedOwnership() = runTest {
-    val folder = groupFolder(id = "folder")
-    val foreignFile =
-        groupFile(id = "foreign", ownerId = "another-user", parentFolderIds = listOf(folder.id))
-    val repository = FakeWorkspaceRepository(listOf(folder, foreignFile))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
-    runCurrent()
-    viewModel.loadWorkspace(folder.id)
-    runCurrent()
+    viewModel.clearError()
     val forgedItem = foreignFile.copy(ownerId = OWNER_ID)
 
     viewModel.removeItem(forgedItem)
@@ -1272,12 +1232,13 @@ class GroupWorkSpaceViewModelTest {
   }
 
   @Test
-  fun failedCreateAndUpdateOperationsExposeErrorsWithoutPersistingChanges() = runTest {
+  fun failedCreateAndUpdateCanRecoverWithoutPartialPersistence() = runTest {
     val existing =
         groupFile(
             id = "file",
             ownerId = OWNER_ID,
-            parentFolderIds = listOf(GROUP_ID),
+            sharedGroupsIds = emptyList(),
+            parentFolderIds = emptyList(),
             content = "original",
         )
     val repository =
@@ -1293,15 +1254,15 @@ class GroupWorkSpaceViewModelTest {
     runCurrent()
     assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
     assertFalse(repository.files.containsKey("new-folder-1"))
-    assertEquals(listOf(existing), viewModel.uiState.value.items)
+    assertTrue(viewModel.uiState.value.items.isEmpty())
     assertFalse(viewModel.uiState.value.isOperationInProgress)
 
     viewModel.clearError()
     viewModel.addFile(existing.id)
     runCurrent()
     assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-    assertEquals(listOf(existing), viewModel.uiState.value.items)
     assertEquals(existing, repository.files[existing.id])
+    assertTrue(viewModel.uiState.value.items.isEmpty())
     assertFalse(viewModel.uiState.value.isOperationInProgress)
 
     repository.updateFailures.clear()
@@ -1310,6 +1271,7 @@ class GroupWorkSpaceViewModelTest {
     runCurrent()
     assertEquals("", viewModel.uiState.value.errorMessage)
     assertEquals(listOf(GROUP_ID), repository.files[existing.id]?.sharedGroupsIds)
+    assertEquals(listOf(existing.id), viewModel.uiState.value.items.map(JDRFile::id))
   }
 
   @Test
@@ -1347,29 +1309,6 @@ class GroupWorkSpaceViewModelTest {
     assertEquals(existing, repository.files[existing.id])
     assertEquals(listOf(existing), viewModel.uiState.value.items)
     assertFalse(viewModel.uiState.value.isOperationInProgress)
-  }
-
-  @Test
-  fun operationFailureDoesNotPreventLaterSuccess() = runTest {
-    val existing = groupFile(id = "file", ownerId = OWNER_ID, sharedGroupsIds = emptyList())
-    val repository =
-        FakeWorkspaceRepository(
-            listOf(existing),
-            updateFailures = mutableMapOf("file" to IllegalStateException("Temporary failure")),
-        )
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    viewModel.addFile(existing.id)
-    runCurrent()
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-
-    repository.updateFailures.clear()
-    viewModel.addFile(existing.id)
-    runCurrent()
-    assertEquals("", viewModel.uiState.value.errorMessage)
-    assertEquals(listOf(GROUP_ID), repository.files[existing.id]?.sharedGroupsIds)
   }
 
   @Test
