@@ -129,27 +129,33 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       val batch = firestore.batch()
 
       itemsToRemove.values.forEach { (file, parentId) ->
-        val parent = parentId?.let { id -> itemsToRemove[id]?.first ?: getFile(id).getOrThrow() }
-        val parentIsExclusiveToGroup =
-            parent != null &&
-                groupId in parent.sharedGroupsIds &&
-                (parent.sharedGroupsIds - groupId).isEmpty()
+        val parentIdsToDetach = mutableSetOf<String>()
+        file.parentFolderIds.forEach { folderId ->
+          if (folderId == groupId) {
+            parentIdsToDetach.add(folderId)
+          } else {
+            val parent =
+                itemsToRemove[folderId]?.first
+                    ?: if (folderId == parentId && parentId.isNotBlank()) {
+                      getFile(parentId).getOrThrow()
+                    } else {
+                      null
+                    }
+            if (
+                parent != null &&
+                    parent.type == DocumentType.FOLDER &&
+                    groupId in parent.sharedGroupsIds &&
+                    (parent.sharedGroupsIds - groupId).isEmpty()
+            ) {
+              parentIdsToDetach.add(folderId)
+            }
+          }
+        }
+
         val updated =
             file.copy(
                 sharedGroupsIds = file.sharedGroupsIds - groupId,
-                parentFolderIds =
-                    file.parentFolderIds.filterNot { folderId ->
-                      // Remove the virtual root marker for this group.
-                      if (folderId == groupId) {
-                        true
-                      } else {
-                        // Remove a real parent only when it belongs exclusively
-                        // to this group and is the parent being detached.
-                        !parentId.isNullOrBlank() &&
-                            folderId == parentId &&
-                            parentIsExclusiveToGroup
-                      }
-                    },
+                parentFolderIds = file.parentFolderIds - parentIdsToDetach,
             )
 
         batch.update(

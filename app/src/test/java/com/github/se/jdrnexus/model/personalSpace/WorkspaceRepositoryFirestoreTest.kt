@@ -415,6 +415,152 @@ class WorkspaceRepositoryFirestoreTest {
   }
 
   @Test
+  fun removeItemFromGroup_detachesEveryPlacementInsideRemovedSubtree() = runBlocking {
+    val groupId = "group-${UUID.randomUUID()}"
+    val otherGroupId = "other-group-${UUID.randomUUID()}"
+    val root =
+        JDRFile(
+            id = "root-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId),
+            parentFolderIds = listOf(groupId),
+            type = DocumentType.FOLDER,
+        )
+    val firstFolder =
+        JDRFile(
+            id = "first-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId),
+            parentFolderIds = listOf(root.id),
+            type = DocumentType.FOLDER,
+        )
+    val secondFolder =
+        JDRFile(
+            id = "second-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId),
+            parentFolderIds = listOf(root.id),
+            type = DocumentType.FOLDER,
+        )
+    val otherGroupFolder =
+        JDRFile(
+            id = "other-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(otherGroupId),
+            type = DocumentType.FOLDER,
+        )
+    val file =
+        JDRFile(
+            id = "file-${UUID.randomUUID()}",
+            sharedGroupsIds = listOf(groupId, otherGroupId),
+            parentFolderIds = listOf(firstFolder.id, secondFolder.id, otherGroupFolder.id),
+        )
+    persistFiles(root, firstFolder, secondFolder, otherGroupFolder, file)
+
+    val result = removeItemFromGroupAndPumpMainLooper(root.id, groupId)
+
+    assertTrue(result.isSuccess)
+    assertEquals(
+        root.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        getPersistedFile(root.id),
+    )
+    assertEquals(
+        firstFolder.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        getPersistedFile(firstFolder.id),
+    )
+    assertEquals(
+        secondFolder.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        getPersistedFile(secondFolder.id),
+    )
+    assertEquals(
+        file.copy(
+            sharedGroupsIds = listOf(otherGroupId),
+            parentFolderIds = listOf(otherGroupFolder.id),
+        ),
+        getPersistedFile(file.id),
+    )
+    assertEquals(otherGroupFolder, getPersistedFile(otherGroupFolder.id))
+  }
+
+  @Test
+  fun removeItemFromGroup_preservesPersonalSpaceDocumentsAndMetadata() = runBlocking {
+    val groupId = "group-${UUID.randomUUID()}"
+    val otherGroupId = "other-group-${UUID.randomUUID()}"
+    val ownerId = "owner-${UUID.randomUUID()}"
+    val root =
+        JDRFile(
+            id = "personal-root-${UUID.randomUUID()}",
+            name = "Personal root",
+            ownerId = ownerId,
+            sharedGroupsIds = listOf(groupId),
+            parentFolderIds = listOf(groupId),
+            type = DocumentType.FOLDER,
+        )
+    val nestedFolder =
+        JDRFile(
+            id = "personal-nested-${UUID.randomUUID()}",
+            name = "Personal nested folder",
+            ownerId = ownerId,
+            sharedGroupsIds = listOf(groupId),
+            parentFolderIds = listOf(root.id),
+            personalParentId = "personal-parent",
+            type = DocumentType.FOLDER,
+        )
+    val otherGroupFolder =
+        JDRFile(
+            id = "other-group-folder-${UUID.randomUUID()}",
+            name = "Other group's folder",
+            ownerId = ownerId,
+            sharedGroupsIds = listOf(otherGroupId),
+            parentFolderIds = listOf(otherGroupId),
+            type = DocumentType.FOLDER,
+        )
+    val personalFile =
+        JDRFile(
+            id = "personal-file-${UUID.randomUUID()}",
+            name = "Personal notes",
+            ownerId = ownerId,
+            sharedGroupsIds = listOf(groupId, otherGroupId),
+            parentFolderIds = listOf(nestedFolder.id, otherGroupFolder.id),
+            personalParentId = nestedFolder.id,
+            type = DocumentType.TEXT,
+            content = "Keep this content",
+        )
+    persistFiles(root, nestedFolder, otherGroupFolder, personalFile)
+
+    val result = removeItemFromGroupAndPumpMainLooper(root.id, groupId)
+
+    assertTrue(result.isSuccess)
+    assertEquals(
+        root.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        getPersistedFile(root.id),
+    )
+    assertEquals(
+        nestedFolder.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        getPersistedFile(nestedFolder.id),
+    )
+    assertEquals(otherGroupFolder, getPersistedFile(otherGroupFolder.id))
+    assertEquals(
+        personalFile.copy(
+            sharedGroupsIds = listOf(otherGroupId),
+            parentFolderIds = listOf(otherGroupFolder.id),
+        ),
+        getPersistedFile(personalFile.id),
+    )
+
+    val personalRootItems =
+        repository.getPersonalRootFiles(ownerId).waitFor { files -> files.any { it.id == root.id } }
+    assertTrue(
+        personalRootItems.any {
+          it == root.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList())
+        }
+    )
+    assertEquals(
+        personalFile.copy(
+            sharedGroupsIds = listOf(otherGroupId),
+            parentFolderIds = listOf(otherGroupFolder.id),
+        ),
+        repository.getFile(personalFile.id).getOrThrow(),
+    )
+  }
+
+  @Test
   fun removeItemFromGroup_detachesNestedFolderFromExclusiveParent() = runBlocking {
     val groupId = "group-${UUID.randomUUID()}"
     val parent =

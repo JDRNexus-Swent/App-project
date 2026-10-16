@@ -10,7 +10,6 @@ import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import com.github.se.jdrnexus.viewmodel.LoadState
-import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -20,7 +19,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -81,10 +79,6 @@ class GroupWorkspaceViewModel(
     }
   }
 
-  fun canEditItem(item: JDRFile, uid: String): Boolean {
-    return role == GroupWorkspaceRole.GAME_MASTER || item.ownerId == uid
-  }
-
   /** make sure the user can edit the file */
   private fun requireCanEdit(item: JDRFile, uid: String) {
     check(role == GroupWorkspaceRole.GAME_MASTER || item.ownerId == uid) {
@@ -97,45 +91,19 @@ class GroupWorkspaceViewModel(
     check(groupId in item.sharedGroupsIds) { "This item does not belong to the current group." }
   }
 
-  private suspend fun requireAccessibleFolderPath(folderId: String): List<JDRFile> {
-    val pathsToVisit = ArrayDeque<List<JDRFile>>()
-    val visited = mutableSetOf<String>()
-    val rootFolders =
-        repository.getDocumentsInFolder(groupId).first().filter { folder ->
-          folder.id != groupId &&
-              folder.type == DocumentType.FOLDER &&
-              groupId in folder.sharedGroupsIds &&
-              groupId in folder.parentFolderIds
-        }
+  private suspend fun requireAccessibleFolder(folderId: String): JDRFile {
+    val folder =
+        repository.getFile(folderId).getOrThrow()
+            ?: throw IllegalStateException("Folder not found.")
 
-    rootFolders
-        .firstOrNull { it.id == folderId }
-        ?.let {
-          return listOf(it)
-        }
+    check(folder.type == DocumentType.FOLDER) { "The requested item is not a folder." }
 
-    rootFolders.forEach { pathsToVisit.addLast(listOf(it)) }
-    while (pathsToVisit.isNotEmpty()) {
-      val path = pathsToVisit.removeFirst()
-      val currentFolder = path.last()
-      if (!visited.add(currentFolder.id)) continue
-      if (currentFolder.id == folderId) return path
-
-      val children =
-          repository.getDocumentsInFolder(currentFolder.id).first().filter { child ->
-            child.id != groupId &&
-                child.type == DocumentType.FOLDER &&
-                groupId in child.sharedGroupsIds &&
-                currentFolder.id in child.parentFolderIds
-          }
-      children.forEach { pathsToVisit.addLast(path + it) }
+    check(groupId in folder.sharedGroupsIds) {
+      "This folder does not belong to the current group's workspace."
     }
 
-    throw IllegalStateException("This folder is not part of the current group's workspace.")
+    return folder
   }
-
-  private suspend fun requireAccessibleFolder(folderId: String): JDRFile =
-      requireAccessibleFolderPath(folderId).last()
 
   private suspend fun requireItemInCurrentWorkspace(
       item: JDRFile,
@@ -188,25 +156,26 @@ class GroupWorkspaceViewModel(
         _uiState.update { it.copy(currentFolderName = folderName) }
         val effectiveFolderId = folderId.ifEmpty { groupId }
         val source = repository.getDocumentsInFolder(effectiveFolderId)
+
         val updates =
             if (folderId.isEmpty()) {
               source
             } else {
-              val path = requireAccessibleFolderPath(folderId)
-              val accessChanges =
-                  merge(
-                      repository.getDocumentsInFolder(groupId).map { Unit },
-                      *path
-                          .map { folder -> repository.getFileFlow(folder.id).map { Unit } }
-                          .toTypedArray(),
-                  )
-              combine(source, accessChanges) { items, _ -> items }
+              // React to changes to the selected folder itself.
+              val folderChanges = repository.getFileFlow(folderId).map { Unit }
+
+              combine(source, folderChanges) { items, _ -> items }
             }
 
         updates.collect { items ->
           if (requestGeneration == fetchGeneration) {
-            if (folderId.isNotEmpty()) requireAccessibleFolder(folderId)
+            // Revalidate the selected folder when its contents or metadata change.
+            if (folderId.isNotEmpty()) {
+              requireAccessibleFolder(folderId)
+            }
+
             val groupItems = items.filter { item -> groupId in item.sharedGroupsIds }
+
             _uiState.update {
               it.copy(
                   items = groupItems,
