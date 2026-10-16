@@ -11,6 +11,8 @@ jobs:
   build-test-sonar:
     name: Build, Test & Sonar
     runs-on: ubuntu-latest
+    # A healthy run takes ~8 min; a hung test should fail the job instead of running until cancelled.
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
