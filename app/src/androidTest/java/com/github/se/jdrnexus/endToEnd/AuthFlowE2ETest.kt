@@ -13,6 +13,7 @@ import com.github.se.jdrnexus.MainActivity
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.google.firebase.auth.FirebaseAuth
+import junit.framework.TestCase.assertEquals
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
@@ -60,6 +61,7 @@ class AuthFlowE2ETest {
 
     // 2. Go to home
     waitForTag(TestTags.TITLE)
+    assertEquals(email, FirebaseAuth.getInstance().currentUser?.email)
     composeRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
     composeRule.onNodeWithTag(TestTags.PSPACEBUTTON).assertIsDisplayed()
     composeRule.onNodeWithTag(C.Tag.sign_up_submit).assertDoesNotExist()
@@ -75,6 +77,7 @@ class AuthFlowE2ETest {
     composeRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
 
     waitForTag(TestTags.TITLE)
+    assertEquals(email, FirebaseAuth.getInstance().currentUser?.email)
     composeRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
     composeRule.onNodeWithTag(C.Tag.sign_in_submit).assertDoesNotExist()
   }
