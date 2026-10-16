@@ -384,6 +384,29 @@ class GroupWorkSpaceViewModelTest {
   }
 
   @Test
+  fun createFolderRejectsAnAlreadyUsedIdWithoutOverwritingDocument() = runTest {
+    val existing =
+        groupFile(
+            id = "new-folder-1",
+            name = "Existing document",
+            ownerId = OWNER_ID,
+            parentFolderIds = listOf(GROUP_ID),
+        )
+    val repository = FakeWorkspaceRepository(listOf(existing))
+    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    viewModel.createFolder("New folder")
+    runCurrent()
+
+    assertTrue(repository.createdFiles.isEmpty())
+    assertEquals(existing, repository.files[existing.id])
+    assertEquals("A document with this ID already exists.", viewModel.uiState.value.errorMessage)
+    assertFalse(viewModel.uiState.value.isOperationInProgress)
+    assertEquals(listOf("new-folder-1"), repository.generatedIds)
+  }
+
+  @Test
   fun createFolderAtRootUsesGroupAsParentFolderReference() = runTest {
     val repository = FakeWorkspaceRepository()
     val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
@@ -1599,12 +1622,17 @@ class GroupWorkSpaceViewModelTest {
     private val personalRootFlows = mutableMapOf<String, MutableStateFlow<List<JDRFile>>>()
     private val folderFlows = mutableMapOf<String, MutableStateFlow<List<JDRFile>>>()
     private var nextUid = 0
+    val generatedIds = mutableListOf<String>()
 
     init {
       folderItems.forEach { files[it.id] = it }
     }
 
-    override fun getNewUid(): String = "new-folder-${++nextUid}"
+    override fun getNewUid(): String {
+      val id = "new-folder-${++nextUid}"
+      generatedIds += id
+      return id
+    }
 
     override suspend fun createFile(file: JDRFile): Result<Unit> {
       createdFiles += file

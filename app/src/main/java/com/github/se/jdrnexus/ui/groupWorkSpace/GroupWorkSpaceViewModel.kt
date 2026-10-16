@@ -219,10 +219,14 @@ class GroupWorkspaceViewModel(
         requireGameMaster()
         if (parentId.isNotEmpty()) requireAccessibleFolder(parentId)
         val uid = requireUid()
+        val folderId = repository.getNewUid()
+        check(repository.getFileFlow(folderId).first()?.id.isNullOrBlank()) {
+          "A document with this ID already exists."
+        }
 
         val folder =
             JDRFile(
-                id = repository.getNewUid(),
+                id = folderId,
                 name = folderName,
                 ownerId = uid,
                 sharedGroupsIds = listOf(groupId),
