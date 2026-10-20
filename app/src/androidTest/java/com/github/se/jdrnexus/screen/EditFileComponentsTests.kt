@@ -82,5 +82,4 @@ class EditFileComponentsTests {
     composeTestRule.onNodeWithTag("saved").performClick()
     assertEquals(2, saveClicks)
   }
-
 }
