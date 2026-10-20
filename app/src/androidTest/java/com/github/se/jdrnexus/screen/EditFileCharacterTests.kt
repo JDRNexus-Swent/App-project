@@ -293,6 +293,49 @@ class EditFileCharacterTests {
   }
 
   @Test
+  fun keepsNewStatAndActionDraftsWhenEntriesAreInvalid() {
+    val file =
+        JDRFile(
+            id = "character-invalid-new-entry",
+            name = "Elara Moonwhisper",
+            type = DocumentType.CHARACTER,
+            content =
+                """{"version":1,"type":"character","character":{"name":"Elara Moonwhisper","stats":[],"actions":[],"hp":{"current":18,"max":24}}}""",
+        )
+    val viewModel = EditFileViewModel(FakeWorkspaceRepository(file))
+    viewModel.loadFile(file.id)
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      viewModel.uiState.value.character != null
+    }
+
+    composeTestRule.setContent {
+      EditFileCharacter(viewModel = viewModel, onBack = {}, onSaved = {})
+    }
+
+    composeTestRule.onNodeWithTag("add_entry_value").performTextInput("14")
+    composeTestRule.onNodeWithTag("confirm_add_stat").performScrollTo().performClick()
+    assertEquals(0, viewModel.uiState.value.character!!.stats.size)
+    composeTestRule.onNodeWithTag("add_entry_name").performTextInput("Stealth")
+    composeTestRule.onNodeWithTag("add_entry_value").performTextClearance()
+    composeTestRule.onNodeWithTag("add_entry_value").performTextInput("invalid")
+    composeTestRule.onNodeWithTag("confirm_add_stat").performScrollTo().performClick()
+    assertEquals(0, viewModel.uiState.value.character!!.stats.size)
+    composeTestRule.onNodeWithTag("add_entry_name").assertTextEquals("Stat name", "Stealth")
+
+    composeTestRule.onNodeWithTag("add_entry_value").performTextClearance()
+    composeTestRule.onNodeWithTag("add_entry_value").performTextInput("14")
+    composeTestRule.onNodeWithTag("confirm_add_stat").performScrollTo().performClick()
+    assertEquals("Stealth", viewModel.uiState.value.character!!.stats.single().name)
+    composeTestRule.onNodeWithTag("add_action_name").performScrollTo().performClick()
+    composeTestRule.onNodeWithTag("confirm_add_action").performScrollTo().performClick()
+    assertEquals(0, viewModel.uiState.value.character!!.actions.size)
+    composeTestRule.onNodeWithTag("add_action_name").performTextInput("Guard")
+    composeTestRule.onNodeWithTag("add_action_description").performTextInput("Protect an ally")
+    composeTestRule.onNodeWithTag("confirm_add_action").performScrollTo().performClick()
+    assertEquals("Guard", viewModel.uiState.value.character!!.actions.single().name)
+  }
+
+  @Test
   fun failingSaveWithInvalidFieldDoesNotAllowSubsequentSaveWithoutFixingField() {
     val file =
         JDRFile(

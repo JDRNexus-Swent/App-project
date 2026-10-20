@@ -163,6 +163,34 @@ class EditFileLoreTests {
   }
 
   @Test
+  fun keepsSectionDraftWhenTitleIsBlank() {
+    val file =
+        JDRFile(
+            id = "lore-invalid-new-section",
+            name = "The Kingdom",
+            type = DocumentType.TEXT,
+            content = """{"version":1,"type":"lore","title":"The Kingdom","sections":[]}""",
+        )
+    val viewModel = EditFileViewModel(FakeWorkspaceRepository(file))
+    viewModel.loadFile(file.id)
+    composeTestRule.waitUntil(timeoutMillis = testTimeoutMillis) {
+      viewModel.uiState.value.lore != null
+    }
+
+    composeTestRule.setContent { EditFileLore(viewModel = viewModel, onBack = {}, onSaved = {}) }
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).performScrollToKey("add-section")
+    composeTestRule.onNodeWithTag("add_section_description").performTextInput("A draft.")
+    composeTestRule.onNodeWithTag("confirm_add_section").performClick()
+    assertEquals(0, viewModel.uiState.value.lore!!.sections.size)
+    composeTestRule.onNodeWithTag("add_section_description").assertTextEquals("Content", "A draft.")
+
+    composeTestRule.onNodeWithTag("add_section_title").performTextInput("History")
+    composeTestRule.onNodeWithTag("confirm_add_section").performClick()
+    assertEquals("History", viewModel.uiState.value.lore!!.sections.single().title)
+    assertEquals("A draft.", viewModel.uiState.value.lore!!.sections.single().description)
+  }
+
+  @Test
   fun displaysErrorStateWhenLoreIsNullAndAllowsBackNavigation() {
     val file =
         JDRFile(

@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -46,7 +47,7 @@ class EditFileComponentsTests {
     }
 
     composeTestRule.onNodeWithText("Nothing loaded").assertIsDisplayed()
-    composeTestRule.onNodeWithText("Content").assertDoesNotExist()
+    composeTestRule.onNodeWithText("Content").assertIsNotDisplayed()
   }
 
   @Test
@@ -72,7 +73,7 @@ class EditFileComponentsTests {
     composeTestRule
         .onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate))
         .assertIsDisplayed()
-    composeTestRule.onNodeWithTag("saving").assertDoesNotExist()
+    composeTestRule.onNodeWithTag("saving").assertIsNotDisplayed()
     composeTestRule.onNodeWithTag("save").assertIsDisplayed()
     composeTestRule.onNodeWithTag("save").assertTextEquals("Save")
     composeTestRule.onNodeWithTag("saved").assertIsDisplayed()
@@ -81,4 +82,5 @@ class EditFileComponentsTests {
     composeTestRule.onNodeWithTag("saved").performClick()
     assertEquals(2, saveClicks)
   }
+
 }
