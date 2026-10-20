@@ -3,6 +3,7 @@ package com.github.se.jdrnexus.screen
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -133,6 +134,35 @@ class EditFileLoreTests {
   }
 
   @Test
+  fun displaysSaveErrorMessage() {
+    val file =
+        JDRFile(
+            id = "lore-save-error",
+            name = "The Kingdom",
+            type = DocumentType.TEXT,
+            content =
+                """{"version":1,"type":"lore","title":"The Kingdom","sections":[{"sectionID":"history","title":"History","content":"Founded long ago."}]}""",
+        )
+    val errorMessage = "Unable to save lore."
+    val viewModel = EditFileViewModel(FakeWorkspaceRepository(file, updateError = errorMessage))
+    viewModel.loadFile(file.id)
+    composeTestRule.waitUntil(timeoutMillis = testTimeoutMillis) {
+      viewModel.uiState.value.lore != null
+    }
+
+    composeTestRule.setContent { EditFileLore(viewModel = viewModel, onBack = {}, onSaved = {}) }
+
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).performScrollToKey("save")
+    composeTestRule.onNodeWithTag("edit_lore_save").performClick()
+    composeTestRule.waitUntil(timeoutMillis = testTimeoutMillis) {
+      viewModel.uiState.value.error == errorMessage
+    }
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).performScrollToKey("error")
+    composeTestRule.onNodeWithTag("edit_lore_error").assertIsDisplayed()
+    composeTestRule.onNodeWithTag("edit_lore_error").assertTextEquals(errorMessage)
+  }
+
+  @Test
   fun displaysErrorStateWhenLoreIsNullAndAllowsBackNavigation() {
     val file =
         JDRFile(
@@ -161,7 +191,10 @@ class EditFileLoreTests {
     assertEquals(true, backClicked)
   }
 
-  private class FakeWorkspaceRepository(private val file: JDRFile) : WorkspaceRepository {
+  private class FakeWorkspaceRepository(
+      private val file: JDRFile,
+      private val updateError: String? = null,
+  ) : WorkspaceRepository {
     val updatedFiles = mutableListOf<JDRFile>()
 
     override fun getNewUid(): String = "generated-id"
@@ -170,6 +203,7 @@ class EditFileLoreTests {
 
     override suspend fun updateFile(file: JDRFile): Result<Unit> {
       updatedFiles += file
+      updateError?.let { throw IllegalStateException(it) }
       return Result.success(Unit)
     }
 
