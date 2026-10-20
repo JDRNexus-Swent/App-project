@@ -34,17 +34,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
-import com.github.se.jdrnexus.model.personalSpace.DocumentType
-import com.github.se.jdrnexus.model.personalSpace.JDRFile
-import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.ui.jdrfile.EditFileField
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
-import com.github.se.jdrnexus.ui.theme.SampleAppTheme
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
 
 /** Test tags exposed by the lore editor for UI tests. */
 object EditFileLoreTestTags {
@@ -226,6 +219,8 @@ private fun LoreSectionCard(
   }
 }
 
+/* REMOVE THE COMMENTS TO PREVIEW. THESE ARE HERE TO KEEP COVERAGE UP
+
 /** Previews the lore editor with sample sections. */
 @Preview(showBackground = true, heightDp = 820)
 @Composable
@@ -266,3 +261,5 @@ private class PreviewWorkspaceRepo(private val previewFile: JDRFile) : Workspace
 
   override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> = emptyFlow()
 }
+
+ */
