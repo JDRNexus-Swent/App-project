@@ -18,20 +18,29 @@ import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.credentials.CredentialManager
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.GroupRepositoryFirestore
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
+import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.authentication.SignInScreen
 import com.github.se.jdrnexus.ui.authentication.SignUpScreen
+import com.github.se.jdrnexus.ui.dice.DiceOfflineScreen
 import com.github.se.jdrnexus.ui.edition.EditFileCharacter
 import com.github.se.jdrnexus.ui.edition.EditFileLore
+import com.github.se.jdrnexus.ui.gameManagement.GameManagementScreen
 import com.github.se.jdrnexus.ui.home.HomeScreen
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
+import com.google.firebase.firestore.FirebaseFirestore
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,6 +63,8 @@ enum class AllRoutes {
   SignUp,
   Home,
   PersoSpace,
+  Dice,
+  GroupManagement,
   EditChar,
   EditLore,
 }
@@ -107,6 +118,36 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
         }
       }
 
+      composable(route = AllRoutes.Home.name) {
+        val onLogout = {
+          navController.navigate(AllRoutes.SignIn.name) {
+            // Sign-in may no longer be on the stack after authentication succeeds.
+            popUpTo(AllRoutes.Home.name) { inclusive = true }
+            launchSingleTop = true
+          }
+        }
+        val onPersonalSpaceClicked = { navController.navigate(AllRoutes.PersoSpace.name) }
+        val onDiceClicked = { navController.navigate(AllRoutes.Dice.name) }
+        val onGroupManagementClicked = { navController.navigate(AllRoutes.GroupManagement.name) }
+        if (authViewModel == null) {
+          HomeScreen(
+              viewModel = altAuthViewModel,
+              onLogout = onLogout,
+              onPersonalSpaceClick = onPersonalSpaceClicked,
+              onDiceClick = onDiceClicked,
+              onGroupManagementClick = onGroupManagementClicked,
+          )
+        } else {
+          HomeScreen(
+              viewModel = authViewModel,
+              onLogout = onLogout,
+              onPersonalSpaceClick = onPersonalSpaceClicked,
+              onDiceClick = onDiceClicked,
+              onGroupManagementClick = onGroupManagementClicked,
+          )
+        }
+      }
+
       composable(route = AllRoutes.SignUp.name) {
         val onRegister = {
           navController.navigate(AllRoutes.Home.name) {
@@ -132,21 +173,6 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
         }
       }
 
-      composable(route = AllRoutes.Home.name) {
-        val onLogout = {
-          navController.navigate(AllRoutes.SignIn.name) {
-            // Sign-in may no longer be on the stack after authentication succeeds.
-            popUpTo(AllRoutes.Home.name) { inclusive = true }
-            launchSingleTop = true
-          }
-        }
-        if (authViewModel == null) {
-          HomeScreen(viewModel = altAuthViewModel, onLogout = onLogout)
-        } else {
-          HomeScreen(viewModel = authViewModel, onLogout = onLogout)
-        }
-      }
-
       composable(route = AllRoutes.PersoSpace.name) {
         val onDocumentClicked: (JDRFile) -> Unit = { document ->
           editFileViewModel.loadFile(document.id)
@@ -160,7 +186,41 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
         PersonalSpaceScreen(
             onBackButton = { navController.popBackStack() },
             onDocumentClicked = onDocumentClicked,
-            onCreateFile = {},
+            onCreateFile = { fileId ->
+              editFileViewModel.loadFile(fileId)
+              navController.navigate(AllRoutes.EditChar.name)
+            },
+        )
+      }
+
+      composable(route = AllRoutes.Dice.name) {
+        DiceOfflineScreen(onClose = { navController.popBackStack() })
+      }
+
+      composable(route = AllRoutes.GroupManagement.name) {
+        val gameManagementViewModel: GameManagementViewModel =
+            viewModel(
+                factory =
+                    viewModelFactory {
+                      initializer {
+                        GameManagementViewModel(
+                            groupRepository =
+                                GroupRepositoryFirestore(FirebaseFirestore.getInstance()),
+                            authRepository = AuthRepositoryFirebase(),
+                            workspaceRepository = WorkspaceRepositoryProvider.repository,
+                        )
+                      }
+                    }
+            )
+        GameManagementScreen(
+            gameManagementViewModel = gameManagementViewModel,
+            onEnterWorkspace = {},
+            onTabSelected = { tab ->
+              when (tab) {
+                "Home" -> navController.popBackStack()
+                "Files" -> navController.navigate(AllRoutes.PersoSpace.name)
+              }
+            },
         )
       }
 
