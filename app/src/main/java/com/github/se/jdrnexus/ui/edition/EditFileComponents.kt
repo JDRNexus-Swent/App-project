@@ -22,6 +22,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 
+/**
+ * Provides the shared loading, empty/error, and content states for an edit screen.
+ *
+ * Loading takes precedence over the other states. When content is unavailable, the scaffold shows
+ * the header and either [error] or [emptyMessage]; otherwise it invokes [content].
+ *
+ * @param isLoading whether the file is currently loading.
+ * @param loadingMessage text shown while loading.
+ * @param hasContent whether the editor has content to display.
+ * @param screenTitle title shown in the header when content is unavailable.
+ * @param backTestTag test tag applied to the header's back button.
+ * @param error optional error shown instead of [emptyMessage].
+ * @param emptyMessage message shown when there is no content and no error.
+ * @param onBack called when the back button is pressed.
+ * @param content editor content shown when loading is complete and content is available.
+ */
 @Composable
 internal fun EditFileScaffold(
     isLoading: Boolean,
@@ -70,6 +86,14 @@ internal fun EditFileScaffold(
   }
 }
 
+/**
+ * Displays a screen title beside a back button.
+ *
+ * @param title text displayed as the header title.
+ * @param backTestTag test tag applied to the back button.
+ * @param onBack called when the back button is pressed.
+ * @param modifier modifier applied to the header row.
+ */
 @Composable
 internal fun EditFileHeader(
     title: String,
@@ -92,6 +116,16 @@ internal fun EditFileHeader(
   }
 }
 
+/**
+ * Displays a section title and its item count.
+ *
+ * A singular label is used when [count] is one; otherwise the lowercased [title] is used.
+ *
+ * @param title section heading and plural count label.
+ * @param count number of items in the section.
+ * @param modifier modifier applied to the heading row.
+ * @param singularCountLabel label used when [count] is one.
+ */
 @Composable
 internal fun EditFileSectionHeading(
     title: String,
@@ -113,6 +147,12 @@ internal fun EditFileSectionHeading(
   }
 }
 
+/**
+ * Displays an error message using the theme's error color.
+ *
+ * @param error text to display.
+ * @param testTag test tag applied to the message.
+ */
 @Composable
 internal fun EditFileErrorMessage(error: String, testTag: String) {
   Text(
@@ -123,6 +163,17 @@ internal fun EditFileErrorMessage(error: String, testTag: String) {
   )
 }
 
+/**
+ * Displays a save progress indicator or an enabled save button.
+ *
+ * The button label is "Saved" when [isSaved] is true and "Save" otherwise. While [isSaving] is
+ * true, only the progress indicator is displayed.
+ *
+ * @param isSaving whether a save operation is in progress.
+ * @param isSaved whether the current content has been saved.
+ * @param testTag test tag applied to the save button when it is displayed.
+ * @param onSave called when the save button is pressed.
+ */
 @Composable
 internal fun EditFileSaveButton(
     isSaving: Boolean,
