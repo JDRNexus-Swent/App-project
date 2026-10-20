@@ -14,11 +14,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -82,276 +79,197 @@ fun EditFileCharacter(
 
   LaunchedEffect(state.isSaved) { if (state.isSaved) onSaved() }
 
-  Surface(
-      modifier = Modifier.fillMaxSize(),
-      color = MaterialTheme.colorScheme.background,
-      contentColor = MaterialTheme.colorScheme.onBackground,
+  EditFileScaffold(
+      isLoading = state.isLoading,
+      loadingMessage = "Loading character...",
+      hasContent = state.character != null,
+      screenTitle = "CHARACTER SHEET",
+      backTestTag = EditFileCharacterTestTags.BACK,
+      error = state.error,
+      emptyMessage = "No character is loaded.",
+      onBack = onBack,
   ) {
-    when {
-      state.isLoading -> {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-          CircularProgressIndicator()
-          Text("Loading character...", modifier = Modifier.padding(top = 12.dp))
-        }
+    val character = state.character ?: return@EditFileScaffold
+    var newStatName by remember { mutableStateOf("") }
+    var newStatValue by remember { mutableStateOf("") }
+    var newActionName by remember { mutableStateOf("") }
+    var newActionDescription by remember { mutableStateOf("") }
+
+    LazyColumn(
+        modifier =
+            Modifier.fillMaxSize()
+                .imePadding()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .testTag(EditFileCharacterTestTags.LIST),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+      item(key = "top-bar") {
+        EditFileHeader(
+            title = "CHARACTER SHEET",
+            backTestTag = EditFileCharacterTestTags.BACK,
+            onBack = onBack,
+        )
       }
-      state.character == null -> {
-        Column(modifier = Modifier.fillMaxSize()) {
-          Row(
-              modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-              verticalAlignment = Alignment.CenterVertically,
-          ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.testTag(EditFileCharacterTestTags.BACK),
-            ) {
-              Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-            }
-            Text(
-                text = "CHARACTER SHEET",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
-          }
-          Text(
-              text = state.error ?: "No character is loaded.",
-              modifier = Modifier.padding(24.dp),
-              color = MaterialTheme.colorScheme.error,
+      item(key = "character-name") {
+        OutlinedTextField(
+            value = character.name,
+            onValueChange = viewModel::updateCharacterName,
+            modifier = Modifier.fillMaxWidth().testTag("edit_character_name"),
+            label = { Text("Character name") },
+            singleLine = true,
+        )
+      }
+      item(key = "character-hp") {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+          NumberField(
+              label = "Current HP",
+              value = character.hp.current.toString(),
+              stateKey = "current-hp",
+              error = state.fieldErrors[EditFileField.CharacterCurrentHp],
+              modifier = Modifier.weight(1f).testTag(EditFileCharacterTestTags.CURRENT_HP),
+              keyboardType = KeyboardType.Number,
+              onValueChange = { viewModel.updateCharacterCurrentHp(it.toIntOrNull() ?: -1) },
+          )
+          NumberField(
+              label = "Max HP",
+              value = character.hp.max.toString(),
+              stateKey = "max-hp",
+              error = state.fieldErrors[EditFileField.CharacterMaxHp],
+              modifier = Modifier.weight(1f).testTag(EditFileCharacterTestTags.MAX_HP),
+              keyboardType = KeyboardType.Number,
+              onValueChange = { viewModel.updateCharacterMaxHp(it.toIntOrNull() ?: -1) },
           )
         }
       }
-      else -> {
-        val character = state.character!!
-        var newStatName by remember { mutableStateOf("") }
-        var newStatValue by remember { mutableStateOf("") }
-        var newActionName by remember { mutableStateOf("") }
-        var newActionDescription by remember { mutableStateOf("") }
-
-        LazyColumn(
-            modifier =
-                Modifier.fillMaxSize()
-                    .imePadding()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                    .testTag(EditFileCharacterTestTags.LIST),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-          item(key = "top-bar") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-              IconButton(
-                  onClick = onBack,
-                  modifier = Modifier.testTag(EditFileCharacterTestTags.BACK),
-              ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-              }
-              Text(
-                  text = "CHARACTER SHEET",
-                  style = MaterialTheme.typography.labelSmall,
-                  color = MaterialTheme.colorScheme.primary,
+      item(key = "stats-heading") {
+        EditFileSectionHeading(
+            title = "Stats",
+            count = character.stats.size,
+            modifier = Modifier.testTag(EditFileCharacterTestTags.STATS_LIST),
+        )
+      }
+      items(character.stats, key = { "stat-${it.statID}" }) { stat ->
+        StatRow(
+            stat = stat,
+            nameError = state.fieldErrors[EditFileField.CharacterStatName(stat.statID)],
+            valueError = state.fieldErrors[EditFileField.CharacterStatValue(stat.statID)],
+            onNameChange = { viewModel.updateCharacterStatName(stat.statID, it) },
+            onValueChange = {
+              viewModel.updateCharacterStatValue(
+                  stat.statID,
+                  it.toDoubleOrNull() ?: Double.NaN,
               )
-            }
-          }
-          item(key = "character-name") {
+            },
+            onRemove = { viewModel.removeCharacterStat(stat.statID) },
+        )
+      }
+      item(key = "add-stat") {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(6.dp),
+              verticalAlignment = Alignment.CenterVertically,
+          ) {
             OutlinedTextField(
-                value = character.name,
-                onValueChange = viewModel::updateCharacterName,
-                modifier = Modifier.fillMaxWidth().testTag("edit_character_name"),
-                label = { Text("Character name") },
+                value = newStatName,
+                onValueChange = { newStatName = it },
+                modifier = Modifier.weight(1f).testTag("add_entry_name"),
+                label = { Text("Stat name") },
                 singleLine = true,
             )
-          }
-          item(key = "character-hp") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-              NumberField(
-                  label = "Current HP",
-                  value = character.hp.current.toString(),
-                  stateKey = "current-hp",
-                  error = state.fieldErrors[EditFileField.CharacterCurrentHp],
-                  modifier = Modifier.weight(1f).testTag(EditFileCharacterTestTags.CURRENT_HP),
-                  keyboardType = KeyboardType.Number,
-                  onValueChange = { viewModel.updateCharacterCurrentHp(it.toIntOrNull() ?: -1) },
-              )
-              NumberField(
-                  label = "Max HP",
-                  value = character.hp.max.toString(),
-                  stateKey = "max-hp",
-                  error = state.fieldErrors[EditFileField.CharacterMaxHp],
-                  modifier = Modifier.weight(1f).testTag(EditFileCharacterTestTags.MAX_HP),
-                  keyboardType = KeyboardType.Number,
-                  onValueChange = { viewModel.updateCharacterMaxHp(it.toIntOrNull() ?: -1) },
-              )
-            }
-          }
-          item(key = "stats-heading") {
-            SectionTitle(
-                title = "Stats",
-                count = character.stats.size,
-                modifier = Modifier.testTag(EditFileCharacterTestTags.STATS_LIST),
+            OutlinedTextField(
+                value = newStatValue,
+                onValueChange = { newStatValue = it },
+                modifier = Modifier.weight(0.6f).testTag("add_entry_value"),
+                label = { Text("Value") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             )
           }
-          items(character.stats, key = { "stat-${it.statID}" }) { stat ->
-            StatRow(
-                stat = stat,
-                nameError = state.fieldErrors[EditFileField.CharacterStatName(stat.statID)],
-                valueError = state.fieldErrors[EditFileField.CharacterStatValue(stat.statID)],
-                onNameChange = { viewModel.updateCharacterStatName(stat.statID, it) },
-                onValueChange = {
-                  viewModel.updateCharacterStatValue(
-                      stat.statID,
-                      it.toDoubleOrNull() ?: Double.NaN,
-                  )
-                },
-                onRemove = { viewModel.removeCharacterStat(stat.statID) },
-            )
-          }
-          item(key = "add-stat") {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-              Row(
-                  modifier = Modifier.fillMaxWidth(),
-                  horizontalArrangement = Arrangement.spacedBy(6.dp),
-                  verticalAlignment = Alignment.CenterVertically,
-              ) {
-                OutlinedTextField(
-                    value = newStatName,
-                    onValueChange = { newStatName = it },
-                    modifier = Modifier.weight(1f).testTag("add_entry_name"),
-                    label = { Text("Stat name") },
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = newStatValue,
-                    onValueChange = { newStatValue = it },
-                    modifier = Modifier.weight(0.6f).testTag("add_entry_value"),
-                    label = { Text("Value") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                )
-              }
-              OutlinedButton(
-                  onClick = {
-                    val value = newStatValue.toDoubleOrNull()
-                    viewModel.addCharacterStat(newStatName, value ?: Double.NaN)
-                    if (newStatName.isNotBlank() && value?.isFinite() == true) {
-                      newStatName = ""
-                      newStatValue = ""
-                    }
-                  },
-                  modifier = Modifier.fillMaxWidth().testTag("confirm_add_stat"),
-                  shape = RoundedCornerShape(8.dp),
-              ) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Text("Add stat", modifier = Modifier.padding(start = 6.dp))
-              }
-            }
-          }
-          item(key = "section-divider") { HorizontalDivider() }
-          item(key = "actions-heading") {
-            SectionTitle(
-                title = "Actions",
-                count = character.actions.size,
-                modifier = Modifier.testTag(EditFileCharacterTestTags.ACTIONS_LIST),
-            )
-          }
-          items(character.actions, key = { "action-${it.actionID}" }) { action ->
-            ActionRow(
-                action = action,
-                nameError = state.fieldErrors[EditFileField.CharacterActionName(action.actionID)],
-                onNameChange = { viewModel.updateCharacterActionName(action.actionID, it) },
-                onDescriptionChange = {
-                  viewModel.updateCharacterActionDescription(action.actionID, it)
-                },
-                onRemove = { viewModel.removeCharacterAction(action.actionID) },
-            )
-          }
-          item(key = "add-action") {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-              OutlinedTextField(
-                  value = newActionName,
-                  onValueChange = { newActionName = it },
-                  modifier = Modifier.fillMaxWidth().testTag("add_action_name"),
-                  label = { Text("Action name") },
-                  singleLine = true,
-              )
-              OutlinedTextField(
-                  value = newActionDescription,
-                  onValueChange = { newActionDescription = it },
-                  modifier = Modifier.fillMaxWidth().testTag("add_action_description"),
-                  label = { Text("Description") },
-                  singleLine = true,
-              )
-              OutlinedButton(
-                  onClick = {
-                    viewModel.addCharacterAction(newActionName, newActionDescription)
-                    if (newActionName.isNotBlank()) {
-                      newActionName = ""
-                      newActionDescription = ""
-                    }
-                  },
-                  modifier = Modifier.fillMaxWidth().testTag("confirm_add_action"),
-                  shape = RoundedCornerShape(8.dp),
-              ) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Text("Add action", modifier = Modifier.padding(start = 6.dp))
-              }
-            }
-          }
-          state.error?.let { error ->
-            item(key = "error") {
-              Text(
-                  text = error,
-                  color = MaterialTheme.colorScheme.error,
-                  style = MaterialTheme.typography.bodySmall,
-                  modifier = Modifier.testTag("edit_character_error"),
-              )
-            }
-          }
-          item(key = "save") {
-            if (state.isSaving) {
-              CircularProgressIndicator(modifier = Modifier.fillMaxWidth())
-            } else {
-              Button(
-                  onClick = viewModel::saveJDRfile,
-                  modifier = Modifier.fillMaxWidth().testTag("edit_character_save"),
-              ) {
-                Text(if (state.isSaved) "Saved" else "Save")
-              }
-            }
+          OutlinedButton(
+              onClick = {
+                val value = newStatValue.toDoubleOrNull()
+                viewModel.addCharacterStat(newStatName, value ?: Double.NaN)
+                if (newStatName.isNotBlank() && value?.isFinite() == true) {
+                  newStatName = ""
+                  newStatValue = ""
+                }
+              },
+              modifier = Modifier.fillMaxWidth().testTag("confirm_add_stat"),
+              shape = RoundedCornerShape(8.dp),
+          ) {
+            Icon(Icons.Default.Add, contentDescription = null)
+            Text("Add stat", modifier = Modifier.padding(start = 6.dp))
           }
         }
       }
+      item(key = "section-divider") { HorizontalDivider() }
+      item(key = "actions-heading") {
+        EditFileSectionHeading(
+            title = "Actions",
+            count = character.actions.size,
+            modifier = Modifier.testTag(EditFileCharacterTestTags.ACTIONS_LIST),
+        )
+      }
+      items(character.actions, key = { "action-${it.actionID}" }) { action ->
+        ActionRow(
+            action = action,
+            nameError = state.fieldErrors[EditFileField.CharacterActionName(action.actionID)],
+            onNameChange = { viewModel.updateCharacterActionName(action.actionID, it) },
+            onDescriptionChange = {
+              viewModel.updateCharacterActionDescription(action.actionID, it)
+            },
+            onRemove = { viewModel.removeCharacterAction(action.actionID) },
+        )
+      }
+      item(key = "add-action") {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          OutlinedTextField(
+              value = newActionName,
+              onValueChange = { newActionName = it },
+              modifier = Modifier.fillMaxWidth().testTag("add_action_name"),
+              label = { Text("Action name") },
+              singleLine = true,
+          )
+          OutlinedTextField(
+              value = newActionDescription,
+              onValueChange = { newActionDescription = it },
+              modifier = Modifier.fillMaxWidth().testTag("add_action_description"),
+              label = { Text("Description") },
+              singleLine = true,
+          )
+          OutlinedButton(
+              onClick = {
+                viewModel.addCharacterAction(newActionName, newActionDescription)
+                if (newActionName.isNotBlank()) {
+                  newActionName = ""
+                  newActionDescription = ""
+                }
+              },
+              modifier = Modifier.fillMaxWidth().testTag("confirm_add_action"),
+              shape = RoundedCornerShape(8.dp),
+          ) {
+            Icon(Icons.Default.Add, contentDescription = null)
+            Text("Add action", modifier = Modifier.padding(start = 6.dp))
+          }
+        }
+      }
+      state.error?.let { error ->
+        item(key = "error") { EditFileErrorMessage(error, "edit_character_error") }
+      }
+      item(key = "save") {
+        EditFileSaveButton(
+            isSaving = state.isSaving,
+            isSaved = state.isSaved,
+            testTag = "edit_character_save",
+            onSave = viewModel::saveJDRfile,
+        )
+      }
     }
-  }
-}
-
-/**
- * Displays a section heading with its item count.
- *
- * @param title section title.
- * @param count number of items in the section.
- * @param modifier modifier applied to the heading row.
- */
-@Composable
-private fun SectionTitle(title: String, count: Int, modifier: Modifier = Modifier) {
-  Row(
-      modifier = modifier.fillMaxWidth(),
-      horizontalArrangement = Arrangement.SpaceBetween,
-      verticalAlignment = Alignment.CenterVertically,
-  ) {
-    Text(title, style = MaterialTheme.typography.titleMedium)
-    Text(
-        text = "$count ${if (count == 1) title.lowercase().dropLast(1) else title.lowercase()}",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
   }
 }
 

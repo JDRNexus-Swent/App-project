@@ -14,11 +14,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -74,169 +71,104 @@ fun EditFileLore(
 
   LaunchedEffect(state.isSaved) { if (state.isSaved) onSaved() }
 
-  Surface(
-      modifier = Modifier.fillMaxSize(),
-      color = MaterialTheme.colorScheme.background,
-      contentColor = MaterialTheme.colorScheme.onBackground,
+  EditFileScaffold(
+      isLoading = state.isLoading,
+      loadingMessage = "Loading lore...",
+      hasContent = state.lore != null,
+      screenTitle = "LORE NOTE",
+      backTestTag = EditFileLoreTestTags.BACK,
+      error = state.error,
+      emptyMessage = "No lore is loaded.",
+      onBack = onBack,
   ) {
-    when {
-      state.isLoading -> {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-          CircularProgressIndicator()
-          Text("Loading lore...", modifier = Modifier.padding(top = 12.dp))
-        }
-      }
-      state.lore == null -> {
-        Column(modifier = Modifier.fillMaxSize()) {
-          Row(
-              modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-              verticalAlignment = Alignment.CenterVertically,
-          ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.testTag(EditFileLoreTestTags.BACK),
-            ) {
-              Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-            }
-            Text(
-                text = "LORE NOTE",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
-          }
-          Text(
-              text = state.error ?: "No lore is loaded.",
-              modifier = Modifier.padding(24.dp),
-              color = MaterialTheme.colorScheme.error,
-          )
-        }
-      }
-      else -> {
-        val lore = state.lore!!
-        var newSectionTitle by remember { mutableStateOf("") }
-        var newSectionDescription by remember { mutableStateOf("") }
+    val lore = state.lore ?: return@EditFileScaffold
+    var newSectionTitle by remember { mutableStateOf("") }
+    var newSectionDescription by remember { mutableStateOf("") }
 
-        LazyColumn(
-            modifier =
-                Modifier.fillMaxSize()
-                    .imePadding()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                    .testTag(EditFileLoreTestTags.LIST),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-          item(key = "top-bar") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-              IconButton(
-                  onClick = onBack,
-                  modifier = Modifier.testTag(EditFileLoreTestTags.BACK),
-              ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-              }
-              Text(
-                  text = "LORE NOTE",
-                  style = MaterialTheme.typography.labelSmall,
-                  color = MaterialTheme.colorScheme.primary,
-              )
-            }
-          }
-          item(key = "lore-title") {
-            OutlinedTextField(
-                value = lore.title,
-                onValueChange = viewModel::updateLoreTitle,
-                modifier = Modifier.fillMaxWidth().testTag("edit_lore_title"),
-                label = { Text("Lore title") },
-                singleLine = true,
-            )
-          }
-          item(key = "sections-heading") {
-            Row(
-                modifier = Modifier.fillMaxWidth().testTag(EditFileLoreTestTags.SECTIONS_LIST),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-              Text("Sections", style = MaterialTheme.typography.titleMedium)
-              Text(
-                  text =
-                      "${lore.sections.size} ${if (lore.sections.size == 1) "section" else "sections"}",
-                  style = MaterialTheme.typography.labelSmall,
-                  color = MaterialTheme.colorScheme.onSurfaceVariant,
-              )
-            }
-          }
-          items(lore.sections, key = { "section-${it.sectionID}" }) { section ->
-            LoreSectionCard(
-                section = section,
-                titleError = state.fieldErrors[EditFileField.LoreSectionTitle(section.sectionID)],
-                onTitleChange = { viewModel.updateLoreSectionTitle(section.sectionID, it) },
-                onDescriptionChange = {
-                  viewModel.updateLoreSectionDescription(section.sectionID, it)
-                },
-                onRemove = { viewModel.removeLoreSection(section.sectionID) },
-            )
-          }
-          item(key = "add-section") {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-              OutlinedTextField(
-                  value = newSectionTitle,
-                  onValueChange = { newSectionTitle = it },
-                  modifier = Modifier.fillMaxWidth().testTag("add_section_title"),
-                  label = { Text("Section title") },
-                  singleLine = true,
-              )
-              OutlinedTextField(
-                  value = newSectionDescription,
-                  onValueChange = { newSectionDescription = it },
-                  modifier = Modifier.fillMaxWidth().testTag("add_section_description"),
-                  label = { Text("Content") },
-                  minLines = 2,
-              )
-              OutlinedButton(
-                  onClick = {
-                    viewModel.addLoreSection(newSectionTitle, newSectionDescription)
-                    if (newSectionTitle.isNotBlank()) {
-                      newSectionTitle = ""
-                      newSectionDescription = ""
-                    }
-                  },
-                  modifier = Modifier.fillMaxWidth().testTag("confirm_add_section"),
-                  shape = RoundedCornerShape(8.dp),
-              ) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Text("Add section", modifier = Modifier.padding(start = 6.dp))
-              }
-            }
-          }
-          item(key = "section-divider") { HorizontalDivider() }
-          state.error?.let { error ->
-            item(key = "error") {
-              Text(
-                  text = error,
-                  color = MaterialTheme.colorScheme.error,
-                  style = MaterialTheme.typography.bodySmall,
-                  modifier = Modifier.testTag("edit_lore_error"),
-              )
-            }
-          }
-          item(key = "save") {
-            if (state.isSaving) {
-              CircularProgressIndicator(modifier = Modifier.fillMaxWidth())
-            } else {
-              Button(
-                  onClick = viewModel::saveJDRfile,
-                  modifier = Modifier.fillMaxWidth().testTag("edit_lore_save"),
-              ) {
-                Text(if (state.isSaved) "Saved" else "Save")
-              }
-            }
+    LazyColumn(
+        modifier =
+            Modifier.fillMaxSize()
+                .imePadding()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .testTag(EditFileLoreTestTags.LIST),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+      item(key = "top-bar") {
+        EditFileHeader(
+            title = "LORE NOTE",
+            backTestTag = EditFileLoreTestTags.BACK,
+            onBack = onBack,
+        )
+      }
+      item(key = "lore-title") {
+        OutlinedTextField(
+            value = lore.title,
+            onValueChange = viewModel::updateLoreTitle,
+            modifier = Modifier.fillMaxWidth().testTag("edit_lore_title"),
+            label = { Text("Lore title") },
+            singleLine = true,
+        )
+      }
+      item(key = "sections-heading") {
+        EditFileSectionHeading(
+            title = "Sections",
+            count = lore.sections.size,
+            modifier = Modifier.fillMaxWidth().testTag(EditFileLoreTestTags.SECTIONS_LIST),
+            singularCountLabel = "section",
+        )
+      }
+      items(lore.sections, key = { "section-${it.sectionID}" }) { section ->
+        LoreSectionCard(
+            section = section,
+            titleError = state.fieldErrors[EditFileField.LoreSectionTitle(section.sectionID)],
+            onTitleChange = { viewModel.updateLoreSectionTitle(section.sectionID, it) },
+            onDescriptionChange = { viewModel.updateLoreSectionDescription(section.sectionID, it) },
+            onRemove = { viewModel.removeLoreSection(section.sectionID) },
+        )
+      }
+      item(key = "add-section") {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          OutlinedTextField(
+              value = newSectionTitle,
+              onValueChange = { newSectionTitle = it },
+              modifier = Modifier.fillMaxWidth().testTag("add_section_title"),
+              label = { Text("Section title") },
+              singleLine = true,
+          )
+          OutlinedTextField(
+              value = newSectionDescription,
+              onValueChange = { newSectionDescription = it },
+              modifier = Modifier.fillMaxWidth().testTag("add_section_description"),
+              label = { Text("Content") },
+              minLines = 2,
+          )
+          OutlinedButton(
+              onClick = {
+                viewModel.addLoreSection(newSectionTitle, newSectionDescription)
+                if (newSectionTitle.isNotBlank()) {
+                  newSectionTitle = ""
+                  newSectionDescription = ""
+                }
+              },
+              modifier = Modifier.fillMaxWidth().testTag("confirm_add_section"),
+              shape = RoundedCornerShape(8.dp),
+          ) {
+            Icon(Icons.Default.Add, contentDescription = null)
+            Text("Add section", modifier = Modifier.padding(start = 6.dp))
           }
         }
+      }
+      item(key = "section-divider") { HorizontalDivider() }
+      state.error?.let { error ->
+        item(key = "error") { EditFileErrorMessage(error, "edit_lore_error") }
+      }
+      item(key = "save") {
+        EditFileSaveButton(
+            isSaving = state.isSaving,
+            isSaved = state.isSaved,
+            testTag = "edit_lore_save",
+            onSave = viewModel::saveJDRfile,
+        )
       }
     }
   }
