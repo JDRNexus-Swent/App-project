@@ -102,7 +102,7 @@ class PersonalSpaceViewModelTest {
     override suspend fun removeItemFromGroup(
         itemId: String,
         groupId: String,
-        parentFolderId: String?,
+        parentFolderId: String,
     ): Result<Unit> {
       TODO("Not yet implemented")
     }

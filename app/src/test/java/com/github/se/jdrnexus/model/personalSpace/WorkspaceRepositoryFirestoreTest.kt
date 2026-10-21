@@ -191,7 +191,7 @@ class WorkspaceRepositoryFirestoreTest {
   private suspend fun removeItemFromGroupAndPumpMainLooper(
       itemId: String,
       groupId: String,
-      parentFolderId: String? = null,
+      parentFolderId: String = "",
       targetRepository: WorkspaceRepository = repository,
   ): Result<Unit> {
     val operation =
@@ -213,7 +213,7 @@ class WorkspaceRepositoryFirestoreTest {
 
   @Test
   fun removeItemFromGroup_rejectsBlankItemId() = runBlocking {
-    val result = repository.removeItemFromGroup("", "group-${UUID.randomUUID()}", null)
+    val result = repository.removeItemFromGroup("", "group-${UUID.randomUUID()}", "")
 
     assertTrue(result.isFailure)
     assertTrue(result.exceptionOrNull() is IllegalArgumentException)
@@ -221,7 +221,7 @@ class WorkspaceRepositoryFirestoreTest {
 
   @Test
   fun removeItemFromGroup_rejectsBlankGroupId() = runBlocking {
-    val result = repository.removeItemFromGroup("item-${UUID.randomUUID()}", " ", null)
+    val result = repository.removeItemFromGroup("item-${UUID.randomUUID()}", " ", "")
 
     assertTrue(result.isFailure)
     assertTrue(result.exceptionOrNull() is IllegalArgumentException)
@@ -262,7 +262,7 @@ class WorkspaceRepositoryFirestoreTest {
 
     val result =
         WorkspaceRepositoryFirestore(firestoreMock)
-            .removeItemFromGroup(itemId, "group-${UUID.randomUUID()}", null)
+            .removeItemFromGroup(itemId, "group-${UUID.randomUUID()}", "")
 
     assertTrue(result.isFailure)
   }
@@ -280,7 +280,7 @@ class WorkspaceRepositoryFirestoreTest {
     val mockRepository = WorkspaceRepositoryFirestore(firestoreMock)
 
     val job = launch {
-      mockRepository.removeItemFromGroup(itemId, "group-${UUID.randomUUID()}", null)
+      mockRepository.removeItemFromGroup(itemId, "group-${UUID.randomUUID()}", "")
     }
     yield()
     job.cancel()
@@ -336,7 +336,7 @@ class WorkspaceRepositoryFirestoreTest {
         Tasks.forException(IllegalStateException("batch commit failed"))
 
     val result =
-        WorkspaceRepositoryFirestore(firestoreMock).removeItemFromGroup(itemId, groupId, null)
+        WorkspaceRepositoryFirestore(firestoreMock).removeItemFromGroup(itemId, groupId, "")
 
     assertTrue(result.isFailure)
     verify(exactly = 1) { batchMock.update(documentMock, any()) }
