@@ -75,11 +75,12 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
   override suspend fun removeItemFromGroup(
       itemId: String,
       groupId: String,
-      parentFolderId: String?,
+      parentFolderId: String,
   ): Result<Unit> {
     return try {
       require(itemId.isNotBlank()) { "Item ID cannot be empty." }
       require(groupId.isNotBlank()) { "Group ID cannot be empty." }
+      require(parentFolderId.isNotBlank()) { "Parent folder ID cannot be empty." }
 
       val root = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
 
@@ -91,7 +92,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
 
       suspend fun collectSubtree(
           file: JDRFile,
-          parentId: String?,
+          parentId: String,
       ) {
         if (!visited.add(file.id)) return
 
@@ -122,7 +123,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
 
       collectSubtree(
           root,
-          parentId = parentFolderId?.takeUnless { it.isBlank() },
+          parentId = parentFolderId,
       )
 
       // Remove group sharing without deleting the underlying documents.
