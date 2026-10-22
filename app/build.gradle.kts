@@ -160,7 +160,6 @@ dependencies {
   implementation(libs.compose.ui.graphics)
   implementation(libs.androidx.material.icons.extended)
 
-  androidTestImplementation("androidx.test.ext:junit:1.2.1")
   // Material Design 3
   implementation(libs.compose.material3)
   // Integration with activities
