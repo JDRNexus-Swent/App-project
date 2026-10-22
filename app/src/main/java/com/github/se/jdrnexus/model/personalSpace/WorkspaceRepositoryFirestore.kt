@@ -80,13 +80,14 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     return try {
       require(itemId.isNotBlank()) { "Item ID cannot be empty." }
       require(groupId.isNotBlank()) { "Group ID cannot be empty." }
+      require(parentFolderId.isNotBlank()) { "Parent folder ID cannot be empty." }
 
       val root = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
 
       check(groupId in root.sharedGroupsIds) { "This item does not belong to the group." }
 
-      // Collect the selected item and all descendants.
-      val itemsToRemove = linkedMapOf<String, Pair<JDRFile, String?>>()
+      // Collect the selected item and, for folders, descendants with their placement parent.
+      val itemsToRemove = linkedMapOf<String, Pair<JDRFile, String>>()
       val visited = mutableSetOf<String>()
 
       suspend fun collectSubtree(
@@ -120,42 +121,22 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
             }
       }
 
-      collectSubtree(
-          root,
-          parentId = parentFolderId.takeUnless { it.isBlank() } ?: "",
-      )
+      collectSubtree(root, parentId = parentFolderId)
 
       // Remove group sharing without deleting the underlying documents.
       val batch = firestore.batch()
 
       itemsToRemove.values.forEach { (file, parentId) ->
-        val parentIdsToDetach = mutableSetOf<String>()
-        file.parentFolderIds.forEach { folderId ->
-          if (folderId == groupId) {
-            parentIdsToDetach.add(folderId)
-          } else {
-            val parent =
-                itemsToRemove[folderId]?.first
-                    ?: if (folderId == parentId && parentId.isNotBlank()) {
-                      getFile(parentId).getOrThrow()
-                    } else {
-                      null
-                    }
-            if (
-                parent != null &&
-                    parent.type == DocumentType.FOLDER &&
-                    groupId in parent.sharedGroupsIds &&
-                    (parent.sharedGroupsIds - groupId).isEmpty()
-            ) {
-              parentIdsToDetach.add(folderId)
-            }
-          }
-        }
-
         val updated =
             file.copy(
                 sharedGroupsIds = file.sharedGroupsIds - groupId,
-                parentFolderIds = file.parentFolderIds - parentIdsToDetach,
+                parentFolderIds =
+                    // Personal Space folder lookups also query parentFolderIds.
+                    if (file.personalParentId == parentId) {
+                      file.parentFolderIds
+                    } else {
+                      file.parentFolderIds - parentId
+                    },
             )
 
         batch.update(

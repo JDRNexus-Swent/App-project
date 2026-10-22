@@ -57,10 +57,10 @@ interface WorkspaceRepository {
   /**
    * Removes an item from a group workspace.
    *
-   * If the item is a folder, its descendants are also removed from the group. Sharing with other
-   * groups and ownership in the personal space must be preserved. Since [JDRFile.parentFolderIds]
-   * is shared across groups, a parent folder still shared with another group retains its reference;
-   * this model cannot express different placements inside the same shared folder per group.
+   * If the item is a folder, its descendants belonging to the group are also removed. The supplied
+   * [parentFolderId] identifies the selected item's placement; descendants are detached from their
+   * immediate parent in the removed subtree. Other parent references and Personal Space ownership
+   * are preserved, and the underlying documents are not deleted.
    */
   suspend fun removeItemFromGroup(
       itemId: String,
