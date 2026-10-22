@@ -1,4 +1,6 @@
 <!-- Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com> -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application android:networkSecurityConfig="@xml/debug_network_security_config" />
+    <application
+        android:allowBackup="false"
+        android:networkSecurityConfig="@xml/debug_network_security_config" />
 </manifest>
