@@ -1,12 +1,12 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.model.personalSpace
 
-import android.content.Context
 import android.os.Looper
-import androidx.test.core.app.ApplicationProvider
+import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
+import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils.DEFAULT_TIMEOUT_MS
+import com.github.se.jdrnexus.utils.waitFor
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
-import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
@@ -31,8 +31,6 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -60,127 +58,15 @@ class WorkspaceRepositoryFirestoreTest {
   private lateinit var repository: WorkspaceRepository
   private lateinit var firestore: FirebaseFirestore
 
-  companion object {
-    // Defines the maximum time to wait for asynchronous Firebase operations in tests
-    private const val DEFAULT_TIMEOUT_MS = 5000L
-
-    private const val EMULATOR_APP_NAME = "EmulatorApp"
-    private const val EMULATOR_HOST = "127.0.0.1"
-    private const val EMULATOR_PORT = 8080
-  }
-
   @Before
   fun setUp() {
-    val context = ApplicationProvider.getApplicationContext<Context>()
-
-    // Make sure the default Firebase app exists, we need its options to clone it
-    if (FirebaseApp.getApps(context).isEmpty()) {
-      FirebaseApp.initializeApp(context)
-    }
-
-    val emulatorApp =
-        FirebaseApp.getApps(context).firstOrNull { it.name == EMULATOR_APP_NAME }
-            ?: FirebaseApp.initializeApp(
-                context,
-                FirebaseApp.getInstance().options,
-                EMULATOR_APP_NAME,
-            )
-
-    firestore = FirebaseFirestore.getInstance(emulatorApp)
-
-    // The FirebaseApp (and its Firestore) is shared by every test class in the JVM,
-    // so the second class to run will hit an IllegalStateException here.
-    // It is safe to ignore: this instance is only ever used with the emulator,
-    // so it is necessarily already pointing to it.
-    try {
-      firestore.useEmulator(EMULATOR_HOST, EMULATOR_PORT)
-    } catch (e: IllegalStateException) {
-      // Already configured by a previous test class
-    }
-
+    firestore = FirebaseEmulatorTestUtils.getFirestore()
     repository = WorkspaceRepositoryFirestore(firestore)
   }
 
   @After
   fun tearDown() {
-    runBlocking {
-      // Re-enable network in case it was disabled during tests
-      try {
-        firestore.enableNetwork().await()
-      } catch (e: Exception) {
-        // ignore
-      }
-
-      // Clean up the database for the next test to ensure a clean state
-      try {
-        val snapshot = firestore.collection("documents").get().await()
-        for (doc in snapshot.documents) {
-          doc.reference.delete().await()
-        }
-      } catch (e: Exception) {
-        // ignore
-      }
-    }
-  }
-
-  /**
-   * Helper function to collect a Flow in a background coroutine while actively pumping the
-   * Robolectric MainLooper. This is required because Firebase SDK callbacks (including snapshot
-   * listeners) dispatch to the Android Main thread, which gets blocked in typical runBlocking
-   * tests.
-   *
-   * It uses thread-safe Atomic properties to guarantee memory visibility across Dispatchers.
-   */
-  private suspend fun <T> Flow<T>.waitFor(
-      timeoutMs: Long = DEFAULT_TIMEOUT_MS,
-      condition: (T) -> Boolean,
-  ): T {
-    // use of atomic value allows the real storage in memory (not in cache)
-    val latestValue = AtomicReference<T?>(null)
-    val hasValue = AtomicBoolean(false)
-    val isReady = AtomicBoolean(false)
-    val errorRef = AtomicReference<Throwable?>(null) // Capture any exceptions thrown by Flow
-
-    val job =
-        CoroutineScope(Dispatchers.Default).launch {
-          try {
-            this@waitFor.collect {
-              latestValue.set(it)
-              hasValue.set(true)
-              if (condition(it)) {
-                isReady.set(true)
-              }
-            }
-          } catch (e: Throwable) {
-            errorRef.set(e)
-          }
-        }
-    try {
-      val startTime = System.currentTimeMillis()
-      while (System.currentTimeMillis() - startTime < timeoutMs) {
-        // Pump Robolectric's main looper so Firebase callbacks can run!
-        shadowOf(Looper.getMainLooper()).idle()
-
-        // If the flow threw an error (like PERMISSION_DENIED), rethrow it immediately
-        val flowError = errorRef.get()
-        if (flowError != null) {
-          job.cancel()
-          throw flowError
-        }
-
-        if (isReady.get()) {
-          job.cancel()
-          @Suppress("UNCHECKED_CAST")
-          return latestValue.get() as T
-        }
-        delay(50)
-      }
-      throw AssertionError(
-          "Timeout waiting for condition. Last value emitted: ${latestValue.get()}, emitted at all: ${hasValue.get()}"
-      )
-    } finally {
-      job.cancel()
-    }
+    runBlocking { FirebaseEmulatorTestUtils.tearDown(firestore, "documents") }
   }
 
   private suspend fun persistFiles(vararg files: JDRFile) {
@@ -201,13 +87,15 @@ class WorkspaceRepositoryFirestoreTest {
           targetRepository.removeItemFromGroup(itemId, groupId, parentFolderId)
         }
     val startTime = System.currentTimeMillis()
-    while (!operation.isCompleted && System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS) {
-      shadowOf(Looper.getMainLooper()).idle()
-      delay(50)
-    }
-    if (!operation.isCompleted) {
+    try {
+      FirebaseEmulatorTestUtils.pumpMainLooperUntil(
+          timeoutMessage = { "removeItemFromGroup did not complete within $DEFAULT_TIMEOUT_MS ms" }
+      ) {
+        operation.isCompleted
+      }
+    } catch (e: AssertionError) {
       operation.cancel()
-      throw AssertionError("removeItemFromGroup did not complete within $DEFAULT_TIMEOUT_MS ms")
+      throw e
     }
     shadowOf(Looper.getMainLooper()).idle()
     return operation.await()
@@ -994,29 +882,13 @@ class WorkspaceRepositoryFirestoreTest {
             repository.getFileFlow(fileId).collect { if (it != null) latestName.set(it.name) }
           }
 
-      // Wait for initial value
-      var startTime = System.currentTimeMillis()
-      while (
-          latestName.get() != "Initial" &&
-              System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS
-      ) {
-        shadowOf(Looper.getMainLooper()).idle()
-        delay(50)
-      }
+      FirebaseEmulatorTestUtils.pumpMainLooperUntil { latestName.get() == "Initial" }
       assertEquals("Initial name should be collected", "Initial", latestName.get())
 
       // Update the file
       repository.updateFile(file.copy(name = "Updated"))
 
-      // Wait for the updated value
-      startTime = System.currentTimeMillis()
-      while (
-          latestName.get() != "Updated" &&
-              System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS
-      ) {
-        shadowOf(Looper.getMainLooper()).idle()
-        delay(50)
-      }
+      FirebaseEmulatorTestUtils.pumpMainLooperUntil { latestName.get() == "Updated" }
       assertEquals("Updated name should be collected", "Updated", latestName.get())
 
       job.cancel()
@@ -1224,15 +1096,8 @@ class WorkspaceRepositoryFirestoreTest {
               hasEmitted.set(true)
             }
           }
-
-      // Wait for initial emission (size 1)
-      var startTime = System.currentTimeMillis()
-      while (
-          (!hasEmitted.get() || latestList.get().size != 1) &&
-              System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS
-      ) {
-        shadowOf(Looper.getMainLooper()).idle()
-        delay(50)
+      FirebaseEmulatorTestUtils.pumpMainLooperUntil {
+        hasEmitted.get() && latestList.get().size == 1
       }
       assertEquals("List should have 1 item initially", 1, latestList.get().size)
 
@@ -1245,25 +1110,14 @@ class WorkspaceRepositoryFirestoreTest {
           )
       repository.createFile(file2)
 
-      // Wait for update (size 2)
-      startTime = System.currentTimeMillis()
-      while (latestList.get().size != 2 && System.currentTimeMillis() - startTime < 5000) {
-        shadowOf(Looper.getMainLooper()).idle()
-        delay(50)
-      }
+      FirebaseEmulatorTestUtils.pumpMainLooperUntil { latestList.get().size == 2 }
       assertEquals("List should be updated to 2 items", 2, latestList.get().size)
 
       // Remove the first file from the folder (simulate moving it to root)
       repository.updateFile(file1.copy(parentFolderIds = emptyList()))
 
-      // Wait for update (size 1, only file2 remains)
-      startTime = System.currentTimeMillis()
-      while (
-          (latestList.get().size != 1 || latestList.get().first().id != file2.id) &&
-              System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS
-      ) {
-        shadowOf(Looper.getMainLooper()).idle()
-        delay(50)
+      FirebaseEmulatorTestUtils.pumpMainLooperUntil {
+        latestList.get().size == 1 && latestList.get().first().id == file2.id
       }
       assertEquals("List should be updated to 1 item after removal", 1, latestList.get().size)
       assertEquals("Remaining file should be File 2", file2.id, latestList.get().first().id)
