@@ -572,6 +572,14 @@ private class PreviewWorkspaceRepository(private val previewFile: JDRFile) : Wor
   override suspend fun getFile(fileId: String): Result<JDRFile?> =
       Result.success(previewFile.takeIf { it.id == fileId })
 
+  override suspend fun removeItemFromGroup(
+      itemId: String,
+      groupId: String,
+      parentFolderId: String,
+  ): Result<Unit> {
+    error("not used")
+  }
+
   override fun getFileFlow(fileId: String): Flow<JDRFile?> = emptyFlow()
 
   override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = emptyFlow()

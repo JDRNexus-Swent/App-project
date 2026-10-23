@@ -474,6 +474,14 @@ class PersonalSpaceScreenTests {
 
     override suspend fun getFile(fileId: String): Result<JDRFile?> = Result.success(null)
 
+    override suspend fun removeItemFromGroup(
+        itemId: String,
+        groupId: String,
+        parentFolderId: String,
+    ): Result<Unit> {
+      TODO("Not yet implemented")
+    }
+
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = flowOf(null)
 
     override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> {
