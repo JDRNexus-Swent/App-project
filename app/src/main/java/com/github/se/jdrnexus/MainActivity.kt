@@ -34,6 +34,7 @@ import com.github.se.jdrnexus.ui.authentication.SignInScreen
 import com.github.se.jdrnexus.ui.authentication.SignUpScreen
 import com.github.se.jdrnexus.ui.dice.DiceOfflineScreen
 import com.github.se.jdrnexus.ui.edition.EditFileCharacter
+import com.github.se.jdrnexus.ui.edition.EditFileLore
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementScreen
 import com.github.se.jdrnexus.ui.home.HomeScreen
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
@@ -231,7 +232,13 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
         )
       }
 
-      composable(route = AllRoutes.EditLore.name) {}
+      composable(route = AllRoutes.EditLore.name) {
+        EditFileLore(
+            viewModel = editFileViewModel,
+            onBack = { navController.popBackStack() },
+            onSaved = { navController.popBackStack() },
+        )
+      }
     }
   }
 }
