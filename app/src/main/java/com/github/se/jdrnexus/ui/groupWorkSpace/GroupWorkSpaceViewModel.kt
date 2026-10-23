@@ -340,7 +340,7 @@ class GroupWorkspaceViewModel(
             .removeItemFromGroup(
                 itemId = existing.id,
                 groupId = groupId,
-                parentFolderId = parentId.takeIf { it.isNotEmpty() },
+                parentFolderId = parentId.takeIf { it.isNotEmpty() } ?: "",
             )
             .getOrThrow()
         if (existing.type == DocumentType.FOLDER && _uiState.value.currentFolderId == existing.id) {

@@ -1611,7 +1611,7 @@ class GroupWorkSpaceViewModelTest {
     override suspend fun removeItemFromGroup(
         itemId: String,
         groupId: String,
-        parentFolderId: String?,
+        parentFolderId: String,
     ): Result<Unit> {
       groupRemovalRequests += itemId to groupId
       return try {
