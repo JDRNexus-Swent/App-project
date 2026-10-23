@@ -166,16 +166,16 @@ class PersonalSpaceScreenTests {
   }
 
   @Test
-  fun newFileClosesMenuAndRequestsFileCreationInCurrentFolder() {
+  fun newFileClosesMenuAndNavigatesToCreatedFile() {
     val viewModel = viewModel()
-    var createdInFolderId: String? = null
-    setScreen(viewModel, onCreateFile = { createdInFolderId = it })
+    var createdFileId: String? = null
+    setScreen(viewModel, onCreateFile = { createdFileId = it })
 
     composeTestRule.onNodeWithContentDescription("Add item").performClick()
     composeTestRule.onNodeWithText("New file").performClick()
     composeTestRule.waitForIdle()
 
-    assertEquals("", createdInFolderId)
+    assertEquals("new-folder-id", createdFileId)
     assertFalse(viewModel.uiState.value.isAddMenuExpanded)
   }
 
@@ -473,6 +473,14 @@ class PersonalSpaceScreenTests {
     override suspend fun deleteFile(fileId: String): Result<Unit> = Result.success(Unit)
 
     override suspend fun getFile(fileId: String): Result<JDRFile?> = Result.success(null)
+
+    override suspend fun removeItemFromGroup(
+        itemId: String,
+        groupId: String,
+        parentFolderId: String,
+    ): Result<Unit> {
+      TODO("Not yet implemented")
+    }
 
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = flowOf(null)
 

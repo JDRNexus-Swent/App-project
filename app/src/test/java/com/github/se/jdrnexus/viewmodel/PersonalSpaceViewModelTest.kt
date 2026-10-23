@@ -98,6 +98,14 @@ class PersonalSpaceViewModelTest {
     override suspend fun deleteFile(fileId: String): Result<Unit> = Result.success(Unit)
 
     override suspend fun getFile(fileId: String): Result<JDRFile?> = Result.success(null)
+
+    override suspend fun removeItemFromGroup(
+        itemId: String,
+        groupId: String,
+        parentFolderId: String,
+    ): Result<Unit> {
+      TODO("Not yet implemented")
+    }
   }
 
   private class FakeAuthRepository(
@@ -238,9 +246,9 @@ class PersonalSpaceViewModelTest {
     assertEquals(listOf(ownerId), repository.requestedRootOwners)
   }
 
-  /** Verifies new-file navigation receives the current folder and closes the add menu. */
+  /** Verifies new files use the current folder and navigation receives the new file ID. */
   @Test
-  fun createFileCallbackCarriesCurrentFolder() {
+  fun newFileIsCreatedInCurrentFolderAndCallbackReceivesFileId() {
     val repository =
         FakePersonalSpaceRepository(
             rootItems = listOf(rootFolder),
@@ -251,11 +259,14 @@ class PersonalSpaceViewModelTest {
     viewModel.onItemClicked(rootFolder) {}
     idleMainLooper()
 
-    var selectedpersonalParentId = ""
+    var navigatedFileId = ""
     viewModel.onAddClicked()
-    viewModel.onNewFileSelected { selectedpersonalParentId = it }
+    viewModel.onNewFileSelected { navigatedFileId = it }
+    idleMainLooper()
 
-    assertEquals(rootFolder.id, selectedpersonalParentId)
+    assertEquals(1, repository.createdFiles.size)
+    assertEquals(rootFolder.id, repository.createdFiles.single().personalParentId)
+    assertEquals(repository.createdFiles.single().id, navigatedFileId)
     assertFalse(viewModel.uiState.value.isAddMenuExpanded)
   }
 

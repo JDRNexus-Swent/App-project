@@ -520,6 +520,14 @@ class EditFileViewModelTest {
           ?: Result.success(file?.takeIf { it.id == fileId })
     }
 
+    override suspend fun removeItemFromGroup(
+        itemId: String,
+        groupId: String,
+        parentFolderId: String,
+    ): Result<Unit> {
+      TODO("Not yet implemented")
+    }
+
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = emptyFlow()
 
     override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = emptyFlow()
