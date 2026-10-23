@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -140,7 +141,7 @@ class GameManagementScreenTest {
 
     composeTestRule.onNodeWithText("2 groups · Your next chapter, together.").assertIsDisplayed()
     composeTestRule.onNodeWithText("Campaign system not set · 1 member").assertIsDisplayed()
-    composeTestRule.onNodeWithText("Player").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Player").performScrollTo().assertIsDisplayed()
   }
 
   @Test
@@ -389,17 +390,23 @@ class GameManagementScreenTest {
     assertEquals("campaign-1", managedGroupId)
     assertEquals("Files", selectedTab)
 
+    composeTestRule.mainClock.autoAdvance = false
     composeTestRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_BUTTON).performClick()
+    composeTestRule.mainClock.advanceTimeBy(100)
     composeTestRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_DIALOG).assertIsDisplayed()
     val groupNameField = composeTestRule.onNodeWithTag(GameManagementTestTags.GROUP_NAME_FIELD)
     groupNameField.performTextInput("New campaign")
+    composeTestRule.mainClock.advanceTimeBy(100)
     composeTestRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_CONFIRM).performClick()
     composeTestRule.waitUntil(5_000) { viewModel.uiState.value.successMessage.isNotEmpty() }
+    composeTestRule.mainClock.advanceTimeBy(100)
     composeTestRule.onNodeWithText("New campaign was created.").assertIsDisplayed()
     assertEquals("New campaign", groupRepository.createdGroups.single().name)
     assertEquals("New campaign", workspaceRepository.createdFiles.single().name)
     composeTestRule.onNodeWithText("Dismiss").performClick()
+    composeTestRule.mainClock.advanceTimeBy(100)
     composeTestRule.onAllNodesWithText("New campaign was created.").assertCountEquals(0)
+    composeTestRule.mainClock.autoAdvance = true
   }
 
   private fun setContent(

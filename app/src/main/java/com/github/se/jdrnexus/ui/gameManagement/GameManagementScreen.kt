@@ -163,6 +163,7 @@ internal fun GameManagementScreenContent(
     onInvite: (String) -> Unit,
     onTabSelected: (String) -> Unit,
     darkTheme: Boolean = isSystemInDarkTheme(),
+    renderCreateDialogAsWindow: Boolean = true,
 ) {
   val colors = if (darkTheme) darkGameManagementColors else lightGameManagementColors
 
@@ -265,6 +266,7 @@ internal fun GameManagementScreenContent(
     CreateGroupDialog(
         uiState = uiState,
         colors = colors,
+        renderAsWindow = renderCreateDialogAsWindow,
         onNameChanged = onGroupNameChanged,
         onCreate = onCreateGroup,
         onDismiss = onDismissCreateDialog,
@@ -670,6 +672,7 @@ private fun OutlinedActionButton(
 private fun CreateGroupDialog(
     uiState: GameManagementUiState,
     colors: GameManagementColors,
+    renderAsWindow: Boolean,
     onNameChanged: (String) -> Unit,
     onCreate: () -> Unit,
     onDismiss: () -> Unit,
@@ -678,7 +681,7 @@ private fun CreateGroupDialog(
   val nameIsEmpty = uiState.groupName.isBlank()
   val showRequiredError = nameTouched && nameIsEmpty
   val isFailure = uiState.createError.isNotEmpty() && !nameIsEmpty
-  Dialog(onDismissRequest = { if (!uiState.isCreatingGroup) onDismiss() }) {
+  val dialogContent: @Composable () -> Unit = {
     Column(
         modifier =
             Modifier.fillMaxWidth()
@@ -802,6 +805,11 @@ private fun CreateGroupDialog(
         Text("Cancel", color = colors.secondaryText, fontSize = 11.sp)
       }
     }
+  }
+  if (renderAsWindow) {
+    Dialog(onDismissRequest = { if (!uiState.isCreatingGroup) onDismiss() }) { dialogContent() }
+  } else {
+    dialogContent()
   }
 }
 
