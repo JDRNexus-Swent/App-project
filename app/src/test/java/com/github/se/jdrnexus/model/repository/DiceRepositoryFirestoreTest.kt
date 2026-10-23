@@ -1,23 +1,18 @@
 // Co-authored-by: AI Agent
 package com.github.se.jdrnexus.model.repository
 
-import android.content.Context
-import android.os.Looper
-import androidx.test.core.app.ApplicationProvider
 import com.github.se.jdrnexus.ui.dice.DiceRollResult
 import com.github.se.jdrnexus.ui.dice.DiceType
-import com.google.firebase.FirebaseApp
+import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
+import com.github.se.jdrnexus.utils.waitFor
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
 import io.mockk.every
 import io.mockk.mockk
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -29,7 +24,6 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows.shadowOf
 
 @RunWith(RobolectricTestRunner::class)
 class DiceRepositoryFirestoreTest {
@@ -42,120 +36,20 @@ class DiceRepositoryFirestoreTest {
       AuthUser(uid = "testUid", email = "test@example.com", username = "testUser")
   private lateinit var testGroupId: String
 
-  companion object {
-    private const val DEFAULT_TIMEOUT_MS = 5000L
-    private const val EMULATOR_APP_NAME = "EmulatorApp"
-    private const val EMULATOR_HOST = "127.0.0.1"
-    private const val EMULATOR_PORT = 8080
-  }
-
   @Before
   fun setUp() {
     testGroupId = UUID.randomUUID().toString()
-    val context = ApplicationProvider.getApplicationContext<Context>()
-
-    // Make sure the default Firebase app exists, we need its options to clone it
-    if (FirebaseApp.getApps(context).isEmpty()) {
-      FirebaseApp.initializeApp(context)
-    }
-
-    // Dedicated FirebaseApp shared by all the emulator-based test classes of the JVM
-    val emulatorApp =
-        FirebaseApp.getApps(context).firstOrNull { it.name == EMULATOR_APP_NAME }
-            ?: FirebaseApp.initializeApp(
-                context,
-                FirebaseApp.getInstance().options,
-                EMULATOR_APP_NAME,
-            )
-
-    firestore = FirebaseFirestore.getInstance(emulatorApp)
-
-    try {
-      firestore.useEmulator(EMULATOR_HOST, EMULATOR_PORT)
-    } catch (e: IllegalStateException) {
-      // Already configured by a previous test class. Safety net: abort if, for any reason,
-      // this instance is not pointing to the emulator.
-      if (!firestore.firestoreSettings.host.contains(EMULATOR_HOST)) {
-        throw IllegalStateException(
-            "Firestore is not using the emulator! Aborting to prevent data loss.",
-            e,
-        )
-      }
-    }
+    firestore = FirebaseEmulatorTestUtils.getFirestore()
 
     authRepository = mockk()
     every { authRepository.authState } returns flowOf(testUser)
-
     repository = DiceRepositoryFirestore(firestore, authRepository)
   }
 
   @After
   fun tearDown() {
     runBlocking {
-      // Re-enable network in case a test disabled it
-      try {
-        firestore.enableNetwork().await()
-      } catch (_: Exception) {
-        // ignore
-      }
-
-      // we remove the dice_rolls documents explicitly
-      try {
-        val rolls =
-            firestore
-                .collection("campaign_groups")
-                .document(testGroupId)
-                .collection("dice_rolls")
-                .get()
-                .await()
-        if (!rolls.isEmpty) {
-          val batch = firestore.batch()
-          rolls.documents.forEach { batch.delete(it.reference) }
-          batch.commit().await()
-        }
-      } catch (e: Exception) {
-        println("tearDown failed: $e")
-      }
-    }
-  }
-
-  private suspend fun <T> Flow<T>.waitFor(
-      timeoutMs: Long = DEFAULT_TIMEOUT_MS,
-      condition: (T) -> Boolean,
-  ): T {
-    val latestValue = AtomicReference<T?>(null)
-    val isReady = AtomicBoolean(false)
-    val errorRef = AtomicReference<Throwable?>(null)
-
-    val job =
-        CoroutineScope(Dispatchers.Default).launch {
-          try {
-            this@waitFor.collect {
-              latestValue.set(it)
-              if (condition(it)) {
-                isReady.set(true)
-              }
-            }
-          } catch (e: Throwable) {
-            errorRef.set(e)
-          }
-        }
-    try {
-      val startTime = System.currentTimeMillis()
-      while (System.currentTimeMillis() - startTime < timeoutMs) {
-        shadowOf(Looper.getMainLooper()).idle()
-
-        errorRef.get()?.let { throw it }
-
-        if (isReady.get()) {
-          @Suppress("UNCHECKED_CAST")
-          return latestValue.get() as T
-        }
-        delay(50)
-      }
-      throw AssertionError("Timeout waiting for condition.")
-    } finally {
-      job.cancel()
+      FirebaseEmulatorTestUtils.tearDown(firestore, "campaign_groups/$testGroupId/dice_rolls")
     }
   }
 
@@ -217,20 +111,15 @@ class DiceRepositoryFirestoreTest {
       repository.saveRollResult(groupId, rollResult)
 
       // Wait until Firestore has persisted the document and the local cache is updated.
-      val waitStart = System.currentTimeMillis()
-      while (System.currentTimeMillis() - waitStart < DEFAULT_TIMEOUT_MS) {
-        val cachedSnapshot =
-            firestore
-                .collection("campaign_groups")
-                .document(groupId)
-                .collection("dice_rolls")
-                .get(Source.CACHE)
-                .await()
-        if (cachedSnapshot.documents.isNotEmpty()) {
-          break
-        }
-        shadowOf(Looper.getMainLooper()).idle()
-        delay(50)
+      FirebaseEmulatorTestUtils.pumpMainLooperUntil {
+        firestore
+            .collection("campaign_groups")
+            .document(groupId)
+            .collection("dice_rolls")
+            .get(Source.CACHE)
+            .await()
+            .documents
+            .isNotEmpty()
       }
 
       firestore.disableNetwork().await()
@@ -293,14 +182,7 @@ class DiceRepositoryFirestoreTest {
             repository.getDiceRollsStream(testGroupId).collect { latestList.set(it) }
           }
       try {
-        var startTime = System.currentTimeMillis()
-        while (
-            latestList.get().size != 1 &&
-                System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS
-        ) {
-          shadowOf(Looper.getMainLooper()).idle()
-          delay(50)
-        }
+        FirebaseEmulatorTestUtils.pumpMainLooperUntil { latestList.get().size == 1 }
         // add delay to be sure both roll are not register with the same timestamp
         delay(10)
 
@@ -309,14 +191,7 @@ class DiceRepositoryFirestoreTest {
             DiceRollResult(diceType = DiceType.D4, rawValue = 2, modifier = 0, totalValue = 2)
         repository.saveRollResult(testGroupId, rollResult2)
 
-        startTime = System.currentTimeMillis()
-        while (
-            latestList.get().size != 2 &&
-                System.currentTimeMillis() - startTime < DEFAULT_TIMEOUT_MS
-        ) {
-          shadowOf(Looper.getMainLooper()).idle()
-          delay(50)
-        }
+        FirebaseEmulatorTestUtils.pumpMainLooperUntil { latestList.get().size == 2 }
 
         val items = latestList.get()
         assertEquals(2, items.size)
