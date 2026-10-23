@@ -565,7 +565,7 @@ class GameManagementViewModelTest {
     override suspend fun removeItemFromGroup(
         itemId: String,
         groupId: String,
-        parentFolderId: String?,
+        parentFolderId: String,
     ): Result<Unit> {
       error("not used")
     }

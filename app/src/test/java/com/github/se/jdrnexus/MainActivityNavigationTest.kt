@@ -79,6 +79,25 @@ class MainActivityNavigationTest {
     assert(repository.authState.value == FakeAuthRepository.TEST_USER)
   }
 
+  @Test
+  fun homeNavigationOpensDiceAndReturnsHome() {
+    val repository = FakeAuthRepository()
+    showApp(repository)
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    waitForTag(TestTags.TITLE)
+
+    composeTestRule.onNodeWithTag(TestTags.DICEBUTTON).performClick()
+    waitForTag(C.Tag.dice_offline_screen)
+    composeTestRule.onNodeWithTag(C.Tag.dice_offline_screen).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.dice_offline_close).performClick()
+
+    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.dice_offline_screen).assertIsNotDisplayed()
+  }
+
   private fun showApp(repository: FakeAuthRepository = FakeAuthRepository()) {
     val viewModel = AuthViewModel(repository)
     composeTestRule.setContent { JDRNexusApp(authViewModel = viewModel) }
