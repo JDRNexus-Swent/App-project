@@ -283,7 +283,7 @@ class GameManagementViewModel(
                 name = group.name,
                 ownerId = requireNotNull(userId),
                 sharedGroupsIds = listOf(group.id),
-                type = DocumentType.FOLDER,
+                type = DocumentType.GROUP_ROOT,
             )
         workspaceRepository.createFile(rootFolder).getOrThrow()
         rootFolderCreated = true

@@ -584,7 +584,9 @@ private class PreviewWorkspaceRepository(private val previewFile: JDRFile) : Wor
 
   override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = emptyFlow()
 
-  override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> = emptyFlow()
+  override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
+      emptyFlow()
 
-  override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> = emptyFlow()
+  override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
+      emptyFlow()
 }

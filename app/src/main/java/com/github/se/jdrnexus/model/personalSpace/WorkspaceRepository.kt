@@ -91,19 +91,21 @@ interface WorkspaceRepository {
   fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>>
 
   /**
-   * Observes real-time changes to all documents (folders and files) located at the root of a shared
-   * campaign group.
-   *
-   * @param groupId The unique identifier of the group.
-   * @return A [Flow] emitting the list of root [JDRFile]s for the group.
-   */
-  fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>>
-
-  /**
-   * Observes real-time changes to all documents contained within a specific parent folder.
+   * Observes real-time changes to all documents (folders and files) located in a user's personal
+   * folder.
    *
    * @param folderId The unique identifier of the parent folder.
+   * @param ownerId The unique identifier of the user (Firebase Auth ID).
    * @return A [Flow] emitting the list of child [JDRFile]s.
    */
-  fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>>
+  fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>>
+
+  /**
+   * Observes real-time changes to all documents contained within a specific group folder.
+   *
+   * @param folderId The unique identifier of the parent folder.
+   * @param groupId The unique identifier of the group.
+   * @return A [Flow] emitting the list of child [JDRFile]s.
+   */
+  fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>>
 }

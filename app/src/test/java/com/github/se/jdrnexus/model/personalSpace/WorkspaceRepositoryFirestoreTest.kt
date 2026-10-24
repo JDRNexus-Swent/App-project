@@ -214,7 +214,7 @@ class WorkspaceRepositoryFirestoreTest {
     persistFiles(folder)
 
     val failingRepository = spyk(WorkspaceRepositoryFirestore(firestore))
-    every { failingRepository.getDocumentsInFolder(folder.id) } returns
+    every { failingRepository.getGroupFolderFiles(folder.id, groupId) } returns
         flow { throw IllegalStateException("descendant read failed") }
 
     val result =
@@ -289,14 +289,18 @@ class WorkspaceRepositoryFirestoreTest {
             JDRFile(
                 id = "file-${UUID.randomUUID()}",
                 sharedGroupsIds = listOf(groupId, otherGroupId),
-                parentFolderIds = listOf(personalFolder.id, groupFolder.id, otherGroupFolder.id),
+                placements =
+                    mapOf(
+                        groupId to Placement(folderId = groupFolder.id),
+                        otherGroupId to Placement(folderId = otherGroupFolder.id),
+                    ),
                 personalParentId = personalFolderId,
             )
         val child =
             JDRFile(
                 id = "child-${UUID.randomUUID()}",
                 sharedGroupsIds = listOf(groupId),
-                parentFolderIds = listOf(file.id),
+                placements = mapOf(groupId to Placement(folderId = file.id)),
             )
         persistFiles(groupFolder, personalFolder, otherGroupFolder, file, child)
         val repositorySpy = spyk(WorkspaceRepositoryFirestore(firestore))
@@ -313,7 +317,7 @@ class WorkspaceRepositoryFirestoreTest {
         assertEquals(
             file.copy(
                 sharedGroupsIds = listOf(otherGroupId),
-                parentFolderIds = listOf(personalFolder.id, otherGroupFolder.id),
+                placements = mapOf(otherGroupId to Placement(folderId = otherGroupFolder.id)),
             ),
             getPersistedFile(file.id),
         )
@@ -321,7 +325,7 @@ class WorkspaceRepositoryFirestoreTest {
         assertEquals(personalFolder, getPersistedFile(personalFolder.id))
         assertEquals(otherGroupFolder, getPersistedFile(otherGroupFolder.id))
         assertEquals(child, getPersistedFile(child.id))
-        verify(exactly = 0) { repositorySpy.getDocumentsInFolder(file.id) }
+        verify(exactly = 0) { repositorySpy.getGroupFolderFiles(file.id, groupId) }
         coVerify(exactly = 1) { repositorySpy.getFile(file.id) }
       }
 
@@ -339,7 +343,7 @@ class WorkspaceRepositoryFirestoreTest {
         JDRFile(
             id = "root-${UUID.randomUUID()}",
             sharedGroupsIds = listOf(groupId),
-            parentFolderIds = listOf(groupId),
+            placements = mapOf(groupId to Placement(folderId = groupId)),
             type = DocumentType.FOLDER,
         )
     val otherGroupFolder =
@@ -352,20 +356,28 @@ class WorkspaceRepositoryFirestoreTest {
         JDRFile(
             id = "nested-${UUID.randomUUID()}",
             sharedGroupsIds = listOf(groupId, otherGroupId),
-            parentFolderIds = listOf(root.id, otherGroupFolder.id),
+            placements =
+                mapOf(
+                    groupId to Placement(folderId = root.id),
+                    otherGroupId to Placement(folderId = otherGroupFolder.id),
+                ),
             type = DocumentType.FOLDER,
         )
     val nestedFile =
         JDRFile(
             id = "nested-file-${UUID.randomUUID()}",
             sharedGroupsIds = listOf(groupId, otherGroupId),
-            parentFolderIds = listOf(nestedFolder.id, otherGroupFolder.id),
+            placements =
+                mapOf(
+                    groupId to Placement(folderId = nestedFolder.id),
+                    otherGroupId to Placement(folderId = otherGroupFolder.id),
+                ),
         )
     val childNotSharedWithGroup =
         JDRFile(
             id = "not-shared-${UUID.randomUUID()}",
             sharedGroupsIds = listOf(otherGroupId),
-            parentFolderIds = listOf(root.id),
+            placements = mapOf(otherGroupId to Placement(folderId = root.id)),
         )
     val unrelatedFile = JDRFile(id = "unrelated-${UUID.randomUUID()}", name = "Untouched")
     persistFiles(
@@ -383,20 +395,20 @@ class WorkspaceRepositoryFirestoreTest {
     assertTrue(result.isSuccess)
     assertEquals(groupRoot, getPersistedFile(groupRoot.id))
     assertEquals(
-        root.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        root.copy(sharedGroupsIds = emptyList(), placements = emptyMap()),
         getPersistedFile(root.id),
     )
     assertEquals(
         nestedFolder.copy(
             sharedGroupsIds = listOf(otherGroupId),
-            parentFolderIds = listOf(otherGroupFolder.id),
+            placements = mapOf(otherGroupId to Placement(folderId = otherGroupFolder.id)),
         ),
         getPersistedFile(nestedFolder.id),
     )
     assertEquals(
         nestedFile.copy(
             sharedGroupsIds = listOf(otherGroupId),
-            parentFolderIds = listOf(otherGroupFolder.id),
+            placements = mapOf(otherGroupId to Placement(folderId = otherGroupFolder.id)),
         ),
         getPersistedFile(nestedFile.id),
     )
@@ -422,7 +434,7 @@ class WorkspaceRepositoryFirestoreTest {
             name = "Personal root",
             ownerId = ownerId,
             sharedGroupsIds = listOf(groupId),
-            parentFolderIds = listOf(groupId),
+            placements = mapOf(groupId to Placement(folderId = groupId)),
             type = DocumentType.FOLDER,
         )
     val nestedFolder =
@@ -431,7 +443,7 @@ class WorkspaceRepositoryFirestoreTest {
             name = "Personal nested folder",
             ownerId = ownerId,
             sharedGroupsIds = listOf(groupId),
-            parentFolderIds = listOf(root.id),
+            placements = mapOf(groupId to Placement(folderId = root.id)),
             personalParentId = root.id,
             type = DocumentType.FOLDER,
         )
@@ -449,7 +461,11 @@ class WorkspaceRepositoryFirestoreTest {
             name = "Personal notes",
             ownerId = ownerId,
             sharedGroupsIds = listOf(groupId, otherGroupId),
-            parentFolderIds = listOf(nestedFolder.id, otherGroupFolder.id),
+            placements =
+                mapOf(
+                    groupId to Placement(folderId = nestedFolder.id),
+                    otherGroupId to Placement(folderId = otherGroupFolder.id),
+                ),
             personalParentId = nestedFolder.id,
             type = DocumentType.TEXT,
             content = "Keep this content",
@@ -461,13 +477,13 @@ class WorkspaceRepositoryFirestoreTest {
     assertTrue(result.isSuccess)
     assertEquals(groupRoot, getPersistedFile(groupRoot.id))
     assertEquals(
-        root.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        root.copy(sharedGroupsIds = emptyList(), placements = emptyMap()),
         getPersistedFile(root.id),
     )
     assertEquals(
         nestedFolder.copy(
             sharedGroupsIds = emptyList(),
-            parentFolderIds = listOf(root.id),
+            placements = emptyMap(),
         ),
         getPersistedFile(nestedFolder.id),
     )
@@ -475,7 +491,7 @@ class WorkspaceRepositoryFirestoreTest {
     assertEquals(
         personalFile.copy(
             sharedGroupsIds = listOf(otherGroupId),
-            parentFolderIds = listOf(nestedFolder.id, otherGroupFolder.id),
+            placements = mapOf(otherGroupId to Placement(folderId = otherGroupFolder.id)),
         ),
         getPersistedFile(personalFile.id),
     )
@@ -484,31 +500,31 @@ class WorkspaceRepositoryFirestoreTest {
         repository.getPersonalRootFiles(ownerId).waitFor { files -> files.any { it.id == root.id } }
     assertTrue(
         personalRootItems.any {
-          it == root.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList())
+          it == root.copy(sharedGroupsIds = emptyList(), placements = emptyMap())
         }
     )
     assertTrue(
         repository
-            .getDocumentsInFolder(root.id)
+            .getPersonalFolderFiles(root.id, ownerId)
             .waitFor { files -> files.any { it.id == nestedFolder.id } }
-            .any { it == nestedFolder.copy(sharedGroupsIds = emptyList()) }
+            .any { it == nestedFolder.copy(sharedGroupsIds = emptyList(), placements = emptyMap()) }
     )
     assertTrue(
         repository
-            .getDocumentsInFolder(nestedFolder.id)
+            .getPersonalFolderFiles(nestedFolder.id, ownerId)
             .waitFor { files -> files.any { it.id == personalFile.id } }
             .any {
               it ==
                   personalFile.copy(
                       sharedGroupsIds = listOf(otherGroupId),
-                      parentFolderIds = listOf(nestedFolder.id, otherGroupFolder.id),
+                      placements = mapOf(otherGroupId to Placement(folderId = otherGroupFolder.id)),
                   )
             }
     )
     assertEquals(
         personalFile.copy(
             sharedGroupsIds = listOf(otherGroupId),
-            parentFolderIds = listOf(nestedFolder.id, otherGroupFolder.id),
+            placements = mapOf(otherGroupId to Placement(folderId = otherGroupFolder.id)),
         ),
         repository.getFile(personalFile.id).getOrThrow(),
     )
@@ -527,7 +543,7 @@ class WorkspaceRepositoryFirestoreTest {
         JDRFile(
             id = "nested-${UUID.randomUUID()}",
             sharedGroupsIds = listOf(groupId),
-            parentFolderIds = listOf(parent.id),
+            placements = mapOf(groupId to Placement(folderId = parent.id)),
             type = DocumentType.FOLDER,
         )
     persistFiles(parent, nestedFolder)
@@ -536,7 +552,7 @@ class WorkspaceRepositoryFirestoreTest {
 
     assertTrue(result.isSuccess)
     assertEquals(
-        nestedFolder.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        nestedFolder.copy(sharedGroupsIds = emptyList(), placements = emptyMap()),
         getPersistedFile(nestedFolder.id),
     )
     assertEquals(parent, getPersistedFile(parent.id))
@@ -563,7 +579,11 @@ class WorkspaceRepositoryFirestoreTest {
             JDRFile(
                 id = "file-${UUID.randomUUID()}",
                 sharedGroupsIds = listOf(groupId, otherGroupId),
-                parentFolderIds = listOf(groupId, parent.id),
+                placements =
+                    mapOf(
+                        groupId to Placement(folderId = groupId),
+                        otherGroupId to Placement(folderId = parent.id),
+                    ),
             )
         persistFiles(groupRoot, parent, nestedFile)
 
@@ -573,7 +593,7 @@ class WorkspaceRepositoryFirestoreTest {
         assertEquals(
             nestedFile.copy(
                 sharedGroupsIds = listOf(groupId),
-                parentFolderIds = listOf(groupId),
+                placements = mapOf(groupId to Placement(folderId = groupId)),
             ),
             getPersistedFile(nestedFile.id),
         )
@@ -594,7 +614,7 @@ class WorkspaceRepositoryFirestoreTest {
         JDRFile(
             id = "file-${UUID.randomUUID()}",
             sharedGroupsIds = listOf(groupId),
-            parentFolderIds = listOf(parent.id),
+            placements = mapOf(groupId to Placement(folderId = parent.id)),
         )
     persistFiles(parent, nestedFile)
 
@@ -602,7 +622,7 @@ class WorkspaceRepositoryFirestoreTest {
 
     assertTrue(result.isSuccess)
     assertEquals(
-        nestedFile.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        nestedFile.copy(sharedGroupsIds = emptyList(), placements = emptyMap()),
         getPersistedFile(nestedFile.id),
     )
   }
@@ -620,7 +640,7 @@ class WorkspaceRepositoryFirestoreTest {
         JDRFile(
             id = "empty-folder-${UUID.randomUUID()}",
             sharedGroupsIds = listOf(groupId),
-            parentFolderIds = listOf(groupId),
+            placements = mapOf(groupId to Placement(folderId = groupId)),
             type = DocumentType.FOLDER,
         )
     persistFiles(groupRoot, folder)
@@ -629,7 +649,7 @@ class WorkspaceRepositoryFirestoreTest {
 
     assertTrue(result.isSuccess)
     assertEquals(
-        folder.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
+        folder.copy(sharedGroupsIds = emptyList(), placements = emptyMap()),
         getPersistedFile(folder.id),
     )
     assertEquals(groupRoot, getPersistedFile(groupRoot.id))
@@ -642,19 +662,19 @@ class WorkspaceRepositoryFirestoreTest {
         JDRFile(
             id = "root-${UUID.randomUUID()}",
             sharedGroupsIds = listOf(groupId),
-            parentFolderIds = listOf(groupId),
+            placements = mapOf(groupId to Placement(folderId = groupId)),
             type = DocumentType.FOLDER,
         )
     val child =
         JDRFile(
             id = "child-${UUID.randomUUID()}",
             sharedGroupsIds = listOf(groupId),
-            parentFolderIds = listOf(root.id),
+            placements = mapOf(groupId to Placement(folderId = root.id)),
             type = DocumentType.FOLDER,
         )
     val rootUpdate = slot<Map<String, Any>>()
     val childUpdate = slot<Map<String, Any>>()
-    val repeatedRoot = root.copy(parentFolderIds = listOf(child.id))
+    val repeatedRoot = root.copy(placements = mapOf(groupId to Placement(folderId = child.id)))
     persistFiles(repeatedRoot, child)
 
     val collection = firestore.collection("documents")
@@ -683,13 +703,13 @@ class WorkspaceRepositoryFirestoreTest {
     val expectedRoot =
         repeatedRoot.copy(
             sharedGroupsIds = emptyList(),
-            parentFolderIds = emptyList(),
+            placements = emptyMap(),
         )
 
     val expectedChild =
         child.copy(
             sharedGroupsIds = emptyList(),
-            parentFolderIds = emptyList(),
+            placements = emptyMap(),
         )
 
     assertEquals(expectedRoot.toMap(), rootUpdate.captured)
@@ -905,21 +925,18 @@ class WorkspaceRepositoryFirestoreTest {
               id = UUID.randomUUID().toString(),
               ownerId = ownerId,
               name = "File 1",
-              parentFolderIds = emptyList(),
           )
       val file2 =
           JDRFile(
               id = UUID.randomUUID().toString(),
               ownerId = ownerId,
               name = "File 2",
-              parentFolderIds = emptyList(),
           )
       val fileOtherOwner =
           JDRFile(
               id = UUID.randomUUID().toString(),
               ownerId = "other",
               name = "Other File",
-              parentFolderIds = emptyList(),
           )
       val fileWithParent =
           JDRFile(
@@ -962,34 +979,35 @@ class WorkspaceRepositoryFirestoreTest {
               id = UUID.randomUUID().toString(),
               sharedGroupsIds = listOf(groupId),
               name = "Group File 1",
-              parentFolderIds = emptyList(),
+              placements = mapOf(groupId to Placement(folderId = groupId)),
           )
       val file2 =
           JDRFile(
               id = UUID.randomUUID().toString(),
               sharedGroupsIds = listOf(groupId),
               name = "Group File 2",
-              parentFolderIds = emptyList(),
+              placements = mapOf(groupId to Placement(folderId = groupId)),
           )
       val fileOtherGroup =
           JDRFile(
               id = UUID.randomUUID().toString(),
               sharedGroupsIds = listOf("otherGroup"),
               name = "Other Group File",
-              parentFolderIds = emptyList(),
+              placements = mapOf("otherGroup" to Placement(folderId = "otherGroup")),
           )
       val fileWithParent =
           JDRFile(
               id = UUID.randomUUID().toString(),
               sharedGroupsIds = listOf(groupId),
               name = "Group Child File",
-              parentFolderIds = listOf("parent1"),
+              placements = mapOf(groupId to Placement(folderId = "parent1")),
           )
       val parentFolder =
           JDRFile(
               id = "parent1",
               sharedGroupsIds = listOf(groupId),
               type = DocumentType.FOLDER,
+              placements = mapOf(groupId to Placement(folderId = groupId)),
           )
 
       repository.createFile(file1)
@@ -998,7 +1016,7 @@ class WorkspaceRepositoryFirestoreTest {
       repository.createFile(fileWithParent)
       repository.createFile(parentFolder)
 
-      val files = repository.getGroupRootFiles(groupId).waitFor { it.size == 3 }
+      val files = repository.getGroupFolderFiles(groupId, groupId).waitFor { it.size == 3 }
 
       assertEquals("Should retrieve exactly 3 items for the group at root", 3, files.size)
       assertTrue(files.contains(file1))
@@ -1013,38 +1031,48 @@ class WorkspaceRepositoryFirestoreTest {
   fun testGetGroupRootFiles_Empty() {
     runBlocking {
       val emptyGroupId = "empty_group_id"
-      val files = repository.getGroupRootFiles(emptyGroupId).waitFor { it.isEmpty() }
+      val files =
+          repository.getGroupFolderFiles(emptyGroupId, emptyGroupId).waitFor { it.isEmpty() }
       assertTrue("Should retrieve empty list when no group root files exist", files.isEmpty())
     }
   }
 
   /** Tests retrieving all documents located within a specific folder. */
   @Test
-  fun testGetDocumentsInFolder() {
+  fun testGetGroupFolderFiles() {
     runBlocking {
       val folderId = UUID.randomUUID().toString()
+      val groupId = UUID.randomUUID().toString()
       val file1 =
           JDRFile(
               id = UUID.randomUUID().toString(),
-              parentFolderIds = listOf(folderId),
+              sharedGroupsIds = listOf(groupId),
+              placements = mapOf(groupId to Placement(folderId = folderId)),
               name = "Child File 1",
           )
       val file2 =
           JDRFile(
               id = UUID.randomUUID().toString(),
-              parentFolderIds = listOf(folderId, "otherFolder"),
+              sharedGroupsIds = listOf(groupId),
+              placements =
+                  mapOf(
+                      groupId to Placement(folderId = folderId),
+                      "otherGroup" to Placement(folderId = "otherFolder"),
+                  ),
               name = "Child File 2",
           )
       val fileOtherFolder =
           JDRFile(
               id = UUID.randomUUID().toString(),
-              parentFolderIds = listOf("otherFolder"),
+              sharedGroupsIds = listOf(groupId),
+              placements = mapOf(groupId to Placement(folderId = "otherFolder")),
               name = "Other Folder File",
           )
       val fileRoot =
           JDRFile(
               id = UUID.randomUUID().toString(),
-              parentFolderIds = emptyList(),
+              sharedGroupsIds = listOf(groupId),
+              placements = mapOf(groupId to Placement(folderId = groupId)),
               name = "Root File",
           )
 
@@ -1053,7 +1081,7 @@ class WorkspaceRepositoryFirestoreTest {
       repository.createFile(fileOtherFolder)
       repository.createFile(fileRoot)
 
-      val files = repository.getDocumentsInFolder(folderId).waitFor { it.size == 2 }
+      val files = repository.getGroupFolderFiles(folderId, groupId).waitFor { it.size == 2 }
 
       assertEquals("Should retrieve exactly 2 files for the folder", 2, files.size)
       assertTrue(files.contains(file1))
@@ -1063,10 +1091,12 @@ class WorkspaceRepositoryFirestoreTest {
 
   /** Ensures that an empty list is emitted if a folder contains no documents. */
   @Test
-  fun testGetDocumentsInFolder_Empty() {
+  fun testGetGroupFolderFiles_Empty() {
     runBlocking {
       val emptyFolderId = "empty_folder_id"
-      val files = repository.getDocumentsInFolder(emptyFolderId).waitFor { it.isEmpty() }
+      val emptyGroupId = "empty_group_id"
+      val files =
+          repository.getGroupFolderFiles(emptyFolderId, emptyGroupId).waitFor { it.isEmpty() }
       assertTrue("Should retrieve empty list when no documents in folder", files.isEmpty())
     }
   }
@@ -1076,13 +1106,15 @@ class WorkspaceRepositoryFirestoreTest {
    * removes a document from a folder, the interface should instantly update for all players.
    */
   @Test
-  fun testGetDocumentsInFolder_Updates() {
+  fun testGetGroupFolderFiles_Updates() {
     runBlocking {
       val folderId = UUID.randomUUID().toString()
+      val groupId = UUID.randomUUID().toString()
       val file1 =
           JDRFile(
               id = UUID.randomUUID().toString(),
-              parentFolderIds = listOf(folderId),
+              sharedGroupsIds = listOf(groupId),
+              placements = mapOf(groupId to Placement(folderId = folderId)),
               name = "File 1",
           )
       repository.createFile(file1)
@@ -1091,7 +1123,7 @@ class WorkspaceRepositoryFirestoreTest {
       val hasEmitted = AtomicBoolean(false)
       val job =
           launch(Dispatchers.Default) {
-            repository.getDocumentsInFolder(folderId).collect {
+            repository.getGroupFolderFiles(folderId, groupId).collect {
               latestList.set(it)
               hasEmitted.set(true)
             }
@@ -1105,7 +1137,8 @@ class WorkspaceRepositoryFirestoreTest {
       val file2 =
           JDRFile(
               id = UUID.randomUUID().toString(),
-              parentFolderIds = listOf(folderId),
+              sharedGroupsIds = listOf(groupId),
+              placements = mapOf(groupId to Placement(folderId = folderId)),
               name = "File 2",
           )
       repository.createFile(file2)
@@ -1114,7 +1147,7 @@ class WorkspaceRepositoryFirestoreTest {
       assertEquals("List should be updated to 2 items", 2, latestList.get().size)
 
       // Remove the first file from the folder (simulate moving it to root)
-      repository.updateFile(file1.copy(parentFolderIds = emptyList()))
+      repository.updateFile(file1.copy(placements = emptyMap()))
 
       FirebaseEmulatorTestUtils.pumpMainLooperUntil {
         latestList.get().size == 1 && latestList.get().first().id == file2.id
@@ -1173,7 +1206,7 @@ class WorkspaceRepositoryFirestoreTest {
           hashMapOf(
               "ownerId" to "corrupted_owner",
               "personalParentId" to "",
-              "parentFolderIds" to 12345,
+              "placements" to 12345,
           )
       firestore.collection("documents").document("corrupted_doc").set(corruptedData).await()
 
@@ -1284,13 +1317,15 @@ class WorkspaceRepositoryFirestoreTest {
     every { collectionMock.whereEqualTo("ownerId", "error_owner_test") } returns queryMock
     every { queryMock.whereEqualTo("personalParentId", "") } returns queryMock
 
-    // Mocking the 'getGroupRootFiles' query chain
+    // Mocking the 'getGroupFolderFiles' query chain
     every { collectionMock.whereArrayContains("sharedGroupsIds", "error_group_test") } returns
         queryMock
+    every {
+      queryMock.whereEqualTo("placements.error_group_test.folderId", "error_group_test")
+    } returns queryMock
 
-    // Mocking the 'getDocumentsInFolder' query chain
-    every { collectionMock.whereArrayContains("parentFolderIds", "error_folder_test") } returns
-        queryMock
+    // Mocking the 'getPersonalFolderFiles' query chain
+    every { queryMock.whereEqualTo("personalParentId", "error_folder_test") } returns queryMock
 
     // 3. Intercept 'addSnapshotListener' and instantly trigger a PERMISSION_DENIED error
     every { queryMock.addSnapshotListener(any()) } answers
@@ -1317,18 +1352,18 @@ class WorkspaceRepositoryFirestoreTest {
       assertTrue(e.message?.contains("Simulated Permission Denied") == true)
     }
 
-    // 5. Assert that getGroupRootFiles correctly catches and propagates the error
+    // 5. Assert that getGroupFolderFiles correctly catches and propagates the error
     try {
-      mockRepository.getGroupRootFiles("error_group_test").collect {}
-      fail("getGroupRootFiles should have thrown an exception")
+      mockRepository.getGroupFolderFiles("error_group_test", "error_group_test").collect {}
+      fail("getGroupFolderFiles should have thrown an exception")
     } catch (e: Exception) {
       assertTrue(e.message?.contains("Simulated Permission Denied") == true)
     }
 
-    // 6. Assert that getDocumentsInFolder correctly catches and propagates the error
+    // 6. Assert that getPersonalFolderFiles correctly catches and propagates the error
     try {
-      mockRepository.getDocumentsInFolder("error_folder_test").collect {}
-      fail("getDocumentsInFolder should have thrown an exception")
+      mockRepository.getPersonalFolderFiles("error_folder_test", "error_owner_test").collect {}
+      fail("getPersonalFolderFiles should have thrown an exception")
     } catch (e: Exception) {
       assertTrue(e.message?.contains("Simulated Permission Denied") == true)
     }
