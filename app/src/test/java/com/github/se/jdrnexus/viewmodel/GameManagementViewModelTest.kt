@@ -229,7 +229,7 @@ class GameManagementViewModelTest {
                 name = "The Adventure",
                 ownerId = user.uid,
                 sharedGroupsIds = listOf("created-group"),
-                type = DocumentType.FOLDER,
+                type = DocumentType.GROUP_ROOT,
             )
         ),
         workspaceRepository.createdFiles,
@@ -574,9 +574,11 @@ class GameManagementViewModelTest {
 
     override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = error("Not used")
 
-    override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> = error("Not used")
+    override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
+        error("Not used")
 
-    override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> = error("Not used")
+    override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
+        error("Not used")
   }
 
   private class TrackingGroupRepository : GroupRepository by UnusedGroupRepository {
