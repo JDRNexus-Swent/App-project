@@ -11,6 +11,7 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
@@ -700,20 +701,33 @@ class WorkspaceRepositoryFirestoreTest {
     verify(exactly = 1) { batchMock.commit() }
     confirmVerified(batchMock)
 
-    val expectedRoot =
-        repeatedRoot.copy(
-            sharedGroupsIds = emptyList(),
-            placements = emptyMap(),
-        )
+    listOf(rootUpdate.captured, childUpdate.captured).forEach { update ->
+      assertEquals(setOf("placements.$groupId", "sharedGroupsIds"), update.keys)
+      assertEquals(FieldValue.delete(), update["placements.$groupId"])
+      assertTrue(update["sharedGroupsIds"] is FieldValue)
+    }
+  }
 
-    val expectedChild =
-        child.copy(
-            sharedGroupsIds = emptyList(),
-            placements = emptyMap(),
+  @Test
+  fun removeItemFromGroup_refusesToRemoveGroupRoot() = runBlocking {
+    val groupId = "group-${UUID.randomUUID()}"
+    val groupRoot =
+        JDRFile(
+            id = groupId,
+            sharedGroupsIds = listOf(groupId),
+            type = DocumentType.GROUP_ROOT,
         )
+    persistFiles(groupRoot)
 
-    assertEquals(expectedRoot.toMap(), rootUpdate.captured)
-    assertEquals(expectedChild.toMap(), childUpdate.captured)
+    val result = removeItemFromGroupAndPumpMainLooper(groupRoot.id, groupId)
+
+    assertTrue(result.isFailure)
+    assertEquals(IllegalStateException::class.java, result.exceptionOrNull()?.javaClass)
+    assertEquals(
+        "A group root cannot be removed from its group.",
+        result.exceptionOrNull()?.message,
+    )
+    assertEquals(groupRoot, getPersistedFile(groupRoot.id))
   }
 
   /** Tests the creation of a new uid and verifies that it not empty and unique */
@@ -781,6 +795,27 @@ class WorkspaceRepositoryFirestoreTest {
       val getResult = repository.getFile(fileId)
       assertEquals("File name should be updated", "Updated", getResult.getOrNull()?.name)
       assertEquals("File content should be updated", "New Content", getResult.getOrNull()?.content)
+    }
+  }
+
+  /** An edit made from an older snapshot must not undo a share made in the meantime. */
+  @Test
+  fun updateFile_doesNotOverwriteGroupPlacements() {
+    runBlocking {
+      val groupId = "group-${UUID.randomUUID()}"
+      val file = JDRFile(id = UUID.randomUUID().toString(), name = "Original", ownerId = "owner1")
+      persistFiles(file)
+      // The file is shared after the editor loaded its snapshot (which has no placement).
+      val shared = file.withPlacement(groupId, Placement(folderId = groupId))
+      persistFiles(shared)
+
+      val result = repository.updateFile(file.copy(name = "Edited", content = "New content"))
+
+      assertTrue(result.isSuccess)
+      assertEquals(
+          shared.copy(name = "Edited", content = "New content"),
+          getPersistedFile(file.id),
+      )
     }
   }
 
@@ -1146,8 +1181,9 @@ class WorkspaceRepositoryFirestoreTest {
       FirebaseEmulatorTestUtils.pumpMainLooperUntil { latestList.get().size == 2 }
       assertEquals("List should be updated to 2 items", 2, latestList.get().size)
 
-      // Remove the first file from the folder (simulate moving it to root)
-      repository.updateFile(file1.copy(placements = emptyMap()))
+      // Remove the first file from the folder (written directly: updateFile no longer touches
+      // placements)
+      persistFiles(file1.copy(sharedGroupsIds = emptyList(), placements = emptyMap()))
 
       FirebaseEmulatorTestUtils.pumpMainLooperUntil {
         latestList.get().size == 1 && latestList.get().first().id == file2.id

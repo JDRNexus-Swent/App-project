@@ -32,6 +32,10 @@ interface WorkspaceRepository {
    * Updates an existing document in the database. This is used when a user or Game Master updates
    * stats, triggering real-time sync across devices.
    *
+   * Only the document's own fields are written. Group sharing ([JDRFile.placements] and
+   * [JDRFile.sharedGroupsIds]) is left untouched, so saving an edit made from an older snapshot
+   * cannot undo a share made in the meantime.
+   *
    * @param file The updated [JDRFile] object.
    * @return A [Result] indicating success or failure.
    */

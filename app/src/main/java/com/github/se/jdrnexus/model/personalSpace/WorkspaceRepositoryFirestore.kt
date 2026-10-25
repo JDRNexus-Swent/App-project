@@ -2,6 +2,7 @@
 package com.github.se.jdrnexus.model.personalSpace
 
 import android.util.Log
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import kotlin.coroutines.cancellation.CancellationException
@@ -36,7 +37,15 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
 
   override suspend fun updateFile(file: JDRFile): Result<Unit> {
     return try {
-      collection.document(file.id).update(file.toMap()).await()
+      // `file` is usually a snapshot read earlier (e.g. by the editor).
+      // Writing every field would overwrite the document with that possibly stale copy,
+      // so a share or unshare made in the meantime would be silently undone.
+      // Group sharing is therefore excluded here: `placements`
+      // and `sharedGroupsIds` only change through dedicated repository operations (e.g.
+      // removeItemFromGroup), which update both fields together and leave the other fields
+      // untouched.
+      val fields = file.toMap() - "placements" - "sharedGroupsIds"
+      collection.document(file.id).update(fields).await()
       Result.success(Unit)
     } catch (e: CancellationException) {
       throw e
@@ -86,6 +95,9 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       val root = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
 
       check(groupId in root.sharedGroupsIds) { "This item does not belong to the group." }
+      check(root.type != DocumentType.GROUP_ROOT) {
+        "A group root cannot be removed from its group."
+      }
 
       // Collect the selected item and, for folders, descendants with their placement parent.
       val itemsToRemove = linkedMapOf<String, Pair<JDRFile, String>>()
@@ -128,12 +140,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       val batch = firestore.batch()
 
       itemsToRemove.values.forEach { (file, _) ->
-        val updated = file.withoutPlacement(groupId)
-
-        batch.update(
-            collection.document(file.id),
-            updated.toMap(),
-        )
+        batch.update(collection.document(file.id), removePlacementUpdate(groupId))
       }
 
       batch.commit().await()
@@ -144,6 +151,17 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       Result.failure(e)
     }
   }
+
+  /**
+   * Targeted write that unshares a file from [groupId]: it deletes that group's placement and
+   * removes the group from `sharedGroupsIds` in the same update, and leaves every other field
+   * (including the placements of other groups) untouched.
+   */
+  private fun removePlacementUpdate(groupId: String): Map<String, Any> =
+      mapOf(
+          "placements.$groupId" to FieldValue.delete(),
+          "sharedGroupsIds" to FieldValue.arrayRemove(groupId),
+      )
 
   override fun getFileFlow(fileId: String): Flow<JDRFile?> = callbackFlow {
     // callbackFlow bridges Firestore's callback API with Kotlin Coroutines Flow.
