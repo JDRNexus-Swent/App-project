@@ -81,8 +81,18 @@ class EditFileComponentsTests {
     composeTestRule.setContent {
       MaterialTheme {
         Column {
-          EditFileSectionHeading(title = "Stats", count = 1)
-          EditFileSectionHeading(title = "Stats", count = 2)
+          EditFileSectionHeading(
+              title = "Stats",
+              count = 1,
+              singularCountLabel = "stat",
+              pluralCountLabel = "stats",
+          )
+          EditFileSectionHeading(
+              title = "Stats",
+              count = 2,
+              singularCountLabel = "stat",
+              pluralCountLabel = "stats",
+          )
           EditFileErrorMessage(error = "Save failed", testTag = "error-message")
           EditFileSaveButton(isSaving = true, isSaved = false, testTag = "saving") { saveClicks++ }
           EditFileSaveButton(isSaving = false, isSaved = false, testTag = "save") { saveClicks++ }

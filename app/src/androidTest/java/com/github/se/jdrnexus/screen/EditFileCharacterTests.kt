@@ -254,7 +254,7 @@ class EditFileCharacterTests {
       )
     }
 
-    composeTestRule.onNodeWithText("Loading character...").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Loading character…").assertIsDisplayed()
     loadGate.complete(Unit)
     composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
       !viewModel.uiState.value.isLoading
