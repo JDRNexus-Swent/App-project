@@ -61,11 +61,14 @@ enum class DocumentType {
   FOLDER,
   TEXT,
   CHARACTER,
-  GROUP_ROOT,
+    GROUP_ROOT;
+
+    /** Whether files of this type can hold other files. */
+    fun isContainer(): Boolean = this == FOLDER || this == GROUP_ROOT
 }
 
 /**
  * Whether this file can hold other files. Kept outside the class so Firestore's POJO mapper does
  * not mistake it for a stored property.
  */
-fun JDRFile.isContainer(): Boolean = type == DocumentType.FOLDER || type == DocumentType.GROUP_ROOT
+fun JDRFile.isContainer(): Boolean = type.isContainer()
