@@ -489,9 +489,11 @@ class PersonalSpaceScreenTests {
       return rootFiles
     }
 
-    override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> = flowOf(emptyList())
+    override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
+        flowOf(emptyList())
 
-    override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> = flowOf(emptyList())
+    override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
+        flowOf(emptyList())
   }
 
   private class FakeAuthRepository : AuthRepository {

@@ -3,6 +3,7 @@ package com.github.se.jdrnexus.model.personalSpace
 
 import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -101,15 +102,15 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
         Log.d(
             "GroupWorkspace",
             "Visiting ${file.name} (${file.id}), " +
-                "parentId=$parentId, parents=${file.parentFolderIds}, " +
+                "parentId=$parentId, placements=${file.placements}, " +
                 "groups=${file.sharedGroupsIds}",
         )
 
         itemsToRemove[file.id] = file to parentId
 
-        if (file.type != DocumentType.FOLDER) return
+        if (!file.isContainer()) return
 
-        val children = getDocumentsInFolder(file.id).first()
+        val children = getGroupFolderFiles(file.id, groupId).first()
 
         children
             .filter { groupId in it.sharedGroupsIds }
@@ -126,18 +127,8 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       // Remove group sharing without deleting the underlying documents.
       val batch = firestore.batch()
 
-      itemsToRemove.values.forEach { (file, parentId) ->
-        val updated =
-            file.copy(
-                sharedGroupsIds = file.sharedGroupsIds - groupId,
-                parentFolderIds =
-                    // Personal Space folder lookups also query parentFolderIds.
-                    if (file.personalParentId == parentId) {
-                      file.parentFolderIds
-                    } else {
-                      file.parentFolderIds - parentId
-                    },
-            )
+      itemsToRemove.values.forEach { (file, _) ->
+        val updated = file.withoutPlacement(groupId)
 
         batch.update(
             collection.document(file.id),
@@ -185,129 +176,72 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     awaitClose { listenerRegistration.remove() }
   }
 
-  override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = callbackFlow {
-    // Listen for changes on all documents owned by this user where personalParentId is empty
-    // (meaning they are at the root level).
-    val listenerRegistration =
-        collection
-            .whereEqualTo("ownerId", ownerId)
-            .whereEqualTo("personalParentId", "")
-            .addSnapshotListener { snapshot, error ->
-              if (error != null) {
-                close(error)
-                return@addSnapshotListener
-              }
+  /**
+   * Helper function to observe a Firestore query and emit a list of [JDRFile]s.
+   *
+   * @param query The Firestore query to observe.
+   * @param filterCondition An optional condition to filter the parsed [JDRFile]s.
+   * @param sortCondition An optional block to sort the parsed [JDRFile]s.
+   * @param errorMessageContext A string describing the context of the query for error logging.
+   */
+  private fun observeFilesQuery(
+      query: Query,
+      errorMessageContext: String,
+      filterCondition: (JDRFile) -> Boolean = { true },
+      sortCondition: (MutableList<JDRFile>) -> Unit = {},
+  ): Flow<List<JDRFile>> = callbackFlow {
+    val listenerRegistration = query.addSnapshotListener { snapshot, error ->
+      if (error != null) {
+        close(error)
+        return@addSnapshotListener
+      }
 
-              // Transform the Firestore documents into JDRFile objects.
-              if (snapshot != null) {
-                val files = mutableListOf<JDRFile>()
+      if (snapshot != null) {
+        val files = mutableListOf<JDRFile>()
 
-                for (document in snapshot.documents) {
-                  try {
-                    val file = document.toObject(JDRFile::class.java)
-                    if (file != null) {
-                      files.add(file)
-                    }
-                  } catch (e: Exception) {
-                    // corrupted document leave an error message, with making the app crash
-                    Log.e(
-                        "WorkspaceRepository",
-                        "Error in the deserialization of ${document.id}",
-                        e,
-                    )
-                  }
-                }
-                // Emit the updated list of files to the Flow.
-                trySend(files)
-              }
+        for (document in snapshot.documents) {
+          try {
+            val file = document.toObject(JDRFile::class.java)
+            if (file != null && filterCondition(file)) {
+              files.add(file)
             }
-
-    // Clean up the listener when the Flow is cancelled.
-    awaitClose { listenerRegistration.remove() }
-  }
-
-  override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> = callbackFlow {
-    // Listen for changes on documents shared with this group.
-    // 'whereArrayContains' checks if the 'groupId' exists inside the 'sharedGroupsIds' list.
-    val listenerRegistration =
-        collection.whereArrayContains("sharedGroupsIds", groupId).addSnapshotListener {
-            snapshot,
-            error ->
-          if (error != null) {
-            close(error)
-            return@addSnapshotListener
-          }
-
-          // Similar to personal root files, we parse the documents and enforce the root-level
-          // condition
-          // (parentFolderIds.isEmpty()) on the client side since Firestore doesn't easily support
-          // multiple array/inequality filters in a single query without complex composite indexes.
-          if (snapshot != null) {
-            val files = mutableListOf<JDRFile>()
-
-            for (document in snapshot.documents) {
-              try {
-                val file = document.toObject(JDRFile::class.java)
-
-                // La vérification "root" se fait ici de manière explicite :
-                // On s'assure que le fichier existe ET qu'il n'a pas de dossier parent
-                if (file != null && file.parentFolderIds.isEmpty()) {
-                  files.add(file)
-                }
-              } catch (e: Exception) {
-                // Keep the flow alive even if we have a corruption problem.
-                Log.e(
-                    "WorkspaceRepository",
-                    "Error in the deserialization of group doc ${document.id}",
-                    e,
-                )
-              }
-            }
-            // Emit the updated list.
-            trySend(files)
+          } catch (e: Exception) {
+            Log.e(
+                "WorkspaceRepository",
+                "Error in the deserialization of $errorMessageContext doc ${document.id}",
+                e,
+            )
           }
         }
-
-    // Clean up the listener when the Flow is cancelled.
+        sortCondition(files)
+        trySend(files)
+      }
+    }
     awaitClose { listenerRegistration.remove() }
   }
 
-  override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> = callbackFlow {
-    // Listen for changes on all documents that have 'folderId' inside their 'parentFolderIds' list.
-    // This allows us to observe the contents of a specific folder in real-time.
-    val listenerRegistration =
-        collection.whereArrayContains("parentFolderIds", folderId).addSnapshotListener {
-            snapshot,
-            error ->
-          if (error != null) {
-            close(error)
-            return@addSnapshotListener
-          }
+  override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> =
+      // we get the file at the root defined by ""
+      // we explicitly exclude DocumentType.GROUP_ROOT from appearing at the root
+      getPersonalFolderFiles("", ownerId)
 
-          if (snapshot != null) {
-            val documents = mutableListOf<JDRFile>()
+  override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
+      observeFilesQuery(
+          query =
+              collection
+                  .whereEqualTo("ownerId", ownerId)
+                  .whereEqualTo("personalParentId", folderId),
+          errorMessageContext = "personal folder",
+          filterCondition = { it.type != DocumentType.GROUP_ROOT },
+      )
 
-            for (document in snapshot.documents) {
-              try {
-                val file = document.toObject(JDRFile::class.java)
-                if (file != null) {
-                  documents.add(file)
-                }
-              } catch (e: Exception) {
-                Log.e(
-                    "WorkspaceRepository",
-                    "Error in the deserialization of folder doc ${document.id}",
-                    e,
-                )
-              }
-            }
-
-            // Emit the updated list of folder contents.
-            trySend(documents)
-          }
-        }
-
-    // Clean up the listener when the Flow is cancelled.
-    awaitClose { listenerRegistration.remove() }
-  }
+  override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
+      observeFilesQuery(
+          query =
+              collection
+                  .whereArrayContains("sharedGroupsIds", groupId)
+                  .whereEqualTo("placements.$groupId.folderId", folderId),
+          errorMessageContext = "group folder",
+          sortCondition = { it.sortBy { file -> file.name.lowercase() } },
+      )
 }

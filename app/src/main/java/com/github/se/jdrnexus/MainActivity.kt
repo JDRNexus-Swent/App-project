@@ -179,6 +179,7 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
             DocumentType.CHARACTER -> navController.navigate(AllRoutes.EditChar.name)
             DocumentType.TEXT -> navController.navigate(AllRoutes.EditLore.name)
             DocumentType.FOLDER -> Unit
+            DocumentType.GROUP_ROOT -> Unit
           }
         }
 
