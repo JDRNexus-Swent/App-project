@@ -72,7 +72,7 @@ class PersonalSpaceViewModelTest {
     }
 
     /** Records the requested folder ID and emits only that folder's configured contents. */
-    override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> {
+    override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> {
       folderFetchRequests.add(folderId)
       return gatedFlow(MutableStateFlow(itemsByFolder[folderId].orEmpty()), folderFetchGate)
     }
@@ -80,7 +80,8 @@ class PersonalSpaceViewModelTest {
     override fun getNewUid(): String = "created-folder-id"
 
     /** Group-root data is outside these tests, so the fake emits an empty list. */
-    override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> = flowOf(emptyList())
+    override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
+        flowOf(emptyList())
 
     /** File-detail lookups are not exercised by Personal Space list behavior. */
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = flowOf(null)
@@ -98,6 +99,14 @@ class PersonalSpaceViewModelTest {
     override suspend fun deleteFile(fileId: String): Result<Unit> = Result.success(Unit)
 
     override suspend fun getFile(fileId: String): Result<JDRFile?> = Result.success(null)
+
+    override suspend fun removeItemFromGroup(
+        itemId: String,
+        groupId: String,
+        parentFolderId: String,
+    ): Result<Unit> {
+      TODO("Not yet implemented")
+    }
   }
 
   private class FakeAuthRepository(

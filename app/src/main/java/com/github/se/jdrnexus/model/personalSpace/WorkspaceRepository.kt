@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.model.personalSpace
 
 import kotlinx.coroutines.flow.Flow
@@ -48,9 +49,24 @@ interface WorkspaceRepository {
    * Retrieves a single file asynchronously without observing future changes.
    *
    * @param fileId The unique identifier of the file.
-   * @return A [Result] containing the [JDRFile] if found, or null/failure otherwise.
+   * @return A successful result containing the [JDRFile] if found, null if missing, or a failure
+   *   for an actual retrieval error.
    */
   suspend fun getFile(fileId: String): Result<JDRFile?>
+
+  /**
+   * Removes an item from a group workspace.
+   *
+   * If the item is a folder, its descendants belonging to the group are also removed. The supplied
+   * [parentFolderId] identifies the selected item's placement; descendants are detached from their
+   * immediate parent in the removed subtree. Other parent references and Personal Space ownership
+   * are preserved, and the underlying documents are not deleted.
+   */
+  suspend fun removeItemFromGroup(
+      itemId: String,
+      groupId: String,
+      parentFolderId: String,
+  ): Result<Unit>
 
   // ==========================================
   // REAL-TIME SYNCHRONIZATION (Flows)
@@ -75,19 +91,21 @@ interface WorkspaceRepository {
   fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>>
 
   /**
-   * Observes real-time changes to all documents (folders and files) located at the root of a shared
-   * campaign group.
-   *
-   * @param groupId The unique identifier of the group.
-   * @return A [Flow] emitting the list of root [JDRFile]s for the group.
-   */
-  fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>>
-
-  /**
-   * Observes real-time changes to all documents contained within a specific parent folder.
+   * Observes real-time changes to all documents (folders and files) located in a user's personal
+   * folder.
    *
    * @param folderId The unique identifier of the parent folder.
+   * @param ownerId The unique identifier of the user (Firebase Auth ID).
    * @return A [Flow] emitting the list of child [JDRFile]s.
    */
-  fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>>
+  fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>>
+
+  /**
+   * Observes real-time changes to all documents contained within a specific group folder.
+   *
+   * @param folderId The unique identifier of the parent folder.
+   * @param groupId The unique identifier of the group.
+   * @return A [Flow] emitting the list of child [JDRFile]s.
+   */
+  fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>>
 }

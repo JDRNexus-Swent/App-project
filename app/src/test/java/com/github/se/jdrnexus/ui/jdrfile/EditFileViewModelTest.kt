@@ -11,6 +11,7 @@ import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -369,7 +370,7 @@ class EditFileViewModelTest {
             id = "character",
             name = "Hero",
             ownerId = "owner",
-            parentFolderIds = listOf("parent"),
+            placements = mapOf("parent" to Placement(folderId = "parent")),
             type = DocumentType.CHARACTER,
             content = characterJson,
         )
@@ -386,7 +387,7 @@ class EditFileViewModelTest {
     val savedFile = repository.updatedFiles.single()
     assertEquals(file.id, savedFile.id)
     assertEquals(file.ownerId, savedFile.ownerId)
-    assertEquals(file.parentFolderIds, savedFile.parentFolderIds)
+    assertEquals(file.placements, savedFile.placements)
     val savedContent = JSONObject(savedFile.content).getJSONObject("character")
     assertEquals("Saved Hero", savedContent.getString("name"))
     val savedStat = savedContent.getJSONArray("stats").getJSONObject(2)
@@ -520,12 +521,22 @@ class EditFileViewModelTest {
           ?: Result.success(file?.takeIf { it.id == fileId })
     }
 
+    override suspend fun removeItemFromGroup(
+        itemId: String,
+        groupId: String,
+        parentFolderId: String,
+    ): Result<Unit> {
+      TODO("Not yet implemented")
+    }
+
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = emptyFlow()
 
     override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = emptyFlow()
 
-    override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> = emptyFlow()
+    override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
+        emptyFlow()
 
-    override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> = emptyFlow()
+    override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
+        emptyFlow()
   }
 }
