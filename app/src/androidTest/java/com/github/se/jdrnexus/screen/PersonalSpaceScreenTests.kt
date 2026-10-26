@@ -494,6 +494,19 @@ class PersonalSpaceScreenTests {
 
     override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
         flowOf(emptyList())
+
+    override suspend fun addItemToGroup(
+        itemId: String,
+        groupId: String,
+        folderId: String,
+        isHidden: Boolean,
+    ): Result<Unit> = error("Not used")
+
+    override suspend fun setItemHidden(
+        itemId: String,
+        groupId: String,
+        isHidden: Boolean,
+    ): Result<Unit> = error("Not used")
   }
 
   private class FakeAuthRepository : AuthRepository {

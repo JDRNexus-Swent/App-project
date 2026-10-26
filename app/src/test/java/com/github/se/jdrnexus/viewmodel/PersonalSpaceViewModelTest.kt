@@ -93,6 +93,20 @@ class PersonalSpaceViewModelTest {
     }
 
     // ============ Unused repository overrides ============
+
+    override suspend fun addItemToGroup(
+        itemId: String,
+        groupId: String,
+        folderId: String,
+        isHidden: Boolean,
+    ): Result<Unit> = error("Not used")
+
+    override suspend fun setItemHidden(
+        itemId: String,
+        groupId: String,
+        isHidden: Boolean,
+    ): Result<Unit> = error("Not used")
+
     /** These operations are unrelated to the tested list and folder-creation interactions. */
     override suspend fun updateFile(file: JDRFile): Result<Unit> = Result.success(Unit)
 

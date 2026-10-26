@@ -14,6 +14,7 @@ import kotlinx.coroutines.tasks.await
 
 class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : WorkspaceRepository {
   companion object {
+    private const val MAX_BATCH_WRITES = 500
     internal const val COLLECTION_PATH = "documents"
   }
 
@@ -152,6 +153,93 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     }
   }
 
+  override suspend fun addItemToGroup(
+      itemId: String,
+      groupId: String,
+      folderId: String,
+      isHidden: Boolean,
+  ): Result<Unit> {
+    return try {
+      require(itemId.isNotBlank()) { "Item ID cannot be empty." }
+      require(groupId.isNotBlank()) { "Group ID cannot be empty." }
+      require(folderId.isNotBlank()) { "Folder ID cannot be empty." }
+
+      val item = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
+      check(item.type != DocumentType.GROUP_ROOT) { "A group root cannot be added to a group." }
+      check(groupId !in item.sharedGroupsIds) { "This item is already in the group." }
+
+      val destination =
+          getFile(folderId).getOrThrow()
+              ?: throw IllegalArgumentException("Destination folder not found.")
+      check(destination.isContainer()) { "The destination is not a folder." }
+      check(groupId in destination.sharedGroupsIds) {
+        "The destination folder does not belong to the group."
+      }
+
+      // Something added inside a hidden folder is hidden too. The group root has no placement.
+      val hiddenByFolder = destination.placements[groupId]?.isHidden == true
+
+      collection
+          .document(itemId)
+          .update(addPlacementUpdate(groupId, folderId, isHidden || hiddenByFolder))
+          .await()
+      Result.success(Unit)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
+  }
+
+  override suspend fun setItemHidden(
+      itemId: String,
+      groupId: String,
+      isHidden: Boolean,
+  ): Result<Unit> {
+    return try {
+      require(itemId.isNotBlank()) { "Item ID cannot be empty." }
+      require(groupId.isNotBlank()) { "Group ID cannot be empty." }
+
+      val item = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
+      check(item.type != DocumentType.GROUP_ROOT) { "A group root cannot be hidden." }
+      val placement =
+          checkNotNull(item.placements[groupId]) { "This item does not belong to the group." }
+
+      if (placement.isHidden == isHidden) return Result.success(Unit)
+
+      val itemsToUpdate =
+          if (isHidden) {
+            // Hiding a folder hides everything inside it, otherwise a player could see files
+            // whose folder is hidden.
+            collectGroupSubtree(item, groupId).filter { it.placements[groupId]?.isHidden != true }
+          } else {
+            // Revealing only reveals this item, and only if the folder holding it is visible.
+            if (placement.folderId != groupId) {
+              val parent = getFile(placement.folderId).getOrThrow()
+              check(parent?.placements?.get(groupId)?.isHidden != true) {
+                "Reveal the parent folder first."
+              }
+            }
+            listOf(item)
+          }
+
+      check(itemsToUpdate.size <= MAX_BATCH_WRITES) {
+        "Too many items to update at once (maximum $MAX_BATCH_WRITES)."
+      }
+
+      val batch = firestore.batch()
+      itemsToUpdate.forEach {
+        batch.update(collection.document(it.id), hiddenUpdate(groupId, isHidden))
+      }
+      batch.commit().await()
+      Result.success(Unit)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
+  }
+
   /**
    * Targeted write that unshares a file from [groupId]: it deletes that group's placement and
    * removes the group from `sharedGroupsIds` in the same update, and leaves every other field
@@ -162,6 +250,35 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
           "placements.$groupId" to FieldValue.delete(),
           "sharedGroupsIds" to FieldValue.arrayRemove(groupId),
       )
+
+  /** Targeted write that adds a file to [groupId]: its placement and the group in the list. */
+  private fun addPlacementUpdate(
+      groupId: String,
+      folderId: String,
+      isHidden: Boolean,
+  ): Map<String, Any> =
+      mapOf(
+          "placements.$groupId" to mapOf("folderId" to folderId, "isHidden" to isHidden),
+          "sharedGroupsIds" to FieldValue.arrayUnion(groupId),
+      )
+
+  /** Targeted write that changes only the visibility of a file in [groupId]. */
+  private fun hiddenUpdate(groupId: String, isHidden: Boolean): Map<String, Any> =
+      mapOf("placements.$groupId.isHidden" to isHidden)
+
+  /** [root] and every file below it in the folder tree of [groupId], each listed once. */
+  private suspend fun collectGroupSubtree(root: JDRFile, groupId: String): List<JDRFile> {
+    val collected = linkedMapOf<String, JDRFile>()
+
+    suspend fun visit(file: JDRFile) {
+      if (collected.putIfAbsent(file.id, file) != null) return
+      if (!file.isContainer()) return
+      getGroupFolderFiles(file.id, groupId).first().forEach { visit(it) }
+    }
+
+    visit(root)
+    return collected.values.toList()
+  }
 
   override fun getFileFlow(fileId: String): Flow<JDRFile?> = callbackFlow {
     // callbackFlow bridges Firestore's callback API with Kotlin Coroutines Flow.
