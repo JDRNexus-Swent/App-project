@@ -57,13 +57,21 @@ internal fun EditFileScaffold(
   ) {
     when {
       isLoading -> {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-          CircularProgressIndicator()
-          Text(loadingMessage, modifier = Modifier.padding(top = 12.dp))
+        Column(modifier = Modifier.fillMaxSize()) {
+          EditFileHeader(
+              title = screenTitle,
+              backTestTag = backTestTag,
+              onBack = onBack,
+              modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+          )
+          Column(
+              modifier = Modifier.fillMaxSize(),
+              horizontalAlignment = Alignment.CenterHorizontally,
+              verticalArrangement = Arrangement.Center,
+          ) {
+            CircularProgressIndicator()
+            Text(loadingMessage, modifier = Modifier.padding(top = 12.dp))
+          }
         }
       }
       !hasContent -> {
@@ -131,7 +139,8 @@ internal fun EditFileSectionHeading(
     title: String,
     count: Int,
     modifier: Modifier = Modifier,
-    singularCountLabel: String = title.lowercase().dropLast(1),
+    singularCountLabel: String = "item",
+    pluralCountLabel: String = "items",
 ) {
   Row(
       modifier = modifier.fillMaxWidth(),
@@ -140,7 +149,7 @@ internal fun EditFileSectionHeading(
   ) {
     Text(title, style = MaterialTheme.typography.titleMedium)
     Text(
-        text = "${count} ${if (count == 1) singularCountLabel else title.lowercase()}",
+        text = "${count} ${if (count == 1) singularCountLabel else pluralCountLabel}",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

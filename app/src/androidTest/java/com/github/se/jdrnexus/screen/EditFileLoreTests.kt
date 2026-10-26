@@ -191,7 +191,7 @@ class EditFileLoreTests {
   }
 
   @Test
-  fun displaysErrorStateWhenLoreIsNullAndAllowsBackNavigation() {
+  fun displaysNotFoundErrorWhenLoreFileIsMissing() {
     val file =
         JDRFile(
             id = "lore-1",

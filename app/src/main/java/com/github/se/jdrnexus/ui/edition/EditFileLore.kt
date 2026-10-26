@@ -34,7 +34,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
 import com.github.se.jdrnexus.ui.jdrfile.EditFileField
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
@@ -66,12 +68,12 @@ fun EditFileLore(
 
   EditFileScaffold(
       isLoading = state.isLoading,
-      loadingMessage = "Loading lore...",
+      loadingMessage = stringResource(R.string.edit_lore_loading),
       hasContent = state.lore != null,
-      screenTitle = "LORE NOTE",
+      screenTitle = stringResource(R.string.edit_lore_title),
       backTestTag = EditFileLoreTestTags.BACK,
       error = state.error,
-      emptyMessage = "No lore is loaded.",
+      emptyMessage = stringResource(R.string.edit_lore_empty),
       onBack = onBack,
   ) {
     val lore = state.lore ?: return@EditFileScaffold
@@ -88,7 +90,7 @@ fun EditFileLore(
     ) {
       item(key = "top-bar") {
         EditFileHeader(
-            title = "LORE NOTE",
+            title = stringResource(R.string.edit_lore_title),
             backTestTag = EditFileLoreTestTags.BACK,
             onBack = onBack,
         )
@@ -98,16 +100,17 @@ fun EditFileLore(
             value = lore.title,
             onValueChange = viewModel::updateLoreTitle,
             modifier = Modifier.fillMaxWidth().testTag("edit_lore_title"),
-            label = { Text("Lore title") },
+            label = { Text(stringResource(R.string.edit_lore_title_label)) },
             singleLine = true,
         )
       }
       item(key = "sections-heading") {
         EditFileSectionHeading(
-            title = "Sections",
+            title = stringResource(R.string.edit_lore_sections_title),
             count = lore.sections.size,
             modifier = Modifier.fillMaxWidth().testTag(EditFileLoreTestTags.SECTIONS_LIST),
-            singularCountLabel = "section",
+            singularCountLabel = stringResource(R.string.edit_lore_section_singular),
+            pluralCountLabel = stringResource(R.string.edit_lore_section_plural),
         )
       }
       items(lore.sections, key = { "section-${it.sectionID}" }) { section ->
@@ -125,29 +128,35 @@ fun EditFileLore(
               value = newSectionTitle,
               onValueChange = { newSectionTitle = it },
               modifier = Modifier.fillMaxWidth().testTag("add_section_title"),
-              label = { Text("Section title") },
+              label = { Text(stringResource(R.string.edit_lore_section_title_label)) },
               singleLine = true,
           )
           OutlinedTextField(
               value = newSectionDescription,
               onValueChange = { newSectionDescription = it },
               modifier = Modifier.fillMaxWidth().testTag("add_section_description"),
-              label = { Text("Content") },
+              label = { Text(stringResource(R.string.edit_lore_content_label)) },
               minLines = 2,
           )
           OutlinedButton(
               onClick = {
-                viewModel.addLoreSection(newSectionTitle, newSectionDescription)
-                if (newSectionTitle.isNotBlank()) {
-                  newSectionTitle = ""
-                  newSectionDescription = ""
+                val title = newSectionTitle.trim()
+                val description = newSectionDescription
+                if (title.isBlank()) {
+                  return@OutlinedButton
                 }
+                viewModel.addLoreSection(title, description)
+                newSectionTitle = ""
+                newSectionDescription = ""
               },
               modifier = Modifier.fillMaxWidth().testTag("confirm_add_section"),
               shape = RoundedCornerShape(8.dp),
           ) {
             Icon(Icons.Default.Add, contentDescription = null)
-            Text("Add section", modifier = Modifier.padding(start = 6.dp))
+            Text(
+                stringResource(R.string.edit_lore_add_section),
+                modifier = Modifier.padding(start = 6.dp),
+            )
           }
         }
       }
@@ -199,7 +208,7 @@ private fun LoreSectionCard(
             value = section.title,
             onValueChange = onTitleChange,
             modifier = Modifier.weight(1f).testTag("section_title_${section.sectionID}"),
-            label = { Text("Section title") },
+            label = { Text(stringResource(R.string.edit_lore_section_title_label)) },
             singleLine = true,
             isError = titleError != null,
             supportingText = titleError?.let { message -> ({ Text(message) }) },
@@ -212,54 +221,9 @@ private fun LoreSectionCard(
           value = section.description,
           onValueChange = onDescriptionChange,
           modifier = Modifier.fillMaxWidth().testTag("section_description_${section.sectionID}"),
-          label = { Text("Content") },
+          label = { Text(stringResource(R.string.edit_lore_content_label)) },
           minLines = 3,
       )
     }
   }
 }
-
-/* REMOVE THE COMMENTS TO PREVIEW. THESE ARE HERE TO KEEP COVERAGE UP
-
-/** Previews the lore editor with sample sections. */
-@Preview(showBackground = true, heightDp = 820)
-@Composable
-private fun EditFileLorePreview() {
-  val file = remember {
-    JDRFile(
-        id = "preview-lore",
-        name = "The Sunken Citadel",
-        type = DocumentType.TEXT,
-        content =
-            """{"version":1,"type":"lore","title":"The Sunken Citadel","sections":[{"sectionID":"kingdom","title":"A kingdom beneath the tide","content":"Once the heart of the kingdom of Aurel, the citadel now sleeps beneath the western sea."},{"sectionID":"oath","title":"The drowned oath","content":"The last queen bound her court to the sea to keep an ancient evil sealed."}]}""",
-    )
-  }
-  val viewModel = remember { EditFileViewModel(PreviewWorkspaceRepo(file)) }
-  LaunchedEffect(viewModel) { viewModel.loadFile(file.id) }
-
-  SampleAppTheme { EditFileLore(viewModel = viewModel, onBack = {}, onSaved = {}) }
-}
-
-/** Supplies the sample file to the editor preview without accessing persistent storage. */
-private class PreviewWorkspaceRepo(private val previewFile: JDRFile) : WorkspaceRepository {
-  override fun getNewUid(): String = "preview-id"
-
-  override suspend fun createFile(file: JDRFile): Result<Unit> = Result.success(Unit)
-
-  override suspend fun updateFile(file: JDRFile): Result<Unit> = Result.success(Unit)
-
-  override suspend fun deleteFile(fileId: String): Result<Unit> = Result.success(Unit)
-
-  override suspend fun getFile(fileId: String): Result<JDRFile?> =
-      Result.success(previewFile.takeIf { it.id == fileId })
-
-  override fun getFileFlow(fileId: String): Flow<JDRFile?> = emptyFlow()
-
-  override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = emptyFlow()
-
-  override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> = emptyFlow()
-
-  override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> = emptyFlow()
-}
-
- */

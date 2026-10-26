@@ -47,6 +47,31 @@ class EditFileComponentsTests {
     }
 
     composeTestRule.onNodeWithText("Nothing loaded").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Test").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Content").assertIsNotDisplayed()
+  }
+
+  @Test
+  fun scaffoldKeepsHeaderVisibleWhileLoading() {
+    composeTestRule.setContent {
+      MaterialTheme {
+        EditFileScaffold(
+            isLoading = true,
+            loadingMessage = "Loading test...",
+            hasContent = true,
+            screenTitle = "Test",
+            backTestTag = "back",
+            error = null,
+            emptyMessage = "Nothing loaded",
+            onBack = {},
+        ) {
+          Text("Content")
+        }
+      }
+    }
+
+    composeTestRule.onNodeWithText("Test").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Loading test...").assertIsDisplayed()
     composeTestRule.onNodeWithText("Content").assertIsNotDisplayed()
   }
 
