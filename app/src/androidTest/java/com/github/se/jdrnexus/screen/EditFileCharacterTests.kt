@@ -399,9 +399,7 @@ class EditFileCharacterTests {
         itemId: String,
         groupId: String,
         parentFolderId: String,
-    ): Result<Unit> {
-      error("not used")
-    }
+    ): Result<Unit> = Result.success(Unit)
 
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = emptyFlow()
 

@@ -237,6 +237,12 @@ class EditFileLoreTests {
 
     override suspend fun deleteFile(fileId: String): Result<Unit> = Result.success(Unit)
 
+    override suspend fun removeItemFromGroup(
+        itemId: String,
+        groupId: String,
+        parentFolderId: String,
+    ): Result<Unit> = Result.success(Unit)
+
     override suspend fun getFile(fileId: String): Result<JDRFile?> =
         Result.success(file.takeIf { it.id == fileId })
 
@@ -244,8 +250,12 @@ class EditFileLoreTests {
 
     override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = emptyFlow()
 
-    override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> = emptyFlow()
+    override fun getPersonalFolderFiles(
+        folderId: String,
+        ownerId: String,
+    ): Flow<List<JDRFile>> = emptyFlow()
 
-    override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> = emptyFlow()
+    override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
+        emptyFlow()
   }
 }
