@@ -61,10 +61,10 @@ enum class DocumentType {
   FOLDER,
   TEXT,
   CHARACTER,
-    GROUP_ROOT;
+  GROUP_ROOT;
 
-    /** Whether files of this type can hold other files. */
-    fun isContainer(): Boolean = this == FOLDER || this == GROUP_ROOT
+  /** Whether files of this type can hold other files. */
+  fun isContainer(): Boolean = this == FOLDER || this == GROUP_ROOT
 }
 
 /**

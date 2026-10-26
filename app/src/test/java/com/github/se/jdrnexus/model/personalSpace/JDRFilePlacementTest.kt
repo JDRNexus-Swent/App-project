@@ -21,6 +21,14 @@ class JDRFilePlacementTest {
   }
 
   @Test
+  fun documentType_isContainer_isTrueOnlyForFolderAndGroupRoot() {
+    assertTrue(DocumentType.FOLDER.isContainer())
+    assertTrue(DocumentType.GROUP_ROOT.isContainer())
+    assertFalse(DocumentType.TEXT.isContainer())
+    assertFalse(DocumentType.CHARACTER.isContainer())
+  }
+
+  @Test
   fun placement_isVisibleByDefault() {
     assertFalse(Placement(folderId = "folder").isHidden)
   }
