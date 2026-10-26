@@ -1,4 +1,4 @@
-/** Co-authored-by: AI Agent */
+// Co-authored-by: Claude Sonnet 5.5
 package com.github.se.jdrnexus.model.personalSpace
 
 import android.util.Log
@@ -14,7 +14,7 @@ import kotlinx.coroutines.tasks.await
 
 class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : WorkspaceRepository {
   companion object {
-    private const val COLLECTION_PATH = "documents"
+    internal const val COLLECTION_PATH = "documents"
   }
 
   private val collection = firestore.collection(COLLECTION_PATH)

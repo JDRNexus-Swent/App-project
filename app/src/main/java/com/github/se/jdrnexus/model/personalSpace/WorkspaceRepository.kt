@@ -1,4 +1,4 @@
-// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5
 package com.github.se.jdrnexus.model.personalSpace
 
 import kotlinx.coroutines.flow.Flow
