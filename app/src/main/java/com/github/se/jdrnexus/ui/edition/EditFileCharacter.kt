@@ -39,18 +39,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
-import com.github.se.jdrnexus.model.personalSpace.DocumentType
-import com.github.se.jdrnexus.model.personalSpace.JDRFile
-import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.ui.jdrfile.EditFileField
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
-import com.github.se.jdrnexus.ui.theme.SampleAppTheme
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
 
 /** Semantic test tags used to locate elements in the character editor. */
 object EditFileCharacterTestTags {
