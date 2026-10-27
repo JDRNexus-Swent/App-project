@@ -483,6 +483,8 @@ class GameManagementScreenTest {
       GroupRepository by unusedGroupRepository {
     val createdGroups = mutableListOf<CampaignGroup>()
 
+    override fun getNewGroupId(): String = "new-campaign"
+
     override suspend fun createGroup(group: CampaignGroup): Result<Unit> {
       createdGroups += group
       return Result.success(Unit)
