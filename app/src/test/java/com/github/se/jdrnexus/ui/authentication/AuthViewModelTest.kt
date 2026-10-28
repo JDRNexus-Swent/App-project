@@ -248,6 +248,21 @@ class AuthViewModelTest {
   }
 
   @Test
+  fun signInDoesNotRequireUsername() = runTest {
+    val repository = FakeAuthRepository()
+    val viewModel = AuthViewModel(repository)
+    fillForm(viewModel, username = "")
+
+    viewModel.signIn()
+    runCurrent()
+
+    assertEquals(1, repository.signInCalls)
+    assertEquals("player@example.com" to "password", repository.lastSignInArguments)
+    assertEquals(AuthStatus.Success(USER), viewModel.uiState.value.status)
+    assertEquals(null, viewModel.uiState.value.usernameError)
+  }
+
+  @Test
   fun signInExposesSuccessfulUser() = runTest {
     val repository = FakeAuthRepository()
     val viewModel = AuthViewModel(repository)
