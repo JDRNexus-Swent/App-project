@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Sonnet 5.5
 package com.github.se.jdrnexus.model.personalSpace
 
 import kotlinx.coroutines.flow.Flow
@@ -18,6 +19,9 @@ interface GroupRepository {
    * Creates a new campaign group in the database. This initializes the shared workspace for all
    * participants of the campaign.
    *
+   * The group's root folder (a [JDRFile] of type GROUP_ROOT with the same id) is created in the
+   * same batch, so a group never exists without its root.
+   *
    * @param group The [CampaignGroup] object containing the group's metadata and participants.
    * @return A [Result] indicating success or failure.
    */
@@ -26,6 +30,9 @@ interface GroupRepository {
   /**
    * Updates an existing campaign group in the database. This is used when a Game Master changes the
    * group's settings, name, or metadata, triggering real-time sync.
+   *
+   * The group's root folder is renamed in the same batch, so both names always match. Fails if the
+   * group or its root folder does not exist.
    *
    * @param group The updated [CampaignGroup] object.
    * @return A [Result] indicating success or failure.
