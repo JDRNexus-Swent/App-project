@@ -20,8 +20,6 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
-import com.github.se.jdrnexus.model.personalSpace.JDRFile
-import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
@@ -362,12 +360,10 @@ class GameManagementScreenTest {
             participantIds = listOf("user-1"),
         )
     val groupRepository = ScreenGroupRepository(listOf(group))
-    val workspaceRepository = ScreenWorkspaceRepository()
     val viewModel =
         GameManagementViewModel(
             groupRepository,
             ScreenAuthRepository(),
-            workspaceRepository,
         )
     var enteredGroupId = ""
     var managedGroupId = ""
@@ -404,8 +400,11 @@ class GameManagementScreenTest {
     composeTestRule.waitUntil(5_000) { viewModel.uiState.value.successMessage.isNotEmpty() }
     composeTestRule.mainClock.advanceTimeBy(100)
     composeTestRule.onNodeWithText("New campaign was created.").assertIsDisplayed()
-    assertEquals("New campaign", groupRepository.createdGroups.single().name)
-    assertEquals("New campaign", workspaceRepository.createdFiles.single().name)
+    val createdGroup = groupRepository.createdGroups.single()
+    assertEquals("new-campaign", createdGroup.id)
+    assertEquals("New campaign", createdGroup.name)
+    assertEquals("user-1", createdGroup.gameMasterId)
+    assertEquals(listOf("user-1"), createdGroup.participantIds)
     composeTestRule.onNodeWithText("Dismiss").performClick()
     composeTestRule.mainClock.advanceTimeBy(100)
     composeTestRule.onAllNodesWithText("New campaign was created.").assertCountEquals(0)
@@ -488,43 +487,14 @@ class GameManagementScreenTest {
       GroupRepository by unusedGroupRepository {
     val createdGroups = mutableListOf<CampaignGroup>()
 
+    override fun getNewGroupId(): String = "new-campaign"
+
     override suspend fun createGroup(group: CampaignGroup): Result<Unit> {
       createdGroups += group
       return Result.success(Unit)
     }
 
     override fun getUserGroups(userId: String): Flow<List<CampaignGroup>> = flowOf(groups)
-  }
-
-  private class ScreenWorkspaceRepository : WorkspaceRepository {
-    val createdFiles = mutableListOf<JDRFile>()
-
-    override fun getNewUid(): String = "new-campaign"
-
-    override suspend fun createFile(file: JDRFile): Result<Unit> {
-      createdFiles += file
-      return Result.success(Unit)
-    }
-
-    override suspend fun updateFile(file: JDRFile): Result<Unit> = error("Not used")
-
-    override suspend fun deleteFile(fileId: String): Result<Unit> = error("Not used")
-
-    override suspend fun removeItemFromGroup(
-        itemId: String,
-        groupId: String,
-        parentFolderId: String,
-    ): Result<Unit> = error("Not used")
-
-    override suspend fun getFile(fileId: String): Result<JDRFile?> = error("Not used")
-
-    override fun getFileFlow(fileId: String): Flow<JDRFile?> = error("Not used")
-
-    override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = error("Not used")
-
-    override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> = error("Not used")
-
-    override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> = error("Not used")
   }
 
   private companion object {
