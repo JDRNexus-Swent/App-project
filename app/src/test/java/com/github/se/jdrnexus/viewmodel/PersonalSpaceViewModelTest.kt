@@ -99,6 +99,7 @@ class PersonalSpaceViewModelTest {
         groupId: String,
         folderId: String,
         isHidden: Boolean,
+        includeContent: Boolean,
     ): Result<Unit> = error("Not used")
 
     override suspend fun setItemHidden(

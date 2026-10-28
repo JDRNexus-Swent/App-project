@@ -158,11 +158,14 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       groupId: String,
       folderId: String,
       isHidden: Boolean,
+      includeContent: Boolean,
   ): Result<Unit> {
     return try {
       require(itemId.isNotBlank()) { "Item ID cannot be empty." }
       require(groupId.isNotBlank()) { "Group ID cannot be empty." }
       require(folderId.isNotBlank()) { "Folder ID cannot be empty." }
+
+      require(!includeContent) { "includeContent is not supported yet." } // TODO next refactor PR
 
       val item = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
       check(item.type != DocumentType.GROUP_ROOT) { "A group root cannot be added to a group." }
