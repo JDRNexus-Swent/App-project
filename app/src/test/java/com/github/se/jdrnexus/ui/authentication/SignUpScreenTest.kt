@@ -13,6 +13,8 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -171,6 +173,23 @@ class SignUpScreenTest {
 
     composeTestRule.onNodeWithText(AuthError.INVALID_EMAIL.message).assertIsDisplayed()
     assertEquals(0, repository.signUpCalls)
+  }
+
+  @Test
+  fun signUpScreen_showsEachValidationErrorOnItsOwnField() {
+    showSignUp()
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.sign_up_username)
+        .assert(hasAnyDescendant(hasText(AuthError.INVALID_USERNAME.message)))
+    composeTestRule
+        .onNodeWithTag(C.Tag.sign_up_email)
+        .assert(hasAnyDescendant(hasText(AuthError.INVALID_EMAIL.message)))
+    composeTestRule
+        .onNodeWithTag(C.Tag.sign_up_password)
+        .assert(hasAnyDescendant(hasText("Password must be at least 6 characters.")))
   }
 
   @Test
