@@ -91,6 +91,67 @@ class AuthViewModelTest {
   }
 
   @Test
+  fun signUpExposesValidationErrorsOnTheirFieldsAndClearsThemWhenValid() {
+    val viewModel = AuthViewModel(FakeAuthRepository())
+
+    viewModel.signUp()
+
+    assertEquals(AuthError.INVALID_EMAIL.message, viewModel.uiState.value.emailError)
+    assertEquals("Password must be at least 6 characters.", viewModel.uiState.value.passwordError)
+    assertEquals(AuthError.INVALID_USERNAME.message, viewModel.uiState.value.usernameError)
+
+    viewModel.onEmailChange("player@example.com")
+    assertEquals(null, viewModel.uiState.value.emailError)
+    assertEquals("Password must be at least 6 characters.", viewModel.uiState.value.passwordError)
+    assertEquals(AuthError.INVALID_USERNAME.message, viewModel.uiState.value.usernameError)
+
+    viewModel.onPasswordChange("password")
+    assertEquals(null, viewModel.uiState.value.passwordError)
+    assertEquals(AuthError.INVALID_USERNAME.message, viewModel.uiState.value.usernameError)
+
+    viewModel.onUsernameChange("Player")
+    assertEquals(null, viewModel.uiState.value.usernameError)
+  }
+
+  @Test
+  fun validationErrorsRemainWhileInputsAreInvalid() {
+    val viewModel = AuthViewModel(FakeAuthRepository())
+
+    viewModel.signUp()
+    viewModel.onEmailChange("still-invalid")
+    viewModel.onPasswordChange("short")
+    viewModel.onUsernameChange("  ")
+
+    assertEquals(AuthError.INVALID_EMAIL.message, viewModel.uiState.value.emailError)
+    assertEquals("Password must be at least 6 characters.", viewModel.uiState.value.passwordError)
+    assertEquals(AuthError.INVALID_USERNAME.message, viewModel.uiState.value.usernameError)
+  }
+
+  @Test
+  fun editingInputsWhileLoadingKeepsLoadingStatus() = runTest {
+    val repository = FakeAuthRepository().apply { signInGate = CompletableDeferred() }
+    val viewModel = AuthViewModel(repository)
+    fillForm(viewModel)
+
+    viewModel.signIn()
+    runCurrent()
+    assertEquals(AuthStatus.Loading, viewModel.uiState.value.status)
+
+    viewModel.onEmailChange("updated@example.com")
+    viewModel.onPasswordChange("updated-password")
+    viewModel.onUsernameChange("Updated")
+
+    assertEquals(AuthStatus.Loading, viewModel.uiState.value.status)
+    assertEquals("updated@example.com", viewModel.uiState.value.email)
+    assertEquals("updated-password", viewModel.uiState.value.password)
+    assertEquals("Updated", viewModel.uiState.value.username)
+
+    repository.signInGate?.complete(Unit)
+    runCurrent()
+    assertEquals(AuthStatus.Success(USER), viewModel.uiState.value.status)
+  }
+
+  @Test
   fun signUpSetsLoadingAndSuccessAndPassesTrimmedFormValues() = runTest {
     val repository = FakeAuthRepository()
     val response = CompletableDeferred<AuthResult<AuthUser>>()
@@ -319,6 +380,7 @@ class AuthViewModelTest {
     var googleSignInCalls = 0
     var signOutCalls = 0
     var signInJob: Job? = null
+    var signInGate: CompletableDeferred<Unit>? = null
     var signOutFailure: Exception? = null
     var lastSignUpArguments: Triple<String, String, String>? = null
     var lastSignInArguments: Pair<String, String>? = null
@@ -345,6 +407,7 @@ class AuthViewModelTest {
       signInCalls++
       lastSignInArguments = email to password
       signInJob = currentCoroutineContext()[Job]
+      signInGate?.await()
       signInFailure?.let { throw it }
       return signInResponse
     }

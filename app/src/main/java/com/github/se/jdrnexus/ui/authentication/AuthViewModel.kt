@@ -33,6 +33,9 @@ data class AuthUiState(
     val email: String = "",
     val password: String = "",
     val username: String = "",
+    val emailError: String? = null,
+    val passwordError: String? = null,
+    val usernameError: String? = null,
     val status: AuthStatus = AuthStatus.Idle,
 )
 
@@ -194,19 +197,40 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
   }
 
   private fun validate(form: AuthUiState, requireUsername: Boolean): String? {
-    if (!EMAIL_PATTERN.matches(form.email.trim())) return AuthError.INVALID_EMAIL.message
-    if (form.password.length < MIN_PASSWORD_LENGTH) {
-      return "Password must be at least $MIN_PASSWORD_LENGTH characters."
+    val emailError =
+        if (!EMAIL_PATTERN.matches(form.email.trim())) AuthError.INVALID_EMAIL.message else null
+    val passwordError =
+        if (form.password.length < MIN_PASSWORD_LENGTH) {
+          "Password must be at least $MIN_PASSWORD_LENGTH characters."
+        } else {
+          null
+        }
+    val usernameError =
+        if (requireUsername && form.username.isBlank()) AuthError.INVALID_USERNAME.message else null
+
+    _uiState.update {
+      it.copy(
+          emailError = emailError,
+          passwordError = passwordError,
+          usernameError = usernameError,
+      )
     }
-    if (requireUsername && form.username.isBlank()) return AuthError.INVALID_USERNAME.message
-    return null
+    return emailError ?: passwordError ?: usernameError
   }
 
   private fun updateInput(update: AuthUiState.() -> AuthUiState) {
     _uiState.update { state ->
       state.update().let { updated ->
-        if (updated.status is AuthStatus.Loading) updated
-        else updated.copy(status = AuthStatus.Idle)
+        updated.copy(
+            emailError =
+                updated.emailError?.takeUnless { EMAIL_PATTERN.matches(updated.email.trim()) },
+            passwordError =
+                updated.passwordError?.takeUnless {
+                  updated.password.length >= MIN_PASSWORD_LENGTH
+                },
+            usernameError = updated.usernameError?.takeUnless { updated.username.isNotBlank() },
+            status = if (updated.status is AuthStatus.Loading) updated.status else AuthStatus.Idle,
+        )
       }
     }
   }
