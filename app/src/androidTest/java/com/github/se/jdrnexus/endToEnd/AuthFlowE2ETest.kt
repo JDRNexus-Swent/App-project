@@ -22,6 +22,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 import org.junit.After
+import org.junit.Before
 import org.junit.BeforeClass
 import org.junit.Rule
 import org.junit.Test
@@ -34,6 +35,11 @@ class AuthFlowE2ETest {
 
   companion object {
     @BeforeClass @JvmStatic fun configureFirebaseEmulators() = TestFirebaseEmulators.configure()
+  }
+
+  @Before
+  fun setUp() {
+    FirebaseAuth.getInstance().signOut()
   }
 
   @After
@@ -116,5 +122,18 @@ internal object TestFirebaseEmulators {
     FirebaseAuth.getInstance().useEmulator("10.0.2.2", 9099)
     FirebaseFirestore.getInstance().useEmulator("10.0.2.2", 8080)
     configured = true
+  }
+
+  suspend fun clearCollection(firestore: FirebaseFirestore, collectionPath: String) {
+    try {
+      val snapshot = firestore.collection(collectionPath).get().await()
+      snapshot.documents.chunked(500).forEach { chunk ->
+        val batch = firestore.batch()
+        chunk.forEach { batch.delete(it.reference) }
+        batch.commit().await()
+      }
+    } catch (e: Exception) {
+      Log.e("E2E", "Cleanup of '$collectionPath' failed", e)
+    }
   }
 }

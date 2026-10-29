@@ -24,11 +24,12 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.edition.EditFileCharacterTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.google.firebase.auth.FirebaseAuth
-import kotlinx.coroutines.flow.first
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 import org.junit.After
+import org.junit.Before
 import org.junit.BeforeClass
 import org.junit.Rule
 import org.junit.Test
@@ -46,6 +47,11 @@ class CharacterEditionE2ETest {
 
   @get:Rule val composeRule = createAndroidComposeRule<MainActivity>()
 
+  @Before
+  fun setUp() {
+    FirebaseAuth.getInstance().signOut()
+  }
+
   @After
   fun cleanUp() {
     runBlocking {
@@ -53,15 +59,7 @@ class CharacterEditionE2ETest {
       val user = auth.currentUser ?: return@runBlocking
       try {
         withTimeout(15_000) {
-          val repo = WorkspaceRepositoryProvider.repository
-
-          val rootFiles = repo.getPersonalRootFiles(user.uid).first()
-          rootFiles.forEach { file ->
-            repo.deleteFile(file.id).onFailure {
-              Log.w("E2E", "Could not delete file ${file.id}", it)
-            }
-          }
-
+          TestFirebaseEmulators.clearCollection(FirebaseFirestore.getInstance(), "documents")
           user.delete().await()
         }
       } catch (e: Exception) {
@@ -90,7 +88,7 @@ class CharacterEditionE2ETest {
     signUpNewUser()
     waitForTag(TestTags.TITLE)
 
-    seedCharacter()
+    val fileId = seedCharacter()
 
     composeRule.onNodeWithTag(TestTags.PSPACEBUTTON).performClick()
     waitForText("CHARACTER SHEET") // collect file from firestore
@@ -111,15 +109,27 @@ class CharacterEditionE2ETest {
     composeRule.onNodeWithTag(EditFileCharacterTestTags.LIST).assertDoesNotExist()
     composeRule.onNodeWithText("CHARACTER SHEET").assertIsDisplayed()
     composeRule.onNodeWithText("1 items").assertIsDisplayed()
+    runBlocking {
+      kotlinx.coroutines.delay(1000)
+
+      val updatedFile = WorkspaceRepositoryProvider.repository.getFile(fileId).getOrThrow()
+      org.junit.Assert.assertEquals(SEEDED_NAME, updatedFile?.name)
+      org.junit.Assert.assertTrue(
+          "Json must contain new name",
+          updatedFile?.content?.contains("E2E edited") == true,
+      )
+    }
   }
 
-  private fun seedCharacter() {
+  private fun seedCharacter(): String {
+    var fileId = ""
     runBlocking {
       val user = FirebaseAuth.getInstance().currentUser!!
       val repo = WorkspaceRepositoryProvider.repository
+      fileId = repo.getNewUid()
       val file =
           JDRFile(
-              id = repo.getNewUid(),
+              id = fileId,
               name = SEEDED_NAME,
               ownerId = user.uid,
               personalParentId = "",
@@ -129,6 +139,7 @@ class CharacterEditionE2ETest {
           )
       repo.createFile(file).getOrThrow()
     }
+    return fileId
   }
 
   private fun signUpNewUser() {
