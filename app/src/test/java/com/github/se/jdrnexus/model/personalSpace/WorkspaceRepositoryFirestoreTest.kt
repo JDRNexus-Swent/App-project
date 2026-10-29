@@ -33,6 +33,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
@@ -100,6 +101,53 @@ class WorkspaceRepositoryFirestoreTest {
     }
     shadowOf(Looper.getMainLooper()).idle()
     return operation.await()
+  }
+
+  /** Same idea as removeItemFromGroupAndPumpMainLooper, for any repository call. */
+  private suspend fun <T> runAndPumpMainLooper(operationName: String, block: suspend () -> T): T {
+    val operation = CoroutineScope(Dispatchers.Default).async { block() }
+    try {
+      FirebaseEmulatorTestUtils.pumpMainLooperUntil(
+          timeoutMessage = { "$operationName did not complete within $DEFAULT_TIMEOUT_MS ms" }
+      ) {
+        operation.isCompleted
+      }
+    } catch (e: AssertionError) {
+      operation.cancel()
+      throw e
+    }
+    shadowOf(Looper.getMainLooper()).idle()
+    return operation.await()
+  }
+
+  private fun groupRootOf(groupId: String) =
+      JDRFile(id = groupId, sharedGroupsIds = listOf(groupId), type = DocumentType.GROUP_ROOT)
+
+  /** A file placed in [folderId] inside [groupId] (the group id means the group root). */
+  private fun inGroup(
+      id: String,
+      groupId: String,
+      folderId: String,
+      type: DocumentType = DocumentType.TEXT,
+      isHidden: Boolean = false,
+  ) =
+      JDRFile(
+          id = id,
+          sharedGroupsIds = listOf(groupId),
+          placements = mapOf(groupId to Placement(folderId, isHidden)),
+          type = type,
+      )
+
+  private fun hiddenIn(file: JDRFile, groupId: String) =
+      file.copy(
+          placements =
+              file.placements + (groupId to file.placements.getValue(groupId).copy(isHidden = true))
+      )
+
+  private fun assertFailureWith(result: Result<Unit>, type: Class<out Throwable>, message: String) {
+    assertTrue(result.isFailure)
+    assertEquals(type, result.exceptionOrNull()?.javaClass)
+    assertEquals(message, result.exceptionOrNull()?.message)
   }
 
   @Test
@@ -728,6 +776,333 @@ class WorkspaceRepositoryFirestoreTest {
         result.exceptionOrNull()?.message,
     )
     assertEquals(groupRoot, getPersistedFile(groupRoot.id))
+  }
+
+  @Test
+  fun addItemToGroup_addsTheItemAtTheGroupRoot() = runBlocking {
+    val file = JDRFile(id = "file", name = "Goblin", ownerId = "owner", content = "hp: 7")
+    persistFiles(groupRootOf("group"), file)
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repository.addItemToGroup("file", "group", "group")
+        }
+
+    assertTrue(result.isSuccess)
+    assertEquals(
+        file.copy(
+            sharedGroupsIds = listOf("group"),
+            placements = mapOf("group" to Placement("group")),
+        ),
+        getPersistedFile("file"),
+    )
+  }
+
+  @Test
+  fun addItemToGroup_addsInASubfolderAndKeepsTheItemsOtherGroups() = runBlocking {
+    val folder = inGroup("folder", "group", "group", DocumentType.FOLDER)
+    val file = inGroup("file", "other-group", "other-group")
+    persistFiles(groupRootOf("group"), folder, file)
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repository.addItemToGroup("file", "group", "folder")
+        }
+
+    assertTrue(result.isSuccess)
+    assertEquals(
+        file.copy(
+            sharedGroupsIds = listOf("other-group", "group"),
+            placements = file.placements + ("group" to Placement("folder")),
+        ),
+        getPersistedFile("file"),
+    )
+  }
+
+  @Test
+  fun addItemToGroup_canAddTheItemHidden() = runBlocking {
+    val file = JDRFile(id = "file")
+    persistFiles(groupRootOf("group"), file)
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repository.addItemToGroup("file", "group", "group", isHidden = true)
+        }
+
+    assertTrue(result.isSuccess)
+    assertEquals(Placement("group", true), getPersistedFile("file")?.placements?.get("group"))
+  }
+
+  @Test
+  fun addItemToGroup_hidesTheItemWhenTheFolderIsHidden() = runBlocking {
+    val hiddenFolder = inGroup("folder", "group", "group", DocumentType.FOLDER, isHidden = true)
+    val file = JDRFile(id = "file")
+    persistFiles(groupRootOf("group"), hiddenFolder, file)
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repository.addItemToGroup("file", "group", "folder", isHidden = false)
+        }
+
+    assertTrue(result.isSuccess)
+    assertEquals(Placement("folder", true), getPersistedFile("file")?.placements?.get("group"))
+  }
+
+  @Test
+  fun addItemToGroup_addsAFolderWithoutItsContent() = runBlocking {
+    val folder = JDRFile(id = "folder", type = DocumentType.FOLDER)
+    val child = JDRFile(id = "child", personalParentId = "folder")
+    persistFiles(groupRootOf("group"), folder, child)
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repository.addItemToGroup("folder", "group", "group")
+        }
+
+    assertTrue(result.isSuccess)
+    assertEquals(listOf("group"), getPersistedFile("folder")?.sharedGroupsIds)
+    assertEquals(child, getPersistedFile("child"))
+  }
+
+  @Test
+  fun addItemToGroup_refusesAnItemAlreadyInTheGroup() = runBlocking {
+    val file = inGroup("file", "group", "group")
+    persistFiles(groupRootOf("group"), file)
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repository.addItemToGroup("file", "group", "group")
+        }
+
+    assertFailureWith(
+        result,
+        IllegalStateException::class.java,
+        "This item is already in the group.",
+    )
+    assertEquals(file, getPersistedFile("file"))
+  }
+
+  @Test
+  fun addItemToGroup_refusesADestinationThatIsNotAFolder() = runBlocking {
+    val notAFolder = inGroup("text", "group", "group")
+    val file = JDRFile(id = "file")
+    persistFiles(groupRootOf("group"), notAFolder, file)
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repository.addItemToGroup("file", "group", "text")
+        }
+
+    assertFailureWith(result, IllegalStateException::class.java, "The destination is not a folder.")
+    assertEquals(file, getPersistedFile("file"))
+  }
+
+  @Test
+  fun addItemToGroup_refusesADestinationOutsideTheGroup() = runBlocking {
+    val foreignFolder = inGroup("folder", "other-group", "other-group", DocumentType.FOLDER)
+    val file = JDRFile(id = "file")
+    persistFiles(groupRootOf("group"), foreignFolder, file)
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repository.addItemToGroup("file", "group", "folder")
+        }
+
+    assertFailureWith(
+        result,
+        IllegalStateException::class.java,
+        "The destination folder does not belong to the group.",
+    )
+    assertEquals(file, getPersistedFile("file"))
+  }
+
+  @Test
+  fun addItemToGroup_refusesAGroupRoot() = runBlocking {
+    persistFiles(groupRootOf("group"), groupRootOf("other-group"))
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repository.addItemToGroup("group", "other-group", "other-group")
+        }
+
+    assertFailureWith(
+        result,
+        IllegalStateException::class.java,
+        "A group root cannot be added to a group.",
+    )
+  }
+
+  @Test
+  fun addItemToGroup_rejectsBlankIds() = runBlocking {
+    assertFailureWith(
+        repository.addItemToGroup(" ", "group", "group"),
+        IllegalArgumentException::class.java,
+        "Item ID cannot be empty.",
+    )
+    assertFailureWith(
+        repository.addItemToGroup("file", " ", "group"),
+        IllegalArgumentException::class.java,
+        "Group ID cannot be empty.",
+    )
+    assertFailureWith(
+        repository.addItemToGroup("file", "group", " "),
+        IllegalArgumentException::class.java,
+        "Folder ID cannot be empty.",
+    )
+  }
+
+  @Test
+  fun setItemHidden_hidesAFile() = runBlocking {
+    val file = inGroup("file", "group", "group")
+    persistFiles(groupRootOf("group"), file)
+
+    val result =
+        runAndPumpMainLooper("setItemHidden") { repository.setItemHidden("file", "group", true) }
+
+    assertTrue(result.isSuccess)
+    assertEquals(hiddenIn(file, "group"), getPersistedFile("file"))
+  }
+
+  @Test
+  fun setItemHidden_hidesEverythingInsideAFolder() = runBlocking {
+    val folder = inGroup("folder", "group", "group", DocumentType.FOLDER)
+    val nested = inGroup("nested", "group", "folder", DocumentType.FOLDER)
+    val deep = inGroup("deep", "group", "nested")
+    val child = inGroup("child", "group", "folder")
+    val sibling = inGroup("sibling", "group", "group")
+    persistFiles(groupRootOf("group"), folder, nested, deep, child, sibling)
+
+    val result =
+        runAndPumpMainLooper("setItemHidden") { repository.setItemHidden("folder", "group", true) }
+
+    assertTrue(result.isSuccess)
+    listOf(folder, nested, deep, child).forEach {
+      assertEquals(hiddenIn(it, "group"), getPersistedFile(it.id))
+    }
+    assertEquals(sibling, getPersistedFile("sibling"))
+  }
+
+  @Test
+  fun setItemHidden_doesNotChangeTheItemsOtherGroups() = runBlocking {
+    val file =
+        inGroup("file", "group", "group")
+            .copy(
+                sharedGroupsIds = listOf("group", "other-group"),
+                placements =
+                    mapOf(
+                        "group" to Placement("group"),
+                        "other-group" to Placement("other-group"),
+                    ),
+            )
+    persistFiles(groupRootOf("group"), file)
+
+    val result =
+        runAndPumpMainLooper("setItemHidden") { repository.setItemHidden("file", "group", true) }
+
+    assertTrue(result.isSuccess)
+    assertEquals(
+        file.withPlacement("group", Placement("group", true)),
+        getPersistedFile(fileId = "file"),
+    )
+  }
+
+  @Test
+  fun setItemHidden_revealsOnlyTheItemAndNotItsContent() = runBlocking {
+    val folder = inGroup("folder", "group", "group", DocumentType.FOLDER, isHidden = true)
+    val child = inGroup("child", "group", "folder", isHidden = true)
+    persistFiles(groupRootOf("group"), folder, child)
+
+    val result =
+        runAndPumpMainLooper("setItemHidden") { repository.setItemHidden("folder", "group", false) }
+
+    assertTrue(result.isSuccess)
+    assertEquals(Placement("group", false), getPersistedFile("folder")?.placements?.get("group"))
+    assertEquals(child, getPersistedFile("child"))
+  }
+
+  @Test
+  fun setItemHidden_refusesToRevealAnItemInAHiddenFolder() = runBlocking {
+    val folder = inGroup("folder", "group", "group", DocumentType.FOLDER, isHidden = true)
+    val child = inGroup("child", "group", "folder", isHidden = true)
+    persistFiles(groupRootOf("group"), folder, child)
+
+    val result =
+        runAndPumpMainLooper("setItemHidden") { repository.setItemHidden("child", "group", false) }
+
+    assertFailureWith(result, IllegalStateException::class.java, "Reveal the parent folder first.")
+    assertEquals(child, getPersistedFile("child"))
+  }
+
+  @Test
+  fun setItemHidden_doesNothingWhenAlreadyInTheRequestedState() = runBlocking {
+    val file = inGroup("file", "group", "group")
+    persistFiles(groupRootOf("group"), file)
+
+    val result =
+        runAndPumpMainLooper("setItemHidden") { repository.setItemHidden("file", "group", false) }
+
+    assertTrue(result.isSuccess)
+    assertEquals(file, getPersistedFile("file"))
+  }
+
+  @Test
+  fun setItemHidden_refusesAnItemThatIsNotInTheGroup() = runBlocking {
+    val file = JDRFile(id = "file")
+    persistFiles(groupRootOf("group"), file)
+
+    val result =
+        runAndPumpMainLooper("setItemHidden") { repository.setItemHidden("file", "group", true) }
+
+    assertFailureWith(
+        result,
+        IllegalStateException::class.java,
+        "This item does not belong to the group.",
+    )
+  }
+
+  @Test
+  fun setItemHidden_refusesAGroupRoot() = runBlocking {
+    persistFiles(groupRootOf("group"))
+
+    val result =
+        runAndPumpMainLooper("setItemHidden") { repository.setItemHidden("group", "group", true) }
+
+    assertFailureWith(result, IllegalStateException::class.java, "A group root cannot be hidden.")
+  }
+
+  @Test
+  fun setItemHidden_refusesToHideMoreItemsThanOneBatchCanWrite() = runBlocking {
+    val folder = inGroup("folder", "group", "group", DocumentType.FOLDER)
+    persistFiles(groupRootOf("group"), folder)
+    val repositorySpy = spyk(WorkspaceRepositoryFirestore(firestore))
+    val children = (1..500).map { inGroup("child-$it", "group", "folder") }
+    every { repositorySpy.getGroupFolderFiles("folder", "group") } returns flowOf(children)
+
+    val result =
+        runAndPumpMainLooper("setItemHidden") {
+          repositorySpy.setItemHidden("folder", "group", true)
+        }
+
+    assertFailureWith(
+        result,
+        IllegalStateException::class.java,
+        "Too many items to update at once (maximum 500).",
+    )
+    assertEquals(folder, getPersistedFile("folder"))
+  }
+
+  @Test
+  fun setItemHidden_rejectsBlankIds() = runBlocking {
+    assertFailureWith(
+        repository.setItemHidden(" ", "group", true),
+        IllegalArgumentException::class.java,
+        "Item ID cannot be empty.",
+    )
+    assertFailureWith(
+        repository.setItemHidden("file", " ", true),
+        IllegalArgumentException::class.java,
+        "Group ID cannot be empty.",
+    )
   }
 
   /** Tests the creation of a new uid and verifies that it not empty and unique */
