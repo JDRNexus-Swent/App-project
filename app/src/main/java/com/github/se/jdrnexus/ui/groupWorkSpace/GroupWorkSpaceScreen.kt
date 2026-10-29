@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -59,11 +61,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.transition.Visibility
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
@@ -471,9 +475,12 @@ fun WorkspaceCard(
     file: JDRFile,
     canEdit: Boolean,
     canRemove: Boolean,
+    isHidden : Boolean,
+    canChangeVisibility: Boolean,
     onOpen: () -> Unit,
     onEdit: () -> Unit,
     onRemove: () -> Unit,
+    onToggleVisibility: () -> Unit
 ) {
 
   val isFolder = file.type == DocumentType.FOLDER
@@ -576,6 +583,22 @@ fun WorkspaceCard(
                 )
               }
             }
+              if (canChangeVisibility){
+                  IconButton(
+                      onClick = onToggleVisibility,
+                      modifier = Modifier.size(36.dp)
+                  ) {
+                      Icon(
+                          imageVector =
+                              if (!isHidden){
+                                  Icons.Default.Visibility}
+                              else {
+                                  Icons.Default.VisibilityOff},
+                          contentDescription = "Hide ${file.name}",
+                          tint = color().onSecondary
+                      )
+                  }
+              }
           }
         }
       }
