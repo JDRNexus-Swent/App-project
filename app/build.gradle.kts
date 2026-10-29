@@ -16,6 +16,7 @@ android {
   compileSdk = 37
 
   defaultConfig {
+    manifestPlaceholders["MAPS_API_KEY"] = providers.gradleProperty("MAPS_API_KEY").orElse("").get()
     applicationId = "com.github.se.jdrnexus"
     minSdk = 28
     targetSdk = 34
@@ -140,6 +141,7 @@ dependencies {
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.appcompat)
   implementation(libs.androidx.navigation.compose)
+  implementation(libs.google.maps.compose)
   implementation(libs.androidx.ui.graphics)
   implementation(libs.googleid)
   implementation(libs.material)
