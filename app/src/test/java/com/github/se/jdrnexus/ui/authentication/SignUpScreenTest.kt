@@ -155,12 +155,18 @@ class SignUpScreenTest {
 
     composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
 
-    composeTestRule.onNodeWithText("Password must be at least 6 characters.").assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(
+            "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters."
+        )
+        .assertIsDisplayed()
     assertEquals(0, repository.signUpCalls)
 
     passwordInput(C.Tag.sign_up_password).performTextInput("6")
     composeTestRule
-        .onAllNodesWithText("Password must be at least 6 characters.")
+        .onAllNodesWithText(
+            "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters."
+        )
         .assertCountEquals(0)
   }
 
