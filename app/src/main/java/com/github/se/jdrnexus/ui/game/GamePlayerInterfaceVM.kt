@@ -41,6 +41,8 @@ data class GamePlayerUiState(
      * Displayable repository, validation, or permission error, cleared by the next valid action.
      */
     val error: String? = null,
+    /** Displayable reason why the last HP update was rejected, cleared by the next valid one. */
+    val hpError: String? = null,
 ) {
   val selectedCharacter: SessionCharacter?
     get() = characters.firstOrNull { it.file.id == selectedCharacterId }
@@ -72,8 +74,11 @@ interface GamePlayerInterfaceVM {
   /** Updates the description for the action identified by [actionID]. */
   fun updateCharacterActionDescription(actionID: String, description: String)
 
-  /** Updates current HP without allowing negative values or values above max HP. */
-  fun updateCharacterCurrentHp(current: Int)
+  /**
+   * Updates the selected character's [current] and [max] HP. Rejects negative values or a current
+   * HP above max HP by setting [GamePlayerUiState.hpError] instead of throwing.
+   */
+  fun updateCharacterHp(current: Int, max: Int)
 
   /** Persists the selected character so that the other participants receive the change. */
   fun saveCharacter()
