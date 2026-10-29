@@ -1,4 +1,4 @@
-/** Co-authored-by: AI Agent */
+/** Co-authored-by: Claude Sonnet 5.5 */
 package com.github.se.jdrnexus.model.personalSpace
 
 import android.util.Log
@@ -17,6 +17,11 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
 
   private val groupsCollection = firestore.collection(GROUPS_COLLECTION_PATH)
 
+  // Created on first use, so code that never touches files does not need this collection.
+  private val documentsCollection by lazy {
+    firestore.collection(WorkspaceRepositoryFirestore.COLLECTION_PATH)
+  }
+
   // ==========================================
   // GROUP MANAGEMENT
   // ==========================================
@@ -27,7 +32,11 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
 
   override suspend fun createGroup(group: CampaignGroup): Result<Unit> {
     return try {
-      groupsCollection.document(group.id).set(group).await()
+      // The group and its root folder are written together: both exist or neither does.
+      val batch = firestore.batch()
+      batch.set(groupsCollection.document(group.id), group)
+      batch.set(documentsCollection.document(group.id), rootFileOf(group))
+      batch.commit().await()
       Result.success(Unit)
     } catch (e: CancellationException) {
       throw e
@@ -38,7 +47,11 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
 
   override suspend fun updateGroup(group: CampaignGroup): Result<Unit> {
     return try {
-      groupsCollection.document(group.id).update(group.toMap()).await()
+      // The root folder shows the group's name, so both are updated in the same batch.
+      val batch = firestore.batch()
+      batch.update(groupsCollection.document(group.id), group.toMap())
+      batch.update(documentsCollection.document(group.id), mapOf("name" to group.name))
+      batch.commit().await()
       Result.success(Unit)
     } catch (e: CancellationException) {
       throw e
@@ -108,6 +121,16 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
       Result.failure(e)
     }
   }
+
+  /** Create the hidden root folder of [group]: same id, same name, shared with the group itself. */
+  private fun rootFileOf(group: CampaignGroup): JDRFile =
+      JDRFile(
+          id = group.id,
+          name = group.name,
+          ownerId = group.gameMasterId,
+          sharedGroupsIds = listOf(group.id),
+          type = DocumentType.GROUP_ROOT,
+      )
 
   // ==========================================
   // REAL-TIME SYNCHRONIZATION (Flows) for GROUPS

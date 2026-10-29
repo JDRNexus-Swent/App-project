@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.isContainer
 import com.github.se.jdrnexus.viewmodel.LoadState
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 
@@ -350,13 +351,15 @@ fun FolderItem(
         Icon(
             imageVector =
                 when (folder.type) {
-                  DocumentType.FOLDER -> Icons.Filled.Folder
+                  DocumentType.FOLDER,
+                  DocumentType.GROUP_ROOT -> Icons.Filled.Folder
                   DocumentType.CHARACTER -> Icons.Filled.Person
                   DocumentType.TEXT -> Icons.AutoMirrored.Filled.MenuBook
                 },
             contentDescription =
                 when (folder.type) {
-                  DocumentType.FOLDER -> "Folder"
+                  DocumentType.FOLDER,
+                  DocumentType.GROUP_ROOT -> "Folder"
                   DocumentType.CHARACTER -> "Character"
                   DocumentType.TEXT -> "Text document"
                 },
@@ -368,7 +371,8 @@ fun FolderItem(
         Text(
             text =
                 when (folder.type) {
-                  DocumentType.FOLDER -> "FOLDER"
+                  DocumentType.FOLDER,
+                  DocumentType.GROUP_ROOT -> "FOLDER"
                   DocumentType.CHARACTER -> "CHARACTER SHEET"
                   DocumentType.TEXT -> "TEXT DOCUMENT"
                 },
@@ -395,7 +399,7 @@ fun FolderItem(
         )
       }
 
-      if (folder.type == DocumentType.FOLDER) {
+      if (folder.isContainer()) {
         Icon(
             imageVector = Icons.Filled.ChevronRight,
             contentDescription = null,
