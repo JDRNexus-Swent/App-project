@@ -395,10 +395,10 @@ class GroupWorkSpaceViewModelTest {
     val repository = FakeWorkspaceRepository(listOf(existing))
     val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
     runCurrent()
-
+      print(viewModel.uiState.value.items)
     viewModel.createFolder("New folder")
     runCurrent()
-
+      print(viewModel.uiState.value.items)
     assertTrue(repository.createdFiles.isEmpty())
     assertEquals(existing, repository.files[existing.id])
     assertEquals("A document with this ID already exists.", viewModel.uiState.value.errorMessage)
@@ -684,6 +684,7 @@ class GroupWorkSpaceViewModelTest {
 
     // Group 1 sharing is removed, but Group 2 sharing remains.
     val expectedFile = file.copy(sharedGroupsIds = listOf(OTHER_GROUP_ID))
+      print(expectedFile)
 
     assertEquals(expectedFile, repository.files[file.id])
     assertEquals(listOf(file.id to GROUP_ID), repository.groupRemovalRequests)
@@ -1227,7 +1228,7 @@ class GroupWorkSpaceViewModelTest {
 
     assertEquals(existing, repository.files[existing.id])
     assertTrue(repository.updatedFiles.isEmpty())
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
+    assertTrue(viewModel.uiState.value.errorMessage.isNotBlank())
     assertFalse(viewModel.uiState.value.isOperationInProgress)
   }
 

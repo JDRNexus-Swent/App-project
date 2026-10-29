@@ -35,17 +35,17 @@ data class GroupWorkspaceUiState(
     val currentFolderId: String = "",
     val loadState: LoadState = LoadState.Loading,
     val isOperationInProgress: Boolean = false,
-    val errorMessage: String? = "",
+    val errorMessage: String = "",
     val canCreateFolder: Boolean = false,
     val canEditItems: Boolean = false,
     val currentFolderName: String = "",
 )
 
 class GroupWorkspaceViewModel(
-    val groupId: String,
-    val role: GroupWorkspaceRole,
-    val repository: WorkspaceRepository = WorkspaceRepositoryProvider.repository,
-    val authRepository: AuthRepository = AuthRepositoryFirebase(),
+    private val groupId: String,
+    private val role: GroupWorkspaceRole,
+    private val repository: WorkspaceRepository = WorkspaceRepositoryProvider.repository,
+    private val authRepository: AuthRepository = AuthRepositoryFirebase(),
 ) : ViewModel() {
 
   private val _uiState =
@@ -84,6 +84,9 @@ class GroupWorkspaceViewModel(
     check(role == GroupWorkspaceRole.GAME_MASTER || item.ownerId == uid) {
       "You cannot edit an item that you do not own."
     }
+      check(role == GroupWorkspaceRole.GAME_MASTER || item.type != DocumentType.FOLDER) {
+          "Players cannot edit folders."
+      }
   }
 
   /** make sure the item belong to the group */
@@ -193,8 +196,7 @@ class GroupWorkspaceViewModel(
             it.copy(
                 loadState =
                     LoadState.Error(
-                        e.message?.takeIf(String::isNotBlank)
-                            ?: "Unable to load the group workspace."
+                        e.message ?: "Unable to load the group workspace."
                     ),
                 items = emptyList(),
                 currentFolderName = "",
@@ -220,9 +222,9 @@ class GroupWorkspaceViewModel(
         if (parentId.isNotEmpty()) requireAccessibleFolder(parentId)
         val uid = requireUid()
         val folderId = repository.getNewUid()
-        check(repository.getFileFlow(folderId).first()?.id.isNullOrBlank()) {
-          "A document with this ID already exists."
-        }
+//        check(repository.getFileFlow(folderId).first()?.id.isNullOrBlank()) {
+//          "A document with this ID already exists."
+//        }
 
         val folder =
             JDRFile(
@@ -332,9 +334,7 @@ class GroupWorkspaceViewModel(
         requireItemInCurrentWorkspace(existing, parentId)
         requireCanEdit(existing, uid)
 
-        check(role == GroupWorkspaceRole.GAME_MASTER || existing.type != DocumentType.FOLDER) {
-          "Players cannot edit folders."
-        }
+
 
         repository
             .removeItemFromGroup(
@@ -352,7 +352,9 @@ class GroupWorkspaceViewModel(
 
   /** Edits an item's name/content while preserving its ownership and workspace references. */
   fun editItem(updatedItem: JDRFile): Job {
-    val folderId = _uiState.value.currentFolderId
+      require(updatedItem.name.isNotBlank()) { "The item name cannot be blank." }
+
+      val folderId = _uiState.value.currentFolderId
     return viewModelScope.launch {
       performOperation {
         val uid = requireUid()
@@ -362,11 +364,10 @@ class GroupWorkspaceViewModel(
 
         requireItemInCurrentWorkspace(existing, folderId)
         requireCanEdit(existing, uid)
-        check(role == GroupWorkspaceRole.GAME_MASTER || existing.type != DocumentType.FOLDER) {
-          "Players cannot edit folders."
-        }
+//        check(role == GroupWorkspaceRole.GAME_MASTER || existing.type != DocumentType.FOLDER) {
+//          "Players cannot edit folders."
+//        }
 
-        require(updatedItem.name.isNotBlank()) { "The item name cannot be blank." }
         repository
             .updateFile(
                 existing.copy(
@@ -391,7 +392,7 @@ class GroupWorkspaceViewModel(
     } catch (e: CancellationException) {
       throw e
     } catch (e: Exception) {
-      showError(e.message?.takeIf(String::isNotBlank) ?: "The workspace operation failed.")
+      showError(e.message ?: "The workspace operation failed")
     } finally {
       val remaining = pendingOperations.decrementAndGet()
       _uiState.update { it.copy(isOperationInProgress = remaining > 0) }
