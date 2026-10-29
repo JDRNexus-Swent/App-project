@@ -19,18 +19,12 @@ import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.ui.authentication.MainDispatcherRule
-import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.ACTION_NAME_ERROR
-import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.ACTION_NOT_FOUND_ERROR
-import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.CHARACTER_NOT_FOUND_ERROR
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.CHARACTER_REQUIRED_ERROR
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.CURRENT_HP_ERROR
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.CURRENT_HP_EXCEEDS_MAX_ERROR
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.GROUP_NOT_FOUND_ERROR
-import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.READ_ONLY_ERROR
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.SAVE_ERROR
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.SIGNED_OUT_ERROR
-import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.STAT_NOT_FOUND_ERROR
-import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.STAT_VALUE_ERROR
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -113,7 +107,7 @@ class GamePlayerViewModelTest {
   }
 
   @Test
-  fun loadsOwnAndGameMasterSheetsAndLoreFromTheWholeGroupTree() = runTest {
+  fun loadsOwnCharacterAndGameMasterLoreFromTheWholeGroupTree() = runTest {
     val workspace =
         FakeWorkspaceRepository(
             group.id to
@@ -139,12 +133,11 @@ class GamePlayerViewModelTest {
     assertFalse(state.isLoading)
     assertNull(state.error)
     assertEquals(group.id, state.groupId)
-    assertEquals(listOf("own", "gm-sheet"), state.characters.map { it.file.id })
-    assertEquals(listOf(true, false), state.characters.map { it.isEditable })
-    assertEquals(listOf(hero, villain), state.characters.map { it.character })
+    assertEquals("own", state.character!!.file.id)
+    assertEquals(hero, state.character!!.character)
+    assertFalse(state.character!!.hasUnsavedChanges)
     assertEquals(listOf("lore"), state.lores.map { it.file.id })
     assertEquals(lore, state.lores.single().lore)
-    assertEquals("own", state.selectedCharacterId)
     assertTrue(state.unreadableFiles.isEmpty())
   }
 
@@ -159,7 +152,7 @@ class GamePlayerViewModelTest {
     viewModel.loadSession(group.id)
     advanceUntilIdle()
 
-    assertEquals(listOf("own"), viewModel.uiState.value.characters.map { it.file.id })
+    assertEquals("own", viewModel.uiState.value.character!!.file.id)
     assertEquals(setOf("broken"), viewModel.uiState.value.unreadableFiles.keys)
     assertNull(viewModel.uiState.value.error)
   }
@@ -187,110 +180,59 @@ class GamePlayerViewModelTest {
   }
 
   @Test
-  fun selectsKnownCharactersAndRejectsUnknownOnes() = runTest {
-    val viewModel =
-        createViewModel(
-            FakeWorkspaceRepository(
-                group.id to
-                    listOf(
-                        characterFile("own", player.uid),
-                        characterFile("gm-sheet", group.gameMasterId),
-                    )
-            )
-        )
-    viewModel.loadSession(group.id)
-    advanceUntilIdle()
-
-    viewModel.selectCharacter("gm-sheet")
-    assertEquals("gm-sheet", viewModel.uiState.value.selectedCharacterId)
-
-    viewModel.selectCharacter("missing")
-    assertEquals("gm-sheet", viewModel.uiState.value.selectedCharacterId)
-    assertEquals(CHARACTER_NOT_FOUND_ERROR, viewModel.uiState.value.error)
-
-    viewModel.dismissError()
-    assertNull(viewModel.uiState.value.error)
-  }
-
-  @Test
-  fun editsTheSelectedCharacterLocallyAndMarksItUnsaved() = runTest {
+  fun editsTheCharacterLocallyAndMarksItUnsaved() = runTest {
     val (viewModel, _) = ownSheetSession()
     viewModel.loadSession(group.id)
     advanceUntilIdle()
 
-    viewModel.updateCharacterStatValue("strength", 18.0)
-    viewModel.updateCharacterActionName("slash", "Cleave")
-    viewModel.updateCharacterActionDescription("slash", "Hit everyone")
-    viewModel.updateCharacterCurrentHp(20)
+    viewModel.updateCharacterHp(20)
 
-    val selected = viewModel.uiState.value.selectedCharacter!!
+    val selected = viewModel.uiState.value.character!!
     assertTrue(selected.hasUnsavedChanges)
-    assertEquals(
-        hero.copy(
-            stats = listOf(CharacterStat("strength", "Strength", 18.0)),
-            actions = listOf(CharacterAction("slash", "Cleave", "Hit everyone")),
-            hp = CharacterHealthPoints(current = 20, max = 20),
-        ),
-        selected.character,
-    )
+    assertEquals(hero.copy(hp = CharacterHealthPoints(current = 20, max = 20)), selected.character)
     assertNull(viewModel.uiState.value.error)
   }
 
   @Test
-  fun rejectsInvalidEditsWithoutChangingTheCharacter() = runTest {
+  fun rejectsInvalidHpThroughHpErrorWithoutChangingTheCharacter() = runTest {
     val (viewModel, _) = ownSheetSession()
     viewModel.loadSession(group.id)
     advanceUntilIdle()
 
-    val cases =
-        listOf<Pair<() -> Unit, String>>(
-            { viewModel.updateCharacterStatValue("strength", Double.NaN) } to STAT_VALUE_ERROR,
-            { viewModel.updateCharacterStatValue("missing", 1.0) } to STAT_NOT_FOUND_ERROR,
-            { viewModel.updateCharacterActionName("slash", " ") } to ACTION_NAME_ERROR,
-            { viewModel.updateCharacterActionName("missing", "Name") } to ACTION_NOT_FOUND_ERROR,
-            { viewModel.updateCharacterActionDescription("missing", "") } to ACTION_NOT_FOUND_ERROR,
-            { viewModel.updateCharacterCurrentHp(-1) } to CURRENT_HP_ERROR,
-            { viewModel.updateCharacterCurrentHp(21) } to CURRENT_HP_EXCEEDS_MAX_ERROR,
-        )
-    cases.forEach { (edit, expectedError) ->
-      edit()
-      assertEquals(expectedError, viewModel.uiState.value.error)
-    }
+    viewModel.updateCharacterHp(-1)
+    assertEquals(CURRENT_HP_ERROR, viewModel.uiState.value.hpError)
+    viewModel.updateCharacterHp(21)
+    assertEquals(CURRENT_HP_EXCEEDS_MAX_ERROR, viewModel.uiState.value.hpError)
 
-    val selected = viewModel.uiState.value.selectedCharacter!!
+    assertNull(viewModel.uiState.value.error)
+    val selected = viewModel.uiState.value.character!!
     assertEquals(hero, selected.character)
     assertFalse(selected.hasUnsavedChanges)
+
+    viewModel.updateCharacterHp(5)
+    assertNull(viewModel.uiState.value.hpError)
+    assertEquals(5, viewModel.uiState.value.character!!.character.hp.current)
   }
 
   @Test
-  fun gameMasterSheetsAreReadOnly() = runTest {
+  fun editsAndSaveRequireTheirOwnCharacter() = runTest {
+    // Only someone else's sheet is in the group, so the player has no character.
     val workspace =
         FakeWorkspaceRepository(group.id to listOf(characterFile("gm-sheet", group.gameMasterId)))
     val viewModel = createViewModel(workspace)
     viewModel.loadSession(group.id)
     advanceUntilIdle()
 
-    viewModel.updateCharacterCurrentHp(5)
-    assertEquals(READ_ONLY_ERROR, viewModel.uiState.value.error)
-    assertEquals(hero, viewModel.uiState.value.selectedCharacter!!.character)
-
+    assertNull(viewModel.uiState.value.character)
+    viewModel.updateCharacterHp(5)
+    assertEquals(CHARACTER_REQUIRED_ERROR, viewModel.uiState.value.error)
     viewModel.saveCharacter()
     advanceUntilIdle()
-    assertEquals(READ_ONLY_ERROR, viewModel.uiState.value.error)
+    assertEquals(CHARACTER_REQUIRED_ERROR, viewModel.uiState.value.error)
     assertTrue(workspace.updatedFiles.isEmpty())
-  }
 
-  @Test
-  fun editsAndSaveRequireASelectedCharacter() = runTest {
-    val viewModel = createViewModel(FakeWorkspaceRepository(group.id to emptyList()))
-    viewModel.loadSession(group.id)
-    advanceUntilIdle()
-
-    assertNull(viewModel.uiState.value.selectedCharacterId)
-    viewModel.updateCharacterCurrentHp(5)
-    assertEquals(CHARACTER_REQUIRED_ERROR, viewModel.uiState.value.error)
-    viewModel.saveCharacter()
-    assertEquals(CHARACTER_REQUIRED_ERROR, viewModel.uiState.value.error)
+    viewModel.dismissError()
+    assertNull(viewModel.uiState.value.error)
   }
 
   @Test
@@ -304,7 +246,7 @@ class GamePlayerViewModelTest {
     val viewModel = createViewModel(workspace)
     viewModel.loadSession(group.id)
     advanceUntilIdle()
-    viewModel.updateCharacterCurrentHp(3)
+    viewModel.updateCharacterHp(3)
 
     viewModel.saveCharacter()
     advanceUntilIdle()
@@ -321,7 +263,7 @@ class GamePlayerViewModelTest {
         JDRFileJsonCodec.deserializeCharacter(saved.content),
     )
     assertFalse(viewModel.uiState.value.isSaving)
-    assertFalse(viewModel.uiState.value.selectedCharacter!!.hasUnsavedChanges)
+    assertFalse(viewModel.uiState.value.character!!.hasUnsavedChanges)
     assertNull(viewModel.uiState.value.error)
   }
 
@@ -335,67 +277,49 @@ class GamePlayerViewModelTest {
     val viewModel = createViewModel(workspace)
     viewModel.loadSession(group.id)
     advanceUntilIdle()
-    viewModel.updateCharacterCurrentHp(3)
+    viewModel.updateCharacterHp(3)
 
     viewModel.saveCharacter()
     advanceUntilIdle()
 
     assertEquals(SAVE_ERROR, viewModel.uiState.value.error)
     assertFalse(viewModel.uiState.value.isSaving)
-    val selected = viewModel.uiState.value.selectedCharacter!!
+    val selected = viewModel.uiState.value.character!!
     assertTrue(selected.hasUnsavedChanges)
     assertEquals(3, selected.character.hp.current)
   }
 
   @Test
-  fun remoteUpdatesReplaceSavedSheetsButKeepUnsavedEdits() = runTest {
-    val workspace =
-        FakeWorkspaceRepository(
-            group.id to
-                listOf(
-                    characterFile("own", player.uid),
-                    characterFile("gm-sheet", group.gameMasterId),
-                )
-        )
-    val viewModel = createViewModel(workspace)
+  fun remoteUpdatesReplaceASavedCharacterButKeepUnsavedEdits() = runTest {
+    val (viewModel, workspace) = ownSheetSession()
     viewModel.loadSession(group.id)
     advanceUntilIdle()
-    viewModel.updateCharacterCurrentHp(1)
 
     val remoteHero = hero.copy(name = "Changed elsewhere")
     workspace.folders.getValue(group.id).value =
-        listOf(
-            characterFile("own", player.uid, remoteHero),
-            characterFile("gm-sheet", group.gameMasterId, remoteHero),
-        )
+        listOf(characterFile("own", player.uid, remoteHero))
+    advanceUntilIdle()
+    assertEquals(remoteHero, viewModel.uiState.value.character!!.character)
+
+    viewModel.updateCharacterHp(1)
+    workspace.folders.getValue(group.id).value = listOf(characterFile("own", player.uid, villain))
     advanceUntilIdle()
 
-    val (own, gmSheet) = viewModel.uiState.value.characters
-    assertEquals(hero.copy(hp = CharacterHealthPoints(1, 20)), own.character)
+    val own = viewModel.uiState.value.character!!
+    assertEquals(remoteHero.copy(hp = CharacterHealthPoints(1, 20)), own.character)
     assertTrue(own.hasUnsavedChanges)
-    assertEquals(remoteHero, gmSheet.character)
-    assertEquals("own", viewModel.uiState.value.selectedCharacterId)
   }
 
   @Test
-  fun selectionFallsBackWhenTheSelectedSheetDisappears() = runTest {
-    val workspace =
-        FakeWorkspaceRepository(
-            group.id to
-                listOf(
-                    characterFile("own", player.uid),
-                    characterFile("gm-sheet", group.gameMasterId),
-                )
-        )
-    val viewModel = createViewModel(workspace)
+  fun characterIsClearedWhenItsSheetDisappears() = runTest {
+    val (viewModel, workspace) = ownSheetSession()
     viewModel.loadSession(group.id)
     advanceUntilIdle()
-    viewModel.selectCharacter("gm-sheet")
 
-    workspace.folders.getValue(group.id).value = listOf(characterFile("own", player.uid))
+    workspace.folders.getValue(group.id).value = emptyList()
     advanceUntilIdle()
 
-    assertEquals("own", viewModel.uiState.value.selectedCharacterId)
+    assertNull(viewModel.uiState.value.character)
   }
 
   @Test
@@ -413,11 +337,11 @@ class GamePlayerViewModelTest {
     viewModel.loadSession(other.id)
     advanceUntilIdle()
     assertEquals(other.id, viewModel.uiState.value.groupId)
-    assertTrue(viewModel.uiState.value.characters.isEmpty())
+    assertNull(viewModel.uiState.value.character)
 
     workspace.folders.getValue(group.id).value = listOf(characterFile("late", player.uid))
     advanceUntilIdle()
-    assertTrue(viewModel.uiState.value.characters.isEmpty())
+    assertNull(viewModel.uiState.value.character)
   }
 
   private class FakeWorkspaceRepository(
@@ -483,6 +407,17 @@ class GamePlayerViewModelTest {
               groupId: String,
               parentFolderId: String,
           ) = error("Not used")
+
+          override suspend fun addItemToGroup(
+              itemId: String,
+              groupId: String,
+              folderId: String,
+              isHidden: Boolean,
+              includeContent: Boolean,
+          ) = error("Not used")
+
+          override suspend fun setItemHidden(itemId: String, groupId: String, isHidden: Boolean) =
+              error("Not used")
 
           override fun getFileFlow(fileId: String) = error("Not used")
 

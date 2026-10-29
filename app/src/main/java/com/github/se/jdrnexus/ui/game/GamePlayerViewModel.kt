@@ -4,7 +4,6 @@ package com.github.se.jdrnexus.ui.game
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
-import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
@@ -28,16 +27,16 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * Loads a group's session for a player and lets them edit and save their own character sheets.
+ * Loads a group's session for a player and lets them edit and save their own character sheet.
  *
  * The session combines the signed-in user ([AuthRepository.authState]), the group
  * ([GroupRepository.getGroupFlow]) and every file placed in the group, walking the folder tree from
  * the group root ([WorkspaceRepository.getGroupFolderFiles]). Hidden files and the content of
- * hidden folders are skipped. The player's own character files are editable; the Game Master's
- * character and lore files are read-only.
+ * hidden folders are skipped. The first readable character file owned by the player is their
+ * character; the Game Master's lore files are shown read-only.
  *
- * When a remote update arrives for a character with unsaved local edits, the local edits are kept
- * until [saveCharacter] succeeds; characters without unsaved edits always show the latest version.
+ * When a remote update arrives while the character has unsaved local edits, the local edits are
+ * kept until [saveCharacter] succeeds; otherwise the character always shows the latest version.
  *
  * Firebase access remains in the repository implementations; this ViewModel depends only on
  * repository interfaces.
@@ -76,72 +75,34 @@ class GamePlayerViewModel(
     }
   }
 
-  override fun selectCharacter(fileId: String) {
-    if (_uiState.value.characters.none { it.file.id == fileId }) {
-      return reportError(CHARACTER_NOT_FOUND_ERROR)
-    }
-    _uiState.update { it.copy(selectedCharacterId = fileId, error = null) }
-  }
+  override fun updateCharacterHp(current: Int) {
+    val state = _uiState.value
+    val sheet = state.character ?: return reportError(CHARACTER_REQUIRED_ERROR)
+    val hp = sheet.character.hp
+    val hpError =
+        when {
+          current < 0 -> CURRENT_HP_ERROR
+          current > hp.max -> CURRENT_HP_EXCEEDS_MAX_ERROR
+          else -> null
+        }
+    if (hpError != null) return _uiState.update { it.copy(hpError = hpError) }
 
-  override fun updateCharacterStatValue(statID: String, value: Double) {
-    mutateCharacter { character ->
-      when {
-        !value.isFinite() -> reject(STAT_VALUE_ERROR)
-        character.stats.none { it.statID == statID } -> reject(STAT_NOT_FOUND_ERROR)
-        else ->
-            character.copy(
-                stats =
-                    character.stats.map { if (it.statID == statID) it.copy(value = value) else it }
-            )
-      }
-    }
-  }
-
-  override fun updateCharacterActionName(actionID: String, name: String) {
-    mutateCharacter { character ->
-      when {
-        character.actions.none { it.actionID == actionID } -> reject(ACTION_NOT_FOUND_ERROR)
-        name.isBlank() -> reject(ACTION_NAME_ERROR)
-        else ->
-            character.copy(
-                actions =
-                    character.actions.map {
-                      if (it.actionID == actionID) it.copy(name = name) else it
-                    }
-            )
-      }
-    }
-  }
-
-  override fun updateCharacterActionDescription(actionID: String, description: String) {
-    mutateCharacter { character ->
-      if (character.actions.none { it.actionID == actionID }) reject(ACTION_NOT_FOUND_ERROR)
-      else {
-        character.copy(
-            actions =
-                character.actions.map {
-                  if (it.actionID == actionID) it.copy(description = description) else it
-                }
+    _uiState.value =
+        state.copy(
+            character =
+                sheet.copy(
+                    character = sheet.character.copy(hp = hp.copy(current = current)),
+                    hasUnsavedChanges = true,
+                ),
+            error = null,
+            hpError = null,
         )
-      }
-    }
-  }
-
-  override fun updateCharacterCurrentHp(current: Int) {
-    mutateCharacter { character ->
-      when {
-        current < 0 -> reject(CURRENT_HP_ERROR)
-        current > character.hp.max -> reject(CURRENT_HP_EXCEEDS_MAX_ERROR)
-        else -> character.copy(hp = character.hp.copy(current = current))
-      }
-    }
   }
 
   override fun saveCharacter() {
     val state = _uiState.value
     if (state.isSaving) return
-    val selected = state.selectedCharacter ?: return reportError(CHARACTER_REQUIRED_ERROR)
-    if (!selected.isEditable) return reportError(READ_ONLY_ERROR)
+    val selected = state.character ?: return reportError(CHARACTER_REQUIRED_ERROR)
 
     val content =
         try {
@@ -158,8 +119,8 @@ class GamePlayerViewModel(
         _uiState.update { current ->
           current.copy(
               isSaving = false,
-              characters =
-                  current.characters.map {
+              character =
+                  current.character?.let {
                     // Edits made while saving stay unsaved.
                     if (it.file.id == updatedFile.id && it.character == selected.character) {
                       it.copy(file = updatedFile, hasUnsavedChanges = false)
@@ -212,27 +173,21 @@ class GamePlayerViewModel(
     if (group == null) return failSession(GROUP_NOT_FOUND_ERROR)
 
     _uiState.update { current ->
-      val localEdits = current.characters.filter { it.hasUnsavedChanges }.associateBy { it.file.id }
+      val localEdit = current.character?.takeIf { it.hasUnsavedChanges }
       val unreadable = mutableMapOf<String, String>()
-      val ownCharacters = mutableListOf<SessionCharacter>()
-      val sharedCharacters = mutableListOf<SessionCharacter>()
+      var character: SessionCharacter? = null
       val lores = mutableListOf<SessionLore>()
-      files.forEach { file ->
-        val isOwn = file.ownerId == userId
-        val isGameMaster = file.ownerId == group.gameMasterId
+      for (file in files) {
         try {
           when {
-            file.type == DocumentType.CHARACTER && (isOwn || isGameMaster) -> {
-              val character =
-                  localEdits[file.id]
-                      ?: SessionCharacter(
-                          file = file,
-                          character = JDRFileJsonCodec.deserializeCharacter(file.content),
-                          isEditable = isOwn,
-                      )
-              if (isOwn) ownCharacters += character else sharedCharacters += character
-            }
-            file.type == DocumentType.TEXT && isGameMaster ->
+            file.type == DocumentType.CHARACTER && file.ownerId == userId && character == null ->
+                character =
+                    localEdit?.takeIf { it.file.id == file.id }
+                        ?: SessionCharacter(
+                            file,
+                            JDRFileJsonCodec.deserializeCharacter(file.content),
+                        )
+            file.type == DocumentType.TEXT && file.ownerId == group.gameMasterId ->
                 lores += SessionLore(file, JDRFileJsonCodec.deserializeLore(file.content))
           }
         } catch (e: Exception) {
@@ -240,14 +195,9 @@ class GamePlayerViewModel(
         }
       }
 
-      val characters = ownCharacters + sharedCharacters
-      val selectedId =
-          current.selectedCharacterId?.takeIf { id -> characters.any { it.file.id == id } }
-              ?: characters.firstOrNull()?.file?.id
       current.copy(
-          characters = characters,
+          character = character,
           lores = lores,
-          selectedCharacterId = selectedId,
           unreadableFiles = unreadable,
           isLoading = false,
           error =
@@ -262,46 +212,18 @@ class GamePlayerViewModel(
     }
   }
 
-  private fun mutateCharacter(transform: (CharacterFile) -> CharacterFile?) {
-    val state = _uiState.value
-    val selected = state.selectedCharacter ?: return reportError(CHARACTER_REQUIRED_ERROR)
-    if (!selected.isEditable) return reportError(READ_ONLY_ERROR)
-    val updated = transform(selected.character) ?: return
-    _uiState.value =
-        state.copy(
-            characters =
-                state.characters.map {
-                  if (it.file.id == selected.file.id) {
-                    it.copy(character = updated, hasUnsavedChanges = true)
-                  } else it
-                },
-            error = null,
-        )
-  }
-
-  private fun reject(message: String): Nothing? {
-    reportError(message)
-    return null
-  }
-
   private fun reportError(message: String) {
     _uiState.update { it.copy(error = message) }
   }
 
   internal companion object {
-    const val ACTION_NAME_ERROR = "Action name cannot be empty."
-    const val ACTION_NOT_FOUND_ERROR = "Action not found."
-    const val CHARACTER_NOT_FOUND_ERROR = "Character not found."
-    const val CHARACTER_REQUIRED_ERROR = "Select a character before editing."
+    const val CHARACTER_REQUIRED_ERROR = "You have no character in this session."
     const val CURRENT_HP_ERROR = "Current HP must be a non-negative number."
     const val CURRENT_HP_EXCEEDS_MAX_ERROR = "Current HP cannot exceed maximum HP."
     const val GROUP_NOT_FOUND_ERROR = "This group no longer exists."
     const val LOAD_ERROR = "Unable to load this session."
-    const val READ_ONLY_ERROR = "This character sheet is read-only."
     const val SAVE_ERROR = "Unable to save this character."
     const val SIGNED_OUT_ERROR = "You must be signed in to join a session."
-    const val STAT_NOT_FOUND_ERROR = "Stat not found."
-    const val STAT_VALUE_ERROR = "Stat value must be a finite number."
     const val UNREADABLE_FILE_ERROR = "Unable to read this file."
   }
 }
