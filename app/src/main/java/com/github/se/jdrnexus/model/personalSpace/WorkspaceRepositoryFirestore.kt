@@ -165,8 +165,6 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       require(groupId.isNotBlank()) { "Group ID cannot be empty." }
       require(folderId.isNotBlank()) { "Folder ID cannot be empty." }
 
-      require(!includeContent) { "includeContent is not supported yet." } // TODO next refactor PR
-
       val item = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
       check(item.type != DocumentType.GROUP_ROOT) { "A group root cannot be added to a group." }
       check(groupId !in item.sharedGroupsIds) { "This item is already in the group." }
@@ -180,12 +178,32 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       }
 
       // Something added inside a hidden folder is hidden too. The group root has no placement.
-      val hiddenByFolder = destination.placements[groupId]?.isHidden == true
+      val destinationHidden = destination.placements[groupId]?.isHidden == true
 
-      collection
-          .document(itemId)
-          .update(addPlacementUpdate(groupId, folderId, isHidden || hiddenByFolder))
-          .await()
+      val additions =
+          if (includeContent && item.isContainer()) {
+            planAddition(
+                subtree = collectPersonalSubtree(item),
+                groupId = groupId,
+                destinationFolderId = folderId,
+                hideNew = isHidden,
+                destinationHidden = destinationHidden,
+            )
+          } else {
+            listOf(GroupAddition(itemId, folderId, isHidden || destinationHidden))
+          }
+      check(additions.size <= MAX_BATCH_WRITES) {
+        "Too many items to add at once (maximum $MAX_BATCH_WRITES)."
+      }
+
+      val batch = firestore.batch()
+      additions.forEach {
+        batch.update(
+            collection.document(it.id),
+            addPlacementUpdate(groupId, it.folderId, it.isHidden),
+        )
+      }
+      batch.commit().await()
       Result.success(Unit)
     } catch (e: CancellationException) {
       throw e
@@ -269,19 +287,13 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
   private fun hiddenUpdate(groupId: String, isHidden: Boolean): Map<String, Any> =
       mapOf("placements.$groupId.isHidden" to isHidden)
 
-  /** [root] and every file below it in the folder tree of [groupId], each listed once. */
-  private suspend fun collectGroupSubtree(root: JDRFile, groupId: String): List<JDRFile> {
-    val collected = linkedMapOf<String, JDRFile>()
+  /** [root] and everything below it in the folder tree of [groupId]. */
+  private suspend fun collectGroupSubtree(root: JDRFile, groupId: String): List<JDRFile> =
+      subtreeOf(root) { getGroupFolderFiles(it.id, groupId).first() }
 
-    suspend fun visit(file: JDRFile) {
-      if (collected.putIfAbsent(file.id, file) != null) return
-      if (!file.isContainer()) return
-      getGroupFolderFiles(file.id, groupId).first().forEach { visit(it) }
-    }
-
-    visit(root)
-    return collected.values.toList()
-  }
+  /** [root] and everything below it in its owner's personal space. */
+  private suspend fun collectPersonalSubtree(root: JDRFile): List<JDRFile> =
+      subtreeOf(root) { getPersonalFolderFiles(it.id, root.ownerId).first() }
 
   override fun getFileFlow(fileId: String): Flow<JDRFile?> = callbackFlow {
     // callbackFlow bridges Firestore's callback API with Kotlin Coroutines Flow.

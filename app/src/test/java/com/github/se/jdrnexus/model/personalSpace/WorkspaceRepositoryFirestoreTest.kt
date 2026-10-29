@@ -952,6 +952,147 @@ class WorkspaceRepositoryFirestoreTest {
   }
 
   @Test
+  fun addItemToGroup_withContent_addsTheWholePersonalTreeKeepingItsStructure() = runBlocking {
+    val folder = JDRFile(id = "folder", ownerId = "owner", type = DocumentType.FOLDER)
+    val file =
+        JDRFile(
+            id = "file",
+            ownerId = "owner",
+            personalParentId = "folder",
+            sharedGroupsIds = listOf("other-group"),
+            placements = mapOf("other-group" to Placement("other-group")),
+        )
+    val subfolder =
+        JDRFile(
+            id = "subfolder",
+            ownerId = "owner",
+            personalParentId = "folder",
+            type = DocumentType.FOLDER,
+        )
+    val deepFile = JDRFile(id = "deep", ownerId = "owner", personalParentId = "subfolder")
+    val unrelated = JDRFile(id = "unrelated", ownerId = "owner")
+    persistFiles(groupRootOf("group"), folder, file, subfolder, deepFile, unrelated)
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repository.addItemToGroup("folder", "group", "group", includeContent = true)
+        }
+
+    assertTrue(result.isSuccess)
+    assertEquals(folder.withPlacement("group", Placement("group")), getPersistedFile("folder"))
+    assertEquals(file.withPlacement("group", Placement("folder")), getPersistedFile("file"))
+    assertEquals(
+        subfolder.withPlacement("group", Placement("folder")),
+        getPersistedFile("subfolder"),
+    )
+    assertEquals(deepFile.withPlacement("group", Placement("subfolder")), getPersistedFile("deep"))
+    assertEquals(unrelated, getPersistedFile("unrelated"))
+  }
+
+  @Test
+  fun addItemToGroup_withContent_keepsItemsAlreadyInTheGroupAndPlacesTheirContentUnderThem() =
+      runBlocking {
+        val folder = JDRFile(id = "folder", ownerId = "owner", type = DocumentType.FOLDER)
+        val placed =
+            JDRFile(
+                    id = "placed",
+                    ownerId = "owner",
+                    personalParentId = "folder",
+                    type = DocumentType.FOLDER,
+                )
+                .withPlacement("group", Placement("group"))
+        val inside = JDRFile(id = "inside", ownerId = "owner", personalParentId = "placed")
+        persistFiles(groupRootOf("group"), folder, placed, inside)
+
+        val result =
+            runAndPumpMainLooper("addItemToGroup") {
+              repository.addItemToGroup("folder", "group", "group", includeContent = true)
+            }
+
+        assertTrue(result.isSuccess)
+        assertEquals(placed, getPersistedFile("placed"))
+        assertEquals(inside.withPlacement("group", Placement("placed")), getPersistedFile("inside"))
+      }
+
+  @Test
+  fun addItemToGroup_withContent_hidesEverythingWhenAskedTo() = runBlocking {
+    val folder = JDRFile(id = "folder", ownerId = "owner", type = DocumentType.FOLDER)
+    val file = JDRFile(id = "file", ownerId = "owner", personalParentId = "folder")
+    persistFiles(groupRootOf("group"), folder, file)
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repository.addItemToGroup(
+              "folder",
+              "group",
+              "group",
+              isHidden = true,
+              includeContent = true,
+          )
+        }
+
+    assertTrue(result.isSuccess)
+    assertEquals(Placement("group", true), getPersistedFile("folder")?.placements?.get("group"))
+    assertEquals(Placement("folder", true), getPersistedFile("file")?.placements?.get("group"))
+  }
+
+  @Test
+  fun addItemToGroup_withContent_hidesEverythingWhenTheDestinationIsHidden() = runBlocking {
+    val destination = inGroup("destination", "group", "group", DocumentType.FOLDER, isHidden = true)
+    val folder = JDRFile(id = "folder", ownerId = "owner", type = DocumentType.FOLDER)
+    val file = JDRFile(id = "file", ownerId = "owner", personalParentId = "folder")
+    persistFiles(groupRootOf("group"), destination, folder, file)
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repository.addItemToGroup("folder", "group", "destination", includeContent = true)
+        }
+
+    assertTrue(result.isSuccess)
+    assertEquals(
+        Placement("destination", true),
+        getPersistedFile("folder")?.placements?.get("group"),
+    )
+    assertEquals(Placement("folder", true), getPersistedFile("file")?.placements?.get("group"))
+  }
+
+  @Test
+  fun addItemToGroup_withContent_ignoresTheOptionForAFileThatIsNotAFolder() = runBlocking {
+    val file = JDRFile(id = "file", ownerId = "owner")
+    persistFiles(groupRootOf("group"), file)
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repository.addItemToGroup("file", "group", "group", includeContent = true)
+        }
+
+    assertTrue(result.isSuccess)
+    assertEquals(file.withPlacement("group", Placement("group")), getPersistedFile("file"))
+  }
+
+  @Test
+  fun addItemToGroup_withContent_refusesToAddMoreItemsThanOneBatchCanWrite() = runBlocking {
+    val folder = JDRFile(id = "folder", ownerId = "owner", type = DocumentType.FOLDER)
+    persistFiles(groupRootOf("group"), folder)
+    val repositorySpy = spyk(WorkspaceRepositoryFirestore(firestore))
+    val children =
+        (1..500).map { JDRFile(id = "child-$it", ownerId = "owner", personalParentId = "folder") }
+    every { repositorySpy.getPersonalFolderFiles("folder", "owner") } returns flowOf(children)
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repositorySpy.addItemToGroup("folder", "group", "group", includeContent = true)
+        }
+
+    assertFailureWith(
+        result,
+        IllegalStateException::class.java,
+        "Too many items to add at once (maximum 500).",
+    )
+    assertEquals(folder, getPersistedFile("folder"))
+  }
+
+  @Test
   fun setItemHidden_hidesAFile() = runBlocking {
     val file = inGroup("file", "group", "group")
     persistFiles(groupRootOf("group"), file)
