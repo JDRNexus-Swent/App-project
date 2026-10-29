@@ -70,164 +70,161 @@ class GroupWorkspaceViewModel(
   // Counts how many workspace operations have started but have not yet finished.
   private val pendingOperations = AtomicInteger(0)
 
-    /**
-     * Retrieves the ID of the currently authenticated user.
-     *
-     * @throws IllegalStateException if no user is signed in.
-     */
+  /**
+   * Retrieves the ID of the currently authenticated user.
+   *
+   * @throws IllegalStateException if no user is signed in.
+   */
   private suspend fun requireUid(): String =
       authRepository.authState.first()?.uid ?: throw IllegalStateException("You must be signed in.")
 
-    /**
-     * Ensures that the current user has the Game Master role.
-     *
-     * Used to restrict privileged workspace operations to the Game Master.
-     */
+  /**
+   * Ensures that the current user has the Game Master role.
+   *
+   * Used to restrict privileged workspace operations to the Game Master.
+   */
   private fun requireGameMaster() {
     check(role == GroupWorkspaceRole.GAME_MASTER) {
       "Only the GameMaster can perform this operation."
     }
   }
-    /**
-     * Retrieves an item by its ID.
-     *
-     * @throws IllegalStateException if the item does not exist.
-     */
 
-    private suspend fun getItem(folderId: String, error: String): JDRFile{
-        return repository.getFile(folderId).getOrThrow() ?: throw IllegalStateException(error)
-    }
+  /**
+   * Retrieves an item by its ID.
+   *
+   * @throws IllegalStateException if the item does not exist.
+   */
+  private suspend fun getItem(folderId: String, error: String): JDRFile {
+    return repository.getFile(folderId).getOrThrow() ?: throw IllegalStateException(error)
+  }
 
-    /**
-     * Ensures that the user is allowed to edit the specified item.
-     *
-     * The Game Master can edit any item, while players can edit only their own items.
-     */
+  /**
+   * Ensures that the user is allowed to edit the specified item.
+   *
+   * The Game Master can edit any item, while players can edit only their own items.
+   */
   private fun requireCanEdit(item: JDRFile, uid: String) {
     check(role == GroupWorkspaceRole.GAME_MASTER || item.ownerId == uid) {
       "You cannot edit an item that you do not own."
     }
   }
 
-    /**
-     * Ensures that the item is shared with the current group and has a placement
-     * in that group's workspace.
-     */
+  /**
+   * Ensures that the item is shared with the current group and has a placement in that group's
+   * workspace.
+   */
   private fun requireBelongsToGroup(item: JDRFile) {
-    check(groupId in item.sharedGroupsIds && item.placements.containsKey(groupId)) { "This item does not belong to the current group." }
+    check(groupId in item.sharedGroupsIds && item.placements.containsKey(groupId)) {
+      "This item does not belong to the current group."
+    }
   }
-    private suspend fun hasOwnedDescendant(
-        folderId: String,
-        uid: String,
-        visited: MutableSet<String> = mutableSetOf(),
-    ): Boolean {
-        if (!visited.add(folderId)) return false
 
-        val children = repository.getGroupFolderFiles(folderId, groupId).first()
+  private suspend fun hasOwnedDescendant(
+      folderId: String,
+      uid: String,
+      visited: MutableSet<String> = mutableSetOf(),
+  ): Boolean {
+    if (!visited.add(folderId)) return false
 
-        for (child in children) {
-            if (groupId !in child.sharedGroupsIds) continue
-            if (child.placements[groupId] == null) continue
+    val children = repository.getGroupFolderFiles(folderId, groupId).first()
 
-            if (child.ownerId == uid) return true
+    for (child in children) {
+      if (groupId !in child.sharedGroupsIds) continue
+      if (child.placements[groupId] == null) continue
 
-            if (child.type == DocumentType.FOLDER &&
-                hasOwnedDescendant(child.id, uid, visited)
-            ) {
-                return true
-            }
-        }
+      if (child.ownerId == uid) return true
 
-        return false
-    }
-
-    private suspend fun canSeeItem(
-        item: JDRFile,
-        uid: String,
-    ): Boolean {
-        // The GM can see all items in the group workspace.
-        if (role == GroupWorkspaceRole.GAME_MASTER) return true
-
-        // A player can only see items that have a valid placement in this group.
-        if (groupId !in item.sharedGroupsIds) return false
-
-        val placement = item.placements[groupId] ?: return false
-
-        // Players retain access to their own items, even when hidden.
-        if (item.ownerId == uid) return true
-
-        // A player can see a folder if it contains one of their own items,
-        // even when the folder or one of its ancestors is hidden.
-        if (item.type == DocumentType.FOLDER &&
-            hasOwnedDescendant(item.id, uid)
-        ) {
-            return true
-        }
-
-        // Other items are invisible if they or any ancestor folder is hidden.
-        if (placement.isHidden) return false
-
-        var parentId = placement.folderId
-        val visited = mutableSetOf<String>()
-
-        while (parentId != groupId) {
-            // Malformed or cyclic folder paths must not grant access.
-            if (parentId.isBlank() || !visited.add(parentId)) return false
-
-            val parent = repository.getFile(parentId).getOrThrow() ?: return false
-
-            if (groupId !in parent.sharedGroupsIds) return false
-
-            val parentPlacement = parent.placements[groupId] ?: return false
-
-            if (parent.type != DocumentType.FOLDER) return false
-            if (parentPlacement.isHidden) return false
-
-            parentId = parentPlacement.folderId
-        }
-
+      if (child.type == DocumentType.FOLDER && hasOwnedDescendant(child.id, uid, visited)) {
         return true
+      }
     }
 
-    /**
-     * Retrieves and validates a folder before allowing the user to access it.
-     *
-     * The folder must exist, be a regular folder, belong to the current group,
-     * and be visible to the user.
-     */
-  private suspend fun requireAccessibleFolder(folderId: String, uid : String): JDRFile {
+    return false
+  }
+
+  private suspend fun canSeeItem(
+      item: JDRFile,
+      uid: String,
+  ): Boolean {
+    // The GM can see all items in the group workspace.
+    if (role == GroupWorkspaceRole.GAME_MASTER) return true
+
+    // A player can only see items that have a valid placement in this group.
+    if (groupId !in item.sharedGroupsIds) return false
+
+    val placement = item.placements[groupId] ?: return false
+
+    // Players retain access to their own items, even when hidden.
+    if (item.ownerId == uid) return true
+
+    // A player can see a folder if it contains one of their own items,
+    // even when the folder or one of its ancestors is hidden.
+    if (item.type == DocumentType.FOLDER && hasOwnedDescendant(item.id, uid)) {
+      return true
+    }
+
+    // Other items are invisible if they or any ancestor folder is hidden.
+    if (placement.isHidden) return false
+
+    var parentId = placement.folderId
+    val visited = mutableSetOf<String>()
+
+    while (parentId != groupId) {
+      // Malformed or cyclic folder paths must not grant access.
+      if (parentId.isBlank() || !visited.add(parentId)) return false
+
+      val parent = repository.getFile(parentId).getOrThrow() ?: return false
+
+      if (groupId !in parent.sharedGroupsIds) return false
+
+      val parentPlacement = parent.placements[groupId] ?: return false
+
+      if (parent.type != DocumentType.FOLDER) return false
+      if (parentPlacement.isHidden) return false
+
+      parentId = parentPlacement.folderId
+    }
+
+    return true
+  }
+
+  /**
+   * Retrieves and validates a folder before allowing the user to access it.
+   *
+   * The folder must exist, be a regular folder, belong to the current group, and be visible to the
+   * user.
+   */
+  private suspend fun requireAccessibleFolder(folderId: String, uid: String): JDRFile {
     val folder = getItem(folderId, "Folder not found")
     check(folder.type == DocumentType.FOLDER) { "The requested item is not a folder." }
 
-      requireBelongsToGroup(folder)
-      check(canSeeItem(folder, uid)){"You cannot access this folder."}
+    requireBelongsToGroup(folder)
+    check(canSeeItem(folder, uid)) { "You cannot access this folder." }
     return folder
   }
 
-    /**
-     * Ensures that an item belongs to the current group and is located directly
-     * inside the folder currently being displayed.
-     *
-     * Also validates access to the current folder and visibility of the item.
-     */
+  /**
+   * Ensures that an item belongs to the current group and is located directly inside the folder
+   * currently being displayed.
+   *
+   * Also validates access to the current folder and visibility of the item.
+   */
   private suspend fun requireItemInCurrentWorkspace(
       item: JDRFile,
       folderId: String,
   ) {
     requireBelongsToGroup(item)
-      val uid = requireUid()
+    val uid = requireUid()
     val effectiveFolderId = folderId.ifEmpty { groupId }
-    if (folderId.isNotEmpty()) requireAccessibleFolder(folderId,uid)
+    if (folderId.isNotEmpty()) requireAccessibleFolder(folderId, uid)
 
-        val placement = item.placements[groupId]
-            ?: error("This item does not belong to the current group.")
+    val placement =
+        item.placements[groupId] ?: error("This item does not belong to the current group.")
 
-        check(placement.folderId == effectiveFolderId) {
-            "This item is not in the current workspace folder."
-        }
-        check(canSeeItem(item, uid)) {
-            "You cannot access this item."
-        }
+    check(placement.folderId == effectiveFolderId) {
+      "This item is not in the current workspace folder."
+    }
+    check(canSeeItem(item, uid)) { "You cannot access this item." }
   }
 
   init {
@@ -258,7 +255,7 @@ class GroupWorkspaceViewModel(
             if (folderId.isEmpty()) {
               ""
             } else {
-              requireAccessibleFolder(folderId,uid).name
+              requireAccessibleFolder(folderId, uid).name
             }
 
         _uiState.update { it.copy(currentFolderName = folderName) }
@@ -279,16 +276,16 @@ class GroupWorkspaceViewModel(
           if (requestGeneration == fetchGeneration) {
             // Revalidate the selected folder when its contents or metadata change.
             if (folderId.isNotEmpty()) {
-              requireAccessibleFolder(folderId,uid)
+              requireAccessibleFolder(folderId, uid)
             }
 
-              val visibleItems = buildList {
-                  for (item in items) {
-                      if (canSeeItem(item, uid)) {
-                          add(item)
-                      }
-                  }
+            val visibleItems = buildList {
+              for (item in items) {
+                if (canSeeItem(item, uid)) {
+                  add(item)
+                }
               }
+            }
 
             _uiState.update {
               it.copy(
@@ -305,10 +302,7 @@ class GroupWorkspaceViewModel(
         if (requestGeneration == fetchGeneration) {
           _uiState.update {
             it.copy(
-                loadState =
-                    LoadState.Error(
-                        e.message ?: "Unable to load the group workspace."
-                    ),
+                loadState = LoadState.Error(e.message ?: "Unable to load the group workspace."),
                 items = emptyList(),
                 currentFolderName = "",
             )
@@ -330,16 +324,17 @@ class GroupWorkspaceViewModel(
     return viewModelScope.launch {
       performOperation {
         requireGameMaster()
-          val uid = requireUid()
-        val parent = if (parentId.isNotEmpty()) {
-            requireAccessibleFolder(parentId, uid)
-        } else {
-            null
-        }
+        val uid = requireUid()
+        val parent =
+            if (parentId.isNotEmpty()) {
+              requireAccessibleFolder(parentId, uid)
+            } else {
+              null
+            }
 
         val folderId = repository.getNewUid()
 
-          val isHidden = parent?.placements?.get(groupId)?.isHidden == true
+        val isHidden = parent?.placements?.get(groupId)?.isHidden == true
         val folder =
             JDRFile(
                 id = folderId,
@@ -347,7 +342,7 @@ class GroupWorkspaceViewModel(
                 ownerId = uid,
                 sharedGroupsIds = listOf(groupId),
                 placements =
-                    mapOf(groupId to Placement(folderId = parentId.ifEmpty { groupId },isHidden)),
+                    mapOf(groupId to Placement(folderId = parentId.ifEmpty { groupId }, isHidden)),
                 personalParentId = "",
                 type = DocumentType.FOLDER,
                 content = "",
@@ -358,7 +353,7 @@ class GroupWorkspaceViewModel(
     }
   }
 
-    /** Shares an existing, user-owned Personal Space file into the selected group folder. */
+  /** Shares an existing, user-owned Personal Space file into the selected group folder. */
   fun addFile(fileId: String): Job? {
     if (fileId.isBlank()) {
       showError("File ID cannot be empty.")
@@ -366,39 +361,37 @@ class GroupWorkspaceViewModel(
     }
 
     val parentId = _uiState.value.currentFolderId
-        val existingParent = parentId.ifEmpty { groupId }
+    val existingParent = parentId.ifEmpty { groupId }
 
     return viewModelScope.launch {
       performOperation {
         val uid = requireUid()
 
         if (parentId.isNotEmpty()) {
-          requireAccessibleFolder(parentId,uid)
+          requireAccessibleFolder(parentId, uid)
         }
 
         val file = getItem(fileId, "File not found")
 
-          check(file.type != DocumentType.GROUP_ROOT) {
-              "Only files can be added here."
-          }
-          // Todo: remove the check below when the add of folder is implemented
-          check(file.type != DocumentType.FOLDER) { "Adding folders is not supported yet." }
-          check(file.ownerId == uid) { "You can only add files that you own." }
-          check(groupId !in file.sharedGroupsIds) { "This file is already in the group." }
-          repository
-              .addItemToGroup(
-                  itemId = file.id,
-                  groupId = groupId,
-                  folderId = existingParent,
-                  isHidden = false,
-                  includeContent = file.type == DocumentType.FOLDER,
-              )
-              .getOrThrow()
+        check(file.type != DocumentType.GROUP_ROOT) { "Only files can be added here." }
+        // Todo: remove the check below when the add of folder is implemented
+        check(file.type != DocumentType.FOLDER) { "Adding folders is not supported yet." }
+        check(file.ownerId == uid) { "You can only add files that you own." }
+        check(groupId !in file.sharedGroupsIds) { "This file is already in the group." }
+        repository
+            .addItemToGroup(
+                itemId = file.id,
+                groupId = groupId,
+                folderId = existingParent,
+                isHidden = false,
+                includeContent = file.type == DocumentType.FOLDER,
+            )
+            .getOrThrow()
       }
     }
   }
 
-    /** Removes this group's placement without deleting the underlying document. */
+  /** Removes this group's placement without deleting the underlying document. */
   fun removeItem(item: JDRFile): Job {
     val parentId = _uiState.value.currentFolderId
 
@@ -424,12 +417,12 @@ class GroupWorkspaceViewModel(
 
   /** Edits an item's name/content while preserving its ownership and workspace references. */
   fun editItem(updatedItem: JDRFile): Job {
-      if (updatedItem.name.isBlank()) {
-          showError("The item name cannot be blank.")
-          return Job().also { it.complete() }
-      }
+    if (updatedItem.name.isBlank()) {
+      showError("The item name cannot be blank.")
+      return Job().also { it.complete() }
+    }
 
-      val folderId = _uiState.value.currentFolderId
+    val folderId = _uiState.value.currentFolderId
     return viewModelScope.launch {
       performOperation {
         val uid = requireUid()
@@ -449,26 +442,27 @@ class GroupWorkspaceViewModel(
       }
     }
   }
-    /** Changes whether an item is hidden in this group. */
-    fun setItemHidden(item: JDRFile, isHidden: Boolean): Job {
-        val folderId =  _uiState.value.currentFolderId
-        return viewModelScope.launch {
-            performOperation {
-                val uid =requireUid()
-                val existing = getItem(item.id, "Item no longer exists.")
-                requireItemInCurrentWorkspace(existing,folderId)
-                requireCanEdit(existing,uid)
-                repository.setItemHidden(existing.id, groupId, isHidden).getOrThrow()
-            }
-        }
-    }
 
-    /**
-     * Executes a workspace operation while managing loading and error states.
-     * Serializes operations using a Mutex, propagates coroutine cancellation,
-     * displays failures, and resets the loading state when all pending operations finish.
-     * Workspace updates are observed through the repository's Flow.
-     */
+  /** Changes whether an item is hidden in this group. */
+  fun setItemHidden(item: JDRFile, isHidden: Boolean): Job {
+    val folderId = _uiState.value.currentFolderId
+    return viewModelScope.launch {
+      performOperation {
+        val uid = requireUid()
+        val existing = getItem(item.id, "Item no longer exists.")
+        requireItemInCurrentWorkspace(existing, folderId)
+        requireCanEdit(existing, uid)
+        repository.setItemHidden(existing.id, groupId, isHidden).getOrThrow()
+      }
+    }
+  }
+
+  /**
+   * Executes a workspace operation while managing loading and error states. Serializes operations
+   * using a Mutex, propagates coroutine cancellation, displays failures, and resets the loading
+   * state when all pending operations finish. Workspace updates are observed through the
+   * repository's Flow.
+   */
   private suspend fun performOperation(
       operation: suspend () -> Unit,
   ) {
