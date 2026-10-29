@@ -8,6 +8,7 @@ import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
+import com.github.se.jdrnexus.model.personalSpace.isContainer
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import kotlinx.coroutines.CancellationException
@@ -100,7 +101,7 @@ class PersonalSpaceViewModel(
             if (personalParentId.isEmpty()) {
               repository.getPersonalRootFiles(requireUid())
             } else {
-              repository.getDocumentsInFolder(personalParentId)
+              repository.getPersonalFolderFiles(personalParentId, requireUid())
             }
         files.collect { items ->
           _uiState.update { it.copy(items = items, loadState = LoadState.Success) }
@@ -118,7 +119,7 @@ class PersonalSpaceViewModel(
 
   /** Folders open in this screen; every other JDR file is opened as a document. */
   fun onItemClicked(item: JDRFile, navigateToDocument: (document: JDRFile) -> Unit) {
-    if (item.type == DocumentType.FOLDER) {
+    if (item.isContainer()) {
       navigationPath.addLast(_uiState.value.currentFolderId)
       fetchItems(personalParentId = item.id)
     } else {

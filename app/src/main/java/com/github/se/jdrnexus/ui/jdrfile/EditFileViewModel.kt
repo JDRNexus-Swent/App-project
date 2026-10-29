@@ -57,7 +57,8 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
             when (file.type) {
               DocumentType.CHARACTER -> JDRFileJsonCodec.deserializeCharacter(file.content) to null
               DocumentType.TEXT -> null to JDRFileJsonCodec.deserializeLore(file.content)
-              DocumentType.FOLDER -> throw IllegalArgumentException(FOLDER_ERROR)
+              DocumentType.FOLDER,
+              DocumentType.GROUP_ROOT -> throw IllegalArgumentException(FOLDER_ERROR)
             }
         val loadedState = EditFileUiState(file = file, character = character, lore = lore)
         _uiState.value = loadedState.copy(fieldErrors = collectFieldErrors(loadedState))
@@ -254,7 +255,8 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
           when (file.type) {
             DocumentType.CHARACTER -> JDRFileJsonCodec.serializeCharacter(state.character)
             DocumentType.TEXT -> JDRFileJsonCodec.serializeLore(state.lore)
-            DocumentType.FOLDER -> return reportError(FOLDER_ERROR)
+            DocumentType.FOLDER,
+            DocumentType.GROUP_ROOT -> return reportError(FOLDER_ERROR)
           }
         } catch (e: JDRFileCodecException) {
           return reportError(e.message ?: SAVE_ERROR)
@@ -353,7 +355,8 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
     return when (file.type) {
       DocumentType.CHARACTER -> if (state.character == null) CHARACTER_REQUIRED_ERROR else null
       DocumentType.TEXT -> if (state.lore == null) LORE_REQUIRED_ERROR else null
-      DocumentType.FOLDER -> FOLDER_ERROR
+      DocumentType.FOLDER,
+      DocumentType.GROUP_ROOT -> FOLDER_ERROR
     }
   }
 

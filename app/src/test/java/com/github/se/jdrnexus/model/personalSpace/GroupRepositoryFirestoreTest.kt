@@ -1,19 +1,24 @@
-// Co-authored-by: AI Agent
+// Co-authored-by: Claude Sonnet 5.5
 package com.github.se.jdrnexus.model.personalSpace
 
 import android.content.Context
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.EventListener
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
+import com.google.firebase.firestore.WriteBatch
+import io.mockk.confirmVerified
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -97,13 +102,15 @@ class GroupRepositoryFirestoreTest {
       }
 
       // Clean up the database for the next test to ensure a clean state
-      try {
-        val snapshot = firestore.collection("campaign_groups").get().await()
-        for (doc in snapshot.documents) {
-          doc.reference.delete().await()
+      for (collectionName in listOf("campaign_groups", "documents")) {
+        try {
+          val snapshot = firestore.collection(collectionName).get().await()
+          for (doc in snapshot.documents) {
+            doc.reference.delete().await()
+          }
+        } catch (e: Exception) {
+          // ignore
         }
-      } catch (e: Exception) {
-        // ignore
       }
     }
   }
@@ -225,6 +232,145 @@ class GroupRepositoryFirestoreTest {
         "New Desc",
         getResult.getOrNull()?.description,
     )
+  }
+
+  /** Creating a group also creates its root folder. */
+  @Test
+  fun testCreateGroup_alsoCreatesItsRootFile() = runBlocking {
+    val group =
+        CampaignGroup(
+            id = UUID.randomUUID().toString(),
+            name = "Campaign",
+            gameMasterId = "gm1",
+            participantIds = listOf("gm1"),
+        )
+
+    val result = repository.createGroup(group)
+
+    assertTrue("createGroup should succeed", result.isSuccess)
+    val root =
+        firestore
+            .collection("documents")
+            .document(group.id)
+            .get()
+            .await()
+            .toObject(JDRFile::class.java)
+    assertEquals(
+        JDRFile(
+            id = group.id,
+            name = "Campaign",
+            ownerId = "gm1",
+            sharedGroupsIds = listOf(group.id),
+            type = DocumentType.GROUP_ROOT,
+        ),
+        root,
+    )
+  }
+
+  /** Renaming a group renames its root folder too. */
+  @Test
+  fun testUpdateGroup_alsoRenamesItsRootFile() = runBlocking {
+    val group =
+        CampaignGroup(id = UUID.randomUUID().toString(), name = "Old Name", gameMasterId = "gm1")
+    repository.createGroup(group)
+
+    val result = repository.updateGroup(group.copy(name = "New Name"))
+
+    assertTrue("updateGroup should succeed", result.isSuccess)
+    val root =
+        firestore
+            .collection("documents")
+            .document(group.id)
+            .get()
+            .await()
+            .toObject(JDRFile::class.java)
+    assertEquals("New Name", root?.name)
+    assertEquals(DocumentType.GROUP_ROOT, root?.type)
+  }
+
+  /** If the root folder is missing, the whole update fails and the group keeps its old name. */
+  @Test
+  fun testUpdateGroup_withoutRootFile_changesNothing() = runBlocking {
+    val group =
+        CampaignGroup(id = UUID.randomUUID().toString(), name = "Old Name", gameMasterId = "gm1")
+    // Written directly, without the root folder that createGroup would have added.
+    firestore.collection("campaign_groups").document(group.id).set(group).await()
+
+    val result = repository.updateGroup(group.copy(name = "New Name"))
+
+    assertTrue("updateGroup should fail without a root folder", result.isFailure)
+    assertEquals("Old Name", repository.getGroup(group.id).getOrNull()?.name)
+  }
+
+  /** The group and its root folder go into one batch with a single commit. */
+  @Test
+  fun testCreateGroup_writesGroupAndRootInOneBatch() = runBlocking {
+    val group =
+        CampaignGroup(
+            id = "g1",
+            name = "Campaign",
+            gameMasterId = "gm1",
+            participantIds = listOf("gm1"),
+        )
+    val firestoreMock = mockk<FirebaseFirestore>()
+    val groupsMock = mockk<CollectionReference>()
+    val documentsMock = mockk<CollectionReference>()
+    val groupDocMock = mockk<DocumentReference>()
+    val rootDocMock = mockk<DocumentReference>()
+    val batchMock = mockk<WriteBatch>()
+    every { firestoreMock.collection("campaign_groups") } returns groupsMock
+    every { firestoreMock.collection("documents") } returns documentsMock
+    every { groupsMock.document("g1") } returns groupDocMock
+    every { documentsMock.document("g1") } returns rootDocMock
+    every { firestoreMock.batch() } returns batchMock
+    every { batchMock.set(any(), any()) } returns batchMock
+    every { batchMock.commit() } returns Tasks.forResult(null)
+
+    val result = GroupRepositoryFirestore(firestoreMock).createGroup(group)
+
+    assertTrue(result.isSuccess)
+    verify(exactly = 1) { batchMock.set(groupDocMock, group) }
+    verify(exactly = 1) {
+      batchMock.set(
+          rootDocMock,
+          JDRFile(
+              id = "g1",
+              name = "Campaign",
+              ownerId = "gm1",
+              sharedGroupsIds = listOf("g1"),
+              type = DocumentType.GROUP_ROOT,
+          ),
+      )
+    }
+    verify(exactly = 1) { batchMock.commit() }
+    confirmVerified(batchMock)
+  }
+
+  /** The group update and the root rename go into one batch with a single commit. */
+  @Test
+  fun testUpdateGroup_updatesGroupAndRootInOneBatch() = runBlocking {
+    val group = CampaignGroup(id = "g1", name = "New Name", gameMasterId = "gm1")
+    val firestoreMock = mockk<FirebaseFirestore>()
+    val groupsMock = mockk<CollectionReference>()
+    val documentsMock = mockk<CollectionReference>()
+    val groupDocMock = mockk<DocumentReference>()
+    val rootDocMock = mockk<DocumentReference>()
+    val batchMock = mockk<WriteBatch>()
+    every { firestoreMock.collection("campaign_groups") } returns groupsMock
+    every { firestoreMock.collection("documents") } returns documentsMock
+    every { groupsMock.document("g1") } returns groupDocMock
+    every { documentsMock.document("g1") } returns rootDocMock
+    every { firestoreMock.batch() } returns batchMock
+    every { batchMock.update(any(), any()) } returns batchMock
+    every { batchMock.commit() } returns Tasks.forResult(null)
+
+    val result = GroupRepositoryFirestore(firestoreMock).updateGroup(group)
+
+    assertTrue(result.isSuccess)
+    verify(exactly = 1) { batchMock.update(groupDocMock, group.toMap()) }
+    verify(exactly = 1) { batchMock.update(rootDocMock, mapOf("name" to "New Name")) }
+    verify(exactly = 1) { batchMock.commit() }
+    confirmVerified(batchMock)
   }
 
   /** Tests deleting an existing campaign group. */

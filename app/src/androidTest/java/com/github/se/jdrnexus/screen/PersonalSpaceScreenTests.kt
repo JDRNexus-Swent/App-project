@@ -474,6 +474,14 @@ class PersonalSpaceScreenTests {
 
     override suspend fun getFile(fileId: String): Result<JDRFile?> = Result.success(null)
 
+    override suspend fun removeItemFromGroup(
+        itemId: String,
+        groupId: String,
+        parentFolderId: String,
+    ): Result<Unit> {
+      TODO("Not yet implemented")
+    }
+
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = flowOf(null)
 
     override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> {
@@ -481,9 +489,25 @@ class PersonalSpaceScreenTests {
       return rootFiles
     }
 
-    override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> = flowOf(emptyList())
+    override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
+        flowOf(emptyList())
 
-    override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> = flowOf(emptyList())
+    override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
+        flowOf(emptyList())
+
+    override suspend fun addItemToGroup(
+        itemId: String,
+        groupId: String,
+        folderId: String,
+        isHidden: Boolean,
+        includeContent: Boolean,
+    ): Result<Unit> = error("Not used")
+
+    override suspend fun setItemHidden(
+        itemId: String,
+        groupId: String,
+        isHidden: Boolean,
+    ): Result<Unit> = error("Not used")
   }
 
   private class FakeAuthRepository : AuthRepository {
