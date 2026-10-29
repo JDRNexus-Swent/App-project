@@ -3,10 +3,7 @@ package com.github.se.jdrnexus.viewmodel
 
 import androidx.lifecycle.ViewModelStore
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
-import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
-import com.github.se.jdrnexus.model.personalSpace.JDRFile
-import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
@@ -35,8 +32,7 @@ class GameManagementViewModelTest {
   private fun createViewModel(
       groupRepository: GroupRepository,
       authRepository: AuthRepository,
-      workspaceRepository: WorkspaceRepository = FakeWorkspaceRepository(),
-  ) = GameManagementViewModel(groupRepository, authRepository, workspaceRepository)
+  ) = GameManagementViewModel(groupRepository, authRepository)
 
   @Test
   fun loadsGroupsAndExposesEachUsersRole() = runTest {
@@ -202,9 +198,9 @@ class GameManagementViewModelTest {
   @Test
   fun createGroupTrimsNameAndAssignsTheSignedInUserAsGameMasterAndParticipant() = runTest {
     val user = AuthUser("gm-1", "gm@example.com", "GM")
-    val repository = FakeGroupRepository { flowOf(emptyList()) }
-    val workspaceRepository = FakeWorkspaceRepository(newUid = "created-group")
-    val viewModel = createViewModel(repository, FakeAuthRepository(user), workspaceRepository)
+    val repository =
+        FakeGroupRepository(newGroupId = "created-group", groups = { flowOf(emptyList()) })
+    val viewModel = createViewModel(repository, FakeAuthRepository(user))
     advanceUntilIdle()
 
     viewModel.createGroup("  The Adventure  ")
@@ -221,18 +217,6 @@ class GameManagementViewModelTest {
             )
         ),
         repository.createdGroups,
-    )
-    assertEquals(
-        listOf(
-            JDRFile(
-                id = "created-group",
-                name = "The Adventure",
-                ownerId = user.uid,
-                sharedGroupsIds = listOf("created-group"),
-                type = DocumentType.FOLDER,
-            )
-        ),
-        workspaceRepository.createdFiles,
     )
     assertEquals(
         GroupActionState.Success("created-group", "The Adventure was created."),
@@ -294,8 +278,7 @@ class GameManagementViewModelTest {
   @Test
   fun createGroupRejectsBlankNameWithoutCallingRepository() = runTest {
     val repository = FakeGroupRepository { flowOf(emptyList()) }
-    val workspaceRepository = FakeWorkspaceRepository()
-    val viewModel = createViewModel(repository, FakeAuthRepository(), workspaceRepository)
+    val viewModel = createViewModel(repository, FakeAuthRepository())
     advanceUntilIdle()
 
     viewModel.createGroup("   ")
@@ -306,16 +289,13 @@ class GameManagementViewModelTest {
         viewModel.uiState.value.createState,
     )
     assertTrue(repository.createdGroups.isEmpty())
-    assertTrue(workspaceRepository.createdFiles.isEmpty())
-    assertEquals(0, workspaceRepository.newUidRequests)
+    assertEquals(0, repository.newGroupIdRequests)
   }
 
   @Test
   fun createGroupRequiresSignedInUser() = runTest {
     val repository = FakeGroupRepository { flowOf(emptyList()) }
-    val workspaceRepository = FakeWorkspaceRepository()
-    val viewModel =
-        createViewModel(repository, FakeAuthRepository(user = null), workspaceRepository)
+    val viewModel = createViewModel(repository, FakeAuthRepository(user = null))
     advanceUntilIdle()
 
     viewModel.createGroup("Campaign")
@@ -325,8 +305,6 @@ class GameManagementViewModelTest {
         viewModel.uiState.value.createState,
     )
     assertTrue(repository.createdGroups.isEmpty())
-    assertTrue(workspaceRepository.createdFiles.isEmpty())
-    assertEquals(0, workspaceRepository.newUidRequests)
   }
 
   @Test
@@ -336,8 +314,7 @@ class GameManagementViewModelTest {
             createResult = Result.failure(IllegalStateException("Permission denied")),
             groups = { flowOf(emptyList()) },
         )
-    val workspaceRepository = FakeWorkspaceRepository()
-    val viewModel = createViewModel(repository, FakeAuthRepository(), workspaceRepository)
+    val viewModel = createViewModel(repository, FakeAuthRepository())
     advanceUntilIdle()
 
     viewModel.createGroup("Campaign")
@@ -348,34 +325,14 @@ class GameManagementViewModelTest {
         viewModel.uiState.value.createState,
     )
     assertEquals(1, repository.createdGroups.size)
-    assertEquals(listOf("new-group"), workspaceRepository.deletedFiles)
   }
 
   @Test
-  fun failedRootFolderWritePreventsGroupCreationAndReportsFailure() = runTest {
-    val repository = FakeGroupRepository { flowOf(emptyList()) }
-    val workspaceRepository =
-        FakeWorkspaceRepository(
-            createResult = Result.failure(IllegalStateException("Disk offline"))
-        )
-    val viewModel = createViewModel(repository, FakeAuthRepository(), workspaceRepository)
-    advanceUntilIdle()
-
-    viewModel.createGroup("Campaign")
-    advanceUntilIdle()
-
-    assertEquals(GroupActionState.Error("Disk offline"), viewModel.uiState.value.createState)
-    assertTrue(repository.createdGroups.isEmpty())
-    assertTrue(workspaceRepository.deletedFiles.isEmpty())
-  }
-
-  @Test
-  fun signingOutDuringGroupCreationCancelsTheWriteAndRemovesItsRootFolder() = runTest {
+  fun signingOutDuringGroupCreationCancelsTheWrite() = runTest {
     val createGate = CompletableDeferred<Unit>()
     val auth = FakeAuthRepository()
     val repository = FakeGroupRepository(createGate = createGate, groups = { flowOf(emptyList()) })
-    val workspaceRepository = FakeWorkspaceRepository()
-    val viewModel = createViewModel(repository, auth, workspaceRepository)
+    val viewModel = createViewModel(repository, auth)
     advanceUntilIdle()
 
     viewModel.createGroup("Campaign")
@@ -387,7 +344,12 @@ class GameManagementViewModelTest {
 
     assertEquals(GroupLoadState.Empty, viewModel.uiState.value.loadState)
     assertEquals(GroupActionState.Idle, viewModel.uiState.value.createState)
-    assertEquals(listOf("new-group"), workspaceRepository.deletedFiles)
+    // The write is stuck on the gate. If it had not been cancelled, releasing the gate would let
+    // it finish and report a success.
+    createGate.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(GroupActionState.Idle, viewModel.uiState.value.createState)
   }
 
   @Test
@@ -522,9 +484,16 @@ class GameManagementViewModelTest {
   private class FakeGroupRepository(
       private val createResult: Result<Unit> = Result.success(Unit),
       private val createGate: CompletableDeferred<Unit>? = null,
+      private val newGroupId: String = "new-group",
       private val groups: (String) -> Flow<List<CampaignGroup>>,
   ) : GroupRepository by UnusedGroupRepository {
     val createdGroups = mutableListOf<CampaignGroup>()
+    var newGroupIdRequests = 0
+
+    override fun getNewGroupId(): String {
+      newGroupIdRequests += 1
+      return newGroupId
+    }
 
     override suspend fun createGroup(group: CampaignGroup): Result<Unit> {
       createdGroups += group
@@ -533,50 +502,6 @@ class GameManagementViewModelTest {
     }
 
     override fun getUserGroups(userId: String): Flow<List<CampaignGroup>> = groups(userId)
-  }
-
-  private class FakeWorkspaceRepository(
-      private val newUid: String = "new-group",
-      private val createResult: Result<Unit> = Result.success(Unit),
-  ) : WorkspaceRepository {
-    val createdFiles = mutableListOf<JDRFile>()
-    val deletedFiles = mutableListOf<String>()
-    var newUidRequests = 0
-
-    override fun getNewUid(): String {
-      newUidRequests += 1
-      return newUid
-    }
-
-    override suspend fun createFile(file: JDRFile): Result<Unit> {
-      createdFiles += file
-      return createResult
-    }
-
-    override suspend fun updateFile(file: JDRFile) = error("Not used")
-
-    override suspend fun deleteFile(fileId: String): Result<Unit> {
-      deletedFiles += fileId
-      return Result.success(Unit)
-    }
-
-    override suspend fun getFile(fileId: String): Result<JDRFile?> = error("Not used")
-
-    override suspend fun removeItemFromGroup(
-        itemId: String,
-        groupId: String,
-        parentFolderId: String,
-    ): Result<Unit> {
-      error("not used")
-    }
-
-    override fun getFileFlow(fileId: String): Flow<JDRFile?> = error("Not used")
-
-    override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = error("Not used")
-
-    override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> = error("Not used")
-
-    override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> = error("Not used")
   }
 
   private class TrackingGroupRepository : GroupRepository by UnusedGroupRepository {

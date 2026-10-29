@@ -254,11 +254,85 @@ class EditFileCharacterTests {
       )
     }
 
-    composeTestRule.onNodeWithText("Loading character...").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Loading character…").assertIsDisplayed()
     loadGate.complete(Unit)
     composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
       !viewModel.uiState.value.isLoading
     }
+  }
+
+  @Test
+  fun displaysSaveErrorMessage() {
+    val file =
+        JDRFile(
+            id = "character-save-error",
+            name = "Elara Moonwhisper",
+            type = DocumentType.CHARACTER,
+            content =
+                """{"version":1,"type":"character","character":{"name":"Elara Moonwhisper","stats":[],"actions":[],"hp":{"current":18,"max":24}}}""",
+        )
+    val errorMessage = "Unable to save character."
+    val viewModel = EditFileViewModel(FakeWorkspaceRepository(file, updateError = errorMessage))
+    viewModel.loadFile(file.id)
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      viewModel.uiState.value.character != null
+    }
+
+    composeTestRule.setContent {
+      EditFileCharacter(viewModel = viewModel, onBack = {}, onSaved = {})
+    }
+
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.LIST).performScrollToKey("save")
+    composeTestRule.onNodeWithTag("edit_character_save").performClick()
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      viewModel.uiState.value.error == errorMessage
+    }
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.LIST).performScrollToKey("error")
+    composeTestRule.onNodeWithTag("edit_character_error").assertIsDisplayed()
+    composeTestRule.onNodeWithTag("edit_character_error").assertTextEquals(errorMessage)
+  }
+
+  @Test
+  fun keepsNewStatAndActionDraftsWhenEntriesAreInvalid() {
+    val file =
+        JDRFile(
+            id = "character-invalid-new-entry",
+            name = "Elara Moonwhisper",
+            type = DocumentType.CHARACTER,
+            content =
+                """{"version":1,"type":"character","character":{"name":"Elara Moonwhisper","stats":[],"actions":[],"hp":{"current":18,"max":24}}}""",
+        )
+    val viewModel = EditFileViewModel(FakeWorkspaceRepository(file))
+    viewModel.loadFile(file.id)
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      viewModel.uiState.value.character != null
+    }
+
+    composeTestRule.setContent {
+      EditFileCharacter(viewModel = viewModel, onBack = {}, onSaved = {})
+    }
+
+    composeTestRule.onNodeWithTag("add_entry_value").performTextInput("14")
+    composeTestRule.onNodeWithTag("confirm_add_stat").performScrollTo().performClick()
+    assertEquals(0, viewModel.uiState.value.character!!.stats.size)
+    composeTestRule.onNodeWithTag("add_entry_name").performTextInput("Stealth")
+    composeTestRule.onNodeWithTag("add_entry_value").performTextClearance()
+    composeTestRule.onNodeWithTag("add_entry_value").performTextInput("invalid")
+    composeTestRule.onNodeWithTag("confirm_add_stat").performScrollTo().performClick()
+    assertEquals(0, viewModel.uiState.value.character!!.stats.size)
+    composeTestRule.onNodeWithTag("add_entry_name").assertTextEquals("Stat name", "Stealth")
+
+    composeTestRule.onNodeWithTag("add_entry_value").performTextClearance()
+    composeTestRule.onNodeWithTag("add_entry_value").performTextInput("14")
+    composeTestRule.onNodeWithTag("confirm_add_stat").performScrollTo().performClick()
+    assertEquals("Stealth", viewModel.uiState.value.character!!.stats.single().name)
+    composeTestRule.onNodeWithTag("add_action_name").performScrollTo().performClick()
+    composeTestRule.onNodeWithTag("confirm_add_action").performScrollTo().performClick()
+    assertEquals(0, viewModel.uiState.value.character!!.actions.size)
+    composeTestRule.onNodeWithTag("add_action_name").performTextInput("Guard")
+    composeTestRule.onNodeWithTag("add_action_description").performTextInput("Protect an ally")
+    composeTestRule.onNodeWithTag("confirm_add_action").performScrollTo().performClick()
+    assertEquals("Guard", viewModel.uiState.value.character!!.actions.single().name)
   }
 
   @Test
@@ -299,6 +373,7 @@ class EditFileCharacterTests {
       private val file: JDRFile,
       private val updateGate: CompletableDeferred<Unit>? = null,
       private val loadGate: CompletableDeferred<Unit>? = null,
+      private val updateError: String? = null,
   ) : WorkspaceRepository {
     val updatedFiles = mutableListOf<JDRFile>()
 
@@ -309,6 +384,7 @@ class EditFileCharacterTests {
     override suspend fun updateFile(file: JDRFile): Result<Unit> {
       updatedFiles += file
       updateGate?.await()
+      updateError?.let { throw IllegalStateException(it) }
       return Result.success(Unit)
     }
 
@@ -323,16 +399,30 @@ class EditFileCharacterTests {
         itemId: String,
         groupId: String,
         parentFolderId: String,
-    ): Result<Unit> {
-      error("not used")
-    }
+    ): Result<Unit> = Result.success(Unit)
 
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = emptyFlow()
 
     override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = emptyFlow()
 
-    override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> = emptyFlow()
+    override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
+        emptyFlow()
 
-    override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> = emptyFlow()
+    override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
+        emptyFlow()
+
+    override suspend fun addItemToGroup(
+        itemId: String,
+        groupId: String,
+        folderId: String,
+        isHidden: Boolean,
+        includeContent: Boolean,
+    ): Result<Unit> = error("Not used")
+
+    override suspend fun setItemHidden(
+        itemId: String,
+        groupId: String,
+        isHidden: Boolean,
+    ): Result<Unit> = error("Not used")
   }
 }
