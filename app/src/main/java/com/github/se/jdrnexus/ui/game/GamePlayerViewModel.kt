@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
  * ([GroupRepository.getGroupFlow]) and every file placed in the group, walking the folder tree from
  * the group root ([WorkspaceRepository.getGroupFolderFiles]). Hidden files and the content of
  * hidden folders are skipped. The first readable character file owned by the player is their
- * character; the Game Master's lore files are shown read-only.
+ * character.
  *
  * When a remote update arrives while the character has unsaved local edits, the local edits are
  * kept until [saveCharacter] succeeds; otherwise the character always shows the latest version.
@@ -102,15 +102,15 @@ class GamePlayerViewModel(
   override fun saveCharacter() {
     val state = _uiState.value
     if (state.isSaving) return
-    val selected = state.character ?: return reportError(CHARACTER_REQUIRED_ERROR)
+    val sheet = state.character ?: return reportError(CHARACTER_REQUIRED_ERROR)
 
     val content =
         try {
-          JDRFileJsonCodec.serializeCharacter(selected.character)
+          JDRFileJsonCodec.serializeCharacter(sheet.character)
         } catch (e: Exception) {
           return reportError(e.message?.takeIf(String::isNotBlank) ?: SAVE_ERROR)
         }
-    val updatedFile = selected.file.copy(content = content)
+    val updatedFile = sheet.file.copy(content = content)
 
     _uiState.update { it.copy(isSaving = true, error = null) }
     viewModelScope.launch {
@@ -122,7 +122,7 @@ class GamePlayerViewModel(
               character =
                   current.character?.let {
                     // Edits made while saving stay unsaved.
-                    if (it.file.id == updatedFile.id && it.character == selected.character) {
+                    if (it.file.id == updatedFile.id && it.character == sheet.character) {
                       it.copy(file = updatedFile, hasUnsavedChanges = false)
                     } else it
                   },
@@ -174,31 +174,21 @@ class GamePlayerViewModel(
 
     _uiState.update { current ->
       val localEdit = current.character?.takeIf { it.hasUnsavedChanges }
-      val unreadable = mutableMapOf<String, String>()
       var character: SessionCharacter? = null
-      val lores = mutableListOf<SessionLore>()
       for (file in files) {
+        if (file.type != DocumentType.CHARACTER || file.ownerId != userId) continue
         try {
-          when {
-            file.type == DocumentType.CHARACTER && file.ownerId == userId && character == null ->
-                character =
-                    localEdit?.takeIf { it.file.id == file.id }
-                        ?: SessionCharacter(
-                            file,
-                            JDRFileJsonCodec.deserializeCharacter(file.content),
-                        )
-            file.type == DocumentType.TEXT && file.ownerId == group.gameMasterId ->
-                lores += SessionLore(file, JDRFileJsonCodec.deserializeLore(file.content))
-          }
+          character =
+              localEdit?.takeIf { it.file.id == file.id }
+                  ?: SessionCharacter(file, JDRFileJsonCodec.deserializeCharacter(file.content))
+          break
         } catch (e: Exception) {
-          unreadable[file.id] = e.message?.takeIf(String::isNotBlank) ?: UNREADABLE_FILE_ERROR
+          // An unreadable sheet is skipped; the next readable one is used instead.
         }
       }
 
       current.copy(
           character = character,
-          lores = lores,
-          unreadableFiles = unreadable,
           isLoading = false,
           error =
               current.error?.takeUnless { it == SIGNED_OUT_ERROR || it == GROUP_NOT_FOUND_ERROR },
@@ -224,6 +214,5 @@ class GamePlayerViewModel(
     const val LOAD_ERROR = "Unable to load this session."
     const val SAVE_ERROR = "Unable to save this character."
     const val SIGNED_OUT_ERROR = "You must be signed in to join a session."
-    const val UNREADABLE_FILE_ERROR = "Unable to read this file."
   }
 }

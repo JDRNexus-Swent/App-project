@@ -107,7 +107,7 @@ class GamePlayerViewModelTest {
   }
 
   @Test
-  fun loadsOwnCharacterAndGameMasterLoreFromTheWholeGroupTree() = runTest {
+  fun loadsOwnCharacterFromTheWholeGroupTree() = runTest {
     val workspace =
         FakeWorkspaceRepository(
             group.id to
@@ -136,13 +136,10 @@ class GamePlayerViewModelTest {
     assertEquals("own", state.character!!.file.id)
     assertEquals(hero, state.character!!.character)
     assertFalse(state.character!!.hasUnsavedChanges)
-    assertEquals(listOf("lore"), state.lores.map { it.file.id })
-    assertEquals(lore, state.lores.single().lore)
-    assertTrue(state.unreadableFiles.isEmpty())
   }
 
   @Test
-  fun reportsUnreadableFilesWithoutFailingTheSession() = runTest {
+  fun skipsUnreadableFilesWithoutFailingTheSession() = runTest {
     val broken = characterFile("broken", player.uid).copy(content = "not json")
     val viewModel =
         createViewModel(
@@ -153,7 +150,6 @@ class GamePlayerViewModelTest {
     advanceUntilIdle()
 
     assertEquals("own", viewModel.uiState.value.character!!.file.id)
-    assertEquals(setOf("broken"), viewModel.uiState.value.unreadableFiles.keys)
     assertNull(viewModel.uiState.value.error)
   }
 
@@ -187,9 +183,9 @@ class GamePlayerViewModelTest {
 
     viewModel.updateCharacterHp(20)
 
-    val selected = viewModel.uiState.value.character!!
-    assertTrue(selected.hasUnsavedChanges)
-    assertEquals(hero.copy(hp = CharacterHealthPoints(current = 20, max = 20)), selected.character)
+    val sheet = viewModel.uiState.value.character!!
+    assertTrue(sheet.hasUnsavedChanges)
+    assertEquals(hero.copy(hp = CharacterHealthPoints(current = 20, max = 20)), sheet.character)
     assertNull(viewModel.uiState.value.error)
   }
 
@@ -205,9 +201,9 @@ class GamePlayerViewModelTest {
     assertEquals(CURRENT_HP_EXCEEDS_MAX_ERROR, viewModel.uiState.value.hpError)
 
     assertNull(viewModel.uiState.value.error)
-    val selected = viewModel.uiState.value.character!!
-    assertEquals(hero, selected.character)
-    assertFalse(selected.hasUnsavedChanges)
+    val sheet = viewModel.uiState.value.character!!
+    assertEquals(hero, sheet.character)
+    assertFalse(sheet.hasUnsavedChanges)
 
     viewModel.updateCharacterHp(5)
     assertNull(viewModel.uiState.value.hpError)
@@ -236,7 +232,7 @@ class GamePlayerViewModelTest {
   }
 
   @Test
-  fun savePersistsTheSelectedCharacterAndClearsUnsavedChanges() = runTest {
+  fun savePersistsThePlayerCharacterAndClearsUnsavedChanges() = runTest {
     val saveGate = CompletableDeferred<Unit>()
     val workspace =
         FakeWorkspaceRepository(
@@ -284,9 +280,9 @@ class GamePlayerViewModelTest {
 
     assertEquals(SAVE_ERROR, viewModel.uiState.value.error)
     assertFalse(viewModel.uiState.value.isSaving)
-    val selected = viewModel.uiState.value.character!!
-    assertTrue(selected.hasUnsavedChanges)
-    assertEquals(3, selected.character.hp.current)
+    val sheet = viewModel.uiState.value.character!!
+    assertTrue(sheet.hasUnsavedChanges)
+    assertEquals(3, sheet.character.hp.current)
   }
 
   @Test

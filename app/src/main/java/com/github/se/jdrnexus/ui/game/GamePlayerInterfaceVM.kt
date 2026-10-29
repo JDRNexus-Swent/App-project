@@ -2,7 +2,6 @@
 package com.github.se.jdrnexus.ui.game
 
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
-import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import kotlinx.coroutines.flow.StateFlow
 
@@ -18,19 +17,12 @@ data class SessionCharacter(
     val hasUnsavedChanges: Boolean = false,
 )
 
-/** A lore document made available by the Game Master. Always read-only. */
-data class SessionLore(val file: JDRFile, val lore: LoreFile)
-
 /** Observable data needed to render the player's game screen. */
 data class GamePlayerUiState(
     /** The group whose session is loaded, or null before [GamePlayerInterfaceVM.loadSession]. */
     val groupId: String? = null,
     /** The player's own character sheet in the group, or null when they have none. */
     val character: SessionCharacter? = null,
-    /** Lore documents the Game Master made available to the player. */
-    val lores: List<SessionLore> = emptyList(),
-    /** Files that could not be read, keyed by file ID, with a displayable reason. */
-    val unreadableFiles: Map<String, String> = emptyMap(),
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,
     /** Displayable repository or validation error, cleared by the next valid action. */
@@ -47,7 +39,7 @@ data class GamePlayerUiState(
  * [GamePlayerUiState.error] instead of throwing.
  */
 interface GamePlayerInterfaceVM {
-  /** StateFlow containing the player's character, lore, and operation status. */
+  /** StateFlow containing the player's character and operation status. */
   val uiState: StateFlow<GamePlayerUiState>
 
   /** Starts observing the files of [groupId], replacing any previous session. Also retries. */
