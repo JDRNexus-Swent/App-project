@@ -6,6 +6,7 @@ import android.os.CancellationSignal
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
@@ -13,7 +14,6 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -297,10 +297,38 @@ class SignInScreenTest {
 
     composeTestRule
         .onNodeWithTag(C.Tag.sign_in_email)
-        .assert(hasAnyDescendant(hasText(AuthError.INVALID_EMAIL.message)))
+        .assert(hasText(AuthError.INVALID_EMAIL.message))
     composeTestRule
         .onNodeWithTag(C.Tag.sign_in_password)
-        .assert(hasAnyDescendant(hasText("Password must be at least 6 characters.")))
+        .assert(hasText("Password must be at least 6 characters."))
+  }
+
+  @Test
+  fun signInScreen_correctingOneInvalidFieldKeepsOtherFieldErrorUntilFixed() {
+    val repository = FakeAuthRepository()
+    showSignIn(repository)
+    emailInput(C.Tag.sign_in_email).performTextInput("invalid")
+    passwordInput(C.Tag.sign_in_password).performTextInput("short")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+
+    val emailError = AuthError.INVALID_EMAIL.message
+    val passwordError = "Password must be at least 6 characters."
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).assert(hasText(emailError))
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).assert(hasText(passwordError))
+
+    emailInput(C.Tag.sign_in_email).performTextInput("@example.com")
+
+    composeTestRule.onAllNodesWithText(emailError).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).assert(hasText(passwordError))
+    assertEquals(0, repository.signInCalls)
+
+    passwordInput(C.Tag.sign_in_password).performTextInput("1")
+    composeTestRule.onAllNodesWithText(passwordError).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    composeTestRule.waitForIdle()
+
+    assertEquals(1, repository.signInCalls)
+    assertEquals("invalid@example.com" to "short1", repository.lastSignInArguments)
   }
 
   @Test
