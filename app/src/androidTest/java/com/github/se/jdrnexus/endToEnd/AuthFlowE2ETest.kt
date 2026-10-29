@@ -48,7 +48,10 @@ class AuthFlowE2ETest {
       val auth = FirebaseAuth.getInstance()
       val user = auth.currentUser ?: return@runBlocking
       try {
-        withTimeout(5_000) { user.delete().await() }
+        withTimeout(5_000) {
+          TestFirebaseEmulators.clearUserDocuments(FirebaseFirestore.getInstance(), user.uid)
+          user.delete().await()
+        }
       } catch (e: Exception) {
         Log.w("E2E", "Cleanup failed for ${user.email}", e)
       } finally {
@@ -124,16 +127,16 @@ internal object TestFirebaseEmulators {
     configured = true
   }
 
-  suspend fun clearCollection(firestore: FirebaseFirestore, collectionPath: String) {
+  suspend fun clearUserDocuments(firestore: FirebaseFirestore, userId: String) {
     try {
-      val snapshot = firestore.collection(collectionPath).get().await()
+      val snapshot = firestore.collection("documents").whereEqualTo("ownerId", userId).get().await()
       snapshot.documents.chunked(500).forEach { chunk ->
         val batch = firestore.batch()
         chunk.forEach { batch.delete(it.reference) }
         batch.commit().await()
       }
     } catch (e: Exception) {
-      Log.e("E2E", "Cleanup of '$collectionPath' failed", e)
+      Log.e("E2E", "Cleanup of user documents failed for user $userId", e)
     }
   }
 }

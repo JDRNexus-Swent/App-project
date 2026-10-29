@@ -59,7 +59,7 @@ class CharacterEditionE2ETest {
       val user = auth.currentUser ?: return@runBlocking
       try {
         withTimeout(15_000) {
-          TestFirebaseEmulators.clearCollection(FirebaseFirestore.getInstance(), "documents")
+          TestFirebaseEmulators.clearUserDocuments(FirebaseFirestore.getInstance(), user.uid)
           user.delete().await()
         }
       } catch (e: Exception) {
