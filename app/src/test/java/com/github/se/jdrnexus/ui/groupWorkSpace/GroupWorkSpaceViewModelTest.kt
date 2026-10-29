@@ -3,33 +3,26 @@ package com.github.se.jdrnexus.ui.groupWorkSpace
 
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.viewmodel.LoadState
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -42,1710 +35,659 @@ class GroupWorkSpaceViewModelTest {
 
   private fun groupFolder(
       id: String,
-      name: String = "",
-      parentFolderIds: List<String> = listOf(GROUP_ID),
-      sharedGroupsIds: List<String> = listOf(GROUP_ID),
-      ownerId: String = "",
-  ) =
-      JDRFile(
-          id = id,
-          name = name,
-          ownerId = ownerId,
-          type = DocumentType.FOLDER,
-          sharedGroupsIds = sharedGroupsIds,
-          parentFolderIds = parentFolderIds,
-      )
+      parentId: String = GROUP_ID,
+      ownerId: String = OTHER_USER_ID,
+      hidden: Boolean = false,
+      groups: List<String> = listOf(GROUP_ID),
+  ) = groupItem(id, ownerId, DocumentType.FOLDER, parentId, hidden, groups)
 
   private fun groupFile(
       id: String,
-      name: String = "",
+      parentId: String = GROUP_ID,
+      ownerId: String = OTHER_USER_ID,
+      hidden: Boolean = false,
+      groups: List<String> = listOf(GROUP_ID),
       type: DocumentType = DocumentType.TEXT,
+      name: String = id,
       content: String = "",
-      parentFolderIds: List<String> = emptyList(),
-      sharedGroupsIds: List<String> = listOf(GROUP_ID),
-      ownerId: String = "",
-      personalParentId: String = "",
+  ) = groupItem(id, ownerId, type, parentId, hidden, groups, name, content)
+
+  private fun groupItem(
+      id: String,
+      ownerId: String,
+      type: DocumentType,
+      parentId: String,
+      hidden: Boolean,
+      groups: List<String>,
+      name: String = id,
+      content: String = "",
   ) =
       JDRFile(
           id = id,
           name = name,
           ownerId = ownerId,
-          sharedGroupsIds = sharedGroupsIds,
-          parentFolderIds = parentFolderIds,
-          personalParentId = personalParentId,
           type = type,
           content = content,
+          sharedGroupsIds = groups,
+          placements =
+              groups.associateWith { group ->
+                Placement(
+                    folderId = if (group == GROUP_ID) parentId else group,
+                    isHidden = hidden,
+                )
+              },
       )
 
+  // Game Masters see hidden root items, while players see only visible items and have fewer
+  // permissions.
   @Test
-  fun initializesWithGroupRootItemsAndPermissions() = runTest {
-    val folder = groupFolder(id = "folder-1", name = "Folder", ownerId = OWNER_ID)
-    val file =
-        groupFile(
-            id = "file-1",
-            name = "File",
-            ownerId = OWNER_ID,
-            parentFolderIds = listOf(GROUP_ID),
-        )
-    val repository = FakeWorkspaceRepository(listOf(folder, file))
-
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    assertEquals(LoadState.Loading, viewModel.uiState.value.loadState)
-    assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
-    assertTrue(viewModel.uiState.value.canCreateFolder)
-    assertTrue(viewModel.uiState.value.canEditItems)
+  fun loadsGroupRootAndExposesRolePermissions() = runTest {
+    val visible = groupFile("visible")
+    val hidden = groupFile("hidden", hidden = true)
+    val repository = FakeWorkspaceRepository(listOf(visible, hidden))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
 
     runCurrent()
 
-    assertEquals(listOf(GROUP_ID), repository.folderRequests)
-    assertEquals(listOf(folder, file), viewModel.uiState.value.items)
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-    assertEquals("", viewModel.uiState.value.errorMessage)
+    assertEquals(setOf(visible.id, hidden.id), gm.uiState.value.items.map { it.id }.toSet())
+    assertEquals(listOf(visible.id), player.uiState.value.items.map { it.id })
+    assertEquals(LoadState.Success, player.uiState.value.loadState)
+    assertTrue(gm.uiState.value.canCreateFolder)
+    assertTrue(gm.uiState.value.canEditItems)
+    assertFalse(player.uiState.value.canCreateFolder)
+    assertFalse(player.uiState.value.canEditItems)
   }
 
+  // Players retain access to their own hidden items and folders containing them, but not unrelated
+  // hidden content.
   @Test
-  fun emptyWorkspaceLoadsAsSuccessfulEmptyList() = runTest {
-    val viewModel = viewModel(FakeWorkspaceRepository(), GroupWorkspaceRole.PLAYER)
-
-    runCurrent()
-
-    assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-    assertFalse(viewModel.uiState.value.canCreateFolder)
-    assertFalse(viewModel.uiState.value.canEditItems)
-  }
-
-  @Test
-  fun loadingFolderClearsPreviousItemsAndDisplaysFolderReferences() = runTest {
-    val rootFile = groupFile(id = "root", name = "Root", parentFolderIds = listOf(GROUP_ID))
-    val folder = groupFolder(id = "folder")
-    val child = groupFile(id = "child", name = "Child", parentFolderIds = listOf(folder.id))
-    val repository = FakeWorkspaceRepository(listOf(rootFile, folder), listOf(child))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    viewModel.loadWorkspace("folder")
-    assertEquals("folder", viewModel.uiState.value.currentFolderId)
-    assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
-    assertEquals(LoadState.Loading, viewModel.uiState.value.loadState)
-    runCurrent()
-
-    assertTrue(GROUP_ID in repository.folderRequests)
-    assertTrue("folder" in repository.folderRequests)
-    assertEquals(listOf(child), viewModel.uiState.value.items)
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-  }
-
-  @Test
-  fun folderChangeCancelsOldLoadAndDoesNotRestoreStaleItems() = runTest {
-    val slowFolder = groupFolder(id = "slow")
-    val fastFolder = groupFolder(id = "fast")
-    val slowItem = groupFile(id = "slow-item", parentFolderIds = listOf("slow"))
-    val fastItem = groupFile(id = "fast-item", parentFolderIds = listOf("fast"))
-    val slowGate = CompletableDeferred<Unit>()
-    val repository =
-        FakeWorkspaceRepository(
-            initialFiles = listOf(slowFolder, fastFolder),
-            folderItems = listOf(slowItem, fastItem),
-            folderGates = mapOf("slow" to slowGate),
-        )
-    val viewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
-    runCurrent()
-
-    viewModel.loadWorkspace("slow")
-    runCurrent()
-    viewModel.loadWorkspace("fast")
-    runCurrent()
-    assertEquals(listOf(fastItem), viewModel.uiState.value.items)
-
-    slowGate.complete(Unit)
-    runCurrent()
-    assertEquals("fast", viewModel.uiState.value.currentFolderId)
-    assertEquals(listOf(fastItem), viewModel.uiState.value.items)
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-  }
-
-  @Test
-  fun staleLoadFailureCannotOverwriteNewerSuccessfulLoad() = runTest {
-    val staleGate = CompletableDeferred<Unit>()
-    val staleFolder = groupFolder(id = "stale-folder")
-    val activeFolder = groupFolder(id = "active-folder")
-    val staleItem = groupFile(id = "stale", parentFolderIds = listOf("stale-folder"))
-    val activeItem = groupFile(id = "active", parentFolderIds = listOf("active-folder"))
-    val repository =
-        FakeWorkspaceRepository(
-            initialFiles = listOf(staleFolder, activeFolder),
-            folderItems = listOf(staleItem, activeItem),
-            folderFailureGates = mapOf("stale-folder" to staleGate),
-            folderFailures = mapOf("stale-folder" to IllegalStateException("Stale failure")),
-        )
-    val viewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
-    runCurrent()
-
-    viewModel.loadWorkspace("stale-folder")
-    runCurrent()
-    viewModel.loadWorkspace("active-folder")
-    runCurrent()
-    assertEquals(listOf(activeItem), viewModel.uiState.value.items)
-
-    staleGate.complete(Unit)
-    runCurrent()
-
-    assertEquals("active-folder", viewModel.uiState.value.currentFolderId)
-    assertEquals(listOf(activeItem), viewModel.uiState.value.items)
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-  }
-
-  @Test
-  fun reloadingNestedFolderAfterAncestorRevocationKeepsAccessibleLocationSelected() = runTest {
-    val root = groupFolder(id = "root")
-    val nested = groupFolder(id = "nested", parentFolderIds = listOf(root.id))
-    val child = groupFile(id = "child", parentFolderIds = listOf(nested.id))
-    val repository = FakeWorkspaceRepository(listOf(root, nested, child))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    viewModel.loadWorkspace(nested.id)
-    runCurrent()
-    assertEquals(listOf(child), viewModel.uiState.value.items)
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-    assertTrue(GROUP_ID in repository.folderRequests)
-    assertTrue(nested.id in repository.folderRequests)
-
-    repository.replaceFiles(listOf(root.copy(sharedGroupsIds = emptyList()), nested, child))
-    runCurrent()
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-    assertEquals(listOf(child), viewModel.uiState.value.items)
-
-    viewModel.loadWorkspace(nested.id)
-    runCurrent()
-
-    assertEquals(nested.id, viewModel.uiState.value.currentFolderId)
-    assertEquals(listOf(child), viewModel.uiState.value.items)
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-    assertEquals(2, repository.folderRequests.count { it == nested.id })
-
-    viewModel.loadWorkspace("")
-    runCurrent()
-    assertEquals("", viewModel.uiState.value.currentFolderId)
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-  }
-
-  @Test
-  fun foldersRemainAccessibleWithCyclicMissingOrInaccessibleAncestors() = runTest {
-    // The parent references intentionally point at each other.
-    val cycleA = groupFolder(id = "cycle-a", parentFolderIds = listOf("cycle-b"))
-    val cycleB = groupFolder(id = "cycle-b", parentFolderIds = listOf(cycleA.id))
-    val missingParentFolder =
-        groupFolder(id = "missing-parent-child", parentFolderIds = listOf("missing-parent"))
-    val otherGroupParent =
-        groupFolder(
-            id = "other-group-parent",
-            sharedGroupsIds = listOf(OTHER_GROUP_ID),
-            parentFolderIds = listOf(OTHER_GROUP_ID),
-        )
-    val folderWithOtherGroupParent =
-        groupFolder(
-            id = "folder-with-other-group-parent",
-            parentFolderIds = listOf(otherGroupParent.id),
-        )
+  fun playersSeeOwnedHiddenItemsAndFoldersWithOwnedDescendantsOnly() = runTest {
+    val hiddenOwned = groupFile("hidden-owned", ownerId = OWNER_ID, hidden = true)
+    val hiddenFolder = groupFolder("owned-folder", hidden = true)
+    val ownedChild =
+        groupFile("owned-child", parentId = hiddenFolder.id, ownerId = OWNER_ID, hidden = true)
+    val unrelatedHiddenFolder = groupFolder("unrelated-hidden", hidden = true)
+    val unrelatedHiddenChild =
+        groupFile("unrelated-child", parentId = unrelatedHiddenFolder.id, hidden = true)
+    val hiddenFile = groupFile("hidden-file", hidden = true)
     val repository =
         FakeWorkspaceRepository(
             listOf(
-                cycleA,
-                cycleB,
-                missingParentFolder,
-                otherGroupParent,
-                folderWithOtherGroupParent,
+                hiddenOwned,
+                hiddenFolder,
+                ownedChild,
+                unrelatedHiddenFolder,
+                unrelatedHiddenChild,
+                hiddenFile,
             )
         )
-    val viewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
     runCurrent()
 
-    viewModel.loadWorkspace(cycleA.id)
-    runCurrent()
-    assertEquals(cycleA.id, viewModel.uiState.value.currentFolderId)
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-    assertEquals(listOf(cycleB), viewModel.uiState.value.items)
-    assertEquals(listOf(GROUP_ID, cycleA.id), repository.folderRequests)
-
-    viewModel.loadWorkspace(missingParentFolder.id)
-    runCurrent()
-    assertEquals(missingParentFolder.id, viewModel.uiState.value.currentFolderId)
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-    assertTrue(viewModel.uiState.value.items.isEmpty())
-    assertEquals(listOf(GROUP_ID, cycleA.id, missingParentFolder.id), repository.folderRequests)
-
-    viewModel.loadWorkspace(folderWithOtherGroupParent.id)
-    runCurrent()
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-    assertTrue(viewModel.uiState.value.items.isEmpty())
     assertEquals(
-        listOf(GROUP_ID, cycleA.id, missingParentFolder.id, folderWithOtherGroupParent.id),
-        repository.folderRequests,
+        setOf(hiddenOwned.id, hiddenFolder.id),
+        player.uiState.value.items.map { it.id }.toSet(),
     )
-
-    viewModel.loadWorkspace("")
+    player.loadWorkspace(hiddenFolder.id)
     runCurrent()
-    assertEquals("", viewModel.uiState.value.currentFolderId)
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
+    assertEquals(listOf(ownedChild.id), player.uiState.value.items.map { it.id })
+
+    player.loadWorkspace(unrelatedHiddenFolder.id)
+    runCurrent()
+    assertEquals(
+        LoadState.Error("You cannot access this folder."),
+        player.uiState.value.loadState,
+    )
+    assertTrue(player.uiState.value.items.isEmpty())
   }
 
+  // A hidden ancestor conceals unowned descendants without concealing a player's own placed items.
   @Test
-  fun concurrentFolderLoadAndRemovalFinishWithoutDeadlockOrPermanentLoading() = runTest {
-    val root = groupFolder(id = "root")
-    val nested = groupFolder(id = "nested", parentFolderIds = listOf(root.id))
-    val child = groupFile(id = "child", parentFolderIds = listOf(nested.id))
-    val repository = FakeWorkspaceRepository(listOf(root, nested, child))
-    val removalGate = CompletableDeferred<Unit>()
-    repository.removeGate = { removalGate.await() }
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    val removeJob = viewModel.removeItem(root)
-    runCurrent()
-    assertTrue(viewModel.uiState.value.isOperationInProgress)
-
-    viewModel.loadWorkspace(nested.id)
-    runCurrent()
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-    assertEquals(listOf(child), viewModel.uiState.value.items)
-
-    removalGate.complete(Unit)
-    removeJob.join()
-    runCurrent()
-
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-    assertEquals(nested.id, viewModel.uiState.value.currentFolderId)
-    assertTrue(repository.files.values.none { GROUP_ID in it.sharedGroupsIds })
-
-    viewModel.loadWorkspace(nested.id)
-    runCurrent()
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-    assertEquals(
-        LoadState.Error("This folder does not belong to the current group's workspace."),
-        viewModel.uiState.value.loadState,
-    )
-    assertTrue(repository.folderRequests.isNotEmpty())
-
-    viewModel.loadWorkspace("")
-    runCurrent()
-    assertEquals("", viewModel.uiState.value.currentFolderId)
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-  }
-
-  @Test
-  fun loadFailureIsVisibleAndRetryClearsIt() = runTest {
+  fun hiddenAncestorHidesUnownedDescendantsButNotOwnedItems() = runTest {
+    val hiddenParent = groupFolder("hidden-parent", hidden = true)
+    val nested = groupFolder("nested", parentId = hiddenParent.id)
+    val unowned = groupFile("unowned", parentId = nested.id)
+    val owned = groupFile("owned", parentId = nested.id, ownerId = OWNER_ID)
+    val nestedOwned = groupFile("nested-owned", parentId = nested.id, ownerId = OWNER_ID)
     val repository =
-        FakeWorkspaceRepository(
-            initialFiles = emptyList(),
-            folderFailures = mutableMapOf(GROUP_ID to IllegalStateException("Load denied")),
-        )
-    val viewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
+        FakeWorkspaceRepository(listOf(hiddenParent, nested, unowned, owned, nestedOwned))
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
     runCurrent()
 
-    assertEquals(LoadState.Error("Load denied"), viewModel.uiState.value.loadState)
-    assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
-
-    repository.folderFailures.remove(GROUP_ID)
-    repository.replaceFiles(listOf(groupFile(id = "recovered", parentFolderIds = listOf(GROUP_ID))))
-    viewModel.loadWorkspace()
+    player.loadWorkspace(nested.id)
     runCurrent()
 
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-    assertEquals(listOf("recovered"), viewModel.uiState.value.items.map(JDRFile::id))
+    assertEquals(setOf(owned.id, nestedOwned.id), player.uiState.value.items.map { it.id }.toSet())
+    assertEquals(LoadState.Success, player.uiState.value.loadState)
   }
 
+  // Game Masters can enter hidden group folders, but folders outside the group are inaccessible to
+  // either role.
   @Test
-  fun createFolderPersistsTrimmedFolderInCurrentGroupFolder() = runTest {
-    val parent = groupFolder(id = "parent")
-    val repository = FakeWorkspaceRepository(listOf(parent))
+  fun gameMasterCanNavigateHiddenFoldersButNeitherRoleCanOpenUnsharedFolders() = runTest {
+    val hidden = groupFolder("hidden", hidden = true)
+    val hiddenChild = groupFile("child", parentId = hidden.id, hidden = true)
+    val unshared =
+        groupFolder(
+            "unshared",
+            groups = emptyList(),
+        )
+    val repository = FakeWorkspaceRepository(listOf(hidden, hiddenChild, unshared))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    gm.loadWorkspace(hidden.id)
+    runCurrent()
+    assertEquals(listOf(hiddenChild), gm.uiState.value.items)
+
+    gm.loadWorkspace(unshared.id)
+    runCurrent()
+    assertTrue(gm.uiState.value.loadState is LoadState.Error)
+    player.loadWorkspace(hidden.id)
+    runCurrent()
+    assertEquals(LoadState.Error("You cannot access this folder."), player.uiState.value.loadState)
+  }
+
+  // Ancestor visibility is rechecked on reload, not observed live while a player stays in a nested
+  // folder.
+  @Test
+  fun reloadingRechecksAncestorVisibilityButDoesNotSubscribeToAncestorChanges() = runTest {
+    val ancestor = groupFolder("ancestor")
+    val nested = groupFolder("nested", parentId = ancestor.id)
+    val child = groupFile("child", parentId = nested.id)
+    val repository = FakeWorkspaceRepository(listOf(ancestor, nested, child))
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+    player.loadWorkspace(nested.id)
+    runCurrent()
+    assertEquals(listOf(child), player.uiState.value.items)
+
+    repository.replaceFile(
+        ancestor.copy(placements = ancestor.placements + (GROUP_ID to Placement(GROUP_ID, true)))
+    )
+    runCurrent()
+
+    // The selected folder flow is unchanged; ancestor metadata is checked on the next load.
+    assertEquals(LoadState.Success, player.uiState.value.loadState)
+    assertEquals(listOf(child), player.uiState.value.items)
+
+    player.loadWorkspace("")
+    runCurrent()
+    assertTrue(player.uiState.value.items.isEmpty())
+
+    player.loadWorkspace(nested.id)
+    runCurrent()
+    assertEquals(LoadState.Error("You cannot access this folder."), player.uiState.value.loadState)
+    assertTrue(player.uiState.value.items.isEmpty())
+
+    repository.replaceFile(ancestor.withoutPlacement(GROUP_ID))
+    player.loadWorkspace(nested.id)
+    runCurrent()
+    assertEquals(LoadState.Error("You cannot access this folder."), player.uiState.value.loadState)
+  }
+
+  // Switching folders displays only the latest requested folder's contents.
+  @Test
+  fun loadsCancelStaleRequestsAndKeepCurrentFolderItems() = runTest {
+    val slowFolder = groupFolder("slow")
+    val fastFolder = groupFolder("fast")
+    val slow = groupFile("slow-item", parentId = slowFolder.id)
+    val fast = groupFile("fast-item", parentId = fastFolder.id)
+    val repository = FakeWorkspaceRepository(listOf(slowFolder, fastFolder, slow, fast))
     val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
     runCurrent()
-    viewModel.loadWorkspace(parent.id)
+
+    viewModel.loadWorkspace(slowFolder.id)
+    runCurrent()
+    viewModel.loadWorkspace(fastFolder.id)
     runCurrent()
 
-    viewModel.createFolder("  New folder  ")
+    assertEquals(fastFolder.id, viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(fast), viewModel.uiState.value.items)
+    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
+  }
+
+  // Only a Game Master can create a folder, and the new folder uses the selected parent placement.
+  @Test
+  fun gameMasterCreatesFolderInSelectedWorkspaceAndPlayersCannotCreateOne() = runTest {
+    val parent = groupFolder("parent")
+    val repository = FakeWorkspaceRepository(listOf(parent))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+    gm.loadWorkspace(parent.id)
     runCurrent()
 
-    val created = repository.createdFiles.single()
-    assertEquals("new-folder-1", created.id)
+    gm.createFolder(" New folder ")
+    runCurrent()
+    val created = repository.files.getValue("new-folder-1")
     assertEquals("New folder", created.name)
     assertEquals(OWNER_ID, created.ownerId)
-    assertEquals(listOf(GROUP_ID), created.sharedGroupsIds)
-    assertEquals(listOf(parent.id), created.parentFolderIds)
-    assertEquals("", created.personalParentId)
-    assertEquals(DocumentType.FOLDER, created.type)
-    assertEquals(listOf(created), viewModel.uiState.value.items)
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-    assertEquals("", viewModel.uiState.value.errorMessage)
+    assertEquals(Placement(parent.id, false), created.placements[GROUP_ID])
+    assertEquals(listOf(created), gm.uiState.value.items)
+
+    player.createFolder("Forbidden")
+    runCurrent()
+    assertFalse(repository.files.values.any { it.name == "Forbidden" })
+    assertTrue(player.uiState.value.errorMessage.isNotBlank())
   }
 
+  // Players may add their own files, and adding into a hidden folder creates a hidden placement.
   @Test
-  fun createFolderRejectsAnAlreadyUsedIdWithoutOverwritingDocument() = runTest {
-    val existing =
-        groupFile(
-            id = "new-folder-1",
-            name = "Existing document",
-            ownerId = OWNER_ID,
-            parentFolderIds = listOf(GROUP_ID),
-        )
-    val repository = FakeWorkspaceRepository(listOf(existing))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+  fun addingOwnedFileUsesRepositoryPlacementAndInheritsHiddenParent() = runTest {
+    val hiddenParent = groupFolder("hidden-parent", hidden = true)
+    val ownedAnchor = groupFile("owned-anchor", parentId = hiddenParent.id, ownerId = OWNER_ID)
+    val file = JDRFile(id = "personal", ownerId = OWNER_ID, personalParentId = "personal-root")
+    val repository = FakeWorkspaceRepository(listOf(hiddenParent, ownedAnchor, file))
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
     runCurrent()
-      print(viewModel.uiState.value.items)
-    viewModel.createFolder("New folder")
-    runCurrent()
-      print(viewModel.uiState.value.items)
-    assertTrue(repository.createdFiles.isEmpty())
-    assertEquals(existing, repository.files[existing.id])
-    assertEquals("A document with this ID already exists.", viewModel.uiState.value.errorMessage)
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-    assertEquals(listOf("new-folder-1"), repository.generatedIds)
-  }
-
-  @Test
-  fun createFolderAtRootUsesGroupAsParentFolderReference() = runTest {
-    val repository = FakeWorkspaceRepository()
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    player.loadWorkspace(hiddenParent.id)
     runCurrent()
 
-    viewModel.createFolder("Root folder")
+    player.addFile(file.id)
     runCurrent()
 
-    assertEquals(listOf(GROUP_ID), repository.createdFiles.single().parentFolderIds)
-    assertEquals(listOf(GROUP_ID), repository.createdFiles.single().sharedGroupsIds)
-    assertEquals(listOf(repository.createdFiles.single()), viewModel.uiState.value.items)
-  }
-
-  @Test
-  fun queuedFolderCreationUsesFolderSelectedWhenRequested() = runTest {
-    val folderA = groupFolder(id = "folder-a")
-    val folderB = groupFolder(id = "folder-b")
-    val blocker = groupFile(id = "blocker", ownerId = OWNER_ID, sharedGroupsIds = emptyList())
-    val repository = FakeWorkspaceRepository(listOf(folderA, folderB, blocker))
-    val operationGate = CompletableDeferred<Unit>()
-    repository.updateGate = { if (it.id == blocker.id) operationGate.await() }
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    viewModel.loadWorkspace(folderA.id)
-    runCurrent()
-
-    viewModel.addFile(blocker.id)
-    runCurrent()
-    assertEquals(listOf(blocker.id), repository.updatedFiles.map(JDRFile::id))
-
-    viewModel.createFolder("Nested folder")
-    runCurrent()
-    assertTrue(viewModel.uiState.value.isOperationInProgress)
-    assertTrue(repository.createdFiles.isEmpty())
-
-    viewModel.loadWorkspace(folderB.id)
-    runCurrent()
-
-    operationGate.complete(Unit)
-    runCurrent()
-
-    val createdFolder = repository.createdFiles.single()
-    assertEquals(listOf(folderA.id), createdFolder.parentFolderIds)
-    assertEquals(folderB.id, viewModel.uiState.value.currentFolderId)
-    assertTrue(viewModel.uiState.value.items.isEmpty())
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-  }
-
-  @Test
-  fun blankFolderNameIsRejectedWithoutRepositoryMutation() = runTest {
-    val repository = FakeWorkspaceRepository()
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    viewModel.createFolder("   ")
-    runCurrent()
-
-    assertTrue(repository.createdFiles.isEmpty())
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-  }
-
-  @Test
-  fun playerCannotCreateFolder() = runTest {
-    val repository = FakeWorkspaceRepository()
-    val viewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
-    runCurrent()
-
-    viewModel.createFolder("Forbidden")
-    runCurrent()
-
-    assertTrue(repository.createdFiles.isEmpty())
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-  }
-
-  @Test
-  fun gameMasterAddsFileAndPreservesExistingReferences() = runTest {
-    val targetFolder = groupFolder(id = "target-folder", name = "Target Folder")
-    val file =
-        groupFile(
-            id = "file",
-            name = "Document",
-            ownerId = OWNER_ID,
-            sharedGroupsIds = listOf(OTHER_GROUP_ID),
-            parentFolderIds = listOf("other-folder"),
-            type = DocumentType.CHARACTER,
-            content = "sheet",
-        )
-    val repository = FakeWorkspaceRepository(listOf(file, targetFolder))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    viewModel.loadWorkspace("target-folder")
-    runCurrent()
-    assertEquals("Target Folder", viewModel.uiState.value.currentFolderName)
-    runCurrent()
-
-    viewModel.addFile(file.id)
-    runCurrent()
-
+    val shared = repository.files.getValue(file.id)
+    assertEquals(listOf(GROUP_ID), shared.sharedGroupsIds)
+    assertEquals(Placement(hiddenParent.id, true), shared.placements[GROUP_ID])
+    assertEquals("personal-root", shared.personalParentId)
     assertEquals(
-        file.copy(
-            sharedGroupsIds = listOf(OTHER_GROUP_ID, GROUP_ID),
-            parentFolderIds = listOf("other-folder", "target-folder"),
-        ),
-        repository.updatedFiles.single(),
-    )
-    assertEquals(listOf(file.id), viewModel.uiState.value.items.map(JDRFile::id))
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-    assertEquals("", viewModel.uiState.value.errorMessage)
-  }
-
-  @Test
-  fun playerCanViewAndAddOwnedFile() = runTest {
-    val file = groupFile(id = "owned", ownerId = OWNER_ID, sharedGroupsIds = emptyList())
-    val repository = FakeWorkspaceRepository(listOf(file))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
-    runCurrent()
-
-    assertTrue(viewModel.uiState.value.items.isEmpty())
-    viewModel.addFile(file.id)
-    runCurrent()
-
-    assertEquals(1, repository.updatedFiles.size)
-    assertEquals(listOf(GROUP_ID), repository.updatedFiles.single().sharedGroupsIds)
-    assertEquals(listOf(file.id), viewModel.uiState.value.items.map(JDRFile::id))
-    assertEquals("", viewModel.uiState.value.errorMessage)
-  }
-
-  @Test
-  fun groupRootContainsOnlyFilesSharedWithTheActiveGroup() = runTest {
-    val firstOnly = groupFile(id = "first-only", parentFolderIds = listOf(GROUP_ID))
-    val secondOnly =
-        groupFile(
-            id = "second-only",
-            sharedGroupsIds = listOf(OTHER_GROUP_ID),
-            parentFolderIds = listOf(OTHER_GROUP_ID),
-        )
-    val shared =
-        groupFile(
-            id = "shared",
-            sharedGroupsIds = listOf(GROUP_ID, OTHER_GROUP_ID),
-            parentFolderIds = listOf(GROUP_ID, OTHER_GROUP_ID),
-        )
-    val repository = FakeWorkspaceRepository(listOf(firstOnly, secondOnly, shared))
-    val firstViewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    val secondViewModel =
-        viewModel(repository, GroupWorkspaceRole.GAME_MASTER, groupId = OTHER_GROUP_ID)
-    runCurrent()
-
-    assertEquals(
-        setOf(firstOnly.id, shared.id),
-        firstViewModel.uiState.value.items.map { it.id }.toSet(),
-    )
-    assertEquals(
-        setOf(secondOnly.id, shared.id),
-        secondViewModel.uiState.value.items.map { it.id }.toSet(),
+        setOf(ownedAnchor.id, file.id),
+        player.uiState.value.items.map { it.id }.toSet(),
     )
   }
 
+  // Game Masters can add their own files but ownership still prevents adding another member's file.
   @Test
-  fun addingPersonalFileToOneGroupPreservesOtherGroupAndPersonalSpace() = runTest {
-    val personalFile =
-        groupFile(
-            id = "personal",
-            name = "Personal document",
+  fun gameMasterCanAddOwnedFileButCannotAddAnotherUsersFile() = runTest {
+    val groupRoot =
+        JDRFile(
+            id = GROUP_ID,
             ownerId = OWNER_ID,
-            sharedGroupsIds = listOf(OTHER_GROUP_ID),
-            parentFolderIds = listOf(OTHER_GROUP_ID),
-            personalParentId = "",
-        )
-    val repository = FakeWorkspaceRepository(listOf(personalFile))
-    val firstViewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
-    val secondViewModel =
-        viewModel(repository, GroupWorkspaceRole.GAME_MASTER, groupId = OTHER_GROUP_ID)
-    runCurrent()
-
-    firstViewModel.addFile(personalFile.id)
-    runCurrent()
-
-    assertEquals(
-        listOf(OTHER_GROUP_ID, GROUP_ID),
-        repository.files[personalFile.id]?.sharedGroupsIds,
-    )
-    assertEquals(listOf(personalFile.id), firstViewModel.uiState.value.items.map { it.id })
-    assertEquals(listOf(personalFile.id), secondViewModel.uiState.value.items.map { it.id })
-    assertEquals(
-        listOf(
-            personalFile.copy(
-                sharedGroupsIds = listOf(OTHER_GROUP_ID, GROUP_ID),
-                parentFolderIds = listOf(OTHER_GROUP_ID, GROUP_ID),
-            )
-        ),
-        repository.getPersonalRootFiles(OWNER_ID).first(),
-    )
-  }
-
-  @Test
-  fun playerCannotAddAnotherUsersFileOrFolder() = runTest {
-    val foreignFile =
-        groupFile(id = "foreign", ownerId = "another-user", sharedGroupsIds = emptyList())
-    val folder =
-        groupFolder(
-            id = "folder",
-            ownerId = OWNER_ID,
-            sharedGroupsIds = emptyList(),
-            parentFolderIds = emptyList(),
-        )
-    val repository = FakeWorkspaceRepository(listOf(foreignFile, folder))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
-    runCurrent()
-
-    viewModel.addFile(foreignFile.id)
-    runCurrent()
-    assertTrue(repository.updatedFiles.isEmpty())
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-
-    viewModel.clearError()
-    viewModel.addFile(folder.id)
-    runCurrent()
-    assertTrue(repository.updatedFiles.isEmpty())
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-  }
-
-  @Test
-  fun blankOrMissingFileIdsAreRejectedWithoutUpdate() = runTest {
-    val repository = FakeWorkspaceRepository()
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    viewModel.addFile(" ")
-    assertTrue(repository.fileRequests.isEmpty())
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-
-    viewModel.clearError()
-    viewModel.addFile("missing")
-    runCurrent()
-    assertTrue(repository.updatedFiles.isEmpty())
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-  }
-
-  @Test
-  fun removingFileFromOneGroupPreservesSharingWithOtherGroups() = runTest {
-    val file =
-        groupFile(
-            id = "shared-file",
-            name = "Shared document",
-            ownerId = OWNER_ID,
-            sharedGroupsIds = listOf(GROUP_ID, OTHER_GROUP_ID),
-            parentFolderIds = listOf(GROUP_ID, OTHER_GROUP_ID),
-        )
-    val repository = FakeWorkspaceRepository(listOf(file))
-
-    val groupOneViewModel =
-        viewModel(repository, GroupWorkspaceRole.GAME_MASTER, groupId = GROUP_ID)
-    val groupTwoViewModel =
-        viewModel(repository, GroupWorkspaceRole.GAME_MASTER, groupId = OTHER_GROUP_ID)
-
-    runCurrent()
-
-    // Initially, the file is visible in both groups.
-    assertEquals(
-        listOf(file.id),
-        groupOneViewModel.uiState.value.items.map { it.id },
-    )
-    assertEquals(
-        listOf(file.id),
-        groupTwoViewModel.uiState.value.items.map { it.id },
-    )
-
-    // Remove the file only from Group 1.
-    groupOneViewModel.removeItem(file)
-    runCurrent()
-
-    // Group 1 sharing is removed, but Group 2 sharing remains.
-    val expectedFile = file.copy(sharedGroupsIds = listOf(OTHER_GROUP_ID))
-      print(expectedFile)
-
-    assertEquals(expectedFile, repository.files[file.id])
-    assertEquals(listOf(file.id to GROUP_ID), repository.groupRemovalRequests)
-    assertFalse(groupOneViewModel.uiState.value.isOperationInProgress)
-
-    // The file disappears from Group 1.
-    assertTrue(groupOneViewModel.uiState.value.items.isEmpty())
-
-    // The same underlying file remains visible in Group 2.
-    assertEquals(
-        listOf(file.id),
-        groupTwoViewModel.uiState.value.items.map { it.id },
-    )
-
-    // The document was not permanently deleted.
-    assertFalse(file.id in repository.deletedFileIds)
-  }
-
-  @Test
-  fun gameMasterCanRemoveFolderWithoutDeletingItsDocument() = runTest {
-    val parent = groupFolder(id = "parent")
-    val folder =
-        groupFolder(
-            id = "folder",
-            name = "Folder",
-            ownerId = OWNER_ID,
-            parentFolderIds = listOf(parent.id),
-        )
-    val repository = FakeWorkspaceRepository(listOf(parent, folder))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-    viewModel.loadWorkspace(parent.id)
-    runCurrent()
-
-    viewModel.removeItem(folder)
-    runCurrent()
-
-    assertEquals(
-        folder.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
-        repository.files[folder.id],
-    )
-    assertTrue(repository.deletedFileIds.isEmpty())
-    assertTrue(viewModel.uiState.value.items.isEmpty())
-  }
-
-  @Test
-  fun removingFolderAllowsReaddingFileAtRootAndPreservesOtherGroupPlacement() = runTest {
-    val folder = groupFolder(id = "removed-folder", ownerId = OWNER_ID)
-    val otherFolder =
-        groupFolder(
-            id = "other-folder",
-            ownerId = OWNER_ID,
-            sharedGroupsIds = listOf(OTHER_GROUP_ID),
-            parentFolderIds = listOf(OTHER_GROUP_ID),
-        )
-    val textFile =
-        groupFile(
-            id = "text-file",
-            name = "Notes.txt",
-            ownerId = OWNER_ID,
-            sharedGroupsIds = listOf(GROUP_ID, OTHER_GROUP_ID),
-            parentFolderIds = listOf(folder.id, otherFolder.id),
-            content = "Notes",
-        )
-    val repository = FakeWorkspaceRepository(listOf(folder, otherFolder, textFile))
-    val groupViewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    groupViewModel.removeItem(folder)
-    runCurrent()
-
-    assertEquals(emptyList<String>(), repository.files[folder.id]?.sharedGroupsIds)
-    assertEquals(listOf(OTHER_GROUP_ID), repository.files[textFile.id]?.sharedGroupsIds)
-    assertEquals(
-        listOf(otherFolder.id),
-        repository.files[textFile.id]?.parentFolderIds,
-    )
-    assertTrue(repository.files.containsKey(textFile.id))
-    assertFalse(textFile.id in repository.deletedFileIds)
-
-    groupViewModel.addFile(textFile.id)
-    runCurrent()
-
-    assertEquals(
-        listOf(OTHER_GROUP_ID, GROUP_ID),
-        repository.files[textFile.id]?.sharedGroupsIds,
-    )
-    assertEquals(
-        listOf(otherFolder.id, GROUP_ID),
-        repository.files[textFile.id]?.parentFolderIds,
-    )
-    assertEquals(listOf(textFile.id), groupViewModel.uiState.value.items.map { it.id })
-    assertEquals("", groupViewModel.uiState.value.errorMessage)
-
-    val otherGroupViewModel =
-        viewModel(repository, GroupWorkspaceRole.GAME_MASTER, groupId = OTHER_GROUP_ID)
-    runCurrent()
-    otherGroupViewModel.loadWorkspace(otherFolder.id)
-    runCurrent()
-    assertEquals(listOf(textFile.id), otherGroupViewModel.uiState.value.items.map { it.id })
-    assertFalse(textFile.id in repository.deletedFileIds)
-  }
-
-  @Test
-  fun removingFolderDetachesNestedGroupItemsButPreservesOtherGroupAndPersonalCopies() = runTest {
-    val root =
-        groupFolder(
-            id = "root-folder",
-            ownerId = OWNER_ID,
-            sharedGroupsIds = listOf(GROUP_ID, OTHER_GROUP_ID),
-            parentFolderIds = listOf(GROUP_ID, OTHER_GROUP_ID),
-        )
-    val nested =
-        groupFolder(
-            id = "nested-folder",
-            ownerId = "another-owner",
-            sharedGroupsIds = listOf(GROUP_ID, OTHER_GROUP_ID),
-            parentFolderIds = listOf(root.id),
-        )
-    val directFile =
-        groupFile(
-            id = "direct-file",
-            ownerId = "another-owner",
-            sharedGroupsIds = listOf(GROUP_ID, OTHER_GROUP_ID),
-            parentFolderIds = listOf(root.id),
-            personalParentId = "personal-folder",
-        )
-    val nestedFile =
-        groupFile(
-            id = "nested-file",
-            ownerId = OWNER_ID,
-            sharedGroupsIds = listOf(GROUP_ID, OTHER_GROUP_ID),
-            parentFolderIds = listOf(nested.id),
-            personalParentId = "characters",
-        )
-    val unrelatedFolder = groupFolder(id = "unrelated-folder")
-    val unrelatedFile =
-        groupFile(id = "unrelated-file", parentFolderIds = listOf(unrelatedFolder.id))
-    val repository =
-        FakeWorkspaceRepository(
-            listOf(root, nested, directFile, nestedFile, unrelatedFolder, unrelatedFile)
-        )
-    val groupOneViewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    groupOneViewModel.removeItem(root)
-    runCurrent()
-
-    assertEquals(listOf("unrelated-folder"), groupOneViewModel.uiState.value.items.map { it.id })
-    assertEquals(root.copy(sharedGroupsIds = listOf(OTHER_GROUP_ID)), repository.files[root.id])
-    assertEquals(
-        nested.copy(sharedGroupsIds = listOf(OTHER_GROUP_ID)),
-        repository.files[nested.id],
-    )
-    assertEquals(
-        directFile.copy(sharedGroupsIds = listOf(OTHER_GROUP_ID)),
-        repository.files[directFile.id],
-    )
-    assertEquals(
-        nestedFile.copy(sharedGroupsIds = listOf(OTHER_GROUP_ID)),
-        repository.files[nestedFile.id],
-    )
-    assertEquals(unrelatedFolder, repository.files[unrelatedFolder.id])
-    assertEquals(unrelatedFile, repository.files[unrelatedFile.id])
-    assertTrue(repository.deletedFileIds.isEmpty())
-
-    val groupTwoViewModel =
-        viewModel(repository, GroupWorkspaceRole.GAME_MASTER, groupId = OTHER_GROUP_ID)
-    runCurrent()
-    assertTrue(groupTwoViewModel.uiState.value.items.any { it.id == root.id })
-    groupTwoViewModel.loadWorkspace(root.id)
-    runCurrent()
-    assertEquals(
-        setOf(nested.id, directFile.id),
-        groupTwoViewModel.uiState.value.items.map { it.id }.toSet(),
-    )
-    groupTwoViewModel.loadWorkspace(nested.id)
-    runCurrent()
-    assertEquals(listOf(nestedFile.id), groupTwoViewModel.uiState.value.items.map { it.id })
-  }
-
-  @Test
-  fun removeFromFolderRemovesGroupAccessWithoutDeletingPersonalDocument() = runTest {
-    val file =
-        groupFile(
-            id = "file",
-            ownerId = OWNER_ID,
-            parentFolderIds = listOf("other-folder", "current-folder"),
-            personalParentId = "personal-folder",
-        )
-    val folder = groupFolder(id = "current-folder")
-    val repository = FakeWorkspaceRepository(listOf(file, folder))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-    viewModel.loadWorkspace("current-folder")
-    runCurrent()
-
-    viewModel.removeItem(file)
-    runCurrent()
-
-    assertEquals(
-        file.copy(
-            sharedGroupsIds = emptyList(),
-            parentFolderIds = listOf("other-folder"),
-        ),
-        repository.files[file.id],
-    )
-    assertEquals(listOf(file.id to GROUP_ID), repository.groupRemovalRequests)
-    assertEquals(listOf("other-folder"), repository.files[file.id]?.parentFolderIds)
-    assertEquals(file.personalParentId, repository.files[file.id]?.personalParentId)
-    assertTrue(viewModel.uiState.value.items.isEmpty())
-  }
-
-  @Test
-  fun playerCannotRemoveForeignItemUsingForgedOwnership() = runTest {
-    val folder = groupFolder(id = "folder")
-    val foreignFile =
-        groupFile(id = "foreign", ownerId = "another-user", parentFolderIds = listOf(folder.id))
-    val repository = FakeWorkspaceRepository(listOf(folder, foreignFile))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
-    runCurrent()
-    viewModel.loadWorkspace(folder.id)
-    runCurrent()
-
-    viewModel.removeItem(foreignFile)
-    runCurrent()
-    assertTrue(repository.updatedFiles.isEmpty())
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-
-    viewModel.clearError()
-    val forgedItem = foreignFile.copy(ownerId = OWNER_ID)
-
-    viewModel.removeItem(forgedItem)
-    runCurrent()
-
-    assertTrue(repository.updatedFiles.isEmpty())
-    assertTrue(foreignFile.id in repository.fileRequests)
-    assertEquals(foreignFile, repository.files[foreignFile.id])
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-  }
-
-  @Test
-  fun playerCanEditAndRemoveOwnItems() = runTest {
-    val folder = groupFolder(id = "folder")
-    val ownedFile =
-        groupFile(
-            id = "owned",
-            ownerId = OWNER_ID,
-            parentFolderIds = listOf(folder.id),
-            content = "old",
-        )
-    val repository = FakeWorkspaceRepository(listOf(folder, ownedFile))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
-    runCurrent()
-    viewModel.loadWorkspace(folder.id)
-    runCurrent()
-
-    viewModel.editItem(ownedFile.copy(name = "Changed", content = "new"))
-    runCurrent()
-
-    val editedFile = ownedFile.copy(name = "Changed", content = "new")
-    assertEquals(editedFile, repository.updatedFiles.last())
-    viewModel.removeItem(ownedFile)
-    runCurrent()
-    assertEquals(
-        editedFile.copy(sharedGroupsIds = emptyList(), parentFolderIds = emptyList()),
-        repository.files[ownedFile.id],
-    )
-  }
-
-  @Test
-  fun gameMasterCannotEditOrRemoveItemOutsideCurrentGroup() = runTest {
-    val foreignFile =
-        groupFile(id = "foreign", ownerId = OWNER_ID, sharedGroupsIds = listOf("other-group"))
-    val repository = FakeWorkspaceRepository(listOf(foreignFile))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    viewModel.editItem(foreignFile.copy(name = "Changed"))
-    runCurrent()
-    assertTrue(repository.updatedFiles.isEmpty())
-    assertEquals(foreignFile, repository.files[foreignFile.id])
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-
-    viewModel.clearError()
-    viewModel.removeItem(foreignFile)
-    runCurrent()
-    assertTrue(repository.updatedFiles.isEmpty())
-    assertEquals(foreignFile, repository.files[foreignFile.id])
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-  }
-
-  @Test
-  fun playerCannotEditOrRemoveOwnDocumentOutsideCurrentGroup() = runTest {
-    val privateFile =
-        groupFile(id = "private", ownerId = OWNER_ID, sharedGroupsIds = listOf("other-group"))
-    val repository = FakeWorkspaceRepository(listOf(privateFile))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
-    runCurrent()
-
-    viewModel.editItem(privateFile.copy(name = "Changed"))
-    runCurrent()
-    assertTrue(repository.updatedFiles.isEmpty())
-    assertEquals(privateFile, repository.files[privateFile.id])
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-
-    viewModel.clearError()
-    viewModel.removeItem(privateFile)
-    runCurrent()
-    assertTrue(repository.updatedFiles.isEmpty())
-    assertEquals(privateFile, repository.files[privateFile.id])
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-  }
-
-  @Test
-  fun playerCannotEditOrRemoveOwnedFolderInGroupWorkspace() = runTest {
-    val parent = groupFolder(id = "parent")
-    val folder =
-        groupFolder(id = "owned-folder", ownerId = OWNER_ID, parentFolderIds = listOf(parent.id))
-    val repository = FakeWorkspaceRepository(listOf(parent, folder))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
-    runCurrent()
-    viewModel.loadWorkspace(parent.id)
-    runCurrent()
-
-    viewModel.editItem(folder.copy(name = "Changed"))
-    runCurrent()
-    assertTrue(repository.updatedFiles.isEmpty())
-    assertEquals(folder, repository.files[folder.id])
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-
-    viewModel.clearError()
-    viewModel.removeItem(folder)
-    runCurrent()
-    assertTrue(repository.updatedFiles.isEmpty())
-    assertEquals(folder, repository.files[folder.id])
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-  }
-
-  @Test
-  fun groupFolderContentsExcludeItemsSharedOnlyWithOtherGroups() = runTest {
-    val foreignFolder =
-        groupFolder(
-            id = "foreign-folder",
-            ownerId = "another-user",
-            sharedGroupsIds = listOf(OTHER_GROUP_ID),
-            parentFolderIds = listOf(OTHER_GROUP_ID),
-        )
-    val hiddenFile =
-        groupFile(
-            id = "hidden",
-            ownerId = "another-user",
-            sharedGroupsIds = listOf(OTHER_GROUP_ID),
-            parentFolderIds = listOf(foreignFolder.id),
-        )
-    val visibleFolder =
-        groupFolder(
-            id = "visible-folder",
-            ownerId = OWNER_ID,
-        )
-    val visibleFile =
-        groupFile(
-            id = "visible",
-            ownerId = "another-user",
-            parentFolderIds = listOf(visibleFolder.id),
-        )
-    val crossGroupFile =
-        groupFile(
-            id = "cross-group",
-            ownerId = "another-user",
-            sharedGroupsIds = listOf(OTHER_GROUP_ID),
-            parentFolderIds = listOf(visibleFolder.id),
-        )
-    val repository =
-        FakeWorkspaceRepository(
-            listOf(foreignFolder, hiddenFile, visibleFolder, visibleFile, crossGroupFile)
-        )
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    viewModel.loadWorkspace(foreignFolder.id)
-    runCurrent()
-    assertTrue(viewModel.uiState.value.items.isEmpty())
-    assertTrue(viewModel.uiState.value.loadState is LoadState.Error)
-    assertFalse(foreignFolder.id in repository.folderRequests)
-
-    viewModel.loadWorkspace(visibleFolder.id)
-    runCurrent()
-    assertEquals(listOf(visibleFile), viewModel.uiState.value.items)
-    assertFalse(crossGroupFile in viewModel.uiState.value.items)
-    assertFalse(hiddenFile in viewModel.uiState.value.items)
-  }
-
-  @Test
-  fun folderWithMultipleParentsIsAccessibleThroughAnyValidGroupPath() = runTest {
-    val root = groupFolder(id = "shared-root")
-    val foreignRoot =
-        groupFolder(
-            id = "foreign-root",
-            sharedGroupsIds = listOf(OTHER_GROUP_ID),
-            parentFolderIds = listOf(OTHER_GROUP_ID),
-        )
-    val nested =
-        groupFolder(
-            id = "multi-parent-folder",
-            parentFolderIds = listOf("missing-parent", foreignRoot.id, root.id),
-        )
-    val child = groupFile(id = "nested-child", parentFolderIds = listOf(nested.id))
-    val repository = FakeWorkspaceRepository(listOf(root, foreignRoot, nested, child))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
-    runCurrent()
-
-    viewModel.loadWorkspace(nested.id)
-    runCurrent()
-
-    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-    assertEquals(listOf(child), viewModel.uiState.value.items)
-    assertEquals(
-        listOf("missing-parent", foreignRoot.id, root.id),
-        repository.files[nested.id]?.parentFolderIds,
-    )
-  }
-
-  @Test
-  fun playerCannotEditAnotherUsersItemEvenIfSubmittedCopyClaimsOwnership() = runTest {
-    val folder = groupFolder(id = "folder")
-    val foreignFile =
-        groupFile(
-            id = "foreign",
-            ownerId = "another-user",
-            parentFolderIds = listOf(folder.id),
-        )
-    val repository = FakeWorkspaceRepository(listOf(folder, foreignFile))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.PLAYER)
-    runCurrent()
-    viewModel.loadWorkspace(folder.id)
-    runCurrent()
-
-    viewModel.editItem(foreignFile.copy(ownerId = OWNER_ID, name = "Forged"))
-    runCurrent()
-
-    assertTrue(repository.updatedFiles.isEmpty())
-    assertEquals(foreignFile, repository.files[foreignFile.id])
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-  }
-
-  @Test
-  fun gameMasterCanEditFileMetadataWithoutChangingOwnershipOrReferences() = runTest {
-    val existing =
-        groupFile(
-            id = "file",
-            name = "Old name",
-            ownerId = "player",
-            parentFolderIds = listOf("folder"),
-            type = DocumentType.CHARACTER,
-            content = "old",
-        )
-    val folder = groupFolder(id = "folder")
-    val repository = FakeWorkspaceRepository(listOf(existing, folder))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-    viewModel.loadWorkspace(folder.id)
-    runCurrent()
-
-    viewModel.editItem(existing.copy(name = "New name", content = "new"))
-    runCurrent()
-
-    assertEquals(
-        existing.copy(name = "New name", content = "new"),
-        repository.updatedFiles.single(),
-    )
-    assertEquals(repository.updatedFiles.single(), repository.files[existing.id])
-  }
-
-  @Test
-  fun gameMasterCanEditFolderMetadata() = runTest {
-    val parent = groupFolder(id = "parent")
-    val folder =
-        groupFolder(
-            id = "folder",
-            name = "Old name",
-            ownerId = OWNER_ID,
-            parentFolderIds = listOf(parent.id),
-        )
-    val repository = FakeWorkspaceRepository(listOf(parent, folder))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-    viewModel.loadWorkspace(parent.id)
-    runCurrent()
-
-    viewModel.editItem(folder.copy(name = "New name"))
-    runCurrent()
-
-    assertEquals(folder.copy(name = "New name"), repository.updatedFiles.single())
-    assertEquals(folder.copy(name = "New name"), repository.files[folder.id])
-  }
-
-  @Test
-  fun editAcceptsValidNameAndTrimsWhitespaceBeforePersisting() = runTest {
-    val folder = groupFolder(id = "folder")
-    val existing =
-        groupFile(
-            id = "file",
-            name = "Old name",
-            ownerId = OWNER_ID,
-            parentFolderIds = listOf(folder.id),
-        )
-    val repository = FakeWorkspaceRepository(listOf(folder, existing))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-    viewModel.loadWorkspace(folder.id)
-    runCurrent()
-
-    viewModel.editItem(existing.copy(name = "  New name \t"))
-    runCurrent()
-
-    val saved = existing.copy(name = "New name")
-    assertEquals(saved, repository.files[existing.id])
-    assertEquals(listOf(saved), repository.updatedFiles)
-    assertEquals("", viewModel.uiState.value.errorMessage)
-  }
-
-  @Test
-  fun editRejectsWhitespaceOnlyNameWithoutOverwritingPersistedItem() = runTest {
-    val folder = groupFolder(id = "folder")
-    val existing =
-        groupFile(
-            id = "file",
-            name = "Previously valid",
-            ownerId = OWNER_ID,
-            parentFolderIds = listOf(folder.id),
-        )
-    val repository = FakeWorkspaceRepository(listOf(folder, existing))
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-    viewModel.loadWorkspace(folder.id)
-    runCurrent()
-
-    viewModel.editItem(existing.copy(name = " \t\n "))
-    runCurrent()
-
-    assertEquals(existing, repository.files[existing.id])
-    assertTrue(repository.updatedFiles.isEmpty())
-    assertTrue(viewModel.uiState.value.errorMessage.isNotBlank())
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-  }
-
-  @Test
-  fun failedCreateAndUpdateCanRecoverWithoutPartialPersistence() = runTest {
-    val existing =
-        groupFile(
-            id = "file",
-            ownerId = OWNER_ID,
-            sharedGroupsIds = emptyList(),
-            parentFolderIds = emptyList(),
-            content = "original",
-        )
-    val repository =
-        FakeWorkspaceRepository(
-            listOf(existing),
-            createFailures = mutableMapOf("new-folder-1" to IllegalStateException("Create failed")),
-            updateFailures = mutableMapOf("file" to IllegalStateException("Update failed")),
-        )
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    viewModel.createFolder("Failed folder")
-    runCurrent()
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-    assertFalse(repository.files.containsKey("new-folder-1"))
-    assertTrue(viewModel.uiState.value.items.isEmpty())
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-
-    viewModel.clearError()
-    viewModel.addFile(existing.id)
-    runCurrent()
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-    assertEquals(existing, repository.files[existing.id])
-    assertTrue(viewModel.uiState.value.items.isEmpty())
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-
-    repository.updateFailures.clear()
-    viewModel.clearError()
-    viewModel.addFile(existing.id)
-    runCurrent()
-    assertEquals("", viewModel.uiState.value.errorMessage)
-    assertEquals(listOf(GROUP_ID), repository.files[existing.id]?.sharedGroupsIds)
-    assertEquals(listOf(existing.id), viewModel.uiState.value.items.map(JDRFile::id))
-  }
-
-  @Test
-  fun failedRemoveAndEditKeepPreviouslyPersistedItemVisible() = runTest {
-    val folder = groupFolder(id = "folder")
-    val existing =
-        groupFile(
-            id = "file",
-            name = "Original",
-            ownerId = OWNER_ID,
-            parentFolderIds = listOf(folder.id),
-            content = "old",
-        )
-    val repository =
-        FakeWorkspaceRepository(
-            listOf(folder, existing),
-            removeFailures = mutableMapOf("file" to IllegalStateException("Remove failed")),
-            updateFailures = mutableMapOf("file" to IllegalStateException("Write failed")),
-        )
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-    viewModel.loadWorkspace(folder.id)
-    runCurrent()
-
-    viewModel.removeItem(existing)
-    runCurrent()
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-    assertEquals(listOf(existing), viewModel.uiState.value.items)
-    assertEquals(existing, repository.files[existing.id])
-
-    viewModel.clearError()
-    viewModel.editItem(existing.copy(name = "Unpersisted"))
-    runCurrent()
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-    assertEquals(existing, repository.files[existing.id])
-    assertEquals(listOf(existing), viewModel.uiState.value.items)
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-  }
-
-  @Test
-  fun pendingOperationsKeepBusyStateUntilAllQueuedOperationsFinish() = runTest {
-    val first = groupFile(id = "first", ownerId = OWNER_ID, sharedGroupsIds = emptyList())
-    val second = groupFile(id = "second", ownerId = OWNER_ID, sharedGroupsIds = emptyList())
-    val repository = FakeWorkspaceRepository(listOf(first, second))
-    val firstGate = CompletableDeferred<Unit>()
-    val secondGate = CompletableDeferred<Unit>()
-    repository.updateGate = { file ->
-      when (file.id) {
-        first.id -> firstGate.await()
-        second.id -> secondGate.await()
-      }
-    }
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    viewModel.addFile(first.id)
-    viewModel.addFile(second.id)
-    runCurrent()
-    assertTrue(viewModel.uiState.value.isOperationInProgress)
-    assertEquals(listOf(first.id), repository.updatedFiles.map(JDRFile::id))
-
-    firstGate.complete(Unit)
-    runCurrent()
-    assertTrue(viewModel.uiState.value.isOperationInProgress)
-    assertEquals(listOf(first.id, second.id), repository.updatedFiles.map(JDRFile::id))
-
-    secondGate.complete(Unit)
-    runCurrent()
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-    assertEquals(listOf(GROUP_ID), repository.files[first.id]?.sharedGroupsIds)
-    assertEquals(listOf(GROUP_ID), repository.files[second.id]?.sharedGroupsIds)
-  }
-
-  @Test
-  fun concurrentAdditionsOfSameFileDoNotDuplicateReferencesOrOverwrite() = runTest {
-    val file =
-        groupFile(
-            id = "file",
-            ownerId = OWNER_ID,
-            sharedGroupsIds = listOf("other-group"),
-        )
-    val repository = FakeWorkspaceRepository(listOf(file))
-    val gate = CompletableDeferred<Unit>()
-    repository.updateGate = { if (repository.updatedFiles.size == 1) gate.await() }
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    viewModel.addFile(file.id)
-    viewModel.addFile(file.id)
-    runCurrent()
-    assertEquals(1, repository.updatedFiles.size)
-    assertTrue(viewModel.uiState.value.isOperationInProgress)
-
-    gate.complete(Unit)
-    runCurrent()
-
-    assertEquals(2, repository.updatedFiles.size)
-    assertEquals(listOf("other-group", GROUP_ID), repository.files[file.id]?.sharedGroupsIds)
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-  }
-
-  @Test
-  fun queuedOperationCanSucceedAfterEarlierOperationFails() = runTest {
-    val failed = groupFile(id = "failed", ownerId = OWNER_ID, sharedGroupsIds = emptyList())
-    val succeeded = groupFile(id = "succeeded", ownerId = OWNER_ID, sharedGroupsIds = emptyList())
-    val repository =
-        FakeWorkspaceRepository(
-            listOf(failed, succeeded),
-            updateFailures = mutableMapOf("failed" to IllegalStateException("First failed")),
-        )
-    val failedGate = CompletableDeferred<Unit>()
-    val succeededGate = CompletableDeferred<Unit>()
-    repository.updateGate = {
-      when (it.id) {
-        failed.id -> failedGate.await()
-        succeeded.id -> succeededGate.await()
-      }
-    }
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    viewModel.addFile(failed.id)
-    viewModel.addFile(succeeded.id)
-    runCurrent()
-    assertTrue(viewModel.uiState.value.isOperationInProgress)
-
-    failedGate.complete(Unit)
-    runCurrent()
-
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-    assertTrue(viewModel.uiState.value.isOperationInProgress)
-    assertNull(repository.files[failed.id]?.sharedGroupsIds?.takeIf { GROUP_ID in it })
-
-    succeededGate.complete(Unit)
-    runCurrent()
-
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-    assertEquals(listOf(GROUP_ID), repository.files[succeeded.id]?.sharedGroupsIds)
-  }
-
-  @Test
-  fun queuedAddUsesFolderWhereItWasRequested() = runTest {
-    val requestedFolder = groupFolder(id = "requested-folder")
-    val newCurrentFolder = groupFolder(id = "new-current-folder")
-    val blocker = groupFile(id = "blocker", ownerId = OWNER_ID, sharedGroupsIds = emptyList())
-    val target = groupFile(id = "target", ownerId = OWNER_ID, sharedGroupsIds = emptyList())
-    val repository =
-        FakeWorkspaceRepository(listOf(requestedFolder, newCurrentFolder, blocker, target))
-    val operationGate = CompletableDeferred<Unit>()
-    repository.updateGate = { if (it.id == blocker.id) operationGate.await() }
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    runCurrent()
-
-    viewModel.addFile(blocker.id)
-    runCurrent()
-    viewModel.loadWorkspace("requested-folder")
-    runCurrent()
-    viewModel.addFile(target.id)
-    viewModel.loadWorkspace("new-current-folder")
-    runCurrent()
-
-    operationGate.complete(Unit)
-    runCurrent()
-
-    assertEquals(listOf("requested-folder"), repository.files[target.id]?.parentFolderIds)
-    assertEquals("new-current-folder", viewModel.uiState.value.currentFolderId)
-  }
-
-  @Test
-  fun queuedRemoveUsesWorkspaceWhereItWasRequested() = runTest {
-    val requestedFolder = groupFolder(id = "requested-folder")
-    val newCurrentFolder = groupFolder(id = "new-current-folder")
-    val blocker = groupFile(id = "blocker", ownerId = OWNER_ID, sharedGroupsIds = emptyList())
-    val target =
-        groupFile(
-            id = "target",
-            ownerId = OWNER_ID,
+            type = DocumentType.GROUP_ROOT,
             sharedGroupsIds = listOf(GROUP_ID),
-            parentFolderIds = listOf("requested-folder", "new-current-folder"),
         )
-    val repository =
-        FakeWorkspaceRepository(listOf(requestedFolder, newCurrentFolder, blocker, target))
-    val operationGate = CompletableDeferred<Unit>()
-    repository.updateGate = { if (it.id == blocker.id) operationGate.await() }
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    val owned = JDRFile(id = "owned", ownerId = OWNER_ID)
+    val foreign = JDRFile(id = "foreign", ownerId = OTHER_USER_ID)
+    val repository = FakeWorkspaceRepository(listOf(groupRoot, owned, foreign))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
     runCurrent()
 
-    viewModel.addFile(blocker.id)
+    gm.addFile(owned.id)
     runCurrent()
-    viewModel.loadWorkspace("requested-folder")
-    runCurrent()
-    viewModel.removeItem(target)
-    viewModel.loadWorkspace("new-current-folder")
-    runCurrent()
-
-    operationGate.complete(Unit)
-    runCurrent()
-
-    assertEquals(emptyList<String>(), repository.files[target.id]?.sharedGroupsIds)
     assertEquals(
-        listOf("new-current-folder"),
-        repository.files[target.id]?.parentFolderIds,
+        Placement(GROUP_ID, false),
+        repository.files.getValue(owned.id).placements[GROUP_ID],
     )
-    assertEquals("new-current-folder", viewModel.uiState.value.currentFolderId)
+    assertEquals("", gm.uiState.value.errorMessage)
+
+    gm.addFile(foreign.id)
+    runCurrent()
+    assertTrue(gm.uiState.value.errorMessage.isNotBlank())
+    assertTrue(GROUP_ID !in repository.files.getValue(foreign.id).sharedGroupsIds)
   }
 
+  // Players cannot add someone else's file or add a file that already has a placement in the group.
   @Test
-  fun unauthenticatedAddAndRemoveExposeErrorsWithoutUpdatingFiles() = runTest {
-    val file = groupFile(id = "file", ownerId = OWNER_ID, parentFolderIds = emptyList())
-    val repository = FakeWorkspaceRepository(listOf(file))
-    val viewModel =
-        viewModel(
-            repository,
-            GroupWorkspaceRole.GAME_MASTER,
-            FakeAuthRepository(user = null),
+  fun playersCannotAddFilesTheyDoNotOwnOrItemsAlreadyInGroup() = runTest {
+    val foreign = JDRFile(id = "foreign", ownerId = OTHER_USER_ID)
+    val alreadyShared = groupFile("shared", ownerId = OWNER_ID)
+    val repository = FakeWorkspaceRepository(listOf(foreign, alreadyShared))
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    player.addFile(foreign.id)
+    runCurrent()
+    assertTrue(player.uiState.value.errorMessage.isNotBlank())
+    assertTrue(GROUP_ID !in repository.files.getValue(foreign.id).sharedGroupsIds)
+
+    player.clearError()
+    player.addFile(alreadyShared.id)
+    runCurrent()
+    assertTrue(player.uiState.value.errorMessage.isNotBlank())
+    assertEquals(alreadyShared, repository.files.getValue(alreadyShared.id))
+  }
+
+  // Hiding a folder cascades to its descendants, while revealing it leaves their hidden flags
+  // intact.
+  @Test
+  fun hidingFolderCascadesButRevealingItDoesNotRevealDescendants() = runTest {
+    val folder = groupFolder("folder")
+    val nested = groupFolder("nested", parentId = folder.id)
+    val child = groupFile("child", parentId = nested.id)
+    val repository = FakeWorkspaceRepository(listOf(folder, nested, child))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    gm.setItemHidden(folder, true)
+    runCurrent()
+    assertTrue(repository.files.getValue(folder.id).placements.getValue(GROUP_ID).isHidden)
+    assertTrue(repository.files.getValue(nested.id).placements.getValue(GROUP_ID).isHidden)
+    assertTrue(repository.files.getValue(child.id).placements.getValue(GROUP_ID).isHidden)
+
+    gm.setItemHidden(repository.files.getValue(folder.id), false)
+    runCurrent()
+    assertFalse(repository.files.getValue(folder.id).placements.getValue(GROUP_ID).isHidden)
+    assertTrue(repository.files.getValue(nested.id).placements.getValue(GROUP_ID).isHidden)
+    assertTrue(repository.files.getValue(child.id).placements.getValue(GROUP_ID).isHidden)
+
+    player.loadWorkspace("")
+    runCurrent()
+    assertEquals(listOf(folder.id), player.uiState.value.items.map { it.id })
+    player.loadWorkspace(nested.id)
+    runCurrent()
+    assertTrue(player.uiState.value.items.isEmpty())
+  }
+
+  // Players can edit and remove their own group items, but cannot use a forged owner field.
+  @Test
+  fun playersMayEditAndRemoveOnlyTheirOwnGroupItems() = runTest {
+    val folder = groupFolder("folder")
+    val owned = groupFile("owned", parentId = folder.id, ownerId = OWNER_ID, content = "old")
+    val foreign = groupFile("foreign", parentId = folder.id)
+    val repository = FakeWorkspaceRepository(listOf(folder, owned, foreign))
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+    player.loadWorkspace(folder.id)
+    runCurrent()
+
+    player.editItem(foreign.copy(name = "forged", ownerId = OWNER_ID))
+    runCurrent()
+    assertTrue(player.uiState.value.errorMessage.isNotBlank())
+    assertEquals(foreign, repository.files.getValue(foreign.id))
+
+    player.clearError()
+    player.removeItem(foreign)
+    runCurrent()
+    assertTrue(player.uiState.value.errorMessage.isNotBlank())
+    assertEquals(foreign, repository.files.getValue(foreign.id))
+
+    player.clearError()
+    player.editItem(owned.copy(name = " edited ", content = "new"))
+    runCurrent()
+    assertEquals("edited", repository.files.getValue(owned.id).name)
+    assertEquals("new", repository.files.getValue(owned.id).content)
+
+    player.removeItem(owned)
+    runCurrent()
+    assertFalse(GROUP_ID in repository.files.getValue(owned.id).sharedGroupsIds)
+    assertTrue(owned.id in repository.files)
+    assertTrue(GROUP_ID in repository.files.getValue(foreign.id).sharedGroupsIds)
+  }
+
+  // Game Masters may edit another member's item, while players may not.
+  @Test
+  fun gameMasterCanEditForeignItemsButPlayersCannotEditForeignItems() = runTest {
+    val folder = groupFolder("folder")
+    val file = groupFile("file", parentId = folder.id)
+    val repository = FakeWorkspaceRepository(listOf(folder, file))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+    gm.loadWorkspace(folder.id)
+    runCurrent()
+    gm.editItem(file.copy(name = "Updated"))
+    runCurrent()
+    assertEquals("Updated", repository.files.getValue(file.id).name)
+
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+    player.loadWorkspace(folder.id)
+    runCurrent()
+    player.editItem(file.copy(name = "Not allowed"))
+    runCurrent()
+    assertTrue(player.uiState.value.errorMessage.isNotBlank())
+    assertEquals("Updated", repository.files.getValue(file.id).name)
+  }
+
+  // Removing a folder unshares its group subtree without deleting documents or disturbing another
+  // group's placements.
+  @Test
+  fun removingFolderUnsharesItsGroupSubtreeWithoutDeletingOrChangingOtherGroups() = runTest {
+    val folder =
+        groupFolder(
+            "folder",
+            groups = listOf(GROUP_ID, OTHER_GROUP_ID),
         )
+    val child =
+        groupFile(
+            "child",
+            parentId = folder.id,
+            groups = listOf(GROUP_ID, OTHER_GROUP_ID),
+        )
+    val repository = FakeWorkspaceRepository(listOf(folder, child))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
     runCurrent()
 
-    viewModel.addFile(file.id)
+    gm.removeItem(folder)
     runCurrent()
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-    assertTrue(repository.updatedFiles.isEmpty())
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
 
-    viewModel.clearError()
-    viewModel.removeItem(file)
-    runCurrent()
-    assertTrue(viewModel.uiState.value.errorMessage.orEmpty().isNotBlank())
-    assertTrue(repository.updatedFiles.isEmpty())
-    assertEquals(file, repository.files[file.id])
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
+    assertEquals(listOf(OTHER_GROUP_ID), repository.files.getValue(folder.id).sharedGroupsIds)
+    assertEquals(listOf(OTHER_GROUP_ID), repository.files.getValue(child.id).sharedGroupsIds)
+    assertEquals(
+        Placement(OTHER_GROUP_ID, false),
+        repository.files.getValue(child.id).placements[OTHER_GROUP_ID],
+    )
+    assertTrue(folder.id in repository.files)
+    assertTrue(child.id in repository.files)
   }
 
+  // A failed repository update reports an error without changing the item or leaving the operation
+  // busy.
   @Test
-  fun mutationCancellationIsNotReportedAsOrdinaryFailureAndLaterWorkCanRun() = runTest {
-    val file = groupFile(id = "file", ownerId = OWNER_ID, sharedGroupsIds = emptyList())
-    val repository = FakeWorkspaceRepository(listOf(file))
-    repository.updateCancellation = CancellationException("cancelled")
-    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+  fun operationErrorsDoNotMutateItemsAndOperationStateRecovers() = runTest {
+    val folder = groupFolder("folder")
+    val file = groupFile("file", parentId = folder.id)
+    val repository = FakeWorkspaceRepository(listOf(folder, file))
+    repository.updateFailure = IllegalStateException("write failed")
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+    gm.loadWorkspace(folder.id)
     runCurrent()
 
-    viewModel.addFile(file.id)
+    gm.editItem(file.copy(name = "Changed"))
     runCurrent()
 
-    assertTrue(repository.lastUpdateJob?.isCancelled == true)
-    assertEquals("", viewModel.uiState.value.errorMessage)
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
-
-    repository.updateCancellation = null
-    viewModel.addFile(file.id)
-    runCurrent()
-    assertEquals(listOf(GROUP_ID), repository.files[file.id]?.sharedGroupsIds)
-    assertFalse(viewModel.uiState.value.isOperationInProgress)
+    assertEquals(file, repository.files.getValue(file.id))
+    assertEquals("write failed", gm.uiState.value.errorMessage)
+    assertFalse(gm.uiState.value.isOperationInProgress)
   }
 
   private fun viewModel(
       repository: FakeWorkspaceRepository,
       role: GroupWorkspaceRole,
       authRepository: FakeAuthRepository = FakeAuthRepository(),
-      groupId: String = GROUP_ID,
-  ) = GroupWorkspaceViewModel(groupId, role, repository, authRepository)
+  ) = GroupWorkspaceViewModel(GROUP_ID, role, repository, authRepository)
 
-  private class FakeWorkspaceRepository(
-      initialFiles: List<JDRFile> = emptyList(),
-      folderItems: List<JDRFile> = emptyList(),
-      private val folderGates: Map<String, CompletableDeferred<Unit>> = emptyMap(),
-      folderFailures: Map<String, Exception> = emptyMap(),
-      private val folderFailureGates: Map<String, CompletableDeferred<Unit>> = emptyMap(),
-      val createFailures: MutableMap<String, Exception> = mutableMapOf(),
-      val updateFailures: MutableMap<String, Exception> = mutableMapOf(),
-      val removeFailures: MutableMap<String, Exception> = mutableMapOf(),
-  ) : WorkspaceRepository {
+  private class FakeWorkspaceRepository(initialFiles: List<JDRFile> = emptyList()) :
+      WorkspaceRepository {
     val files = initialFiles.associateByTo(linkedMapOf(), JDRFile::id)
-    val folderFailures = folderFailures.toMutableMap()
-    val folderRequests = mutableListOf<String>()
-    val fileRequests = mutableListOf<String>()
-    val createdFiles = mutableListOf<JDRFile>()
-    val updatedFiles = mutableListOf<JDRFile>()
-    val deletedFileIds = mutableListOf<String>()
-    val groupRemovalRequests = mutableListOf<Pair<String, String>>()
-    var updateGate: (suspend (JDRFile) -> Unit)? = null
-    var updateCancellation: CancellationException? = null
-    var removeGate: (suspend () -> Unit)? = null
-    var lastUpdateJob: Job? = null
-      private set
+    private val folderFlows = mutableMapOf<Pair<String, String>, MutableStateFlow<List<JDRFile>>>()
+    private val fileFlows = mutableMapOf<String, MutableStateFlow<JDRFile?>>()
+    private val personalFlows =
+        mutableMapOf<Pair<String, String>, MutableStateFlow<List<JDRFile>>>()
+    private var nextId = 0
+    var updateFailure: Exception? = null
 
-    private val personalRootFlows = mutableMapOf<String, MutableStateFlow<List<JDRFile>>>()
-    private val folderFlows = mutableMapOf<String, MutableStateFlow<List<JDRFile>>>()
-    private var nextUid = 0
-    val generatedIds = mutableListOf<String>()
-
-    init {
-      folderItems.forEach { files[it.id] = it }
-    }
-
-    override fun getNewUid(): String {
-      val id = "new-folder-${++nextUid}"
-      generatedIds += id
-      return id
-    }
+    override fun getNewUid(): String = "new-folder-${++nextId}"
 
     override suspend fun createFile(file: JDRFile): Result<Unit> {
-      createdFiles += file
-      createFailures[file.id]?.let {
-        return Result.failure(it)
-      }
+      if (file.id in files)
+          return Result.failure(IllegalStateException("A document with this ID already exists."))
       files[file.id] = file
-      refreshFlows()
+      refresh()
       return Result.success(Unit)
     }
 
     override suspend fun updateFile(file: JDRFile): Result<Unit> {
-      updatedFiles += file
-      lastUpdateJob = currentCoroutineContext()[Job]
-      updateGate?.invoke(file)
-      updateCancellation?.let { throw it }
-      updateFailures[file.id]?.let {
+      updateFailure?.let {
         return Result.failure(it)
       }
-      files[file.id] = file
-      refreshFlows()
+      val existing =
+          files[file.id] ?: return Result.failure(IllegalStateException("Document not found"))
+      files[file.id] =
+          file.copy(sharedGroupsIds = existing.sharedGroupsIds, placements = existing.placements)
+      refresh()
       return Result.success(Unit)
     }
 
     override suspend fun deleteFile(fileId: String): Result<Unit> {
-      deletedFileIds += fileId
       files.remove(fileId)
-      refreshFlows()
+      refresh()
       return Result.success(Unit)
     }
 
-    override suspend fun getFile(fileId: String): Result<JDRFile?> {
-      fileRequests += fileId
-      return Result.success(files[fileId])
-    }
+    override suspend fun getFile(fileId: String): Result<JDRFile?> = Result.success(files[fileId])
 
     override suspend fun removeItemFromGroup(
         itemId: String,
         groupId: String,
         parentFolderId: String,
-    ): Result<Unit> {
-      groupRemovalRequests += itemId to groupId
-      return try {
-        require(itemId.isNotBlank()) { "Item ID cannot be empty." }
-        require(groupId.isNotBlank()) { "Group ID cannot be empty." }
-        val root = files[itemId] ?: throw IllegalArgumentException("Item not found.")
-        check(groupId in root.sharedGroupsIds) { "This item does not belong to the group." }
-        removeFailures[itemId]?.let { throw it }
-        removeGate?.invoke()
-
-        val itemsToRemove = mutableListOf<Pair<JDRFile, String?>>()
-        val visited = mutableSetOf<String>()
-
-        fun collectDescendants(file: JDRFile, parentId: String?) {
-          if (!visited.add(file.id)) return
-          itemsToRemove += file to parentId
-          if (file.type != DocumentType.FOLDER) return
-
-          files.values
-              .filter { child ->
-                file.id in child.parentFolderIds && groupId in child.sharedGroupsIds
-              }
-              .forEach { child -> collectDescendants(child, file.id) }
+    ): Result<Unit> = runCatching {
+      val root = requireNotNull(files[itemId])
+      check(root.placements[groupId]?.folderId == parentFolderId)
+      val subtree = mutableListOf<JDRFile>()
+      val visited = mutableSetOf<String>()
+      fun collect(item: JDRFile) {
+        if (!visited.add(item.id)) return
+        subtree += item
+        if (item.type == DocumentType.FOLDER) {
+          children(item.id, groupId).forEach(::collect)
         }
+      }
+      collect(root)
+      subtree.forEach { item -> files[item.id] = item.withoutPlacement(groupId) }
+      refresh()
+    }
 
-        collectDescendants(root, parentFolderId)
-        val existingFiles = files.toMap()
-        itemsToRemove.forEach { (file, parentId) ->
-          val parent = parentId?.let(existingFiles::get)
-          val parentIsExclusiveToGroup =
-              parent != null &&
-                  groupId in parent.sharedGroupsIds &&
-                  (parent.sharedGroupsIds - groupId).isEmpty()
-          files[file.id] =
-              file.copy(
-                  sharedGroupsIds = file.sharedGroupsIds - groupId,
-                  parentFolderIds =
-                      if (parentId != null && parentIsExclusiveToGroup) {
-                        file.parentFolderIds - parentId
-                      } else {
-                        file.parentFolderIds
-                      },
+    override suspend fun addItemToGroup(
+        itemId: String,
+        groupId: String,
+        folderId: String,
+        isHidden: Boolean,
+        includeContent: Boolean,
+    ): Result<Unit> = runCatching {
+      require(!includeContent) { "includeContent is not supported yet." }
+      val item = requireNotNull(files[itemId])
+      check(item.type != DocumentType.GROUP_ROOT)
+      check(groupId !in item.sharedGroupsIds)
+      val folder = requireNotNull(files[folderId])
+      check(folder.type == DocumentType.FOLDER || folder.type == DocumentType.GROUP_ROOT)
+      check(
+          groupId in folder.sharedGroupsIds ||
+              folder.type == DocumentType.GROUP_ROOT && folder.id == groupId
+      )
+      val parentHidden = folder.placements[groupId]?.isHidden == true
+      files[itemId] = item.withPlacement(groupId, Placement(folderId, isHidden || parentHidden))
+      refresh()
+    }
+
+    override suspend fun setItemHidden(
+        itemId: String,
+        groupId: String,
+        isHidden: Boolean,
+    ): Result<Unit> = runCatching {
+      val item = requireNotNull(files[itemId])
+      val placement = requireNotNull(item.placements[groupId])
+      if (!isHidden && placement.folderId != groupId) {
+        check(files[placement.folderId]?.placements?.get(groupId)?.isHidden != true) {
+          "Reveal the parent folder first."
+        }
+      }
+      val affected =
+          if (isHidden) {
+            val subtree = mutableListOf<JDRFile>()
+            val visited = mutableSetOf<String>()
+            fun collect(current: JDRFile) {
+              if (!visited.add(current.id)) return
+              subtree += current
+              if (current.type == DocumentType.FOLDER)
+                  children(current.id, groupId).forEach(::collect)
+            }
+            collect(item)
+            subtree
+          } else {
+            listOf(item)
+          }
+      affected.forEach { current ->
+        files[current.id] =
+            current.copy(
+                placements =
+                    current.placements +
+                        (groupId to current.placements.getValue(groupId).copy(isHidden = isHidden))
+            )
+      }
+      refresh()
+    }
+
+    override fun getFileFlow(fileId: String): Flow<JDRFile?> =
+        fileFlows.getOrPut(fileId) { MutableStateFlow(files[fileId]) }.asStateFlow()
+
+    override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> =
+        getPersonalFolderFiles("", ownerId)
+
+    override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
+        personalFlows
+            .getOrPut(folderId to ownerId) {
+              MutableStateFlow(
+                  files.values.filter {
+                    it.ownerId == ownerId &&
+                        it.personalParentId == folderId &&
+                        it.type != DocumentType.GROUP_ROOT
+                  }
               )
-        }
-        refreshFlows()
-        Result.success(Unit)
-      } catch (e: CancellationException) {
-        throw e
-      } catch (e: Exception) {
-        Result.failure(e)
+            }
+            .asStateFlow()
+
+    override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
+        folderFlows
+            .getOrPut(folderId to groupId) { MutableStateFlow(children(folderId, groupId)) }
+            .asStateFlow()
+
+    fun replaceFile(file: JDRFile) {
+      files[file.id] = file
+      refresh()
+    }
+
+    private fun children(folderId: String, groupId: String): List<JDRFile> =
+        files.values
+            .filter {
+              groupId in it.sharedGroupsIds && it.placements[groupId]?.folderId == folderId
+            }
+            .sortedBy { it.name.lowercase() }
+
+    private fun refresh() {
+      folderFlows.forEach { (key, flow) -> flow.value = children(key.first, key.second) }
+      fileFlows.forEach { (id, flow) -> flow.value = files[id] }
+      personalFlows.forEach { (key, flow) ->
+        flow.value =
+            files.values.filter {
+              it.ownerId == key.second &&
+                  it.personalParentId == key.first &&
+                  it.type != DocumentType.GROUP_ROOT
+            }
       }
-    }
-
-    private val fileFlows = mutableMapOf<String, MutableStateFlow<JDRFile?>>()
-
-    override fun getFileFlow(fileId: String): Flow<JDRFile?> {
-      val state = fileFlows.getOrPut(fileId) { MutableStateFlow(files[fileId]) }
-      return state.asStateFlow()
-    }
-
-    override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> {
-      val state =
-          personalRootFlows.getOrPut(ownerId) { MutableStateFlow(personalRootItems(ownerId)) }
-      return state.asStateFlow()
-    }
-
-    override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> {
-      error("Group root loads must use getDocumentsInFolder.")
-    }
-
-    override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> {
-      folderRequests += folderId
-      val state = folderFlows.getOrPut(folderId) { MutableStateFlow(folderItems(folderId)) }
-      return state
-          .asStateFlow()
-          .gated(
-              folderFailures[folderId],
-              folderFailureGates[folderId] ?: folderGates[folderId],
-              ignoreGateCancellation = folderFailureGates.containsKey(folderId),
-          )
-    }
-
-    fun replaceFiles(replacements: List<JDRFile>) {
-      files.clear()
-      replacements.forEach { files[it.id] = it }
-      refreshFlows()
-    }
-
-    private fun personalRootItems(ownerId: String) =
-        files.values.filter { it.ownerId == ownerId && it.personalParentId.isEmpty() }
-
-    private fun folderItems(folderId: String) =
-        files.values.filter { folderId in it.parentFolderIds }
-
-    private fun refreshFlows() {
-      personalRootFlows.forEach { (ownerId, state) -> state.value = personalRootItems(ownerId) }
-
-      folderFlows.forEach { (folderId, state) -> state.value = folderItems(folderId) }
-
-      fileFlows.forEach { (fileId, state) -> state.value = files[fileId] }
-    }
-
-    private fun <T> Flow<T>.gated(
-        failure: Exception?,
-        gate: CompletableDeferred<Unit>? = null,
-        ignoreGateCancellation: Boolean = false,
-    ): Flow<T> = onStart {
-      if (ignoreGateCancellation) {
-        withContext(NonCancellable) { gate?.await() }
-      } else {
-        gate?.await()
-      }
-      failure?.let { throw it }
     }
   }
 
   private class FakeAuthRepository(
       user: AuthUser? = AuthUser(OWNER_ID, "owner@example.com", "Owner"),
   ) : AuthRepository {
-    private val state = MutableStateFlow(user)
-    override val authState: StateFlow<AuthUser?> = state.asStateFlow()
+    override val authState: StateFlow<AuthUser?> = MutableStateFlow(user).asStateFlow()
 
     override suspend fun signUpWithEmail(
         email: String,
         password: String,
         username: String,
-    ): AuthResult<AuthUser> = AuthResult.Success(requireNotNull(state.value))
+    ): AuthResult<AuthUser> = AuthResult.Success(requireNotNull(authState.value))
 
     override suspend fun signInWithEmail(email: String, password: String): AuthResult<AuthUser> =
-        AuthResult.Success(requireNotNull(state.value))
+        AuthResult.Success(requireNotNull(authState.value))
 
     override suspend fun signInWithGoogle(idToken: String): AuthResult<AuthUser> =
-        AuthResult.Success(requireNotNull(state.value))
+        AuthResult.Success(requireNotNull(authState.value))
 
     override suspend fun signOut(): AuthResult<Unit> = AuthResult.Success(Unit)
   }
@@ -1754,6 +696,7 @@ class GroupWorkSpaceViewModelTest {
     const val GROUP_ID = "group-7"
     const val OTHER_GROUP_ID = "group-8"
     const val OWNER_ID = "authenticated-user-42"
+    const val OTHER_USER_ID = "another-user"
   }
 }
 
