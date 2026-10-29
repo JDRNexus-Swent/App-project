@@ -58,7 +58,49 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
 
   override suspend fun deleteFile(fileId: String): Result<Unit> {
     return try {
-      collection.document(fileId).delete().await()
+      val file = getFile(fileId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
+      check(file.type != DocumentType.GROUP_ROOT) { "A group root cannot be deleted." }
+
+      // A file has no content below it: nothing to unshare or reattach.
+      if (!file.isContainer()) {
+        collection.document(fileId).delete().await()
+        return Result.success(Unit)
+      }
+
+      // The folder and its personal content are deleted, and leave every group they are in.
+      val deleted = collectPersonalSubtree(file)
+      val deletedIds = deleted.map { it.id }.toSet()
+      val removals =
+          planDeletion(
+              deleted,
+              isParentHidden = { folderId, groupId -> isHiddenIn(folderId, groupId) },
+              childrenOf = { folder, groupId -> getGroupFolderFiles(folder.id, groupId).first() },
+          )
+
+      // Files that are deleted anyway do not need an update.
+      val writes =
+          deleted.size +
+              removals.values.sumOf { removal ->
+                removal.leaving.count { it.id !in deletedIds } + removal.reattached.size
+              }
+      check(writes <= MAX_BATCH_WRITES) {
+        "Too many items to delete at once (maximum $MAX_BATCH_WRITES)."
+      }
+
+      val batch = firestore.batch()
+      deleted.forEach { batch.delete(collection.document(it.id)) }
+      removals.forEach { (groupId, removal) ->
+        removal.leaving
+            .filter { it.id !in deletedIds }
+            .forEach { batch.update(collection.document(it.id), removePlacementUpdate(groupId)) }
+        removal.reattached.forEach {
+          batch.update(
+              collection.document(it.id),
+              addPlacementUpdate(groupId, it.folderId, it.isHidden),
+          )
+        }
+      }
+      batch.commit().await()
       Result.success(Unit)
     } catch (e: CancellationException) {
       throw e
@@ -92,59 +134,32 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     return try {
       require(itemId.isNotBlank()) { "Item ID cannot be empty." }
       require(groupId.isNotBlank()) { "Group ID cannot be empty." }
-      require(parentFolderId.isNotBlank()) { "Parent folder ID cannot be empty." }
 
       val root = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
-
-      check(groupId in root.sharedGroupsIds) { "This item does not belong to the group." }
       check(root.type != DocumentType.GROUP_ROOT) {
         "A group root cannot be removed from its group."
       }
+      val placement =
+          checkNotNull(root.placements[groupId]) { "This item does not belong to the group." }
 
-      // Collect the selected item and, for folders, descendants with their placement parent.
-      val itemsToRemove = linkedMapOf<String, Pair<JDRFile, String>>()
-      val visited = mutableSetOf<String>()
+      val parentHidden = isHiddenIn(placement.folderId, groupId)
 
-      suspend fun collectSubtree(
-          file: JDRFile,
-          parentId: String,
-      ) {
-        if (!visited.add(file.id)) return
-
-        // Log each visited item to debug recursive removal and verify its
-        // parent-folder relationships and group-sharing references.
-        Log.d(
-            "GroupWorkspace",
-            "Visiting ${file.name} (${file.id}), " +
-                "parentId=$parentId, placements=${file.placements}, " +
-                "groups=${file.sharedGroupsIds}",
-        )
-
-        itemsToRemove[file.id] = file to parentId
-
-        if (!file.isContainer()) return
-
-        val children = getGroupFolderFiles(file.id, groupId).first()
-
-        children
-            .filter { groupId in it.sharedGroupsIds }
-            .forEach { child ->
-              collectSubtree(
-                  file = child,
-                  parentId = file.id,
-              )
-            }
+      val removal =
+          planRemoval(root, groupId, parentHidden) { getGroupFolderFiles(it.id, groupId).first() }
+      check(removal.leaving.size + removal.reattached.size <= MAX_BATCH_WRITES) {
+        "Too many items to update at once (maximum $MAX_BATCH_WRITES)."
       }
 
-      collectSubtree(root, parentId = parentFolderId)
-
-      // Remove group sharing without deleting the underlying documents.
       val batch = firestore.batch()
-
-      itemsToRemove.values.forEach { (file, _) ->
-        batch.update(collection.document(file.id), removePlacementUpdate(groupId))
+      removal.leaving.forEach {
+        batch.update(collection.document(it.id), removePlacementUpdate(groupId))
       }
-
+      removal.reattached.forEach {
+        batch.update(
+            collection.document(it.id),
+            addPlacementUpdate(groupId, it.folderId, it.isHidden),
+        )
+      }
       batch.commit().await()
       Result.success(Unit)
     } catch (e: CancellationException) {
@@ -166,8 +181,6 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       require(groupId.isNotBlank()) { "Group ID cannot be empty." }
       require(folderId.isNotBlank()) { "Folder ID cannot be empty." }
 
-      require(!includeContent) { "includeContent is not supported yet." } // TODO next refactor PR
-
       val item = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
       check(item.type != DocumentType.GROUP_ROOT) { "A group root cannot be added to a group." }
       check(groupId !in item.sharedGroupsIds) { "This item is already in the group." }
@@ -181,12 +194,32 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       }
 
       // Something added inside a hidden folder is hidden too. The group root has no placement.
-      val hiddenByFolder = destination.placements[groupId]?.isHidden == true
+      val destinationHidden = destination.placements[groupId]?.isHidden == true
 
-      collection
-          .document(itemId)
-          .update(addPlacementUpdate(groupId, folderId, isHidden || hiddenByFolder))
-          .await()
+      val additions =
+          if (includeContent && item.isContainer()) {
+            planAddition(
+                subtree = collectPersonalSubtree(item),
+                groupId = groupId,
+                destinationFolderId = folderId,
+                hideNew = isHidden,
+                destinationHidden = destinationHidden,
+            )
+          } else {
+            listOf(GroupPlacement(itemId, folderId, isHidden || destinationHidden))
+          }
+      check(additions.size <= MAX_BATCH_WRITES) {
+        "Too many items to add at once (maximum $MAX_BATCH_WRITES)."
+      }
+
+      val batch = firestore.batch()
+      additions.forEach {
+        batch.update(
+            collection.document(it.id),
+            addPlacementUpdate(groupId, it.folderId, it.isHidden),
+        )
+      }
+      batch.commit().await()
       Result.success(Unit)
     } catch (e: CancellationException) {
       throw e
@@ -272,19 +305,18 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
   private fun hiddenUpdate(groupId: String, isHidden: Boolean): Map<String, Any> =
       mapOf("placements.$groupId.isHidden" to isHidden)
 
-  /** [root] and every file below it in the folder tree of [groupId], each listed once. */
-  private suspend fun collectGroupSubtree(root: JDRFile, groupId: String): List<JDRFile> {
-    val collected = linkedMapOf<String, JDRFile>()
+  /** Whether [folderId] is hidden in [groupId]. The group root has no placement, so never. */
+  private suspend fun isHiddenIn(folderId: String, groupId: String): Boolean =
+      folderId != groupId &&
+          getFile(folderId).getOrThrow()?.placements?.get(groupId)?.isHidden == true
 
-    suspend fun visit(file: JDRFile) {
-      if (collected.putIfAbsent(file.id, file) != null) return
-      if (!file.isContainer()) return
-      getGroupFolderFiles(file.id, groupId).firstOrNull()?.forEach { visit(it) }
-    }
+  /** [root] and everything below it in the folder tree of [groupId]. */
+  private suspend fun collectGroupSubtree(root: JDRFile, groupId: String): List<JDRFile> =
+      subtreeOf(root) { getGroupFolderFiles(it.id, groupId).firstOrNull().orEmpty() }
 
-    visit(root)
-    return collected.values.toList()
-  }
+  /** [root] and everything below it in its owner's personal space. */
+  private suspend fun collectPersonalSubtree(root: JDRFile): List<JDRFile> =
+      subtreeOf(root) { getPersonalFolderFiles(it.id, root.ownerId).first() }
 
   override fun getFileFlow(fileId: String): Flow<JDRFile?> = callbackFlow {
     // callbackFlow bridges Firestore's callback API with Kotlin Coroutines Flow.
