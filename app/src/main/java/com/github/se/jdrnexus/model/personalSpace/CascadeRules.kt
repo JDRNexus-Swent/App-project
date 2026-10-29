@@ -34,9 +34,10 @@ internal suspend fun subtreeOf(
   return collected.values.toList()
 }
 
-/** Where an item sits in a group, with its visibility. Used both for items being added and
- * for items reattached after their folder left.
- * */
+/**
+ * Where an item sits in a group, with its visibility. Used both for items being added and for items
+ * reattached after their folder left.
+ */
 internal data class GroupPlacement(val id: String, val folderId: String, val isHidden: Boolean)
 
 /** What to write when a folder leaves a group: who leaves, and who stays under a new folder. */
@@ -86,8 +87,7 @@ internal fun planAddition(
  * Decides what to write when [root] leaves the group [groupId].
  *
  * [root] and the items below it that have the same owner, linked to it by an unbroken chain, leave
- * the group.
- * The walk stops at the first item of another owner: it stays in the group, with
+ * the group. The walk stops at the first item of another owner: it stays in the group, with
  * everything under it, and is reattached to the folder that held [root]. It becomes hidden when
  * [parentHidden] is set, but is never revealed.
  *
@@ -99,31 +99,31 @@ internal suspend fun planRemoval(
     parentHidden: Boolean,
     childrenOf: suspend (JDRFile) -> List<JDRFile>,
 ): GroupRemoval {
-    val parentId = checkNotNull(root.placements[groupId]) { "The item is not in the group." }.folderId
+  val parentId = checkNotNull(root.placements[groupId]) { "The item is not in the group." }.folderId
 
-    // What each folder of the walk contains, kept so the reattachments can be worked out afterwards.
-    val content = mutableMapOf<String, List<JDRFile>>()
+  // What each folder of the walk contains, kept so the reattachments can be worked out afterwards.
+  val content = mutableMapOf<String, List<JDRFile>>()
 
-    val leaving =
-        subtreeOf(root) { folder ->
-            val children = childrenOf(folder)
-            content[folder.id] = children
-            children.filter { it.ownerId == root.ownerId }
-        }
+  val leaving =
+      subtreeOf(root) { folder ->
+        val children = childrenOf(folder)
+        content[folder.id] = children
+        children.filter { it.ownerId == root.ownerId }
+      }
 
-    val reattached =
-        leaving
-            .filter { it.isContainer() }
-            .flatMap { folder -> content.getValue(folder.id) }
-            .filter { it.ownerId != root.ownerId }
-            .map {
-                GroupPlacement(
-                    it.id,
-                    parentId,
-                    parentHidden || it.placements[groupId]?.isHidden == true,
-                )
-            }
-    return GroupRemoval(leaving, reattached)
+  val reattached =
+      leaving
+          .filter { it.isContainer() }
+          .flatMap { folder -> content.getValue(folder.id) }
+          .filter { it.ownerId != root.ownerId }
+          .map {
+            GroupPlacement(
+                it.id,
+                parentId,
+                parentHidden || it.placements[groupId]?.isHidden == true,
+            )
+          }
+  return GroupRemoval(leaving, reattached)
 }
 
 /**

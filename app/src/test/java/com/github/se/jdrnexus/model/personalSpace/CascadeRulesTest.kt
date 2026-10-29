@@ -1,10 +1,10 @@
 // Co-authored-by: Claude Sonnet 5.5
 package com.github.se.jdrnexus.model.personalSpace
 
+import kotlin.to
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import kotlin.to
 
 class CascadeRulesTest {
 
@@ -22,15 +22,15 @@ class CascadeRulesTest {
     }
   }
 
-    /** An item placed in [folderId] inside the group "group". */
-    private fun inGroup(id: String, owner: String, folderId: String, isFolder: Boolean = false) =
-        JDRFile(
-            id = id,
-            ownerId = owner,
-            type = if (isFolder) DocumentType.FOLDER else DocumentType.TEXT,
-            sharedGroupsIds = listOf("group"),
-            placements = mapOf("group" to Placement(folderId)),
-        )
+  /** An item placed in [folderId] inside the group "group". */
+  private fun inGroup(id: String, owner: String, folderId: String, isFolder: Boolean = false) =
+      JDRFile(
+          id = id,
+          ownerId = owner,
+          type = if (isFolder) DocumentType.FOLDER else DocumentType.TEXT,
+          sharedGroupsIds = listOf("group"),
+          placements = mapOf("group" to Placement(folderId)),
+      )
 
   @Test
   fun subtreeOf_aFileIsAloneAndIsNotExpanded() = runBlocking {
@@ -342,22 +342,28 @@ class CascadeRulesTest {
 
     assertEquals(IllegalStateException::class.java, error?.javaClass)
   }
-    @Test
-    fun planRemoval_stopsAtAnotherOwnersFolderAndDoesNotReadIt() = runBlocking {
-        val reads = mutableListOf<String>()
-        val tree =
-            mapOf(
-                "dungeon" to listOf(inGroup("room", "A", "dungeon"), inGroup("pauls", "B", "dungeon", true)),
-                "pauls" to listOf(inGroup("marie-file", "A", "pauls")),
-            )
-        val dungeon = inGroup("dungeon", "A", "group", true)
 
-        val result = planRemoval(dungeon, "group", false) { reads += it.id; tree[it.id].orEmpty() }
+  @Test
+  fun planRemoval_stopsAtAnotherOwnersFolderAndDoesNotReadIt() = runBlocking {
+    val reads = mutableListOf<String>()
+    val tree =
+        mapOf(
+            "dungeon" to
+                listOf(inGroup("room", "A", "dungeon"), inGroup("pauls", "B", "dungeon", true)),
+            "pauls" to listOf(inGroup("marie-file", "A", "pauls")),
+        )
+    val dungeon = inGroup("dungeon", "A", "group", true)
 
-        assertEquals(listOf("dungeon", "room"), result.leaving.map { it.id })
-        assertEquals(listOf(GroupPlacement("pauls", "group", false)), result.reattached)
-        assertEquals(listOf("dungeon"), reads)
-    }
+    val result =
+        planRemoval(dungeon, "group", false) {
+          reads += it.id
+          tree[it.id].orEmpty()
+        }
+
+    assertEquals(listOf("dungeon", "room"), result.leaving.map { it.id })
+    assertEquals(listOf(GroupPlacement("pauls", "group", false)), result.reattached)
+    assertEquals(listOf("dungeon"), reads)
+  }
 
   // ---- planDeletion
 
