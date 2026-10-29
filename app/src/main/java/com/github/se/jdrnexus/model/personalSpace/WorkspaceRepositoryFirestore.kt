@@ -219,8 +219,9 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
           } else {
             // Revealing only reveals this item, and only if the folder holding it is visible.
             if (placement.folderId != groupId) {
-              val parent = getFile(placement.folderId).getOrThrow()
-                  ?: throw IllegalArgumentException("Placement not found.")
+              val parent =
+                  getFile(placement.folderId).getOrThrow()
+                      ?: throw IllegalArgumentException("Placement not found.")
               check(parent.placements.get(groupId)?.isHidden != true) {
                 "Reveal the parent folder first."
               }
