@@ -6,6 +6,7 @@ import android.os.CancellationSignal
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -153,12 +155,18 @@ class SignUpScreenTest {
 
     composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
 
-    composeTestRule.onNodeWithText("Password must be at least 6 characters.").assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(
+            "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters."
+        )
+        .assertIsDisplayed()
     assertEquals(0, repository.signUpCalls)
 
     passwordInput(C.Tag.sign_up_password).performTextInput("6")
     composeTestRule
-        .onAllNodesWithText("Password must be at least 6 characters.")
+        .onAllNodesWithText(
+            "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters."
+        )
         .assertCountEquals(0)
   }
 
@@ -171,6 +179,55 @@ class SignUpScreenTest {
 
     composeTestRule.onNodeWithText(AuthError.INVALID_EMAIL.message).assertIsDisplayed()
     assertEquals(0, repository.signUpCalls)
+  }
+
+  @Test
+  fun signUpScreen_showsEachValidationErrorOnItsOwnField() {
+    showSignUp()
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.sign_up_username)
+        .assert(hasText(AuthError.INVALID_USERNAME.message))
+    composeTestRule
+        .onNodeWithTag(C.Tag.sign_up_email)
+        .assert(hasText(AuthError.INVALID_EMAIL.message))
+    composeTestRule
+        .onNodeWithTag(C.Tag.sign_up_password)
+        .assert(hasText("Password must be at least 6 characters."))
+  }
+
+  @Test
+  fun signUpScreen_correctingFieldsClearsOnlyTheirOwnErrors() {
+    val repository = FakeAuthRepository()
+    showSignUp(repository)
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
+
+    val usernameError = AuthError.INVALID_USERNAME.message
+    val emailError = AuthError.INVALID_EMAIL.message
+    val passwordError = "Password must be at least 6 characters."
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_username).assert(hasText(usernameError))
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_email).assert(hasText(emailError))
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_password).assert(hasText(passwordError))
+
+    emailInput(C.Tag.sign_up_email).performTextInput("hero@example.com")
+    composeTestRule.onAllNodesWithText(emailError).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_username).assert(hasText(usernameError))
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_password).assert(hasText(passwordError))
+    assertEquals(0, repository.signUpCalls)
+
+    passwordInput(C.Tag.sign_up_password).performTextInput("secret1")
+    composeTestRule.onAllNodesWithText(passwordError).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_username).assert(hasText(usernameError))
+
+    usernameInput().performTextInput("Ranger")
+    composeTestRule.onAllNodesWithText(usernameError).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
+    composeTestRule.waitForIdle()
+
+    assertEquals(1, repository.signUpCalls)
+    assertEquals(Triple("Ranger", "hero@example.com", "secret1"), repository.lastSignUpArguments)
   }
 
   @Test
