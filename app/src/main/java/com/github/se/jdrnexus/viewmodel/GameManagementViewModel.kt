@@ -4,26 +4,20 @@ package com.github.se.jdrnexus.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
-import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
-import com.github.se.jdrnexus.model.personalSpace.JDRFile
-import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /** The current user's permission level within one campaign group. */
 enum class GroupRole {
@@ -100,14 +94,13 @@ data class GameManagementUiState(
  * access remains in the repository implementation; this ViewModel depends only on repository
  * interfaces.
  *
- * @param groupRepository Provides the real-time group list for a user UID.
+ * @param groupRepository Provides the real-time group list for a user UID, and creates groups
+ *   together with their root folder.
  * @param authRepository Provides the current signed-in user and account changes.
- * @param workspaceRepository Provides a new group ID and creates its root folder.
  */
 class GameManagementViewModel(
     private val groupRepository: GroupRepository,
     private val authRepository: AuthRepository,
-    private val workspaceRepository: WorkspaceRepository,
 ) : ViewModel() {
 
   private val _uiState = MutableStateFlow(GameManagementUiState())
@@ -264,12 +257,8 @@ class GameManagementViewModel(
 
     _uiState.update { it.copy(groupName = name, createState = GroupActionState.Loading) }
     createJob = viewModelScope.launch {
-      var groupCreated = false
-      var rootFolderCreated = false
-      var groupId: String? = null
       try {
-        val newGroupId = workspaceRepository.getNewUid()
-        groupId = newGroupId
+        val newGroupId = groupRepository.getNewGroupId()
         val group =
             CampaignGroup(
                 id = newGroupId,
@@ -277,18 +266,7 @@ class GameManagementViewModel(
                 gameMasterId = requireNotNull(userId),
                 participantIds = listOf(userId),
             )
-        val rootFolder =
-            JDRFile(
-                id = group.id,
-                name = group.name,
-                ownerId = requireNotNull(userId),
-                sharedGroupsIds = listOf(group.id),
-                type = DocumentType.GROUP_ROOT,
-            )
-        workspaceRepository.createFile(rootFolder).getOrThrow()
-        rootFolderCreated = true
         groupRepository.createGroup(group).getOrThrow()
-        groupCreated = true
         currentCoroutineContext().ensureActive()
         _uiState.update {
           it.copy(
@@ -298,26 +276,12 @@ class GameManagementViewModel(
           )
         }
       } catch (cancellation: CancellationException) {
-        if (rootFolderCreated && !groupCreated) {
-          cleanupRootFolder(groupId, cancellation)
-        }
         throw cancellation
       } catch (failure: Exception) {
-        if (rootFolderCreated && !groupCreated) {
-          cleanupRootFolder(groupId, failure)
-        }
         currentCoroutineContext().ensureActive()
         val message = failure.message?.takeIf(String::isNotBlank) ?: "Unable to create the group."
         _uiState.update { it.copy(createState = GroupActionState.Error(message)) }
       }
-    }
-  }
-
-  /** Removes a root folder if group creation failed after the folder write completed. */
-  private suspend fun cleanupRootFolder(groupId: String?, failure: Throwable) {
-    if (groupId == null) return
-    withContext(NonCancellable) {
-      workspaceRepository.deleteFile(groupId).exceptionOrNull()?.let(failure::addSuppressed)
     }
   }
 
