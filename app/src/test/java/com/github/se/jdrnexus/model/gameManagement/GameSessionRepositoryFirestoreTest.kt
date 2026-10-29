@@ -6,6 +6,7 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
+import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
 import com.github.se.jdrnexus.model.repository.DiceRollEntity
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
@@ -18,6 +19,7 @@ import java.util.Date
 import java.util.UUID
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -197,6 +199,19 @@ class GameSessionRepositoryFirestoreTest {
 
   @Test
   fun recordActivity_loadsAndObservesPlayerActivity() = runBlocking {
+    firestore
+        .collection("campaign_groups")
+        .document(groupId)
+        .set(
+            CampaignGroup(
+                id = groupId,
+                name = "Quest",
+                gameMasterId = "gm-1",
+                participantIds = listOf("player-1"),
+            )
+        )
+        .await()
+
     assertTrue(
         repository
             .recordActivity(groupId, "player-1", "Ari", "Opened the door", "D20: 17")
@@ -235,11 +250,78 @@ class GameSessionRepositoryFirestoreTest {
         repository.recordActivity(groupId, "player", "Name", " ").exceptionOrNull()?.message,
     )
 
+    firestore
+        .collection("campaign_groups")
+        .document(groupId)
+        .set(
+            CampaignGroup(
+                id = groupId,
+                name = "Quest",
+                gameMasterId = "gm-1",
+                participantIds = listOf("player-1"),
+            )
+        )
+        .await()
+
+    assertEquals(
+        "User is not a member of this campaign group.",
+        repository.recordActivity(groupId, "outsider", "Name", "Action").exceptionOrNull()?.message,
+    )
+
     coEvery { diceRepository.getDiceRollsHistory(groupId) } returns
         Result.failure(IllegalStateException("Dice history unavailable"))
     assertEquals(
         "Dice history unavailable",
         repository.loadActivities(groupId).exceptionOrNull()?.message,
+    )
+  }
+
+  @Test
+  fun activityFeed_ignoresCorruptedDocuments() = runBlocking {
+    firestore
+        .collection("campaign_groups")
+        .document(groupId)
+        .set(
+            CampaignGroup(
+                id = groupId,
+                name = "Quest",
+                gameMasterId = "gm-1",
+                participantIds = listOf("player-1"),
+            )
+        )
+        .await()
+
+    firestore
+        .collection("campaign_groups")
+        .document(groupId)
+        .collection("activities")
+        .document("broken")
+        .set(mapOf("playerName" to "Broken"))
+        .await()
+
+    firestore
+        .collection("campaign_groups")
+        .document(groupId)
+        .collection("activities")
+        .document("valid")
+        .set(
+            mapOf(
+                "userId" to "player-1",
+                "playerName" to "Ari",
+                "action" to "Opened the door",
+                "diceResult" to "D20: 17",
+                "timestamp" to Date(2000),
+            )
+        )
+        .await()
+
+    assertEquals(
+        listOf("player-1"),
+        repository.loadActivities(groupId).getOrThrow().map { it.userId },
+    )
+    assertEquals(
+        listOf("player-1"),
+        repository.observeActivities(groupId).waitFor { it.size == 1 }.map { it.userId },
     )
   }
 

@@ -2,6 +2,7 @@
 package com.github.se.jdrnexus.model.gameManagement
 
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
+import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -42,16 +43,20 @@ class GameSessionRepositoryFirestore(
                 .get()
                 .await()
                 .documents
-                .map { document ->
-                  val data = document.data ?: error("Invalid activity data.")
-                  GameActivityEntry(
-                      id = document.id,
-                      userId = data.string("userId"),
-                      playerName = data.string("playerName"),
-                      action = data.string("action"),
-                      diceResult = data["diceResult"] as? String,
-                      timestamp = document.getDate("timestamp")?.time ?: System.currentTimeMillis(),
-                  )
+                .mapNotNull { document ->
+                  val data = document.data ?: return@mapNotNull null
+                  runCatching {
+                    GameActivityEntry(
+                        id = document.id,
+                        userId = data.string("userId"),
+                        playerName = data.string("playerName"),
+                        action = data.string("action"),
+                        diceResult = data["diceResult"] as? String,
+                        timestamp =
+                            document.getDate("timestamp")?.time ?: System.currentTimeMillis(),
+                    )
+                  }
+                      .getOrNull()
                 }
         Result.success((diceRolls + actions).sortedByDescending(GameActivityEntry::timestamp))
       } catch (cancellation: CancellationException) {
@@ -90,6 +95,16 @@ class GameSessionRepositoryFirestore(
     require(userId.isNotBlank()) { "User ID cannot be empty." }
     require(playerName.isNotBlank()) { "Player name cannot be empty." }
     require(action.isNotBlank()) { "Activity action cannot be empty." }
+    val group =
+        firestore
+            .collection(GROUPS_COLLECTION)
+            .document(groupId)
+            .get()
+            .await()
+            .toObject(CampaignGroup::class.java) ?: error("Campaign group not found.")
+    require(group.gameMasterId == userId || group.participantIds.contains(userId)) {
+      "User is not a member of this campaign group."
+    }
     firestore
         .collection(GROUPS_COLLECTION)
         .document(groupId)
@@ -140,17 +155,21 @@ class GameSessionRepositoryFirestore(
                 snapshot != null -> {
                   try {
                     trySend(
-                        snapshot.documents.map { document ->
-                          val data = document.data ?: error("Invalid activity data.")
-                          GameActivityEntry(
-                              id = document.id,
-                              userId = data.string("userId"),
-                              playerName = data.string("playerName"),
-                              action = data.string("action"),
-                              diceResult = data["diceResult"] as? String,
-                              timestamp =
-                                  document.getDate("timestamp")?.time ?: System.currentTimeMillis(),
-                          )
+                        snapshot.documents.mapNotNull { document ->
+                          val data = document.data ?: return@mapNotNull null
+                          runCatching {
+                            GameActivityEntry(
+                                id = document.id,
+                                userId = data.string("userId"),
+                                playerName = data.string("playerName"),
+                                action = data.string("action"),
+                                diceResult = data["diceResult"] as? String,
+                                timestamp =
+                                    document.getDate("timestamp")?.time
+                                        ?: System.currentTimeMillis(),
+                            )
+                          }
+                              .getOrNull()
                         }
                     )
                   } catch (failure: Exception) {
