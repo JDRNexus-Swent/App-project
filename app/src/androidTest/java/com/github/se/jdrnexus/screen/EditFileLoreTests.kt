@@ -257,5 +257,19 @@ class EditFileLoreTests {
 
     override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
         emptyFlow()
+
+    override suspend fun addItemToGroup(
+        itemId: String,
+        groupId: String,
+        folderId: String,
+        isHidden: Boolean,
+        includeContent: Boolean,
+    ): Result<Unit> = error("Not used")
+
+    override suspend fun setItemHidden(
+        itemId: String,
+        groupId: String,
+        isHidden: Boolean,
+    ): Result<Unit> = error("Not used")
   }
 }
