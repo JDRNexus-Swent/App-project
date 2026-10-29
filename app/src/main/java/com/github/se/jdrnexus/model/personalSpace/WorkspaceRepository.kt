@@ -1,4 +1,4 @@
-// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5
 package com.github.se.jdrnexus.model.personalSpace
 
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +31,10 @@ interface WorkspaceRepository {
   /**
    * Updates an existing document in the database. This is used when a user or Game Master updates
    * stats, triggering real-time sync across devices.
+   *
+   * Only the document's own fields are written. Group sharing ([JDRFile.placements] and
+   * [JDRFile.sharedGroupsIds]) is left untouched, so saving an edit made from an older snapshot
+   * cannot undo a share made in the meantime.
    *
    * @param file The updated [JDRFile] object.
    * @return A [Result] indicating success or failure.
@@ -67,6 +71,36 @@ interface WorkspaceRepository {
       groupId: String,
       parentFolderId: String,
   ): Result<Unit>
+
+  /**
+   * Adds an existing item to a group workspace, inside [folderId].
+   *
+   * Only the item itself is added: a folder arrives without its content. The destination must be a
+   * folder that already belongs to the group (the group id designates the group's root folder). An
+   * item added inside a hidden folder is hidden too. Fails if the item is already in the group, and
+   * for a group root. Other fields of the item, and its placements in other groups, are not
+   * touched.
+   *
+   * @param isHidden whether the item starts hidden from the other members.
+   * @param includeContent reserved for adding a folder together with its content, which comes with
+   *   the cascade operations.
+   */
+  suspend fun addItemToGroup(
+      itemId: String,
+      groupId: String,
+      folderId: String,
+      isHidden: Boolean = false,
+      includeContent: Boolean = false,
+  ): Result<Unit>
+
+  /**
+   * Hides or reveals an item in a group workspace.
+   *
+   * Hiding a folder also hides everything inside it in that group. Revealing only reveals the item
+   * itself, and is refused while the folder holding it is hidden. Fails for a group root or an item
+   * that is not in the group, and refuses to hide more than 500 items at once.
+   */
+  suspend fun setItemHidden(itemId: String, groupId: String, isHidden: Boolean): Result<Unit>
 
   // ==========================================
   // REAL-TIME SYNCHRONIZATION (Flows)
