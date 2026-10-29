@@ -10,6 +10,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.tasks.await
 
 class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : WorkspaceRepository {
@@ -219,7 +220,8 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
             // Revealing only reveals this item, and only if the folder holding it is visible.
             if (placement.folderId != groupId) {
               val parent = getFile(placement.folderId).getOrThrow()
-              check(parent?.placements?.get(groupId)?.isHidden != true) {
+                  ?: throw IllegalArgumentException("Placement not found.")
+              check(parent.placements.get(groupId)?.isHidden != true) {
                 "Reveal the parent folder first."
               }
             }
@@ -276,7 +278,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     suspend fun visit(file: JDRFile) {
       if (collected.putIfAbsent(file.id, file) != null) return
       if (!file.isContainer()) return
-      getGroupFolderFiles(file.id, groupId).first().forEach { visit(it) }
+      getGroupFolderFiles(file.id, groupId).firstOrNull()?.forEach { visit(it) }
     }
 
     visit(root)
