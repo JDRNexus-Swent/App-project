@@ -197,8 +197,7 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
   }
 
   private fun validate(form: AuthUiState, requireUsername: Boolean): String? {
-    val emailError =
-        if (!EMAIL_PATTERN.matches(form.email.trim())) AuthError.INVALID_EMAIL.message else null
+    val emailError = if (!isValidEmail(form.email)) AuthError.INVALID_EMAIL.message else null
     val passwordError =
         if (form.password.length < MIN_PASSWORD_LENGTH) {
           "Password must be at least $MIN_PASSWORD_LENGTH characters."
@@ -222,8 +221,7 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     _uiState.update { state ->
       state.update().let { updated ->
         updated.copy(
-            emailError =
-                updated.emailError?.takeUnless { EMAIL_PATTERN.matches(updated.email.trim()) },
+            emailError = updated.emailError?.takeUnless { isValidEmail(updated.email) },
             passwordError =
                 updated.passwordError?.takeUnless {
                   updated.password.length >= MIN_PASSWORD_LENGTH
@@ -234,6 +232,8 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
       }
     }
   }
+
+  private fun isValidEmail(email: String): Boolean = EMAIL_PATTERN.matches(email.trim())
 
   private fun setStatus(status: AuthStatus) {
     _uiState.update { it.copy(status = status) }

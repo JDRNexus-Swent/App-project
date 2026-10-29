@@ -69,7 +69,9 @@ class AuthViewModelTest {
     viewModel.signUp()
 
     assertEquals(
-        AuthStatus.Error("Password must be at least 6 characters."),
+        AuthStatus.Error(
+            "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters."
+        ),
         viewModel.uiState.value.status,
     )
     assertEquals(0, repository.signUpCalls)
@@ -97,12 +99,18 @@ class AuthViewModelTest {
     viewModel.signUp()
 
     assertEquals(AuthError.INVALID_EMAIL.message, viewModel.uiState.value.emailError)
-    assertEquals("Password must be at least 6 characters.", viewModel.uiState.value.passwordError)
+    assertEquals(
+        "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters.",
+        viewModel.uiState.value.passwordError,
+    )
     assertEquals(AuthError.INVALID_USERNAME.message, viewModel.uiState.value.usernameError)
 
     viewModel.onEmailChange("player@example.com")
     assertEquals(null, viewModel.uiState.value.emailError)
-    assertEquals("Password must be at least 6 characters.", viewModel.uiState.value.passwordError)
+    assertEquals(
+        "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters.",
+        viewModel.uiState.value.passwordError,
+    )
     assertEquals(AuthError.INVALID_USERNAME.message, viewModel.uiState.value.usernameError)
 
     viewModel.onPasswordChange("password")
@@ -123,7 +131,10 @@ class AuthViewModelTest {
     viewModel.onUsernameChange("  ")
 
     assertEquals(AuthError.INVALID_EMAIL.message, viewModel.uiState.value.emailError)
-    assertEquals("Password must be at least 6 characters.", viewModel.uiState.value.passwordError)
+    assertEquals(
+        "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters.",
+        viewModel.uiState.value.passwordError,
+    )
     assertEquals(AuthError.INVALID_USERNAME.message, viewModel.uiState.value.usernameError)
   }
 
@@ -241,7 +252,9 @@ class AuthViewModelTest {
     viewModel.signIn()
 
     assertEquals(
-        AuthStatus.Error("Password must be at least 6 characters."),
+        AuthStatus.Error(
+            "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters."
+        ),
         viewModel.uiState.value.status,
     )
     assertEquals(0, repository.signInCalls)
