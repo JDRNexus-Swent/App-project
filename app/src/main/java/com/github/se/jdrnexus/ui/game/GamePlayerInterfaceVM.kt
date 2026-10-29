@@ -75,10 +75,16 @@ interface GamePlayerInterfaceVM {
   fun updateCharacterActionDescription(actionID: String, description: String)
 
   /**
-   * Updates the selected character's [current] and [max] HP. Rejects negative values or a current
-   * HP above max HP by setting [GamePlayerUiState.hpError] instead of throwing.
+   * Updates the selected character's [current] HP. Rejects a negative value or one above max HP by
+   * setting [GamePlayerUiState.hpError] instead of throwing.
    */
-  fun updateCharacterHp(current: Int, max: Int)
+  fun updateCharacterHp(current: Int)
+
+  /**
+   * Updates the selected character's [max] HP. Rejects a negative value or one below current HP by
+   * setting [GamePlayerUiState.hpError] instead of throwing.
+   */
+  fun updateCharacterMaxHp(max: Int)
 
   /** Persists the selected character so that the other participants receive the change. */
   fun saveCharacter()
