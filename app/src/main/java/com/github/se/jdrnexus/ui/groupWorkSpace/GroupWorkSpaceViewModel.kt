@@ -8,8 +8,9 @@ import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
+import com.github.se.jdrnexus.model.personalSpace.isContainer
 import com.github.se.jdrnexus.model.repository.AuthRepository
-import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
+import com.github.se.jdrnexus.model.repository.AuthRepositoryProvider
 import com.github.se.jdrnexus.viewmodel.LoadState
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
@@ -46,7 +47,7 @@ class GroupWorkspaceViewModel(
     private val groupId: String,
     private val role: GroupWorkspaceRole,
     private val repository: WorkspaceRepository = WorkspaceRepositoryProvider.repository,
-    private val authRepository: AuthRepository = AuthRepositoryFirebase(),
+    private val authRepository: AuthRepository = AuthRepositoryProvider.repository,
 ) : ViewModel() {
 
   private val _uiState =
@@ -134,7 +135,7 @@ class GroupWorkspaceViewModel(
 
       if (child.ownerId == uid) return true
 
-      if (child.type == DocumentType.FOLDER && hasOwnedDescendant(child.id, uid, visited)) {
+      if (child.isContainer() && hasOwnedDescendant(child.id, uid, visited)) {
         return true
       }
     }
@@ -159,7 +160,7 @@ class GroupWorkspaceViewModel(
 
     // A player can see a folder if it contains one of their own items,
     // even when the folder or one of its ancestors is hidden.
-    if (item.type == DocumentType.FOLDER && hasOwnedDescendant(item.id, uid)) {
+    if (item.isContainer() && hasOwnedDescendant(item.id, uid)) {
       return true
     }
 
@@ -179,7 +180,7 @@ class GroupWorkspaceViewModel(
 
       val parentPlacement = parent.placements[groupId] ?: return false
 
-      if (parent.type != DocumentType.FOLDER) return false
+      if (!parent.isContainer()) return false
       if (parentPlacement.isHidden) return false
 
       parentId = parentPlacement.folderId
@@ -196,7 +197,7 @@ class GroupWorkspaceViewModel(
    */
   private suspend fun requireAccessibleFolder(folderId: String, uid: String): JDRFile {
     val folder = getItem(folderId, "Folder not found")
-    check(folder.type == DocumentType.FOLDER) { "The requested item is not a folder." }
+    check(folder.isContainer()) { "The requested item is not a folder." }
 
     requireBelongsToGroup(folder)
     check(canSeeItem(folder, uid)) { "You cannot access this folder." }
@@ -416,10 +417,10 @@ class GroupWorkspaceViewModel(
   }
 
   /** Edits an item's name/content while preserving its ownership and workspace references. */
-  fun editItem(updatedItem: JDRFile): Job {
+  fun editItem(updatedItem: JDRFile): Job? {
     if (updatedItem.name.isBlank()) {
       showError("The item name cannot be blank.")
-      return Job().also { it.complete() }
+      return null
     }
 
     val folderId = _uiState.value.currentFolderId
@@ -467,7 +468,7 @@ class GroupWorkspaceViewModel(
       operation: suspend () -> Unit,
   ) {
     pendingOperations.incrementAndGet()
-    _uiState.update { it.copy(isOperationInProgress = true, errorMessage = "") }
+    _uiState.update { it.copy(isOperationInProgress = true) }
 
     try {
       operationMutex.withLock { operation() }
