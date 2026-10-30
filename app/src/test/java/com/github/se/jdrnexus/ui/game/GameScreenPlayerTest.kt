@@ -1,6 +1,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.game
 
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -100,7 +101,48 @@ class GameScreenPlayerTest {
     setContent(FakeGamePlayerViewModel(state))
 
     composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.HP_DECREASE).assertIsNotEnabled()
+    composeTestRule
+        .onAllNodesWithText("HP must be between 0 and 24.")
+        .assertCountEquals(1) // not very relevant, just show an hp error is displayed
+  }
+
+  @Test
+  fun hpRangeErrorIsShownOnceAndClearsAfterValidInput() {
+    val viewModel = FakeGamePlayerViewModel()
+    setContent(viewModel)
+
+    val hpInput = composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.CURRENT_HP)
+    hpInput.performTextClearance()
+    hpInput.performTextInput("25")
+
     composeTestRule.onAllNodesWithText("HP must be between 0 and 24.").assertCountEquals(1)
+    assertEquals(18, viewModel.selectedCharacter().character.hp.current)
+
+    hpInput.performTextClearance()
+    hpInput.performTextInput("24")
+
+    composeTestRule.onAllNodesWithText("HP must be between 0 and 24.").assertCountEquals(0)
+    assertEquals(24, viewModel.selectedCharacter().character.hp.current)
+  }
+
+  @Test
+  fun maximumHpDisablesHealingWithoutOverflow() {
+    val initial = initialGameState()
+    val character = requireNotNull(initial.character)
+    val state =
+        initial.copy(
+            character =
+                character.copy(
+                    character =
+                        character.character.copy(
+                            hp = CharacterHealthPoints(current = Int.MAX_VALUE, max = Int.MAX_VALUE)
+                        )
+                )
+        )
+    setContent(FakeGamePlayerViewModel(state))
+
+    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.HP_INCREASE).assertIsNotEnabled()
+    composeTestRule.onNodeWithText("Max HP: ${Int.MAX_VALUE}").assertIsDisplayed()
   }
 
   @Test
@@ -169,6 +211,48 @@ class GameScreenPlayerTest {
     val emptyViewModel = FakeGamePlayerViewModel(GamePlayerUiState(groupId = "group-1"))
     setContent(emptyViewModel)
     composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.EMPTY).assertIsDisplayed()
+  }
+
+  @Test
+  fun errorWithoutCharacterDisablesWorkspaceAndBackDoesNotSave() {
+    val viewModel = FakeGamePlayerViewModel(GamePlayerUiState(error = "Session unavailable."))
+    var backs = 0
+    setContent(viewModel, onBack = { backs++ })
+
+    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.ERROR).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Session unavailable.").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.WORKSPACE).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.BACK).performClick()
+
+    assertEquals(0, viewModel.saveCalls)
+    assertEquals(1, backs)
+  }
+
+  @Test
+  fun groupChangeReloadsSessionAndDefaultTabCallbackIsSafe() {
+    val viewModel = FakeGamePlayerViewModel()
+    val groupId = mutableStateOf("group-1")
+    composeTestRule.setContent {
+      SampleAppTheme {
+        GameScreenPlayer(
+            groupId = groupId.value,
+            viewModel = viewModel,
+            onBack = {},
+            onOpenDice = {},
+            onOpenGroupWorkspace = {},
+        )
+      }
+    }
+
+    assertEquals(listOf("group-1"), viewModel.loadedGroups)
+    // clicking is not really useful for now, clicking on home tab do nothing ?
+    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.navigationTab("Home")).performClick()
+    composeTestRule.runOnIdle { groupId.value = "group-2" }
+    composeTestRule.waitForIdle()
+    composeTestRule.runOnIdle { groupId.value = "group-3" }
+    composeTestRule.waitForIdle()
+
+    assertEquals(listOf("group-1", "group-2", "group-3"), viewModel.loadedGroups)
   }
 
   private fun setContent(
