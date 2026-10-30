@@ -3,8 +3,10 @@ package com.github.se.jdrnexus.ui.game
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -60,9 +62,7 @@ class GameScreenPlayerTest {
     assertEquals("group-1", workspaceGroup)
     assertEquals("Files", selectedTab)
     assertEquals(listOf("group-1"), viewModel.loadedGroups)
-    assertEquals(1, viewModel.saveCalls)
-    assertEquals(0, viewModel.statUpdates)
-    assertEquals(0, viewModel.actionUpdates)
+    assertEquals(0, viewModel.saveCalls)
   }
 
   @Test
@@ -82,6 +82,25 @@ class GameScreenPlayerTest {
     composeTestRule.onNodeWithText("Enter a whole number.").assertIsDisplayed()
     assertEquals(listOf(17, 18), viewModel.hpUpdates)
     assertEquals(18, viewModel.selectedCharacter().character.hp.current)
+  }
+
+  @Test
+  fun hpMinimumDisablesDamageAndDisplaysValidationErrorOnce() {
+    val initial = initialGameState()
+    val character = requireNotNull(initial.character)
+    val state =
+        initial.copy(
+            character =
+                character.copy(
+                    character =
+                        character.character.copy(hp = CharacterHealthPoints(current = 0, max = 24))
+                ),
+            hpError = "HP must be between 0 and 24.",
+        )
+    setContent(FakeGamePlayerViewModel(state))
+
+    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.HP_DECREASE).assertIsNotEnabled()
+    composeTestRule.onAllNodesWithText("HP must be between 0 and 24.").assertCountEquals(1)
   }
 
   @Test
@@ -111,10 +130,11 @@ class GameScreenPlayerTest {
   }
 
   @Test
-  fun leavingScreenAlwaysSavesTheCharacter() {
+  fun leavingScreenSavesUnsavedCharacterChanges() {
     val viewModel = FakeGamePlayerViewModel()
     var backs = 0
     setContent(viewModel, onBack = { backs++ })
+    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.HP_DECREASE).performClick()
     composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.BACK).performClick()
     assertEquals(1, viewModel.saveCalls)
     assertEquals(1, backs)
@@ -125,14 +145,15 @@ class GameScreenPlayerTest {
     val viewModel = FakeGamePlayerViewModel()
     setContent(viewModel)
 
+    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.HP_DECREASE).performClick()
     composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.SAVE).performScrollTo().performClick()
-    assertEquals(listOf(18), viewModel.savedHpValues)
+    assertEquals(listOf(17), viewModel.savedHpValues)
     composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.HP_INCREASE).performClick()
-    assertEquals(19, viewModel.selectedCharacter().character.hp.current)
+    assertEquals(18, viewModel.selectedCharacter().character.hp.current)
 
     composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.BACK).performScrollTo().performClick()
 
-    assertEquals(listOf(18, 19), viewModel.savedHpValues)
+    assertEquals(listOf(17, 18), viewModel.savedHpValues)
   }
 
   @Test
@@ -181,30 +202,8 @@ class GameScreenPlayerTest {
     var saveCalls = 0
       private set
 
-    var statUpdates = 0
-      private set
-
-    var actionUpdates = 0
-      private set
-
     override fun loadSession(groupId: String) {
       loadedGroups += groupId
-    }
-
-    override fun selectCharacter(fileId: String) {
-      uiState.value = uiState.value.copy(selectedCharacterId = fileId)
-    }
-
-    override fun updateCharacterStatValue(statID: String, value: Double) {
-      statUpdates++
-    }
-
-    override fun updateCharacterActionName(actionID: String, name: String) {
-      actionUpdates++
-    }
-
-    override fun updateCharacterActionDescription(actionID: String, description: String) {
-      actionUpdates++
     }
 
     override fun updateCharacterHp(current: Int) {
@@ -223,16 +222,11 @@ class GameScreenPlayerTest {
             )
         uiState.value =
             uiState.value.copy(
-                characters =
-                    uiState.value.characters.map {
-                      if (it.file.id == updatedCharacter.file.id) updatedCharacter else it
-                    },
+                character = updatedCharacter,
                 hpError = null,
             )
       }
     }
-
-    override fun updateCharacterMaxHp(max: Int) = Unit
 
     override fun saveCharacter() {
       saveCalls++
@@ -244,7 +238,7 @@ class GameScreenPlayerTest {
       uiState.value = uiState.value.copy(error = null, hpError = null)
     }
 
-    fun selectedCharacter() = requireNotNull(uiState.value.selectedCharacter)
+    fun selectedCharacter() = requireNotNull(uiState.value.character)
 
     fun setState(state: GamePlayerUiState) {
       uiState.value = state
@@ -270,12 +264,10 @@ class GameScreenPlayerTest {
                           ),
                       hp = CharacterHealthPoints(current = 18, max = 24),
                   ),
-              isEditable = true,
           )
       return GamePlayerUiState(
           groupId = "group-1",
-          characters = listOf(character),
-          selectedCharacterId = character.file.id,
+          character = character,
       )
     }
   }

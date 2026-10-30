@@ -84,12 +84,6 @@ fun GameScreenPlayer(
   var saveSucceeded by remember { mutableStateOf(false) }
 
   LaunchedEffect(groupId) { viewModel.loadSession(groupId) }
-  LaunchedEffect(uiState.characters, uiState.selectedCharacterId) {
-    val character = uiState.characters.singleOrNull()
-    if (character != null && uiState.selectedCharacterId == null) {
-      viewModel.selectCharacter(character.file.id)
-    }
-  }
   LaunchedEffect(uiState.isSaving, uiState.error) {
     if (uiState.isSaving) {
       wasSaving = true
@@ -100,12 +94,10 @@ fun GameScreenPlayer(
     }
   }
 
-  val character = uiState.selectedCharacter ?: uiState.characters.singleOrNull()
-  var lastSavedCharacter by remember { mutableStateOf(character?.character) }
+  val character = uiState.character
   val saveCharacter = {
-    if (character != null && (!uiState.isSaving || character.character != lastSavedCharacter)) {
+    if (character?.hasUnsavedChanges == true) {
       saveSucceeded = false
-      lastSavedCharacter = character.character
       viewModel.saveCharacter()
     }
   }
@@ -144,7 +136,7 @@ private fun GameScreenPlayerContent(
     onOpenGroupWorkspace: (String) -> Unit,
     onTabSelected: (String) -> Unit,
 ) {
-  val character = uiState.selectedCharacter ?: uiState.characters.singleOrNull()
+  val character = uiState.character
   var selectedTab by rememberSaveable { mutableStateOf("Campaigns") }
 
   Scaffold(
@@ -201,17 +193,10 @@ private fun GameScreenPlayerContent(
           }
         }
         character == null -> {
-          val error =
-              uiState.error ?: uiState.selectedCharacterId?.let { uiState.unreadableFiles[it] }
+          val error = uiState.error
           item {
             Text(
-                text =
-                    error
-                        ?: if (uiState.characters.isEmpty()) {
-                          "No character is available."
-                        } else {
-                          "No character is selected."
-                        },
+                text = error ?: "No character is available.",
                 modifier =
                     Modifier.fillMaxWidth()
                         .padding(vertical = 32.dp)
@@ -248,6 +233,7 @@ private fun GameScreenPlayerContent(
               ) {
                 OutlinedButton(
                     onClick = { onHpChanged(sheet.hp.current - 1) },
+                    enabled = sheet.hp.current > 0,
                     modifier = Modifier.weight(1f).testTag(GameScreenPlayerTestTags.HP_DECREASE),
                 ) {
                   Text("Take damage (−)")
@@ -261,7 +247,6 @@ private fun GameScreenPlayerContent(
                 }
               }
               Text("Max HP: ${sheet.hp.max}")
-              uiState.hpError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
           }
           item { Text("Stats", style = MaterialTheme.typography.titleMedium) }
@@ -412,15 +397,13 @@ private fun GameScreenPlayerPreview() {
                   actions = listOf(CharacterAction("aim", "Aim", "Take a careful shot.")),
                   hp = CharacterHealthPoints(current = 18, max = 24),
               ),
-          isEditable = true,
       )
   SampleAppTheme {
     GameScreenPlayerContent(
         uiState =
             GamePlayerUiState(
                 groupId = "preview-group",
-                characters = listOf(character),
-                selectedCharacterId = character.file.id,
+                character = character,
             ),
         saveSucceeded = false,
         onBack = {},
