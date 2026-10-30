@@ -16,10 +16,13 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -244,6 +247,61 @@ class GroupWorkSpaceViewModelTest {
     assertTrue(viewModel.uiState.value.canEditItems)
   }
 
+  // A membership flow failure clears the selected workspace, identity, and permissions.
+  @Test
+  fun membershipFlowFailureClearsWorkspaceAccess() = runTest {
+    val folder = groupFolder("selected", ownerId = OWNER_ID)
+    val file = groupFile("file", parentId = folder.id, ownerId = OWNER_ID)
+    val groupRepository = FakeGroupRepository(groupForRole(GroupWorkspaceRole.GAME_MASTER))
+    val viewModel =
+        viewModel(
+            FakeWorkspaceRepository(listOf(folder, file)),
+            GroupWorkspaceRole.GAME_MASTER,
+            groupRepository = groupRepository,
+        )
+    runCurrent()
+    viewModel.loadWorkspace(folder.id)
+    runCurrent()
+    assertEquals(listOf(file), viewModel.uiState.value.items)
+
+    groupRepository.fail(IllegalStateException("membership unavailable"))
+    runCurrent()
+
+    assertEquals("", viewModel.uiState.value.currentUserId)
+    assertTrue(viewModel.uiState.value.items.isEmpty())
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertEquals("", viewModel.uiState.value.currentFolderName)
+    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.canEditItems)
+    assertEquals(
+        LoadState.Error("membership unavailable"),
+        viewModel.uiState.value.loadState,
+    )
+  }
+
+  // Membership-flow cancellation stops observation without turning cancellation into an error.
+  @Test
+  fun membershipFlowCancellationIsNotReportedAsAnError() = runTest {
+    val file = groupFile("file")
+    val groupRepository = FakeGroupRepository(groupForRole(GroupWorkspaceRole.PLAYER))
+    val viewModel =
+        viewModel(
+            FakeWorkspaceRepository(listOf(file)),
+            GroupWorkspaceRole.PLAYER,
+            groupRepository = groupRepository,
+        )
+    runCurrent()
+    assertEquals(listOf(file), viewModel.uiState.value.items)
+
+    groupRepository.fail(CancellationException("membership observation cancelled"))
+    runCurrent()
+
+    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
+    assertEquals(listOf(file), viewModel.uiState.value.items)
+    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.canEditItems)
+  }
+
   // Players retain access to their own hidden items and folders containing them, but not unrelated
   // hidden content.
   @Test
@@ -371,6 +429,46 @@ class GroupWorkSpaceViewModelTest {
     player.loadWorkspace(nested.id)
     runCurrent()
     assertEquals(LoadState.Error("You cannot access this folder."), player.uiState.value.loadState)
+  }
+
+  // An exception while evaluating visible folders becomes a workspace error with a clear fallback
+  // message.
+  @Test
+  fun workspaceVisibilityFailureClearsItemsAndReportsFallbackMessage() = runTest {
+    val folder = groupFolder("folder")
+    val repository =
+        FakeWorkspaceRepository(
+            listOf(folder),
+            folderFailures = mapOf(folder.id to IllegalStateException()),
+        )
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+
+    runCurrent()
+
+    assertTrue(player.uiState.value.items.isEmpty())
+    assertEquals(
+        LoadState.Error("Unable to load workspace."),
+        player.uiState.value.loadState,
+    )
+    assertEquals("Unable to load workspace.", player.uiState.value.errorMessage)
+  }
+
+  // Cancellation during workspace collection is propagated and does not become an error state.
+  @Test
+  fun workspaceLoadCancellationIsNotReportedAsAnError() = runTest {
+    val cancellation = CancellationException("workspace collection cancelled")
+    val repository =
+        FakeWorkspaceRepository(
+            listOf(groupFile("file")),
+            folderFailures = mapOf(GROUP_ID to cancellation),
+        )
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+
+    runCurrent()
+
+    assertEquals(LoadState.Loading, player.uiState.value.loadState)
+    assertTrue(player.uiState.value.items.isEmpty())
+    assertEquals("", player.uiState.value.errorMessage)
   }
 
   // A suspended older request is cancelled, and its later folder emissions cannot replace current
@@ -802,10 +900,15 @@ class GroupWorkSpaceViewModelTest {
   private class FakeGroupRepository(group: CampaignGroup?) :
       GroupRepository by unusedGroupRepository {
     val group = MutableStateFlow(group)
+    private val failures = MutableSharedFlow<Exception>(extraBufferCapacity = 1)
 
     override fun getGroupFlow(groupId: String): Flow<CampaignGroup?> {
       require(groupId == GROUP_ID)
-      return group.asStateFlow()
+      return merge(group.asStateFlow(), failures.map { throw it })
+    }
+
+    fun fail(error: Exception) {
+      check(failures.tryEmit(error))
     }
   }
 
@@ -826,6 +929,7 @@ class GroupWorkSpaceViewModelTest {
   private class FakeWorkspaceRepository(
       initialFiles: List<JDRFile> = emptyList(),
       private val folderGates: Map<String, CompletableDeferred<Unit>> = emptyMap(),
+      private val folderFailures: Map<String, Exception> = emptyMap(),
   ) : WorkspaceRepository {
     val files = initialFiles.associateByTo(linkedMapOf(), JDRFile::id)
     private val folderFlows = mutableMapOf<Pair<String, String>, MutableStateFlow<List<JDRFile>>>()
@@ -838,7 +942,8 @@ class GroupWorkSpaceViewModelTest {
     val removeRequests = mutableListOf<RemovalRequest>()
     val hiddenRequests = mutableListOf<Pair<String, Boolean>>()
     val folderRequests = mutableListOf<String>()
-    val folderStarts = folderGates.keys.associateWith { CompletableDeferred<Unit>() }
+    val folderStarts =
+        folderGates.keys.associateWithTo(mutableMapOf()) { CompletableDeferred<Unit>() }
     val cancelledFolderRequests = mutableListOf<String>()
 
     override fun getNewUid(): String = "new-folder-${++nextId}"
@@ -953,11 +1058,11 @@ class GroupWorkSpaceViewModelTest {
           folderFlows
               .getOrPut(folderId to groupId) { MutableStateFlow(children(folderId, groupId)) }
               .asStateFlow()
-      val gate = folderGates[folderId] ?: return source
       return source
           .onStart {
-            folderStarts.getValue(folderId).complete(Unit)
-            gate.await()
+            folderStarts.getOrPut(folderId) { CompletableDeferred() }.complete(Unit)
+            folderGates[folderId]?.await()
+            folderFailures[folderId]?.let { throw it }
           }
           .onCompletion { cause ->
             if (cause is CancellationException) cancelledFolderRequests += folderId
