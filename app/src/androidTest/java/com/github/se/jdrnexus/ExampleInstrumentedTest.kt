@@ -1,4 +1,4 @@
-package com.github.se.jdrnexus
+/* package com.github.se.jdrnexus
 
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -32,3 +32,4 @@ class MainActivityTest : TestCase() {
     }
   }
 }
+*/

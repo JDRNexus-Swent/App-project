@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
@@ -66,7 +67,7 @@ import com.github.se.jdrnexus.resources.darkFieldColors
 
 @Composable
 fun SignInScreen(
-    signInViewModel: AuthViewModel,
+    signInViewModel: AuthViewModel = viewModel(),
     credentialManager: CredentialManager = CredentialManager.create(LocalContext.current),
     onSignInSuccess: () -> Unit = {},
     onSignUp: () -> Unit = {},

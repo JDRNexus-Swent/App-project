@@ -14,7 +14,7 @@ interface DiceInterfaceVM {
   fun selectDice(diceType: DiceType)
 
   /**
-   * Updates the modifier to be applied to future rolls.
+   * Updates the modifier to be applied to future rolls between 20 and -20.
    *
    * @param modifier The new modifier value (can be positive, negative, or zero).
    */
@@ -25,10 +25,16 @@ interface DiceInterfaceVM {
    *
    * @param modifier The increase (can be positive or negative).
    */
-  fun increaseModifiyer(modifier: Int)
+  fun increaseModifier(modifier: Int)
 
   /** Initiates a dice roll. */
   fun rollDice()
+
+  /**
+   * Notifies the ViewModel that the UI has finished displaying the roll animation. This will reset
+   * the isRolling state to false, allowing new rolls.
+   */
+  fun onRollAnimationFinished()
 
   /**
    * Clears the current error message. The UI must call this function after displaying the error to

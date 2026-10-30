@@ -47,6 +47,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
 import com.github.se.jdrnexus.resources.JdrNexusLogo
@@ -54,7 +55,7 @@ import com.github.se.jdrnexus.resources.darkFieldColors
 
 @Composable
 fun SignUpScreen(
-    signUpViewModel: AuthViewModel,
+    signUpViewModel: AuthViewModel = viewModel(),
     onRegister: () -> Unit = {},
     onSignInScreen: () -> Unit = {},
 ) {

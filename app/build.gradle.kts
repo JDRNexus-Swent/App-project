@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -53,6 +54,7 @@ android {
   packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
 
   testOptions {
+    animationsDisabled = true
     unitTests {
       isIncludeAndroidResources = true
       isReturnDefaultValues = true
@@ -108,6 +110,24 @@ sonar {
         "sonar.coverage.jacoco.xmlReportPaths",
         "${project.layout.buildDirectory.get()}/reports/coverage/test/debug/*.xml",
     )
+    // Also read the instrumented tests (src/androidTest), which CI runs on an emulator before the
+    // scan. These calls replace the values above with lists that include both kinds of tests.
+    property(
+        "sonar.junit.reportPaths",
+        listOf(
+                "${project.layout.buildDirectory.get()}/test-results/testDebugUnitTest/",
+                "${project.layout.buildDirectory.get()}/outputs/androidTest-results/connected/debug/",
+            )
+            .joinToString(","),
+    )
+    property(
+        "sonar.coverage.jacoco.xmlReportPaths",
+        listOf(
+                "${project.layout.buildDirectory.get()}/reports/coverage/test/debug/*.xml",
+                "${project.layout.buildDirectory.get()}/reports/coverage/androidTest/debug/connected/*.xml",
+            )
+            .joinToString(","),
+    )
   }
 }
 
@@ -120,6 +140,7 @@ fun DependencyHandlerScope.globalTestImplementation(dep: Any) {
 dependencies {
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.appcompat)
+  implementation(libs.androidx.navigation.compose)
   implementation(libs.androidx.ui.graphics)
   implementation(libs.googleid)
   implementation(libs.material)
@@ -137,6 +158,8 @@ dependencies {
 
   implementation(libs.compose.ui)
   implementation(libs.compose.ui.graphics)
+  implementation(libs.androidx.material.icons.extended)
+
   // Material Design 3
   implementation(libs.compose.material3)
   // Integration with activities
@@ -161,6 +184,8 @@ dependencies {
   // Firebase BoM
   implementation(platform(libs.firebase.bom))
 
+  testImplementation(libs.mockk)
+
   implementation(libs.firebase.firestore)
   implementation(libs.firebase.auth)
   implementation(libs.firebase.messaging)
@@ -168,6 +193,11 @@ dependencies {
   implementation(libs.kotlinx.serialization.core)
   implementation(libs.kotlinx.coroutines.play.services)
 }
+
+// Kaspresso pulls an old protobuf-lite that clashes with the protobuf-javalite used by Firestore
+configurations
+    .matching { it.name.contains("androidTest", ignoreCase = true) }
+    .all { exclude(group = "com.google.protobuf", module = "protobuf-lite") }
 
 tasks.withType<Test> {
   // Configure Jacoco for each tests
