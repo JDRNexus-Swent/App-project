@@ -569,6 +569,35 @@ class GroupWorkSpaceViewModelTest {
     assertEquals(listOf(child.id), player.uiState.value.items.map { it.id })
   }
 
+  // check that the game master can reveal any items inside a group
+  @Test
+  fun gameMasterCanRevealAnotherPlayersHiddenFile() = runTest {
+    val foreignFile =
+        groupFile(
+            "foreign-file",
+            ownerId = OTHER_USER_ID,
+            hidden = true,
+        )
+    val repository = FakeWorkspaceRepository(listOf(foreignFile))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+
+    runCurrent()
+
+    // Initially, the file is hidden.
+    assertTrue(repository.files.getValue(foreignFile.id).placements.getValue(GROUP_ID).isHidden)
+
+    // The GameMaster can reveal another player's file.
+    gm.setItemHidden(foreignFile, false)
+    runCurrent()
+
+    assertFalse(repository.files.getValue(foreignFile.id).placements.getValue(GROUP_ID).isHidden)
+    assertEquals(
+        listOf(foreignFile.id to false),
+        repository.hiddenRequests,
+    )
+    assertEquals("", gm.uiState.value.errorMessage)
+  }
+
   // Players cannot hide or reveal another member's item.
   @Test
   fun playerCannotHideOrRevealForeignItem() = runTest {

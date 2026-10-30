@@ -360,6 +360,8 @@ class GroupWorkspaceViewModel(
             if (folderId.isNotEmpty()) {
               requireAccessibleFolder(folderId, uid)
             }
+            // Ignore this result if a newer request has started.
+            if (requestGeneration != fetchGeneration) return@collect
 
             val visibleItems = buildList {
               for (item in items) {
