@@ -6,8 +6,6 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
 import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
-import com.github.se.jdrnexus.model.filerepresentation.LoreFile
-import com.github.se.jdrnexus.model.filerepresentation.LoreSection
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
@@ -58,7 +56,6 @@ class GamePlayerViewModelTest {
           hp = CharacterHealthPoints(current = 10, max = 20),
       )
   private val villain = hero.copy(name = "Villain")
-  private val lore = LoreFile("World", listOf(LoreSection("history", "History", "Long ago.")))
 
   private fun characterFile(
       id: String,
@@ -74,16 +71,6 @@ class GamePlayerViewModelTest {
           content = JDRFileJsonCodec.serializeCharacter(character),
           sharedGroupsIds = listOf(group.id),
           placements = mapOf(group.id to Placement(folderId, isHidden)),
-      )
-
-  private fun loreFile(id: String, ownerId: String = group.gameMasterId) =
-      JDRFile(
-          id = id,
-          ownerId = ownerId,
-          type = DocumentType.TEXT,
-          content = JDRFileJsonCodec.serializeLore(lore),
-          sharedGroupsIds = listOf(group.id),
-          placements = mapOf(group.id to Placement(group.id)),
       )
 
   private fun folder(id: String, isHidden: Boolean = false) =
@@ -115,13 +102,11 @@ class GamePlayerViewModelTest {
                     characterFile("gm-sheet", group.gameMasterId, villain),
                     characterFile("other-player", "someone-else"),
                     characterFile("hidden", group.gameMasterId, isHidden = true),
-                    loreFile("lore"),
-                    loreFile("other-lore", ownerId = "someone-else"),
-                    folder("nested"),
                     folder("secret", isHidden = true),
+                    folder("nested"),
                 ),
+            "secret" to listOf(characterFile("secret-own", player.uid, folderId = "secret")),
             "nested" to listOf(characterFile("own", player.uid, folderId = "nested")),
-            "secret" to listOf(loreFile("secret-lore")),
         )
     val viewModel = createViewModel(workspace)
 
@@ -139,7 +124,7 @@ class GamePlayerViewModelTest {
   }
 
   @Test
-  fun skipsUnreadableFilesWithoutFailingTheSession() = runTest {
+  fun skipsBrokenCharacterSheetsWithoutFailingTheSession() = runTest {
     val broken = characterFile("broken", player.uid).copy(content = "not json")
     val viewModel =
         createViewModel(
