@@ -1,7 +1,9 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
+import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
@@ -97,6 +99,145 @@ class GroupWorkSpaceViewModelTest {
     assertTrue(gm.uiState.value.canEditItems)
     assertFalse(player.uiState.value.canCreateFolder)
     assertFalse(player.uiState.value.canEditItems)
+  }
+
+  // A user outside the participant list and a deleted group both deny workspace access.
+  @Test
+  fun nonMemberAndDeletedGroupCannotAccessWorkspace() = runTest {
+    val groupRepository =
+        FakeGroupRepository(
+            CampaignGroup(
+                id = GROUP_ID,
+                gameMasterId = OTHER_USER_ID,
+                participantIds = listOf(OTHER_USER_ID),
+            )
+        )
+    val repository = FakeWorkspaceRepository(listOf(groupFile("file")))
+    val viewModel =
+        viewModel(
+            repository,
+            GroupWorkspaceRole.PLAYER,
+            groupRepository = groupRepository,
+        )
+
+    runCurrent()
+
+    assertEquals(
+        LoadState.Error("You are no longer a member of this group."),
+        viewModel.uiState.value.loadState,
+    )
+    assertTrue(viewModel.uiState.value.items.isEmpty())
+    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.canEditItems)
+
+    groupRepository.group.value = null
+    runCurrent()
+
+    assertEquals(
+        LoadState.Error("You are no longer a member of this group."),
+        viewModel.uiState.value.loadState,
+    )
+    assertTrue(viewModel.uiState.value.items.isEmpty())
+  }
+
+  // Changing the Game Master to a player reloads visibility and removes privileged permissions.
+  @Test
+  fun gameMasterLosesPermissionsWhenDemotedToPlayer() = runTest {
+    val visible = groupFile("visible")
+    val hidden = groupFile("hidden", hidden = true)
+    val groupRepository = FakeGroupRepository(groupForRole(GroupWorkspaceRole.GAME_MASTER))
+    val viewModel =
+        viewModel(
+            FakeWorkspaceRepository(listOf(visible, hidden)),
+            GroupWorkspaceRole.GAME_MASTER,
+            groupRepository = groupRepository,
+        )
+
+    runCurrent()
+    assertEquals(setOf(visible.id, hidden.id), viewModel.uiState.value.items.map { it.id }.toSet())
+    assertTrue(viewModel.uiState.value.canCreateFolder)
+    assertTrue(viewModel.uiState.value.canEditItems)
+
+    groupRepository.group.value =
+        CampaignGroup(
+            id = GROUP_ID,
+            gameMasterId = OTHER_USER_ID,
+            participantIds = listOf(OWNER_ID),
+        )
+    runCurrent()
+
+    assertEquals(listOf(visible.id), viewModel.uiState.value.items.map { it.id })
+    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
+    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.canEditItems)
+  }
+
+  // Removing and re-adding a player clears access, then restores the workspace without GM access.
+  @Test
+  fun playerLosesAndRegainsAccessWhenMembershipChanges() = runTest {
+    val file = groupFile("file")
+    val groupRepository = FakeGroupRepository(groupForRole(GroupWorkspaceRole.PLAYER))
+    val viewModel =
+        viewModel(
+            FakeWorkspaceRepository(listOf(file)),
+            GroupWorkspaceRole.PLAYER,
+            groupRepository = groupRepository,
+        )
+
+    runCurrent()
+    assertEquals(listOf(file), viewModel.uiState.value.items)
+
+    groupRepository.group.value = groupRepository.group.value!!.copy(participantIds = emptyList())
+    runCurrent()
+
+    assertEquals(
+        LoadState.Error("You are no longer a member of this group."),
+        viewModel.uiState.value.loadState,
+    )
+    assertTrue(viewModel.uiState.value.items.isEmpty())
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.canEditItems)
+
+    groupRepository.group.value = groupForRole(GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
+    assertEquals(listOf(file), viewModel.uiState.value.items)
+    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.canEditItems)
+  }
+
+  // Promoting a player to Game Master restores privileged permissions and access to hidden items.
+  @Test
+  fun playerReceivesGameMasterPermissionsAfterPromotion() = runTest {
+    val visible = groupFile("visible")
+    val hidden = groupFile("hidden", hidden = true)
+    val groupRepository = FakeGroupRepository(groupForRole(GroupWorkspaceRole.PLAYER))
+    val viewModel =
+        viewModel(
+            FakeWorkspaceRepository(listOf(visible, hidden)),
+            GroupWorkspaceRole.PLAYER,
+            groupRepository = groupRepository,
+        )
+
+    runCurrent()
+    assertEquals(listOf(visible.id), viewModel.uiState.value.items.map { it.id })
+    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.canEditItems)
+
+    groupRepository.group.value =
+        CampaignGroup(
+            id = GROUP_ID,
+            gameMasterId = OWNER_ID,
+            participantIds = listOf(OWNER_ID),
+        )
+    runCurrent()
+
+    assertEquals(setOf(visible.id, hidden.id), viewModel.uiState.value.items.map { it.id }.toSet())
+    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
+    assertTrue(viewModel.uiState.value.canCreateFolder)
+    assertTrue(viewModel.uiState.value.canEditItems)
   }
 
   // Players retain access to their own hidden items and folders containing them, but not unrelated
@@ -274,9 +415,9 @@ class GroupWorkSpaceViewModelTest {
     assertTrue(player.uiState.value.errorMessage.isNotBlank())
   }
 
-  // Players may add their own files, and adding into a hidden folder creates a hidden placement.
+  // Players may add their own files to an accessible folder using the requested placement.
   @Test
-  fun addingOwnedFileUsesRepositoryPlacementAndInheritsHiddenParent() = runTest {
+  fun playerAddsOwnedFileToSelectedFolder() = runTest {
     val hiddenParent = groupFolder("hidden-parent", hidden = true)
     val ownedAnchor = groupFile("owned-anchor", parentId = hiddenParent.id, ownerId = OWNER_ID)
     val file = JDRFile(id = "personal", ownerId = OWNER_ID, personalParentId = "personal-root")
@@ -289,9 +430,13 @@ class GroupWorkSpaceViewModelTest {
     player.addFile(file.id)
     runCurrent()
 
+    assertEquals(
+        listOf(AddRequest(file.id, GROUP_ID, hiddenParent.id, isHidden = false)),
+        repository.addRequests,
+    )
     val shared = repository.files.getValue(file.id)
     assertEquals(listOf(GROUP_ID), shared.sharedGroupsIds)
-    assertEquals(Placement(hiddenParent.id, true), shared.placements[GROUP_ID])
+    assertEquals(Placement(hiddenParent.id, false), shared.placements[GROUP_ID])
     assertEquals("personal-root", shared.personalParentId)
     assertEquals(
         setOf(ownedAnchor.id, file.id),
@@ -350,10 +495,9 @@ class GroupWorkSpaceViewModelTest {
     assertEquals(alreadyShared, repository.files.getValue(alreadyShared.id))
   }
 
-  // Hiding a folder cascades to its descendants, while revealing it leaves their hidden flags
-  // intact.
+  // The ViewModel forwards hide/reveal requests and reflects the selected folder's visibility.
   @Test
-  fun hidingFolderCascadesButRevealingItDoesNotRevealDescendants() = runTest {
+  fun gameMasterCanHideAndRevealFolder() = runTest {
     val folder = groupFolder("folder")
     val nested = groupFolder("nested", parentId = folder.id)
     val child = groupFile("child", parentId = nested.id)
@@ -365,21 +509,22 @@ class GroupWorkSpaceViewModelTest {
     gm.setItemHidden(folder, true)
     runCurrent()
     assertTrue(repository.files.getValue(folder.id).placements.getValue(GROUP_ID).isHidden)
-    assertTrue(repository.files.getValue(nested.id).placements.getValue(GROUP_ID).isHidden)
-    assertTrue(repository.files.getValue(child.id).placements.getValue(GROUP_ID).isHidden)
+    assertFalse(repository.files.getValue(nested.id).placements.getValue(GROUP_ID).isHidden)
+    assertFalse(repository.files.getValue(child.id).placements.getValue(GROUP_ID).isHidden)
+    assertEquals(listOf(folder.id to true), repository.hiddenRequests)
+    assertTrue(player.uiState.value.items.isEmpty())
 
     gm.setItemHidden(repository.files.getValue(folder.id), false)
     runCurrent()
     assertFalse(repository.files.getValue(folder.id).placements.getValue(GROUP_ID).isHidden)
-    assertTrue(repository.files.getValue(nested.id).placements.getValue(GROUP_ID).isHidden)
-    assertTrue(repository.files.getValue(child.id).placements.getValue(GROUP_ID).isHidden)
+    assertFalse(repository.files.getValue(nested.id).placements.getValue(GROUP_ID).isHidden)
+    assertFalse(repository.files.getValue(child.id).placements.getValue(GROUP_ID).isHidden)
+    assertEquals(listOf(folder.id to true, folder.id to false), repository.hiddenRequests)
 
-    player.loadWorkspace("")
-    runCurrent()
     assertEquals(listOf(folder.id), player.uiState.value.items.map { it.id })
     player.loadWorkspace(nested.id)
     runCurrent()
-    assertTrue(player.uiState.value.items.isEmpty())
+    assertEquals(listOf(child.id), player.uiState.value.items.map { it.id })
   }
 
   // Players can edit and remove their own group items, but cannot use a forged owner field.
@@ -442,10 +587,10 @@ class GroupWorkSpaceViewModelTest {
     assertEquals("Updated", repository.files.getValue(file.id).name)
   }
 
-  // Removing a folder unshares its group subtree without deleting documents or disturbing another
-  // group's placements.
+  // Folder removal is delegated with the selected parent and group; repository tests cover subtree
+  // effects.
   @Test
-  fun removingFolderUnsharesItsGroupSubtreeWithoutDeletingOrChangingOtherGroups() = runTest {
+  fun removingFolderPassesItsPlacementToRepository() = runTest {
     val folder =
         groupFolder(
             "folder",
@@ -464,8 +609,15 @@ class GroupWorkSpaceViewModelTest {
     gm.removeItem(folder)
     runCurrent()
 
+    assertEquals(
+        listOf(RemovalRequest(folder.id, GROUP_ID, GROUP_ID)),
+        repository.removeRequests,
+    )
     assertEquals(listOf(OTHER_GROUP_ID), repository.files.getValue(folder.id).sharedGroupsIds)
-    assertEquals(listOf(OTHER_GROUP_ID), repository.files.getValue(child.id).sharedGroupsIds)
+    assertEquals(
+        listOf(GROUP_ID, OTHER_GROUP_ID),
+        repository.files.getValue(child.id).sharedGroupsIds,
+    )
     assertEquals(
         Placement(OTHER_GROUP_ID, false),
         repository.files.getValue(child.id).placements[OTHER_GROUP_ID],
@@ -499,7 +651,39 @@ class GroupWorkSpaceViewModelTest {
       repository: FakeWorkspaceRepository,
       role: GroupWorkspaceRole,
       authRepository: FakeAuthRepository = FakeAuthRepository(),
-  ) = GroupWorkspaceViewModel(GROUP_ID, role, repository, authRepository)
+      groupRepository: FakeGroupRepository = FakeGroupRepository(groupForRole(role)),
+  ) = GroupWorkspaceViewModel(GROUP_ID, groupRepository, repository, authRepository)
+
+  private fun groupForRole(role: GroupWorkspaceRole) =
+      CampaignGroup(
+          id = GROUP_ID,
+          gameMasterId = if (role == GroupWorkspaceRole.GAME_MASTER) OWNER_ID else OTHER_USER_ID,
+          participantIds = listOf(OWNER_ID),
+      )
+
+  private class FakeGroupRepository(group: CampaignGroup?) :
+      GroupRepository by unusedGroupRepository {
+    val group = MutableStateFlow(group)
+
+    override fun getGroupFlow(groupId: String): Flow<CampaignGroup?> {
+      require(groupId == GROUP_ID)
+      return group.asStateFlow()
+    }
+  }
+
+  private data class AddRequest(
+      val itemId: String,
+      val groupId: String,
+      val folderId: String,
+      val isHidden: Boolean,
+      val includeContent: Boolean = false,
+  )
+
+  private data class RemovalRequest(
+      val itemId: String,
+      val groupId: String,
+      val parentFolderId: String,
+  )
 
   private class FakeWorkspaceRepository(initialFiles: List<JDRFile> = emptyList()) :
       WorkspaceRepository {
@@ -510,6 +694,9 @@ class GroupWorkSpaceViewModelTest {
         mutableMapOf<Pair<String, String>, MutableStateFlow<List<JDRFile>>>()
     private var nextId = 0
     var updateFailure: Exception? = null
+    val addRequests = mutableListOf<AddRequest>()
+    val removeRequests = mutableListOf<RemovalRequest>()
+    val hiddenRequests = mutableListOf<Pair<String, Boolean>>()
 
     override fun getNewUid(): String = "new-folder-${++nextId}"
 
@@ -546,19 +733,9 @@ class GroupWorkSpaceViewModelTest {
         groupId: String,
         parentFolderId: String,
     ): Result<Unit> = runCatching {
-      val root = requireNotNull(files[itemId])
-      check(root.placements[groupId]?.folderId == parentFolderId)
-      val subtree = mutableListOf<JDRFile>()
-      val visited = mutableSetOf<String>()
-      fun collect(item: JDRFile) {
-        if (!visited.add(item.id)) return
-        subtree += item
-        if (item.type == DocumentType.FOLDER) {
-          children(item.id, groupId).forEach(::collect)
-        }
-      }
-      collect(root)
-      subtree.forEach { item -> files[item.id] = item.withoutPlacement(groupId) }
+      removeRequests += RemovalRequest(itemId, groupId, parentFolderId)
+      val item = requireNotNull(files[itemId])
+      files[itemId] = item.withoutPlacement(groupId)
       refresh()
     }
 
@@ -569,18 +746,9 @@ class GroupWorkSpaceViewModelTest {
         isHidden: Boolean,
         includeContent: Boolean,
     ): Result<Unit> = runCatching {
-      require(!includeContent) { "includeContent is not supported yet." }
+      addRequests += AddRequest(itemId, groupId, folderId, isHidden, includeContent)
       val item = requireNotNull(files[itemId])
-      check(item.type != DocumentType.GROUP_ROOT)
-      check(groupId !in item.sharedGroupsIds)
-      val folder = requireNotNull(files[folderId])
-      check(folder.type == DocumentType.FOLDER || folder.type == DocumentType.GROUP_ROOT)
-      check(
-          groupId in folder.sharedGroupsIds ||
-              folder.type == DocumentType.GROUP_ROOT && folder.id == groupId
-      )
-      val parentHidden = folder.placements[groupId]?.isHidden == true
-      files[itemId] = item.withPlacement(groupId, Placement(folderId, isHidden || parentHidden))
+      files[itemId] = item.withPlacement(groupId, Placement(folderId, isHidden))
       refresh()
     }
 
@@ -589,36 +757,14 @@ class GroupWorkSpaceViewModelTest {
         groupId: String,
         isHidden: Boolean,
     ): Result<Unit> = runCatching {
+      hiddenRequests += itemId to isHidden
       val item = requireNotNull(files[itemId])
-      val placement = requireNotNull(item.placements[groupId])
-      if (!isHidden && placement.folderId != groupId) {
-        check(files[placement.folderId]?.placements?.get(groupId)?.isHidden != true) {
-          "Reveal the parent folder first."
-        }
-      }
-      val affected =
-          if (isHidden) {
-            val subtree = mutableListOf<JDRFile>()
-            val visited = mutableSetOf<String>()
-            fun collect(current: JDRFile) {
-              if (!visited.add(current.id)) return
-              subtree += current
-              if (current.type == DocumentType.FOLDER)
-                  children(current.id, groupId).forEach(::collect)
-            }
-            collect(item)
-            subtree
-          } else {
-            listOf(item)
-          }
-      affected.forEach { current ->
-        files[current.id] =
-            current.copy(
-                placements =
-                    current.placements +
-                        (groupId to current.placements.getValue(groupId).copy(isHidden = isHidden))
-            )
-      }
+      files[itemId] =
+          item.copy(
+              placements =
+                  item.placements +
+                      (groupId to item.placements.getValue(groupId).copy(isHidden = isHidden))
+          )
       refresh()
     }
 
@@ -693,6 +839,28 @@ class GroupWorkSpaceViewModelTest {
   }
 
   private companion object {
+    val unusedGroupRepository =
+        object : GroupRepository {
+          override fun getNewGroupId() = error("Not used")
+
+          override suspend fun createGroup(group: CampaignGroup) = error("Not used")
+
+          override suspend fun updateGroup(group: CampaignGroup) = error("Not used")
+
+          override suspend fun deleteGroup(groupId: String) = error("Not used")
+
+          override suspend fun getGroup(groupId: String) = error("Not used")
+
+          override suspend fun addUserToGroup(groupId: String, userId: String) = error("Not used")
+
+          override suspend fun removeUserFromGroup(groupId: String, userId: String) =
+              error("Not used")
+
+          override fun getGroupFlow(groupId: String) = error("Not used")
+
+          override fun getUserGroups(userId: String) = error("Not used")
+        }
+
     const val GROUP_ID = "group-7"
     const val OTHER_GROUP_ID = "group-8"
     const val OWNER_ID = "authenticated-user-42"

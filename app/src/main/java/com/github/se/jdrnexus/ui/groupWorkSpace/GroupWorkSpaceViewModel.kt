@@ -4,6 +4,7 @@ package com.github.se.jdrnexus.ui.groupWorkSpace
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
@@ -45,18 +46,13 @@ data class GroupWorkspaceUiState(
 
 class GroupWorkspaceViewModel(
     private val groupId: String,
-    private val role: GroupWorkspaceRole,
+    private val groupRepository: GroupRepository,
     private val repository: WorkspaceRepository = WorkspaceRepositoryProvider.repository,
     private val authRepository: AuthRepository = AuthRepositoryProvider.repository,
 ) : ViewModel() {
 
-  private val _uiState =
-      MutableStateFlow(
-          GroupWorkspaceUiState(
-              canCreateFolder = role == GroupWorkspaceRole.GAME_MASTER,
-              canEditItems = role == GroupWorkspaceRole.GAME_MASTER,
-          )
-      )
+  private var role: GroupWorkspaceRole? = null
+  private val _uiState = MutableStateFlow(GroupWorkspaceUiState())
 
   val uiState: StateFlow<GroupWorkspaceUiState> = _uiState.asStateFlow()
 
@@ -105,6 +101,7 @@ class GroupWorkspaceViewModel(
    * The Game Master can edit any item, while players can edit only their own items.
    */
   private fun requireCanEdit(item: JDRFile, uid: String) {
+    check(role != null) { "You are not a member of this group." }
     check(role == GroupWorkspaceRole.GAME_MASTER || item.ownerId == uid) {
       "You cannot edit an item that you do not own."
     }
@@ -148,7 +145,11 @@ class GroupWorkspaceViewModel(
       uid: String,
   ): Boolean {
     // The GM can see all items in the group workspace.
-    if (role == GroupWorkspaceRole.GAME_MASTER) return true
+    when (role) {
+      GroupWorkspaceRole.GAME_MASTER -> return true
+      GroupWorkspaceRole.PLAYER -> Unit
+      null -> return false
+    }
 
     // A player can only see items that have a valid placement in this group.
     if (groupId !in item.sharedGroupsIds) return false
@@ -230,11 +231,77 @@ class GroupWorkspaceViewModel(
 
   init {
     require(groupId.isNotBlank()) { "Group ID cannot be empty." }
-    loadWorkspace()
+
+    viewModelScope.launch {
+      try {
+        val uid = requireUid()
+
+        groupRepository.getGroupFlow(groupId).collect { group ->
+          val newRole =
+              when {
+                group?.gameMasterId == uid -> GroupWorkspaceRole.GAME_MASTER
+
+                group?.participantIds?.contains(uid) == true -> GroupWorkspaceRole.PLAYER
+
+                else -> null
+              }
+
+          if (newRole == null) {
+            role = null
+            fetchJob?.cancel()
+            fetchGeneration++
+
+            _uiState.update {
+              it.copy(
+                  items = emptyList(),
+                  currentFolderId = "",
+                  currentFolderName = "",
+                  canCreateFolder = false,
+                  canEditItems = false,
+                  loadState = LoadState.Error("You are no longer a member of this group."),
+              )
+            }
+            return@collect
+          }
+
+          val roleChanged = role != newRole
+          role = newRole
+
+          _uiState.update {
+            it.copy(
+                canCreateFolder = newRole == GroupWorkspaceRole.GAME_MASTER,
+                canEditItems = newRole == GroupWorkspaceRole.GAME_MASTER,
+            )
+          }
+
+          if (roleChanged || fetchJob == null) {
+            loadWorkspace()
+          }
+        }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        role = null
+        fetchJob?.cancel()
+        fetchGeneration++
+        _uiState.update {
+          it.copy(
+              currentUserId = "",
+              items = emptyList(),
+              currentFolderId = "",
+              currentFolderName = "",
+              canCreateFolder = false,
+              canEditItems = false,
+              loadState = LoadState.Error(e.message ?: "Unable to verify group membership."),
+          )
+        }
+      }
+    }
   }
 
   /** Observes the current folder, or the group root when folderId is empty. */
   fun loadWorkspace(folderId: String = _uiState.value.currentFolderId) {
+    if (role == null) return
     val requestGeneration = ++fetchGeneration
     fetchJob?.cancel()
 
@@ -265,16 +332,30 @@ class GroupWorkspaceViewModel(
 
         val updates =
             if (folderId.isEmpty()) {
-              source
+              source.map { items -> items to true }
             } else {
-              // React to changes to the selected folder itself.
-              val folderChanges = repository.getFileFlow(folderId).map { Unit }
+              // Observe both folder contents and changes to the selected folder.
+              combine(source, repository.getFileFlow(folderId)) { items, folder ->
+                val folderValid =
+                    folder != null &&
+                        folder.type == DocumentType.FOLDER &&
+                        groupId in folder.sharedGroupsIds
 
-              combine(source, folderChanges) { items, _ -> items }
+                items to folderValid
+              }
             }
 
-        updates.collect { items ->
-          if (requestGeneration == fetchGeneration) {
+        updates.collect { (items, folderValid) ->
+          if (requestGeneration != fetchGeneration) return@collect
+
+          // If the selected folder is no longer available, return to the group root.
+          if (!folderValid) {
+            loadWorkspace("")
+            showError("This folder is no longer available.")
+            return@collect
+          }
+
+          try {
             // Revalidate the selected folder when its contents or metadata change.
             if (folderId.isNotEmpty()) {
               requireAccessibleFolder(folderId, uid)
@@ -294,6 +375,20 @@ class GroupWorkspaceViewModel(
                   loadState = LoadState.Success,
                   errorMessage = "",
               )
+            }
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            if (requestGeneration == fetchGeneration) {
+              val message = e.message ?: "Unable to load workspace."
+
+              _uiState.update {
+                it.copy(
+                    items = emptyList(),
+                    loadState = LoadState.Error(message),
+                    errorMessage = message,
+                )
+              }
             }
           }
         }
@@ -338,16 +433,15 @@ class GroupWorkspaceViewModel(
         val isHidden = parent?.placements?.get(groupId)?.isHidden == true
         val folder =
             JDRFile(
-                id = folderId,
-                name = folderName,
-                ownerId = uid,
-                sharedGroupsIds = listOf(groupId),
-                placements =
-                    mapOf(groupId to Placement(folderId = parentId.ifEmpty { groupId }, isHidden)),
-                personalParentId = "",
-                type = DocumentType.FOLDER,
-                content = "",
-            )
+                    id = folderId,
+                    name = folderName,
+                    ownerId = uid,
+                    sharedGroupsIds = listOf(groupId),
+                    personalParentId = "",
+                    type = DocumentType.FOLDER,
+                    content = "",
+                )
+                .withPlacement(groupId, Placement(parentId.ifEmpty { groupId }, isHidden))
 
         repository.createFile(folder).getOrThrow()
       }
