@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
  */
 class DiceViewModelFactory(
     private val diceLogic: DiceLogic,
-    private val diceRepository: DiceRepositoryFirestore,
+    private val diceRepository: DiceRepositoryFirestore?,
     private val groupId: String? = null,
 ) : ViewModelProvider.Factory {
 
@@ -42,7 +42,7 @@ class DiceViewModelFactory(
  */
 class DiceViewModel(
     private val diceLogic: DiceLogic,
-    private val diceRepository: DiceRepositoryFirestore,
+    private val diceRepository: DiceRepositoryFirestore?,
     private val groupId: String? = null,
 ) : ViewModel(), DiceInterfaceVM {
 
@@ -74,6 +74,9 @@ class DiceViewModel(
     // Prevent starting a new roll if one is already in progress
     if (currentState.isRolling) return
 
+    val repository = groupId?.let {
+      checkNotNull(diceRepository) { "A dice repository is required for group rolls." }
+    }
     val result = diceLogic.roll(currentState.selectedDice, currentState.modifier)
 
     _uiState.update {
@@ -83,10 +86,10 @@ class DiceViewModel(
       )
     }
 
-    if (groupId != null) {
+    if (groupId != null && repository != null) {
       // Launch a coroutine in the ViewModel's scope so it doesn't block the main thread
       viewModelScope.launch {
-        val saveResult = diceRepository.saveRollResult(groupId, result)
+        val saveResult = repository.saveRollResult(groupId, result)
 
         // If saving fails (e.g., permission error or weird edge case), notify the UI
         if (saveResult.isFailure) {
