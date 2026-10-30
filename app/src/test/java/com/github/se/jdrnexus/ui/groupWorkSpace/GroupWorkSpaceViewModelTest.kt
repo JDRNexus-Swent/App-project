@@ -11,6 +11,8 @@ import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.viewmodel.LoadState
+import java.util.concurrent.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -18,6 +20,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -369,20 +373,41 @@ class GroupWorkSpaceViewModelTest {
     assertEquals(LoadState.Error("You cannot access this folder."), player.uiState.value.loadState)
   }
 
-  // Switching folders displays only the latest requested folder's contents.
+  // A suspended older request is cancelled, and its later folder emissions cannot replace current
+  // content.
   @Test
   fun loadsCancelStaleRequestsAndKeepCurrentFolderItems() = runTest {
     val slowFolder = groupFolder("slow")
     val fastFolder = groupFolder("fast")
     val slow = groupFile("slow-item", parentId = slowFolder.id)
     val fast = groupFile("fast-item", parentId = fastFolder.id)
-    val repository = FakeWorkspaceRepository(listOf(slowFolder, fastFolder, slow, fast))
+    val slowGate = CompletableDeferred<Unit>()
+    val repository =
+        FakeWorkspaceRepository(
+            listOf(slowFolder, fastFolder, slow, fast),
+            folderGates = mapOf(slowFolder.id to slowGate),
+        )
     val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
     runCurrent()
 
     viewModel.loadWorkspace(slowFolder.id)
     runCurrent()
+    assertTrue(repository.folderStarts.getValue(slowFolder.id).isCompleted)
+    assertTrue(viewModel.uiState.value.loadState is LoadState.Loading)
+
     viewModel.loadWorkspace(fastFolder.id)
+    runCurrent()
+    assertTrue(slowFolder.id in repository.cancelledFolderRequests)
+    assertTrue(fastFolder.id in repository.folderRequests)
+    assertEquals(listOf(fast), viewModel.uiState.value.items)
+
+    // The old collection has been cancelled, but its repository flow remains independently
+    // writable.
+    slowGate.complete(Unit)
+    repository.emitFolderItems(
+        slowFolder.id,
+        listOf(groupFile("late-slow", parentId = slowFolder.id)),
+    )
     runCurrent()
 
     assertEquals(fastFolder.id, viewModel.uiState.value.currentFolderId)
@@ -412,7 +437,11 @@ class GroupWorkSpaceViewModelTest {
     player.createFolder("Forbidden")
     runCurrent()
     assertFalse(repository.files.values.any { it.name == "Forbidden" })
-    assertTrue(player.uiState.value.errorMessage.isNotBlank())
+    assertEquals(
+        "Only the GameMaster can perform this operation.",
+        player.uiState.value.errorMessage,
+    )
+    assertEquals(setOf(parent, created), repository.files.values.toSet())
   }
 
   // Players may add their own files to an accessible folder using the requested placement.
@@ -470,29 +499,42 @@ class GroupWorkSpaceViewModelTest {
 
     gm.addFile(foreign.id)
     runCurrent()
-    assertTrue(gm.uiState.value.errorMessage.isNotBlank())
+    assertEquals("You can only add files that you own.", gm.uiState.value.errorMessage)
     assertTrue(GROUP_ID !in repository.files.getValue(foreign.id).sharedGroupsIds)
+    assertEquals(
+        listOf(AddRequest(owned.id, GROUP_ID, GROUP_ID, isHidden = false)),
+        repository.addRequests,
+    )
   }
 
   // Players cannot add someone else's file or add a file that already has a placement in the group.
   @Test
   fun playersCannotAddFilesTheyDoNotOwnOrItemsAlreadyInGroup() = runTest {
+    val groupRoot =
+        JDRFile(
+            id = GROUP_ID,
+            ownerId = OWNER_ID,
+            type = DocumentType.GROUP_ROOT,
+            sharedGroupsIds = listOf(GROUP_ID),
+        )
     val foreign = JDRFile(id = "foreign", ownerId = OTHER_USER_ID)
     val alreadyShared = groupFile("shared", ownerId = OWNER_ID)
-    val repository = FakeWorkspaceRepository(listOf(foreign, alreadyShared))
+    val repository = FakeWorkspaceRepository(listOf(groupRoot, foreign, alreadyShared))
     val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
     runCurrent()
 
     player.addFile(foreign.id)
     runCurrent()
-    assertTrue(player.uiState.value.errorMessage.isNotBlank())
+    assertEquals("You can only add files that you own.", player.uiState.value.errorMessage)
     assertTrue(GROUP_ID !in repository.files.getValue(foreign.id).sharedGroupsIds)
+    assertTrue(repository.addRequests.isEmpty())
 
     player.clearError()
     player.addFile(alreadyShared.id)
     runCurrent()
-    assertTrue(player.uiState.value.errorMessage.isNotBlank())
+    assertEquals("This file is already in the group.", player.uiState.value.errorMessage)
     assertEquals(alreadyShared, repository.files.getValue(alreadyShared.id))
+    assertTrue(repository.addRequests.isEmpty())
   }
 
   // The ViewModel forwards hide/reveal requests and reflects the selected folder's visibility.
@@ -527,6 +569,73 @@ class GroupWorkSpaceViewModelTest {
     assertEquals(listOf(child.id), player.uiState.value.items.map { it.id })
   }
 
+  // Players cannot hide or reveal another member's item.
+  @Test
+  fun playerCannotHideOrRevealForeignItem() = runTest {
+    val item = groupFile("foreign")
+    val hiddenItem = groupFile("hidden-foreign", hidden = true)
+    val repository = FakeWorkspaceRepository(listOf(item, hiddenItem))
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    player.setItemHidden(item, true)
+    runCurrent()
+    assertEquals("You cannot edit an item that you do not own.", player.uiState.value.errorMessage)
+    assertFalse(repository.files.getValue(item.id).placements.getValue(GROUP_ID).isHidden)
+
+    player.clearError()
+    player.setItemHidden(item, false)
+    runCurrent()
+    assertEquals("You cannot edit an item that you do not own.", player.uiState.value.errorMessage)
+    assertFalse(repository.files.getValue(item.id).placements.getValue(GROUP_ID).isHidden)
+
+    player.clearError()
+    player.setItemHidden(hiddenItem, false)
+    runCurrent()
+    assertEquals("You cannot access this item.", player.uiState.value.errorMessage)
+    assertTrue(repository.files.getValue(hiddenItem.id).placements.getValue(GROUP_ID).isHidden)
+    assertTrue(repository.hiddenRequests.isEmpty())
+  }
+
+  // Players can hide and reveal their own group items.
+  @Test
+  fun playerCanHideAndRevealOwnItem() = runTest {
+    val item = groupFile("owned", ownerId = OWNER_ID)
+    val repository = FakeWorkspaceRepository(listOf(item))
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    player.setItemHidden(item, true)
+    runCurrent()
+    assertEquals("", player.uiState.value.errorMessage)
+    assertTrue(repository.files.getValue(item.id).placements.getValue(GROUP_ID).isHidden)
+
+    player.setItemHidden(repository.files.getValue(item.id), false)
+    runCurrent()
+    assertEquals("", player.uiState.value.errorMessage)
+    assertFalse(repository.files.getValue(item.id).placements.getValue(GROUP_ID).isHidden)
+    assertEquals(listOf(item.id to true, item.id to false), repository.hiddenRequests)
+  }
+
+  // Revealing an owned item is rejected while its parent folder remains hidden.
+  @Test
+  fun cannotRevealOwnedItemInsideHiddenParent() = runTest {
+    val parent = groupFolder("hidden-parent", ownerId = OWNER_ID, hidden = true)
+    val item = groupFile("owned-child", parentId = parent.id, ownerId = OWNER_ID, hidden = true)
+    val repository = FakeWorkspaceRepository(listOf(parent, item))
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+    player.loadWorkspace(parent.id)
+    runCurrent()
+
+    player.setItemHidden(item, false)
+    runCurrent()
+
+    assertEquals("Reveal the parent folder first.", player.uiState.value.errorMessage)
+    assertTrue(repository.files.getValue(item.id).placements.getValue(GROUP_ID).isHidden)
+    assertEquals(listOf(item.id to false), repository.hiddenRequests)
+  }
+
   // Players can edit and remove their own group items, but cannot use a forged owner field.
   @Test
   fun playersMayEditAndRemoveOnlyTheirOwnGroupItems() = runTest {
@@ -541,13 +650,13 @@ class GroupWorkSpaceViewModelTest {
 
     player.editItem(foreign.copy(name = "forged", ownerId = OWNER_ID))
     runCurrent()
-    assertTrue(player.uiState.value.errorMessage.isNotBlank())
+    assertEquals("You cannot edit an item that you do not own.", player.uiState.value.errorMessage)
     assertEquals(foreign, repository.files.getValue(foreign.id))
 
     player.clearError()
     player.removeItem(foreign)
     runCurrent()
-    assertTrue(player.uiState.value.errorMessage.isNotBlank())
+    assertEquals("You cannot edit an item that you do not own.", player.uiState.value.errorMessage)
     assertEquals(foreign, repository.files.getValue(foreign.id))
 
     player.clearError()
@@ -583,7 +692,7 @@ class GroupWorkSpaceViewModelTest {
     runCurrent()
     player.editItem(file.copy(name = "Not allowed"))
     runCurrent()
-    assertTrue(player.uiState.value.errorMessage.isNotBlank())
+    assertEquals("You cannot edit an item that you do not own.", player.uiState.value.errorMessage)
     assertEquals("Updated", repository.files.getValue(file.id).name)
   }
 
@@ -685,8 +794,10 @@ class GroupWorkSpaceViewModelTest {
       val parentFolderId: String,
   )
 
-  private class FakeWorkspaceRepository(initialFiles: List<JDRFile> = emptyList()) :
-      WorkspaceRepository {
+  private class FakeWorkspaceRepository(
+      initialFiles: List<JDRFile> = emptyList(),
+      private val folderGates: Map<String, CompletableDeferred<Unit>> = emptyMap(),
+  ) : WorkspaceRepository {
     val files = initialFiles.associateByTo(linkedMapOf(), JDRFile::id)
     private val folderFlows = mutableMapOf<Pair<String, String>, MutableStateFlow<List<JDRFile>>>()
     private val fileFlows = mutableMapOf<String, MutableStateFlow<JDRFile?>>()
@@ -697,6 +808,9 @@ class GroupWorkSpaceViewModelTest {
     val addRequests = mutableListOf<AddRequest>()
     val removeRequests = mutableListOf<RemovalRequest>()
     val hiddenRequests = mutableListOf<Pair<String, Boolean>>()
+    val folderRequests = mutableListOf<String>()
+    val folderStarts = folderGates.keys.associateWith { CompletableDeferred<Unit>() }
+    val cancelledFolderRequests = mutableListOf<String>()
 
     override fun getNewUid(): String = "new-folder-${++nextId}"
 
@@ -726,7 +840,15 @@ class GroupWorkSpaceViewModelTest {
       return Result.success(Unit)
     }
 
-    override suspend fun getFile(fileId: String): Result<JDRFile?> = Result.success(files[fileId])
+    override suspend fun getFile(fileId: String): Result<JDRFile?> {
+      val file = files[fileId]
+
+      return if (file != null) {
+        Result.success(file)
+      } else {
+        Result.failure(Exception("Document not found in Firestore"))
+      }
+    }
 
     override suspend fun removeItemFromGroup(
         itemId: String,
@@ -748,6 +870,9 @@ class GroupWorkSpaceViewModelTest {
     ): Result<Unit> = runCatching {
       addRequests += AddRequest(itemId, groupId, folderId, isHidden, includeContent)
       val item = requireNotNull(files[itemId])
+      val folder = requireNotNull(files[folderId])
+      check(folder.type == DocumentType.GROUP_ROOT || folder.type == DocumentType.FOLDER)
+      check(groupId in folder.sharedGroupsIds)
       files[itemId] = item.withPlacement(groupId, Placement(folderId, isHidden))
       refresh()
     }
@@ -759,6 +884,12 @@ class GroupWorkSpaceViewModelTest {
     ): Result<Unit> = runCatching {
       hiddenRequests += itemId to isHidden
       val item = requireNotNull(files[itemId])
+      val parentId = item.placements[groupId]?.folderId
+      if (!isHidden && parentId != groupId) {
+        check(files[parentId]?.placements?.get(groupId)?.isHidden != true) {
+          "Reveal the parent folder first."
+        }
+      }
       files[itemId] =
           item.copy(
               placements =
@@ -787,10 +918,28 @@ class GroupWorkSpaceViewModelTest {
             }
             .asStateFlow()
 
-    override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
-        folderFlows
-            .getOrPut(folderId to groupId) { MutableStateFlow(children(folderId, groupId)) }
-            .asStateFlow()
+    override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> {
+      folderRequests += folderId
+      val source =
+          folderFlows
+              .getOrPut(folderId to groupId) { MutableStateFlow(children(folderId, groupId)) }
+              .asStateFlow()
+      val gate = folderGates[folderId] ?: return source
+      return source
+          .onStart {
+            folderStarts.getValue(folderId).complete(Unit)
+            gate.await()
+          }
+          .onCompletion { cause ->
+            if (cause is CancellationException) cancelledFolderRequests += folderId
+          }
+    }
+
+    fun emitFolderItems(folderId: String, items: List<JDRFile>) {
+      folderFlows
+          .getOrPut(folderId to GROUP_ID) { MutableStateFlow(children(folderId, GROUP_ID)) }
+          .value = items
+    }
 
     fun replaceFile(file: JDRFile) {
       files[file.id] = file
