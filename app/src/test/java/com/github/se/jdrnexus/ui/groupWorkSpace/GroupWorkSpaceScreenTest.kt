@@ -279,6 +279,153 @@ class GroupWorkSpaceScreenTest {
     assertFalse(viewModel.uiState.value.canEditItems)
   }
 
+  // Verifies that a player sees management controls for their own file.
+  // This ensures ownership grants visibility and removal actions without broader permissions.
+  @Test
+  fun playerCanManageOwnFileFromTheScreen() {
+    val file = groupFile("player-file", ownerId = CURRENT_USER_ID)
+    val removableFile = groupFile("removable-file", ownerId = CURRENT_USER_ID)
+    val repository = FakeWorkspaceRepository(listOf(file, removableFile))
+    showScreen(repository, GroupWorkspaceRole.PLAYER)
+
+    composeTestRule.onNodeWithContentDescription("Edit Player file").assertIsDisplayed()
+    composeTestRule.onNodeWithContentDescription("Remove Player file").assertIsDisplayed()
+    composeTestRule.onNodeWithContentDescription("Hide Player file").assertIsDisplayed()
+
+    composeTestRule.onNodeWithContentDescription("Hide Player file").performClick()
+    composeTestRule.waitUntil(5_000) {
+      repository.files[file.id]?.placements?.get(GROUP_ID)?.isHidden == true
+    }
+    assertTrue(repository.files[file.id]?.placements?.get(GROUP_ID)?.isHidden == true)
+
+    composeTestRule.onNodeWithContentDescription("Remove Removable file").performClick()
+    composeTestRule.onNodeWithText("Remove").performClick()
+    composeTestRule.waitUntil(5_000) {
+      repository.files[removableFile.id]?.sharedGroupsIds?.contains(GROUP_ID) == false
+    }
+  }
+
+  // Verifies that a player cannot access management actions for a foreign file.
+  // This protects edit, removal, and visibility operations from unauthorized use.
+  @Test
+  fun playerCannotManageForeignFileFromTheScreen() {
+    val file = groupFile("foreign-file", ownerId = OTHER_USER_ID)
+    showScreen(FakeWorkspaceRepository(listOf(file)), GroupWorkspaceRole.PLAYER)
+
+    composeTestRule.onAllNodesWithContentDescription("Edit Foreign file").assertCountEquals(0)
+    composeTestRule.onAllNodesWithContentDescription("Remove Foreign file").assertCountEquals(0)
+    composeTestRule.onAllNodesWithContentDescription("Hide Foreign file").assertCountEquals(0)
+    composeTestRule.onAllNodesWithContentDescription("Show Foreign file").assertCountEquals(0)
+  }
+
+  // Verifies that a Game Master sees management controls for another user's file.
+  // This ensures Game Master management applies regardless of file ownership.
+  @Test
+  fun gameMasterCanEditAndToggleForeignFile() {
+    val file = groupFile("foreign-file", ownerId = OTHER_USER_ID)
+    val repository = FakeWorkspaceRepository(listOf(file))
+    showScreen(repository, GroupWorkspaceRole.GAME_MASTER)
+
+    composeTestRule.onNodeWithContentDescription("Hide Foreign file").performClick()
+    composeTestRule.waitUntil(5_000) {
+      repository.files[file.id]?.placements?.get(GROUP_ID)?.isHidden == true
+    }
+    assertTrue(repository.files[file.id]?.placements?.get(GROUP_ID)?.isHidden == true)
+  }
+
+  // Verifies that a Game Master can remove a file owned by another user.
+  // This protects the group's moderation workflow and its confirmation dialog.
+  @Test
+  fun gameMasterCanRemoveForeignFile() {
+    val file = groupFile("foreign-file", ownerId = OTHER_USER_ID)
+    val repository = FakeWorkspaceRepository(listOf(file))
+    showScreen(repository, GroupWorkspaceRole.GAME_MASTER)
+
+    composeTestRule.onNodeWithContentDescription("Remove Foreign file").performClick()
+    composeTestRule.onNodeWithText("Remove from workspace?").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Remove").performClick()
+
+    composeTestRule.waitUntil(5_000) {
+      repository.files[file.id]?.sharedGroupsIds?.contains(GROUP_ID) == false
+    }
+    composeTestRule.onAllNodesWithText("foreign-file").assertCountEquals(0)
+  }
+
+  // Verifies that the add-file dialog is empty when no eligible personal files exist.
+  // This gives users an explicit explanation instead of an empty selectable list.
+  @Test
+  fun addFileDialogShowsEmptyStateWhenNoFilesAreEligible() {
+    showScreen(
+        repository = FakeWorkspaceRepository(),
+        role = GroupWorkspaceRole.PLAYER,
+        personalItems =
+            listOf(
+                JDRFile(
+                    id = "foreign",
+                    name = "Foreign file",
+                    ownerId = OTHER_USER_ID,
+                ),
+                JDRFile(
+                    id = "folder",
+                    name = "Personal folder",
+                    ownerId = CURRENT_USER_ID,
+                    type = DocumentType.FOLDER,
+                ),
+            ),
+    )
+
+    clickActionsFab()
+    composeTestRule.mainClock.advanceTimeBy(1_000)
+    composeTestRule.onNodeWithTag("workspace_add_file", useUnmergedTree = true).performClick()
+    composeTestRule.onNodeWithText("No personal files available to add.").assertIsDisplayed()
+  }
+
+  // Verifies that dismissing the add-file dialog leaves the workspace unchanged.
+  // This protects a non-destructive exit path from accidentally sharing a file.
+  @Test
+  fun addFileDialogCanBeDismissedWithoutAddingFile() {
+    val personalFile = JDRFile(id = "personal", name = "Personal", ownerId = CURRENT_USER_ID)
+    val repository = FakeWorkspaceRepository(listOf(personalFile))
+    val viewModel =
+        showScreen(
+            repository = repository,
+            role = GroupWorkspaceRole.PLAYER,
+            personalItems = listOf(personalFile),
+        )
+
+    clickActionsFab()
+    composeTestRule.mainClock.advanceTimeBy(1_000)
+    composeTestRule.onNodeWithTag("workspace_add_file", useUnmergedTree = true).performClick()
+    composeTestRule.onNodeWithText("Done").performClick()
+
+    composeTestRule.onAllNodesWithText("Add files to workspace").assertCountEquals(0)
+    assertFalse(repository.files[personalFile.id]?.sharedGroupsIds?.contains(GROUP_ID) == true)
+    assertTrue(viewModel.uiState.value.items.isEmpty())
+  }
+
+  // Verifies that a Game Master can add an owned Personal Space file through the same dialog.
+  // This ensures sharing is available to every role, not only players.
+  @Test
+  fun gameMasterCanAddOwnedPersonalFile() {
+    val personalFile = JDRFile(id = "personal", name = "GM notes", ownerId = CURRENT_USER_ID)
+    val repository = FakeWorkspaceRepository(listOf(personalFile))
+    showScreen(
+        repository = repository,
+        role = GroupWorkspaceRole.GAME_MASTER,
+        personalItems = listOf(personalFile),
+    )
+
+    clickActionsFab()
+    composeTestRule.mainClock.advanceTimeBy(1_000)
+    composeTestRule.onNodeWithTag("workspace_add_file", useUnmergedTree = true).performClick()
+    composeTestRule.onNodeWithText("GM notes").performClick()
+
+    composeTestRule.waitUntil(5_000) {
+      repository.files[personalFile.id]?.sharedGroupsIds?.contains(GROUP_ID) == true
+    }
+    composeTestRule.onNodeWithText("GM notes").assertIsDisplayed()
+  }
+
   // Verifies that opening a file forwards the file and Game Master edit permission.
   // This keeps downstream editors aligned with the current workspace role.
   @Test
@@ -529,6 +676,20 @@ class GroupWorkSpaceScreenTest {
   private fun clickActionsFab() {
     composeTestRule.onNodeWithTag("workspace_actions_fab", useUnmergedTree = true).performClick()
   }
+
+  private fun groupFile(
+      id: String,
+      ownerId: String,
+      type: DocumentType = DocumentType.TEXT,
+  ) =
+      JDRFile(
+          id = id,
+          name = id.replaceFirstChar { it.uppercase() }.replace("-", " "),
+          ownerId = ownerId,
+          type = type,
+          sharedGroupsIds = listOf(GROUP_ID),
+          placements = rootPlacement(GROUP_ID),
+      )
 
   private class FakeWorkspaceRepository(
       initialFiles: List<JDRFile> = emptyList(),
