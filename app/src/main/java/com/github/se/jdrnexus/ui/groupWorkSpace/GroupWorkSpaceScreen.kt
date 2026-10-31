@@ -61,16 +61,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.transition.Visibility
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import com.github.se.jdrnexus.model.personalSpace.isContainer
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
@@ -88,7 +91,9 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroupWorkSpaceScreen(
-    gwViewModel: GroupWorkspaceViewModel,
+    gwViewModel: GroupWorkspaceViewModel = viewModel(),
+    groupId: String,
+    groupName: String,
     onBack: () -> Unit = {},
     onItemClicked: (JDRFile, Boolean) -> Unit,
     personalItems: List<JDRFile> = emptyList(),
@@ -135,14 +140,20 @@ fun GroupWorkSpaceScreen(
     Scaffold(
         containerColor = Color.Transparent,
         floatingActionButton = {
-          WorkspaceFab(
-              canCreateFolder = uiState.canCreateFolder,
-              onAddFolder = {
-                folderName = ""
-                showCreateFolderDialog = true
-              },
-              onAddFile = { showAddFilesDialog = true },
-          )
+          if (uiState.loadState == LoadState.Success) {
+            WorkspaceFab(
+                canCreateFolder = uiState.canCreateFolder,
+                onAddFolder = {
+                  gwViewModel.clearError()
+                  folderName = ""
+                  showCreateFolderDialog = true
+                },
+                onAddFile = {
+                  gwViewModel.clearError()
+                  showAddFilesDialog = true
+                },
+            )
+          }
         },
         bottomBar = {
           GroupWorkspaceBottomBar(
@@ -154,25 +165,30 @@ fun GroupWorkSpaceScreen(
       Column(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 14.dp)) {
         WorkspaceHeader(
             groupName =
-                if (uiState.currentFolderId.isEmpty()) gwViewModel.groupId
-                else uiState.currentFolderName,
+                if (uiState.currentFolderId.isEmpty()) groupName else uiState.currentFolderName,
             itemCount = uiState.items.size,
             folderStack = folderStack,
             onBack = { navigateBack() },
-            roleLabel = gwViewModel.role.name,
+            roleLabel =
+                if (uiState.canCreateFolder) {
+                  "GAME MASTER"
+                } else {
+                  "PLAYER"
+                },
         )
 
         Spacer(Modifier.height(16.dp))
 
         WorkspaceContent(
             uiState = uiState,
+            groupId = groupId,
             onItemClick = { file ->
               if (file.type == DocumentType.FOLDER) {
                 openFolder(file.id)
               } else {
                 onItemClicked(
                     file,
-                    uiState.canEditItems,
+                    uiState.canEditItems || file.ownerId == uiState.currentUserId,
                 )
               }
             },
@@ -218,8 +234,14 @@ fun GroupWorkSpaceScreen(
                       textPrimary = color().onSecondary,
                       primary = color().primary,
                   ),
-              isError = uiState.errorMessage != "",
-              supportingText = { uiState.errorMessage?.let { error -> Text(text = error) } },
+              isError = uiState.errorMessage.isNotBlank(),
+              supportingText = {
+                if (uiState.errorMessage.isNotBlank()) {
+                  Text(
+                      text = uiState.errorMessage,
+                  )
+                }
+              },
           )
         },
         confirmButton = {
@@ -232,7 +254,7 @@ fun GroupWorkSpaceScreen(
                   val job = gwViewModel.createFolder(folderName.trim())
                   job?.join()
 
-                  if (gwViewModel.uiState.value.errorMessage.isNullOrEmpty()) {
+                  if (gwViewModel.uiState.value.errorMessage.isEmpty()) {
                     showCreateFolderDialog = false
                     folderName = ""
                   }
@@ -262,7 +284,7 @@ fun GroupWorkSpaceScreen(
     val availableFiles =
         availableFilesToAdd(
             personalItems = personalItems,
-            groupId = gwViewModel.groupId,
+            groupId = groupId,
             ownerId = uiState.currentUserId,
         )
 
@@ -276,52 +298,50 @@ fun GroupWorkSpaceScreen(
         text = {
           Column {
             // Display any error from the ViewModel.
-            uiState.errorMessage
-                ?.takeIf { it.isNotBlank() }
-                ?.let { message ->
-                  Text(
-                      text = message,
-                      color = MaterialTheme.colorScheme.error,
-                      modifier = Modifier.padding(bottom = 8.dp),
-                  )
-                }
+            if (uiState.errorMessage.isNotBlank()) {
+              Text(
+                  text = uiState.errorMessage,
+                  color = MaterialTheme.colorScheme.error,
+                  modifier = Modifier.padding(bottom = 8.dp),
+              )
+            }
+          }
 
-            if (availableFiles.isEmpty()) {
-              Text("No personal files available to add.")
-            } else {
-              LazyColumn(
-                  modifier =
-                      Modifier.size(
-                          width = 300.dp,
-                          height = 280.dp,
-                      )
-              ) {
-                items(availableFiles, key = { it.id }) { file ->
-                  Row(
-                      modifier =
-                          Modifier.fillMaxWidth()
-                              .clickable(enabled = !uiState.isOperationInProgress) {
-                                gwViewModel.clearError()
+          if (availableFiles.isEmpty()) {
+            Text("No personal files available to add.")
+          } else {
+            LazyColumn(
+                modifier =
+                    Modifier.size(
+                        width = 300.dp,
+                        height = 280.dp,
+                    )
+            ) {
+              items(availableFiles, key = { it.id }) { file ->
+                Row(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .clickable(enabled = !uiState.isOperationInProgress) {
+                              gwViewModel.clearError()
 
-                                scope.launch {
-                                  val job = gwViewModel.addFile(file.id)
-                                  job?.join()
+                              scope.launch {
+                                val job = gwViewModel.addFile(file.id)
+                                job?.join()
 
-                                  if (gwViewModel.uiState.value.errorMessage.isNullOrEmpty()) {
-                                    showAddFilesDialog = false
-                                  }
+                                if (gwViewModel.uiState.value.errorMessage.isEmpty()) {
+                                  showAddFilesDialog = false
                                 }
                               }
-                              .padding(vertical = 12.dp),
-                      verticalAlignment = Alignment.CenterVertically,
-                      horizontalArrangement = Arrangement.spacedBy(12.dp),
-                  ) {
-                    Icon(
-                        Icons.Default.Description,
-                        contentDescription = null,
-                    )
-                    Text(file.name)
-                  }
+                            }
+                            .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                  Icon(
+                      Icons.Default.Description,
+                      contentDescription = null,
+                  )
+                  Text(file.name)
                 }
               }
             }
@@ -369,8 +389,12 @@ fun GroupWorkSpaceScreen(
                         textPrimary = color().onSecondary,
                         primary = color().primary,
                     ),
-                isError = uiState.errorMessage != "",
-                supportingText = { uiState.errorMessage?.let { error -> Text(text = error) } },
+                isError = uiState.errorMessage.isNotBlank(),
+                supportingText = {
+                  if (uiState.errorMessage.isNotBlank()) {
+                    Text(text = uiState.errorMessage)
+                  }
+                },
             )
 
             if (file.type != DocumentType.FOLDER) {
@@ -405,9 +429,9 @@ fun GroupWorkSpaceScreen(
                           )
                       )
 
-                  job.join()
+                  job?.join()
 
-                  if (gwViewModel.uiState.value.errorMessage.isNullOrEmpty()) {
+                  if (gwViewModel.uiState.value.errorMessage.isEmpty()) {
                     itemToEdit = null
                   }
                 }
@@ -449,7 +473,7 @@ fun GroupWorkSpaceScreen(
                   val job = gwViewModel.removeItem(file)
                   job.join()
 
-                  if (gwViewModel.uiState.value.errorMessage.isNullOrEmpty()) {
+                  if (gwViewModel.uiState.value.errorMessage.isEmpty()) {
                     itemToRemove = null
                   }
                 }
@@ -475,12 +499,12 @@ fun WorkspaceCard(
     file: JDRFile,
     canEdit: Boolean,
     canRemove: Boolean,
-    isHidden : Boolean,
+    isHidden: Boolean,
     canChangeVisibility: Boolean,
     onOpen: () -> Unit,
     onEdit: () -> Unit,
     onRemove: () -> Unit,
-    onToggleVisibility: () -> Unit
+    onToggleVisibility: () -> Unit,
 ) {
 
   val isFolder = file.type == DocumentType.FOLDER
@@ -583,22 +607,28 @@ fun WorkspaceCard(
                 )
               }
             }
-              if (canChangeVisibility){
-                  IconButton(
-                      onClick = onToggleVisibility,
-                      modifier = Modifier.size(36.dp)
-                  ) {
-                      Icon(
-                          imageVector =
-                              if (!isHidden){
-                                  Icons.Default.Visibility}
-                              else {
-                                  Icons.Default.VisibilityOff},
-                          contentDescription = "Hide ${file.name}",
-                          tint = color().onSecondary
-                      )
-                  }
+            if (canChangeVisibility) {
+              IconButton(
+                  onClick = onToggleVisibility,
+                  modifier = Modifier.size(36.dp),
+              ) {
+                Icon(
+                    imageVector =
+                        if (!isHidden) {
+                          Icons.Default.Visibility
+                        } else {
+                          Icons.Default.VisibilityOff
+                        },
+                    contentDescription =
+                        if (isHidden) {
+                          "Show ${file.name}"
+                        } else {
+                          "Hide ${file.name}"
+                        },
+                    tint = color().onSecondary,
+                )
               }
+            }
           }
         }
       }
@@ -701,6 +731,7 @@ fun WorkspaceHeader(
 @Composable
 private fun WorkspaceContent(
     uiState: GroupWorkspaceUiState,
+    groupId: String,
     onItemClick: (JDRFile) -> Unit,
     onEdit: (JDRFile) -> Unit,
     onRemove: (JDRFile) -> Unit,
@@ -726,15 +757,15 @@ private fun WorkspaceContent(
           Modifier.fillMaxSize(),
           contentAlignment = Alignment.Center,
       ) {
-        Text("Unable to load workspace")
+        val message =
+            uiState.errorMessage.ifBlank { (uiState.loadState as LoadState.Error).message }
+        Text(message.ifBlank { "Unable to load workspace" })
       }
     }
 
     LoadState.Success -> {
 
       if (uiState.items.isEmpty()) {
-        print("jdfvoj")
-
         EmptyWorkspace()
       } else {
 
@@ -746,17 +777,24 @@ private fun WorkspaceContent(
               uiState.items,
               key = { it.id },
           ) { file ->
+            val isHidden = file.placements[groupId]?.isHidden ?: false
+            val canChangeVisibility = uiState.canCreateFolder || currentUserId == file.ownerId
+            val itemCanEdit = canEditItems || file.ownerId == currentUserId
             WorkspaceCard(
                 file = file,
-                canEdit =
-                    viewModel.canEditItem(
-                        file,
-                        currentUserId,
-                    ),
-                canRemove = canEditItems,
+                canEdit = itemCanEdit,
+                canRemove = itemCanEdit,
+                isHidden = isHidden,
+                canChangeVisibility = canChangeVisibility,
                 onOpen = { onItemClick(file) },
                 onEdit = { onEdit(file) },
                 onRemove = { onRemove(file) },
+                onToggleVisibility = {
+                  viewModel.setItemHidden(
+                      item = file,
+                      isHidden = !isHidden,
+                  )
+                },
             )
           }
         }
@@ -864,24 +902,40 @@ private fun color(): ColorScheme {
   return MaterialTheme.colorScheme
 }
 
-internal fun availableFilesToAdd(
+fun availableFilesToAdd(
     personalItems: List<JDRFile>,
     groupId: String,
     ownerId: String,
-): List<JDRFile> = personalItems.filter { file ->
-  file.type != DocumentType.FOLDER && groupId !in file.sharedGroupsIds && file.ownerId == ownerId
+): List<JDRFile> {
+  return personalItems.filter { file ->
+    file.ownerId == ownerId && file.type != DocumentType.FOLDER && groupId !in file.sharedGroupsIds
+  }
 }
 
-@Preview
+private const val previewGroupId = "preview-group"
+private const val previewGroupName = "The Ashen Realms"
+
+@Preview(showBackground = true)
 @Composable
-private fun GroupWorkSpaceScreenPreview2() {
-  val repository = remember { FakeWorkspaceRepository() }
+private fun GroupWorkspaceGameMasterPreview() {
+  val repository = remember { FakeWorkspaceRepository(/* your preview files */ ) }
   val authRepository = remember { FakeAuthRepository() }
+
+  val group = remember {
+    CampaignGroup(
+        id = previewGroupId,
+        name = previewGroupName,
+        gameMasterId = "preview-user",
+        participantIds = listOf("player-2"),
+    )
+  }
+
+  val groupRepository = remember { FakeGroupRepository(group) }
 
   val viewModel = remember {
     GroupWorkspaceViewModel(
-        groupId = "preview-group",
-        role = GroupWorkspaceRole.GAME_MASTER,
+        groupId = group.id,
+        groupRepository = groupRepository,
         repository = repository,
         authRepository = authRepository,
     )
@@ -890,23 +944,34 @@ private fun GroupWorkSpaceScreenPreview2() {
   SampleAppTheme(darkTheme = false) {
     GroupWorkSpaceScreen(
         gwViewModel = viewModel,
-        onBack = {},
+        groupId = previewGroupId,
+        groupName = previewGroupName,
         onItemClicked = { _, _ -> },
-        personalItems = emptyList(),
     )
   }
 }
 
-@Preview
+@Preview(showBackground = true)
 @Composable
-private fun GroupWorkSpaceScreenPreview() {
-  val repository = remember { FakeWorkspaceRepository() }
+private fun GroupWorkspaceGameMasterPreview2() {
+  val repository = remember { FakeWorkspaceRepository(/* your preview files */ ) }
   val authRepository = remember { FakeAuthRepository() }
+
+  val group = remember {
+    CampaignGroup(
+        id = previewGroupId,
+        name = previewGroupName,
+        gameMasterId = "preview-user",
+        participantIds = listOf("player-2"),
+    )
+  }
+
+  val groupRepository = remember { FakeGroupRepository(group) }
 
   val viewModel = remember {
     GroupWorkspaceViewModel(
-        groupId = "preview-group",
-        role = GroupWorkspaceRole.PLAYER,
+        groupId = group.id,
+        groupRepository = groupRepository,
         repository = repository,
         authRepository = authRepository,
     )
@@ -915,115 +980,308 @@ private fun GroupWorkSpaceScreenPreview() {
   SampleAppTheme(darkTheme = true) {
     GroupWorkSpaceScreen(
         gwViewModel = viewModel,
-        onBack = {},
+        groupId = previewGroupId,
+        groupName = previewGroupName,
         onItemClicked = { _, _ -> },
-        personalItems = emptyList(),
     )
   }
 }
 
-private class FakeWorkspaceRepository : WorkspaceRepository {
+private class FakeWorkspaceRepository(
+    initialFiles: List<JDRFile> =
+        listOf(
+            JDRFile(
+                id = "ashen-realms",
+                name = "The Ashen Realmss",
+                ownerId = "player-2",
+                type = DocumentType.FOLDER,
+                content = "8 files · World lore & maps",
+                sharedGroupsIds = listOf(previewGroupId),
+                placements =
+                    mapOf(
+                        previewGroupId to
+                            Placement(
+                                folderId = previewGroupId,
+                                isHidden = false,
+                            )
+                    ),
+            ),
+            JDRFile(
+                id = "elara-moonwhisper",
+                name = "Elara Moonwhisper",
+                ownerId = "preview-user",
+                type = DocumentType.CHARACTER,
+                content = "Level 7 · Half-elf ranger",
+                sharedGroupsIds = listOf(previewGroupId),
+                placements =
+                    mapOf(
+                        previewGroupId to
+                            Placement(
+                                folderId = previewGroupId,
+                                isHidden = false,
+                            )
+                    ),
+            ),
+            JDRFile(
+                id = "sunken-citadel",
+                name = "The Sunken Citadel",
+                type = DocumentType.TEXT,
+                content = "Lore of a forgotten kingdom",
+                sharedGroupsIds = listOf(previewGroupId),
+                placements =
+                    mapOf(
+                        previewGroupId to
+                            Placement(
+                                folderId = previewGroupId,
+                                isHidden = false,
+                            )
+                    ),
+            ),
+            JDRFile(
+                id = "session-pact",
+                name = "Session 12 — The Pact",
+                type = DocumentType.TEXT,
+                content = "Notes from our last adventure",
+                sharedGroupsIds = listOf(previewGroupId),
+                placements =
+                    mapOf(
+                        previewGroupId to
+                            Placement(
+                                folderId = previewGroupId,
+                                isHidden = false,
+                            )
+                    ),
+            ),
+            JDRFile(
+                id = "silver-covenant",
+                name = "The Silver Covenant",
+                type = DocumentType.FOLDER,
+                content = "4 files · Allies & adversaries",
+                sharedGroupsIds = listOf(previewGroupId),
+                placements =
+                    mapOf(
+                        previewGroupId to
+                            Placement(
+                                folderId = previewGroupId,
+                                isHidden = false,
+                            )
+                    ),
+            ),
+        ),
+) : WorkspaceRepository {
 
-  private val groupId = "preview-group"
-
-  private val files =
-      MutableStateFlow(
-          listOf(
-              JDRFile(
-                  id = "ashen-realms",
-                  name = "The Ashen Realms",
-                  type = DocumentType.FOLDER,
-                  content = "8 files · World lore & maps",
-                  sharedGroupsIds = listOf(groupId),
-              ),
-              JDRFile(
-                  id = "elara-moonwhisper",
-                  name = "Elara Moonwhisper",
-                  ownerId = "preview-user",
-                  type = DocumentType.CHARACTER,
-                  content = "Level 7 · Half-elf ranger",
-                  sharedGroupsIds = listOf(groupId),
-              ),
-              JDRFile(
-                  id = "sunken-citadel",
-                  name = "The Sunken Citadel",
-                  type = DocumentType.TEXT,
-                  content = "Lore of a forgotten kingdom",
-                  sharedGroupsIds = listOf(groupId),
-              ),
-              JDRFile(
-                  id = "session-pact",
-                  name = "Session 12 — The Pact",
-                  type = DocumentType.TEXT,
-                  content = "Notes from our last adventure",
-                  sharedGroupsIds = listOf(groupId),
-              ),
-              JDRFile(
-                  id = "silver-covenant",
-                  name = "The Silver Covenant",
-                  type = DocumentType.FOLDER,
-                  content = "4 files · Allies & adversaries",
-                  sharedGroupsIds = listOf(groupId),
-              ),
-          )
-      )
+  private val files = MutableStateFlow(initialFiles.associateBy { it.id })
 
   override fun getNewUid(): String = UUID.randomUUID().toString()
 
-  override suspend fun createFile(file: JDRFile): Result<Unit> = runCatching { files.value += file }
-
-  override suspend fun updateFile(file: JDRFile): Result<Unit> = runCatching {
-    val index = files.value.indexOfFirst { it.id == file.id }
-    require(index >= 0) { "File not found: ${file.id}" }
-
-    files.value = files.value.toMutableList().apply { set(index, file) }
+  override suspend fun createFile(file: JDRFile): Result<Unit> {
+    files.value += (file.id to file)
+    return Result.success(Unit)
   }
 
-  override suspend fun deleteFile(fileId: String): Result<Unit> = runCatching {
-    require(files.value.any { it.id == fileId }) { "File not found: $fileId" }
+  override suspend fun updateFile(file: JDRFile): Result<Unit> {
+    if (file.id !in files.value) {
+      return Result.failure(IllegalArgumentException("Document not found"))
+    }
 
-    files.value = files.value.filterNot { it.id == fileId }
+    // Match the Firestore implementation: ordinary edits must not
+    // overwrite group placements or group-sharing information.
+    val current = files.value.getValue(file.id)
+    files.value +=
+        (file.id to
+            file.copy(
+                placements = current.placements,
+                sharedGroupsIds = current.sharedGroupsIds,
+            ))
+
+    return Result.success(Unit)
   }
 
-  override suspend fun getFile(fileId: String): Result<JDRFile?> =
-      Result.success(files.value.find { it.id == fileId })
-
-  override fun getFileFlow(fileId: String): Flow<JDRFile?> = files.map { list ->
-    list.find { it.id == fileId }
+  override suspend fun deleteFile(fileId: String): Result<Unit> {
+    files.value = files.value - fileId
+    return Result.success(Unit)
   }
 
-  override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = files.map { list ->
-    list.filter { it.ownerId == ownerId && it.personalParentId.isEmpty() }
+  override suspend fun getFile(fileId: String): Result<JDRFile?> {
+    val file =
+        files.value[fileId] ?: return Result.failure(IllegalArgumentException("Document not found"))
+
+    return Result.success(file)
   }
 
-  override fun getGroupRootFiles(groupId: String): Flow<List<JDRFile>> = files.map { list ->
-    list.filter { groupId in it.sharedGroupsIds && it.parentFolderIds.isEmpty() }
+  override fun getFileFlow(fileId: String): Flow<JDRFile?> = files.map { it[fileId] }
+
+  override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = files.map { allFiles ->
+    allFiles.values.filter { file ->
+      file.ownerId == ownerId && file.sharedGroupsIds.isEmpty() && file.personalParentId.isEmpty()
+    }
   }
 
-  override fun getDocumentsInFolder(folderId: String): Flow<List<JDRFile>> = files.map { list ->
-    list.filter { folderId in it.parentFolderIds }
+  override fun getPersonalFolderFiles(
+      folderId: String,
+      ownerId: String,
+  ): Flow<List<JDRFile>> = files.map { allFiles ->
+    allFiles.values.filter {
+      it.ownerId == ownerId && it.personalParentId == folderId && it.type != DocumentType.GROUP_ROOT
+    }
+  }
+
+  override fun getGroupFolderFiles(
+      folderId: String,
+      groupId: String,
+  ): Flow<List<JDRFile>> = files.map { allFiles ->
+    allFiles.values
+        .filter { file ->
+          groupId in file.sharedGroupsIds && file.placements[groupId]?.folderId == folderId
+        }
+        .sortedBy { it.name.lowercase() }
+  }
+
+  override suspend fun addItemToGroup(
+      itemId: String,
+      groupId: String,
+      folderId: String,
+      isHidden: Boolean,
+      includeContent: Boolean,
+  ): Result<Unit> {
+    return try {
+      require(!includeContent) { "includeContent is not supported yet." }
+
+      val item = files.value[itemId] ?: throw IllegalArgumentException("Item not found")
+
+      val destination =
+          files.value[folderId] ?: throw IllegalArgumentException("Destination folder not found")
+
+      require(item.type != DocumentType.GROUP_ROOT) { "A group root cannot be added to a group." }
+      require(groupId !in item.sharedGroupsIds) { "This item is already in the group." }
+      require(destination.isContainer()) { "The destination is not a folder." }
+      require(groupId in destination.sharedGroupsIds) {
+        "The destination folder does not belong to the group."
+      }
+
+      val hiddenByFolder = destination.placements[groupId]?.isHidden == true
+
+      files.value +=
+          (itemId to
+              item.copy(
+                  sharedGroupsIds = item.sharedGroupsIds + groupId,
+                  placements =
+                      item.placements +
+                          (groupId to
+                              Placement(
+                                  folderId = folderId,
+                                  isHidden = isHidden || hiddenByFolder,
+                              )),
+              ))
+
+      Result.success(Unit)
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
   }
 
   override suspend fun removeItemFromGroup(
       itemId: String,
       groupId: String,
-      parentFolderId: String?,
-  ): Result<Unit> = runCatching {
-    val item =
-        files.value.find { it.id == itemId }
-            ?: throw IllegalArgumentException("File not found: $itemId")
+      parentFolderId: String,
+  ): Result<Unit> {
+    return try {
+      val root = files.value[itemId] ?: throw IllegalArgumentException("Item not found")
 
-    files.value =
-        files.value.map {
-          if (it.id == itemId) {
-            it.copy(
-                sharedGroupsIds = it.sharedGroupsIds - groupId,
-                parentFolderIds = emptyList(),
-            )
-          } else {
-            it
+      require(groupId in root.sharedGroupsIds) { "This item does not belong to the group." }
+      require(root.type != DocumentType.GROUP_ROOT) {
+        "A group root cannot be removed from its group."
+      }
+
+      val visited = mutableSetOf<String>()
+
+      fun collectSubtree(file: JDRFile) {
+        if (!visited.add(file.id)) return
+
+        if (file.isContainer()) {
+          files.value.values
+              .filter {
+                groupId in it.sharedGroupsIds && it.placements[groupId]?.folderId == file.id
+              }
+              .forEach(::collectSubtree)
+        }
+      }
+
+      collectSubtree(root)
+
+      visited.forEach { id ->
+        val file = files.value[id] ?: return@forEach
+
+        files.value +=
+            (id to
+                file.copy(
+                    sharedGroupsIds = file.sharedGroupsIds - groupId,
+                    placements = file.placements - groupId,
+                ))
+      }
+
+      Result.success(Unit)
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
+  }
+
+  override suspend fun setItemHidden(
+      itemId: String,
+      groupId: String,
+      isHidden: Boolean,
+  ): Result<Unit> {
+    return try {
+      val item = files.value[itemId] ?: throw IllegalArgumentException("Item not found")
+
+      val placement =
+          item.placements[groupId]
+              ?: throw IllegalArgumentException("This item does not belong to the group.")
+
+      if (placement.isHidden == isHidden) {
+        return Result.success(Unit)
+      }
+
+      if (isHidden && item.isContainer()) {
+        val visited = mutableSetOf<String>()
+
+        fun collectSubtree(file: JDRFile) {
+          if (!visited.add(file.id)) return
+
+          if (file.isContainer()) {
+            files.value.values
+                .filter {
+                  groupId in it.sharedGroupsIds && it.placements[groupId]?.folderId == file.id
+                }
+                .forEach(::collectSubtree)
           }
         }
+
+        collectSubtree(item)
+
+        visited.forEach { id ->
+          val file = files.value[id] ?: return@forEach
+          val currentPlacement = file.placements[groupId] ?: return@forEach
+
+          files.value +=
+              (id to
+                  file.copy(
+                      placements =
+                          file.placements + (groupId to currentPlacement.copy(isHidden = true))
+                  ))
+        }
+      } else {
+        files.value +=
+            (itemId to
+                item.copy(
+                    placements = item.placements + (groupId to placement.copy(isHidden = isHidden))
+                ))
+      }
+
+      Result.success(Unit)
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
   }
 }
 
@@ -1031,7 +1289,7 @@ private class FakeAuthRepository : AuthRepository {
 
   private val fakeUser =
       AuthUser(
-          uid = "preview-user",
+          uid = "player-2",
           email = "player@example.com",
           username = "PreviewPlayer",
       )
@@ -1071,5 +1329,76 @@ private class FakeAuthRepository : AuthRepository {
   override suspend fun signOut(): AuthResult<Unit> {
     currentUser.value = null
     return AuthResult.Success(Unit)
+  }
+}
+
+private class FakeGroupRepository(
+    initialGroup: CampaignGroup,
+) : GroupRepository {
+
+  private val groups = MutableStateFlow(mapOf(initialGroup.id to initialGroup))
+
+  override fun getNewGroupId(): String = UUID.randomUUID().toString()
+
+  override suspend fun createGroup(group: CampaignGroup): Result<Unit> {
+    groups.value += (group.id to group)
+    return Result.success(Unit)
+  }
+
+  override suspend fun updateGroup(group: CampaignGroup): Result<Unit> {
+    if (group.id !in groups.value) {
+      return Result.failure(IllegalArgumentException("CampaignGroup not found"))
+    }
+
+    groups.value += (group.id to group)
+    return Result.success(Unit)
+  }
+
+  override suspend fun deleteGroup(groupId: String): Result<Unit> {
+    groups.value -= groupId
+    return Result.success(Unit)
+  }
+
+  override suspend fun getGroup(groupId: String): Result<CampaignGroup> {
+    val group =
+        groups.value[groupId]
+            ?: return Result.failure(IllegalArgumentException("CampaignGroup not found"))
+
+    return Result.success(group)
+  }
+
+  override suspend fun addUserToGroup(
+      groupId: String,
+      userId: String,
+  ): Result<Unit> {
+    val group =
+        groups.value[groupId]
+            ?: return Result.failure(IllegalArgumentException("CampaignGroup not found"))
+
+    groups.value +=
+        (groupId to group.copy(participantIds = (group.participantIds + userId).distinct()))
+
+    return Result.success(Unit)
+  }
+
+  override suspend fun removeUserFromGroup(
+      groupId: String,
+      userId: String,
+  ): Result<Unit> {
+    val group =
+        groups.value[groupId]
+            ?: return Result.failure(IllegalArgumentException("CampaignGroup not found"))
+
+    groups.value += (groupId to group.copy(participantIds = group.participantIds - userId))
+
+    return Result.success(Unit)
+  }
+
+  override fun getGroupFlow(groupId: String): Flow<CampaignGroup?> = groups.map { it[groupId] }
+
+  override fun getUserGroups(userId: String): Flow<List<CampaignGroup>> = groups.map { groupMap ->
+    groupMap.values.filter { group ->
+      userId == group.gameMasterId || userId in group.participantIds
+    }
   }
 }
