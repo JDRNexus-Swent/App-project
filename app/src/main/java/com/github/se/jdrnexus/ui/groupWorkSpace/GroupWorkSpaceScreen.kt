@@ -96,7 +96,7 @@ fun GroupWorkSpaceScreen(
     groupId: String,
     groupName: String,
     onBack: () -> Unit = {},
-    onItemClicked: (JDRFile, Boolean) -> Unit =  { _, _ -> },
+    onItemClicked: (JDRFile, Boolean) -> Unit = { _, _ -> },
     personalItems: List<JDRFile> = emptyList(),
 ) {
   val uiState by gwViewModel.uiState.collectAsState()
@@ -318,9 +318,10 @@ fun GroupWorkSpaceScreen(
             LazyColumn(
                 modifier =
                     Modifier.size(
-                        width = 300.dp,
-                        height = 280.dp,
-                    ).testTag("add_files_list")
+                            width = 300.dp,
+                            height = 280.dp,
+                        )
+                        .testTag("add_files_list")
             ) {
               items(availableFiles, key = { it.id }) { file ->
                 Row(
@@ -524,7 +525,8 @@ fun WorkspaceCard(
   val isFolder = file.type == DocumentType.FOLDER
 
   Card(
-      modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).testTag("workspace_item_${file.id}"),
+      modifier =
+          Modifier.fillMaxWidth().clickable(onClick = onOpen).testTag("workspace_item_${file.id}"),
       shape = RoundedCornerShape(17.dp),
       border =
           BorderStroke(
@@ -770,8 +772,7 @@ private fun WorkspaceContent(
           Modifier.fillMaxSize(),
           contentAlignment = Alignment.Center,
       ) {
-        val message =
-            uiState.errorMessage.ifBlank { (uiState.loadState).message }
+        val message = uiState.errorMessage.ifBlank { (uiState.loadState).message }
         Text(message.ifBlank { "Unable to load workspace" })
       }
     }
@@ -1113,7 +1114,7 @@ private class FakeWorkspaceRepository(
   }
 
   override suspend fun deleteFile(fileId: String): Result<Unit> {
-      files.value -= fileId
+    files.value -= fileId
     return Result.success(Unit)
   }
 
