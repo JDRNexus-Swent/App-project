@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
 import androidx.compose.animation.AnimatedVisibility
@@ -95,7 +96,7 @@ fun GroupWorkSpaceScreen(
     groupId: String,
     groupName: String,
     onBack: () -> Unit = {},
-    onItemClicked: (JDRFile, Boolean) -> Unit,
+    onItemClicked: (JDRFile, Boolean) -> Unit =  { _, _ -> },
     personalItems: List<JDRFile> = emptyList(),
 ) {
   val uiState by gwViewModel.uiState.collectAsState()
@@ -167,7 +168,6 @@ fun GroupWorkSpaceScreen(
             groupName =
                 if (uiState.currentFolderId.isEmpty()) groupName else uiState.currentFolderName,
             itemCount = uiState.items.size,
-            folderStack = folderStack,
             onBack = { navigateBack() },
             roleLabel =
                 if (uiState.canCreateFolder) {
@@ -213,6 +213,7 @@ fun GroupWorkSpaceScreen(
   // Create folder
   if (showCreateFolderDialog) {
     AlertDialog(
+        modifier = Modifier.testTag("create_folder_dialog"),
         containerColor = color().surface,
         onDismissRequest = {
           if (!uiState.isOperationInProgress) {
@@ -222,6 +223,7 @@ fun GroupWorkSpaceScreen(
         title = { Text("New folder", color = color().tertiary) },
         text = {
           OutlinedTextField(
+              modifier = Modifier.testTag("create_folder_name_input"),
               value = folderName,
               onValueChange = { folderName = it },
               label = { Text("Folder name") },
@@ -246,6 +248,7 @@ fun GroupWorkSpaceScreen(
         },
         confirmButton = {
           TextButton(
+              modifier = Modifier.testTag("create_folder_confirm"),
               enabled = !uiState.isOperationInProgress,
               onClick = {
                 gwViewModel.clearError()
@@ -266,6 +269,7 @@ fun GroupWorkSpaceScreen(
         },
         dismissButton = {
           TextButton(
+              modifier = Modifier.testTag("create_folder_cancel"),
               enabled = !uiState.isOperationInProgress,
               onClick = {
                 showCreateFolderDialog = false
@@ -278,7 +282,7 @@ fun GroupWorkSpaceScreen(
     )
   }
 
-  // Add existing personal files
+  // Add existing personnel files
   if (showAddFilesDialog) {
 
     val availableFiles =
@@ -289,6 +293,7 @@ fun GroupWorkSpaceScreen(
         )
 
     AlertDialog(
+        modifier = Modifier.testTag("add_files_dialog"),
         onDismissRequest = {
           if (!uiState.isOperationInProgress) {
             showAddFilesDialog = false
@@ -315,7 +320,7 @@ fun GroupWorkSpaceScreen(
                     Modifier.size(
                         width = 300.dp,
                         height = 280.dp,
-                    )
+                    ).testTag("add_files_list")
             ) {
               items(availableFiles, key = { it.id }) { file ->
                 Row(
@@ -350,6 +355,7 @@ fun GroupWorkSpaceScreen(
         containerColor = color().surface,
         confirmButton = {
           TextButton(
+              modifier = Modifier.testTag("add_files_done"),
               enabled = !uiState.isOperationInProgress,
               onClick = { showAddFilesDialog = false },
           ) {
@@ -362,6 +368,7 @@ fun GroupWorkSpaceScreen(
   // Edit file or folder
   itemToEdit?.let { file ->
     AlertDialog(
+        modifier = Modifier.testTag("edit_item_dialog"),
         containerColor = color().surface,
         onDismissRequest = { if (!uiState.isOperationInProgress) itemToEdit = null },
         title = {
@@ -377,6 +384,7 @@ fun GroupWorkSpaceScreen(
         text = {
           Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
+                modifier = Modifier.testTag("edit_item_name_input"),
                 value = editedName,
                 onValueChange = { editedName = it },
                 label = { Text("Name", color = color().primary) },
@@ -399,6 +407,7 @@ fun GroupWorkSpaceScreen(
 
             if (file.type != DocumentType.FOLDER) {
               OutlinedTextField(
+                  modifier = Modifier.testTag("edit_item_content_input"),
                   value = editedContent,
                   onValueChange = { editedContent = it },
                   label = { Text("Content", color = color().primary) },
@@ -416,6 +425,7 @@ fun GroupWorkSpaceScreen(
         },
         confirmButton = {
           TextButton(
+              modifier = Modifier.testTag("edit_item_save"),
               enabled = !uiState.isOperationInProgress,
               onClick = {
                 gwViewModel.clearError()
@@ -442,6 +452,7 @@ fun GroupWorkSpaceScreen(
         },
         dismissButton = {
           TextButton(
+              modifier = Modifier.testTag("edit_item_cancel"),
               enabled = !uiState.isOperationInProgress,
               onClick = {
                 itemToEdit = null
@@ -457,6 +468,7 @@ fun GroupWorkSpaceScreen(
   // Remove item from this group's workspace
   itemToRemove?.let { file ->
     AlertDialog(
+        modifier = Modifier.testTag("remove_item_dialog"),
         containerColor = color().surface,
         onDismissRequest = { if (!uiState.isOperationInProgress) itemToRemove = null },
         title = { Text("Remove from workspace?", color = color().tertiary) },
@@ -465,6 +477,7 @@ fun GroupWorkSpaceScreen(
         },
         confirmButton = {
           TextButton(
+              modifier = Modifier.testTag("remove_item_confirm"),
               enabled = !uiState.isOperationInProgress,
               onClick = {
                 gwViewModel.clearError()
@@ -484,6 +497,7 @@ fun GroupWorkSpaceScreen(
         },
         dismissButton = {
           TextButton(
+              modifier = Modifier.testTag("remove_item_cancel"),
               enabled = !uiState.isOperationInProgress,
               onClick = { itemToRemove = null },
           ) {
@@ -510,7 +524,7 @@ fun WorkspaceCard(
   val isFolder = file.type == DocumentType.FOLDER
 
   Card(
-      modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
+      modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).testTag("workspace_item_${file.id}"),
       shape = RoundedCornerShape(17.dp),
       border =
           BorderStroke(
@@ -585,7 +599,7 @@ fun WorkspaceCard(
             if (canEdit) {
               IconButton(
                   onClick = onEdit,
-                  modifier = Modifier.size(36.dp),
+                  modifier = Modifier.size(36.dp).testTag("workspace_edit_${file.id}"),
               ) {
                 Icon(
                     Icons.Default.Edit,
@@ -598,7 +612,7 @@ fun WorkspaceCard(
             if (canRemove) {
               IconButton(
                   onClick = onRemove,
-                  modifier = Modifier.size(36.dp),
+                  modifier = Modifier.size(36.dp).testTag("workspace_remove_${file.id}"),
               ) {
                 Icon(
                     Icons.Default.Delete,
@@ -610,7 +624,7 @@ fun WorkspaceCard(
             if (canChangeVisibility) {
               IconButton(
                   onClick = onToggleVisibility,
-                  modifier = Modifier.size(36.dp),
+                  modifier = Modifier.size(36.dp).testTag("workspace_visibility_${file.id}"),
               ) {
                 Icon(
                     imageVector =
@@ -648,7 +662,6 @@ fun WorkspaceCard(
 fun WorkspaceHeader(
     groupName: String,
     itemCount: Int,
-    folderStack: List<String>,
     onBack: () -> Unit,
     roleLabel: String,
 ) {
@@ -758,7 +771,7 @@ private fun WorkspaceContent(
           contentAlignment = Alignment.Center,
       ) {
         val message =
-            uiState.errorMessage.ifBlank { (uiState.loadState as LoadState.Error).message }
+            uiState.errorMessage.ifBlank { (uiState.loadState).message }
         Text(message.ifBlank { "Unable to load workspace" })
       }
     }
@@ -926,7 +939,7 @@ private fun GroupWorkspaceGameMasterPreview() {
         id = previewGroupId,
         name = previewGroupName,
         gameMasterId = "preview-user",
-        participantIds = listOf("player-2"),
+        participantIds = listOf("preview-user"),
     )
   }
 
@@ -993,9 +1006,10 @@ private class FakeWorkspaceRepository(
             JDRFile(
                 id = "ashen-realms",
                 name = "The Ashen Realmss",
-                ownerId = "player-2",
+                ownerId = "preview-user",
                 type = DocumentType.FOLDER,
                 content = "8 files · World lore & maps",
+                personalParentId = "",
                 sharedGroupsIds = listOf(previewGroupId),
                 placements =
                     mapOf(
@@ -1057,6 +1071,7 @@ private class FakeWorkspaceRepository(
                 name = "The Silver Covenant",
                 type = DocumentType.FOLDER,
                 content = "4 files · Allies & adversaries",
+                ownerId = "preview-user",
                 sharedGroupsIds = listOf(previewGroupId),
                 placements =
                     mapOf(
@@ -1098,7 +1113,7 @@ private class FakeWorkspaceRepository(
   }
 
   override suspend fun deleteFile(fileId: String): Result<Unit> {
-    files.value = files.value - fileId
+      files.value -= fileId
     return Result.success(Unit)
   }
 
@@ -1289,7 +1304,7 @@ private class FakeAuthRepository : AuthRepository {
 
   private val fakeUser =
       AuthUser(
-          uid = "player-2",
+          uid = "preview-user",
           email = "player@example.com",
           username = "PreviewPlayer",
       )
