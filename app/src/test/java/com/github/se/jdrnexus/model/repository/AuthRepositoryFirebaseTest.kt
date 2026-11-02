@@ -104,6 +104,65 @@ class AuthRepositoryFirebaseTest {
   }
 
   @Test
+  fun signOutFailureDuringCleanupIsReportedInRecoveryResult() = runBlocking {
+    val client =
+        FakeFirebaseAuthClient().apply {
+          usernameFailure = AuthError.NETWORK_ERROR
+          signOutFailure = AuthError.UNKNOWN
+        }
+    val repository = AuthRepositoryFirebase(client)
+
+    assertEquals(
+        AuthResult.AccountCreatedNeedsRecovery(
+            usernameError = AuthError.NETWORK_ERROR,
+            accountDeletionError = null,
+            signOutError = AuthError.UNKNOWN,
+        ),
+        repository.signUpWithEmail("player@example.com", "password123", "Player"),
+    )
+    assertFalse(client.accountExists)
+  }
+
+  @Test
+  fun cancellationWithFailedCleanupKeepsCleanupErrorAsSuppressed() = runBlocking {
+    val client =
+        FakeFirebaseAuthClient().apply {
+          cancelUsernameUpdate = true
+          deleteFailure = AuthError.NETWORK_ERROR
+        }
+    val repository = AuthRepositoryFirebase(client)
+    var cancellation: CancellationException? = null
+
+    try {
+      withContext(NonCancellable) {
+        repository.signUpWithEmail("player@example.com", "password123", "Player")
+      }
+    } catch (failure: CancellationException) {
+      cancellation = failure
+    }
+
+    // Coroutines debug mode may rethrow a copy of the exception, with the original as its cause.
+    val suppressed =
+        generateSequence<Throwable>(requireNotNull(cancellation)) { it.cause }
+            .flatMap { it.suppressed.asSequence() }
+            .single() as AuthOperationException
+    assertEquals(AuthError.NETWORK_ERROR, suppressed.error)
+    assertTrue(client.accountExists)
+  }
+
+  @Test
+  fun unexpectedExceptionIsReportedAsUnknownError() = runBlocking {
+    val client =
+        FakeFirebaseAuthClient().apply { unexpectedSignInFailure = IllegalStateException("boom") }
+    val repository = AuthRepositoryFirebase(client)
+
+    assertEquals(
+        AuthResult.Failure(AuthError.UNKNOWN),
+        repository.signInWithEmail("player@example.com", "secret"),
+    )
+  }
+
+  @Test
   fun signInWithEmailReturnsCurrentAccount() = runBlocking {
     val client = FakeFirebaseAuthClient()
     val repository = AuthRepositoryFirebase(client)
@@ -152,13 +211,26 @@ class AuthRepositoryFirebaseTest {
   }
 
   @Test
-  fun mapsCommonFirebaseErrors() {
-    assertEquals(AuthError.INVALID_EMAIL, authErrorForFirebaseCode("ERROR_INVALID_EMAIL"))
-    assertEquals(AuthError.WRONG_PASSWORD, authErrorForFirebaseCode("ERROR_WRONG_PASSWORD"))
-    assertEquals(
-        AuthError.EMAIL_ALREADY_IN_USE,
-        authErrorForFirebaseCode("ERROR_EMAIL_ALREADY_IN_USE"),
-    )
+  fun mapsEveryFirebaseErrorCode() {
+    val expected =
+        mapOf(
+            "ERROR_INVALID_EMAIL" to AuthError.INVALID_EMAIL,
+            "ERROR_MISSING_EMAIL" to AuthError.INVALID_EMAIL,
+            "ERROR_WRONG_PASSWORD" to AuthError.WRONG_PASSWORD,
+            "ERROR_INVALID_LOGIN_CREDENTIALS" to AuthError.INVALID_CREDENTIALS,
+            "ERROR_INVALID_CREDENTIAL" to AuthError.INVALID_CREDENTIALS,
+            "ERROR_USER_NOT_FOUND" to AuthError.USER_NOT_FOUND,
+            "ERROR_EMAIL_ALREADY_IN_USE" to AuthError.EMAIL_ALREADY_IN_USE,
+            "ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL" to
+                AuthError.ACCOUNT_EXISTS_WITH_DIFFERENT_PROVIDER,
+            "ERROR_WEAK_PASSWORD" to AuthError.WEAK_PASSWORD,
+            "ERROR_MISSING_PASSWORD" to AuthError.WEAK_PASSWORD,
+            "ERROR_NETWORK_REQUEST_FAILED" to AuthError.NETWORK_ERROR,
+            "ERROR_TOO_MANY_REQUESTS" to AuthError.TOO_MANY_REQUESTS,
+            "ERROR_SOMETHING_NEW" to AuthError.UNKNOWN,
+        )
+
+    expected.forEach { (code, error) -> assertEquals(code, error, authErrorForFirebaseCode(code)) }
   }
 
   @Test
@@ -213,6 +285,7 @@ class AuthRepositoryFirebaseTest {
     var googleSignInFailure: AuthError? = null
     var deleteFailure: AuthError? = null
     var signOutFailure: AuthError? = null
+    var unexpectedSignInFailure: Exception? = null
     var cancelUsernameUpdate = false
     var deleteAccountCalls = 0
     var signOutCalls = 0
@@ -241,6 +314,7 @@ class AuthRepositoryFirebaseTest {
 
     override suspend fun signInWithEmail(email: String, password: String): AuthUser {
       emailSignInFailure?.let { throw AuthOperationException(it) }
+      unexpectedSignInFailure?.let { throw it }
       return emailSignInResult.also { authState.value = it }
     }
 

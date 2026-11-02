@@ -1,0 +1,132 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+package com.github.se.jdrnexus.model.repository
+
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils.pumpMainLooperUntil
+import com.github.se.jdrnexus.utils.waitFor
+import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
+import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+
+/**
+ * Runs [AuthRepositoryFirebase] against the Auth emulator, to check how real Firebase errors are
+ * translated. Needs the emulator started with: firebase emulators:exec --config firebase.test.json
+ */
+@RunWith(RobolectricTestRunner::class)
+class AuthRepositoryFirebaseEmulatorTest {
+
+  private lateinit var firebaseAuth: FirebaseAuth
+  private lateinit var repository: AuthRepositoryFirebase
+
+  @Before
+  fun setUp() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val firebaseApp =
+        FirebaseApp.getApps(context).firstOrNull()
+            ?: FirebaseApp.initializeApp(context)
+            ?: error("FirebaseApp could not be initialized for the Auth emulator test.")
+    firebaseAuth = FirebaseAuth.getInstance(firebaseApp)
+    firebaseAuth.useEmulator("127.0.0.1", 9099)
+    firebaseAuth.signOut()
+    repository = AuthRepositoryFirebase(firebaseAuth)
+  }
+
+  @After fun tearDown() = firebaseAuth.signOut()
+
+  /**
+   * Firebase Auth completes its tasks on the main looper, which the test itself runs on: the call
+   * runs in the background while the looper is pumped, otherwise the test would wait forever.
+   */
+  private fun <T> call(operation: suspend () -> T): T = runBlocking {
+    val result = async(Dispatchers.Default) { operation() }
+    pumpMainLooperUntil { result.isCompleted }
+    result.await()
+  }
+
+  private fun randomEmail() = "player-${UUID.randomUUID()}@example.com"
+
+  @Test
+  fun authStateFollowsSignUpAndSignOut() {
+    val email = randomEmail()
+
+    val signedUp = call { repository.signUpWithEmail(email, "secret1", "Ranger") }
+    val user = (signedUp as AuthResult.Success).value
+
+    assertEquals(email, user.email)
+    // waitFor pumps the main looper itself, so it is not wrapped in call.
+    assertEquals(user, runBlocking { repository.authState.waitFor { it?.username == "Ranger" } })
+
+    assertEquals(AuthResult.Success(Unit), call { repository.signOut() })
+    assertEquals(null, runBlocking { repository.authState.waitFor { it == null } })
+  }
+
+  @Test
+  fun signUpWithUsedEmailReturnsEmailAlreadyInUse() {
+    val email = randomEmail()
+    call { repository.signUpWithEmail(email, "secret1", "Ranger") }
+    call { repository.signOut() }
+
+    assertEquals(
+        AuthResult.Failure(AuthError.EMAIL_ALREADY_IN_USE),
+        call { repository.signUpWithEmail(email, "secret1", "Ranger") },
+    )
+  }
+
+  @Test
+  fun signUpWithMalformedEmailReturnsInvalidEmail() {
+    assertEquals(
+        AuthResult.Failure(AuthError.INVALID_EMAIL),
+        call { repository.signUpWithEmail("not-an-email", "secret1", "Ranger") },
+    )
+  }
+
+  @Test
+  fun signUpWithShortPasswordReturnsWeakPassword() {
+    assertEquals(
+        AuthResult.Failure(AuthError.WEAK_PASSWORD),
+        call { repository.signUpWithEmail(randomEmail(), "123", "Ranger") },
+    )
+  }
+
+  @Test
+  fun signInWithWrongPasswordReturnsWrongPassword() {
+    val email = randomEmail()
+    call { repository.signUpWithEmail(email, "secret1", "Ranger") }
+    call { repository.signOut() }
+
+    assertEquals(
+        AuthResult.Failure(AuthError.WRONG_PASSWORD),
+        call { repository.signInWithEmail(email, "wrong-password") },
+    )
+  }
+
+  @Test
+  fun signInWithUnknownEmailReturnsUserNotFound() {
+    assertEquals(
+        AuthResult.Failure(AuthError.USER_NOT_FOUND),
+        call { repository.signInWithEmail(randomEmail(), "secret1") },
+    )
+  }
+
+  @Test
+  fun signInWithGoogleCreatesSession() {
+    val email = randomEmail()
+    // The Auth emulator accepts an unsigned JSON payload as Google id token.
+    val idToken = """{"sub":"${UUID.randomUUID()}","email":"$email","email_verified":true}"""
+
+    val result = call { repository.signInWithGoogle(idToken) }
+
+    assertEquals(email, (result as AuthResult.Success).value.email)
+    assertEquals(email, firebaseAuth.currentUser?.email)
+  }
+}
