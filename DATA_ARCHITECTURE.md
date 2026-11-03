@@ -2,9 +2,9 @@
 
 This document defines the architectural decisions and invariants of the NoSQL data model used in JDRNexus. All pull requests and new features must adhere to these rules. When a rule must change, change this document in the same PR.
 
-Sections marked **(proposed)** are defaults that still need a team decision. Section 13 lists what is known to be missing, and section 14 what must be checked on a real Firestore before the security rules are enabled.
+Sections marked **(proposed)** are defaults that still need a team decision. Section 12 lists what is known to be missing
 
-**Out of scope for now:** moving a document between folders, migration of legacy data, splitting an operation over several batches.
+**Out of scope for now:** moving a document between folders, splitting an operation over several batches.
  
 ---
 
@@ -283,4 +283,6 @@ Rules and batch behavior must be tested with the **Firebase emulator** (member /
 - The client does not check who calls an operation: this is the job of the security rules.
 - Moving documents between folders is not supported yet.
 ---
+---
+*Note: The structure and technical constraints detailed in this document were formulated with the help of Claude Sonnet 5.5.*
  
