@@ -1,16 +1,25 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.gameManagement
 
+import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
+import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import kotlinx.coroutines.flow.StateFlow
 
 /** Represents an enemy participating in the live combat encounter. */
 data class Enemy(
     val id: String,
-    val name: String,
-    val hp: Int,
-    val maxHp: Int,
+    val character: CharacterFile,
     val initiative: Int = 0,
-)
+) {
+  val name: String
+    get() = character.name
+
+  val hp: Int
+    get() = character.hp.current
+
+  val maxHp: Int
+    get() = character.hp.max
+}
 
 /** Represents a Non-Player Character (NPC) in the campaign. */
 data class Npc(
@@ -32,10 +41,12 @@ data class ActivityItem(
 /** Represents a campaign lore document accessible to the GM and optionally shared with players. */
 data class LoreDocument(
     val id: String,
-    val title: String,
-    val content: String,
+    val lore: LoreFile,
     val isShared: Boolean = false,
-)
+) {
+  val title: String
+    get() = lore.title
+}
 
 /** UI state holding the live game master session data for GameScreenGM. */
 data class GameViewModelGMUiState(
