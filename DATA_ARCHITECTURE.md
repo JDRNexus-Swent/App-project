@@ -64,7 +64,7 @@ Every campaign group has one root document, created with the group.
 - **Renaming:** `GroupRepository.updateGroup` updates the group and renames the root in the same batch. It fails if the root does not exist (a group without root is a broken state, better seen than hidden).
 - `sharedGroupsIds == [groupId]` so members can read it through the standard group read rule.
 - `placements` is empty. This is the single exception to the invariant "keys of `placements` == `sharedGroupsIds`" (see 4).
-- It has **no personal placement**: it is an exception to the rule of section 3. Personal-space queries (`getPersonalRootFiles`, `getPersonalFolderFiles`) exclude `GROUP_ROOT` through one shared filter in the repository.
+- It has **no functional personal placement**: its `personalParentId` defaults to `""` to satisfy the no-null rule, but it never appears in a user's personal space because personal queries (`getPersonalRootFiles`, `getPersonalFolderFiles`) explicitly exclude `GROUP_ROOT` through a shared repository filter.
 - Top-level items of a group have `placements[groupId].folderId == groupId`.
 - It is immutable for users: `addItemToGroup`, `setItemHidden`, `removeItemFromGroup` and `deleteFile` all refuse a `GROUP_ROOT`. Its name only changes with the group's.
 ---
