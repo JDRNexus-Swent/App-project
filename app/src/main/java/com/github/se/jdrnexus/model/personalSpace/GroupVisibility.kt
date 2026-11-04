@@ -12,6 +12,7 @@ fun List<JDRFile>.visibleInGroup(
     groupId: String,
     userId: String,
     isGameMaster: Boolean,
-): List<JDRFile> = filter {
-  isGameMaster || it.ownerId == userId || it.placements[groupId]?.isHidden != true
+): List<JDRFile> = filter { file ->
+  val placement = file.placements[groupId]
+  placement != null && (isGameMaster || file.ownerId == userId || !placement.isHidden)
 }

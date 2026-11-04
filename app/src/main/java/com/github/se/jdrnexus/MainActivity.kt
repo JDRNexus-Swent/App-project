@@ -74,7 +74,7 @@ enum class AllRoutes {
  */
 @Composable
 fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
-  val altAuthViewModel: AuthViewModel = viewModel(factory = AuthViewModel.Factory)
+  val altAuthViewModel = authViewModel ?: viewModel(factory = AuthViewModel.Factory)
   val context = LocalContext.current
   val credentialManager = remember(context) { CredentialManager.create(context) }
   val navController = rememberNavController()
