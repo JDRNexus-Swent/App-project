@@ -61,6 +61,7 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
   fun onUsernameChange(username: String) = updateInput { copy(username = username) }
 
   fun signUp() {
+    if (isAuthenticationLocked()) return
     val form = _uiState.value
     validate(form, requireUsername = true)?.let {
       setStatus(AuthStatus.Error(it))
@@ -77,6 +78,7 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
   }
 
   fun signIn() {
+    if (isAuthenticationLocked()) return
     val form = _uiState.value
     validate(form, requireUsername = false)?.let {
       setStatus(AuthStatus.Error(it))
@@ -112,11 +114,10 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
       context: Context,
       credentialManager: CredentialManager,
   ) {
-    if (_uiState.value.status is AuthStatus.Loading) return
+    if (isAuthenticationLocked()) return
+    setStatus(AuthStatus.Loading)
 
     viewModelScope.launch {
-      setStatus(AuthStatus.Loading)
-
       try {
         val googleOption =
             GetSignInWithGoogleOption.Builder(
@@ -139,9 +140,11 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
                 credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
         ) {
           val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
-
-          // Reuse the existing method that authenticates through the repository.
-          signInWithGoogle(googleCredential.idToken)
+          if (googleCredential.idToken.isBlank()) {
+            setStatus(AuthStatus.Error(AuthError.INVALID_GOOGLE_CREDENTIAL.message))
+          } else {
+            setStatus(authenticateRequest { repository.signInWithGoogle(googleCredential.idToken) })
+          }
         } else {
           setStatus(AuthStatus.Error("Unsupported Google credential. Please try again."))
         }
@@ -166,6 +169,7 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
   }
 
   fun signInWithGoogle(token: String) {
+    if (isAuthenticationLocked()) return
     if (token.isBlank()) {
       setStatus(AuthStatus.Error(AuthError.INVALID_GOOGLE_CREDENTIAL.message))
       return
@@ -175,26 +179,34 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
   }
 
   private fun authenticate(request: suspend () -> AuthResult<AuthUser>) {
+    if (isAuthenticationLocked()) return
+    setStatus(AuthStatus.Loading)
+
     viewModelScope.launch {
-      setStatus(AuthStatus.Loading)
-
-      val status =
-          try {
-            when (val result = request()) {
-              is AuthResult.Success -> AuthStatus.Success(result.value)
-              is AuthResult.Failure -> AuthStatus.Error(result.error.message)
-              is AuthResult.AccountCreatedNeedsRecovery -> AuthStatus.Error(result.message)
-            }
-          } catch (cancellation: CancellationException) {
-            setStatus(AuthStatus.Idle)
-            throw cancellation
-          } catch (_: Exception) {
-            AuthStatus.Error(AuthError.UNKNOWN.message)
-          }
-
-      setStatus(status)
+      try {
+        setStatus(authenticateRequest(request))
+      } catch (cancellation: CancellationException) {
+        setStatus(AuthStatus.Idle)
+        throw cancellation
+      }
     }
   }
+
+  private suspend fun authenticateRequest(request: suspend () -> AuthResult<AuthUser>): AuthStatus =
+      try {
+        when (val result = request()) {
+          is AuthResult.Success -> AuthStatus.Success(result.value)
+          is AuthResult.Failure -> AuthStatus.Error(result.error.message)
+          is AuthResult.AccountCreatedNeedsRecovery -> AuthStatus.Error(result.message)
+        }
+      } catch (cancellation: CancellationException) {
+        throw cancellation
+      } catch (_: Exception) {
+        AuthStatus.Error(AuthError.UNKNOWN.message)
+      }
+
+  private fun isAuthenticationLocked(): Boolean =
+      _uiState.value.status.let { it is AuthStatus.Loading || it is AuthStatus.Success }
 
   private fun validate(form: AuthUiState, requireUsername: Boolean): String? {
     val emailError = if (!isValidEmail(form.email)) AuthError.INVALID_EMAIL.message else null
@@ -227,7 +239,12 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
                   updated.password.length >= MIN_PASSWORD_LENGTH
                 },
             usernameError = updated.usernameError?.takeUnless { updated.username.isNotBlank() },
-            status = if (updated.status is AuthStatus.Loading) updated.status else AuthStatus.Idle,
+            status =
+                if (updated.status is AuthStatus.Loading || updated.status is AuthStatus.Success) {
+                  updated.status
+                } else {
+                  AuthStatus.Idle
+                },
         )
       }
     }

@@ -163,6 +163,40 @@ class AuthViewModelTest {
   }
 
   @Test
+  fun rapidAuthenticationRequestsAreIgnoredWhileOneIsRunning() = runTest {
+    val signUpRepository = FakeAuthRepository().apply { signUpResponse = CompletableDeferred() }
+    val signUpViewModel = AuthViewModel(signUpRepository)
+    fillForm(signUpViewModel)
+
+    signUpViewModel.signUp()
+    signUpViewModel.signUp()
+    runCurrent()
+
+    assertEquals(1, signUpRepository.signUpCalls)
+    assertEquals(AuthStatus.Loading, signUpViewModel.uiState.value.status)
+
+    val signInRepository = FakeAuthRepository().apply { signInGate = CompletableDeferred() }
+    val signInViewModel = AuthViewModel(signInRepository)
+    fillForm(signInViewModel)
+
+    signInViewModel.signIn()
+    signInViewModel.signIn()
+    runCurrent()
+
+    assertEquals(1, signInRepository.signInCalls)
+    assertEquals(AuthStatus.Loading, signInViewModel.uiState.value.status)
+
+    val googleRepository = FakeAuthRepository()
+    val googleViewModel = AuthViewModel(googleRepository)
+
+    googleViewModel.signInWithGoogle("id-token")
+    googleViewModel.signInWithGoogle("id-token")
+    runCurrent()
+
+    assertEquals(1, googleRepository.googleSignInCalls)
+  }
+
+  @Test
   fun signUpSetsLoadingAndSuccessAndPassesTrimmedFormValues() = runTest {
     val repository = FakeAuthRepository()
     val response = CompletableDeferred<AuthResult<AuthUser>>()

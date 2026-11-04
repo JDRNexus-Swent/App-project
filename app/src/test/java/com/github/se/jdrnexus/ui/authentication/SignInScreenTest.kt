@@ -380,6 +380,21 @@ class SignInScreenTest {
   }
 
   @Test
+  fun signInScreen_successKeepsAuthenticationButtonsDisabledUntilNavigation() {
+    val repository = FakeAuthRepository()
+    showSignIn(repository)
+    enterSignInCredentials()
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    composeTestRule.waitForIdle()
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_google).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_forgot_password).assertIsNotEnabled()
+  }
+
+  @Test
   fun signInScreen_googleButtonAuthenticatesUsingInjectedCredentialManagerAndFakeToken() {
     val repository = FakeAuthRepository()
     val fakeIdToken = "eyJhbGciOiJub25lIn0.eyJzdWIiOiJ0ZXN0In0.c2lnbmF0dXJl"

@@ -236,6 +236,18 @@ class SignUpScreenTest {
   }
 
   @Test
+  fun signUpScreen_successKeepsAuthenticationButtonsDisabledUntilNavigation() {
+    showSignUp()
+    enterSignUpCredentials()
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
+    composeTestRule.waitForIdle()
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotEnabled()
+  }
+
+  @Test
   fun signUpScreen_logInInvokesSignInNavigationCallback() {
     var signInRequested = false
     showSignUp(onSignInScreen = { signInRequested = true })

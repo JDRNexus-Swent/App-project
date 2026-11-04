@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.authentication
 
 import androidx.compose.foundation.BorderStroke
@@ -84,6 +85,7 @@ fun SignInScreen(
   var googleErrorMessage by remember { mutableStateOf<String?>(null) }
 
   val isLoading = uiState.status is AuthStatus.Loading
+  val isAuthenticationLocked = isLoading || uiState.status is AuthStatus.Success
   val errorMessage = (uiState.status as? AuthStatus.Error)?.message
 
   // Keeps track of whether the password should be visible or masked.
@@ -217,6 +219,7 @@ fun SignInScreen(
             // Toggle between visible and masked password.
             IconButton(
                 onClick = { passwordVisible = !passwordVisible },
+                enabled = !isAuthenticationLocked,
                 modifier = Modifier.testTag(C.Tag.sign_in_password_visibility),
             ) {
               Icon(
@@ -245,6 +248,7 @@ fun SignInScreen(
       // button in case of forgotten password
       TextButton(
           onClick = forgotPassword,
+          enabled = !isAuthenticationLocked,
           modifier = Modifier.align(Alignment.End).testTag(C.Tag.sign_in_forgot_password),
       ) {
         Text(
@@ -259,7 +263,7 @@ fun SignInScreen(
             googleErrorMessage = null
             signInViewModel.signIn()
           },
-          enabled = !isLoading,
+          enabled = !isAuthenticationLocked,
           modifier = Modifier.fillMaxWidth().height(54.dp).testTag(C.Tag.sign_in_submit),
           shape = RoundedCornerShape(18.dp),
           colors = ButtonDefaults.buttonColors(colors.primary, colors.onPrimary),
@@ -312,7 +316,7 @@ fun SignInScreen(
           logo = colors.primary,
           textColor = colors.onSecondary,
           container = colors.onBackground,
-          enabled = !isLoading,
+          enabled = !isAuthenticationLocked,
       )
       Spacer(modifier = Modifier.height(2.dp))
 
@@ -325,6 +329,7 @@ fun SignInScreen(
 
         TextButton(
             onClick = onSignUp,
+            enabled = !isAuthenticationLocked,
             modifier = Modifier.testTag(C.Tag.sign_in_sign_up),
             contentPadding = PaddingValues(2.dp),
         ) {

@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.authentication
 
 import androidx.compose.foundation.layout.Box
@@ -67,6 +68,7 @@ fun SignUpScreen(
 
   // Authentication state.
   val isLoading = uiState.status is AuthStatus.Loading
+  val isAuthenticationLocked = isLoading || uiState.status is AuthStatus.Success
   val errorMessage = (uiState.status as? AuthStatus.Error)?.message
 
   // Keeps track of whether the password should be visible or masked.
@@ -218,6 +220,7 @@ fun SignUpScreen(
             // Toggle between visible and masked password.
             IconButton(
                 onClick = { passwordVisible = !passwordVisible },
+                enabled = !isAuthenticationLocked,
                 modifier = Modifier.testTag(C.Tag.sign_up_password_visibility),
             ) {
               Icon(
@@ -249,7 +252,7 @@ fun SignUpScreen(
       // Register button.
       Button(
           onClick = { signUpViewModel.signUp() },
-          enabled = !isLoading,
+          enabled = !isAuthenticationLocked,
           modifier = Modifier.fillMaxWidth().height(54.dp).testTag(C.Tag.sign_up_submit),
           shape = RoundedCornerShape(18.dp),
           colors = ButtonDefaults.buttonColors(colors.primary, colors.onPrimary),
@@ -285,6 +288,7 @@ fun SignUpScreen(
 
         TextButton(
             onClick = onSignInScreen,
+            enabled = !isAuthenticationLocked,
             modifier = Modifier.testTag(C.Tag.sign_up_sign_in),
             contentPadding = PaddingValues(2.dp),
         ) {
