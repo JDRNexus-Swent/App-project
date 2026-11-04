@@ -57,7 +57,8 @@ class GameGMViewModelTest {
   }
 
   @Test
-  fun `initial state loads from repositories`() = runTest {
+  // Loads initial combat, NPC, and lore state from the repositories.
+  fun initialStateLoadsFromRepositories() = runTest {
     repository.session.value =
         GameSessionSnapshot(
             enemies =
@@ -115,7 +116,8 @@ class GameGMViewModelTest {
   }
 
   @Test
-  fun `factory creates the ViewModel and rejects unknown types`() {
+  // Creates the GM ViewModel and rejects unsupported ViewModel types.
+  fun factoryCreatesViewModelAndRejectsUnknownTypes() {
     val factory = GameViewModelGMViewModelFactory(repository, groupId)
     Assert.assertNotNull(factory.create(GameViewModelGMViewModel::class.java))
 
@@ -129,7 +131,8 @@ class GameGMViewModelTest {
   }
 
   @Test
-  fun `combat changes persist and are synchronized from repository`() = runTest {
+  // Persists combat changes and reflects them in the ViewModel state.
+  fun combatChangesPersistAndSynchronizeFromRepository() = runTest {
     val viewModel = createViewModel()
     advanceUntilIdle()
     val enemy =
@@ -182,7 +185,8 @@ class GameGMViewModelTest {
   }
 
   @Test
-  fun `combat operations are ignored or rejected when invalid`() = runTest {
+  // Rejects invalid combat changes without persisting them.
+  fun invalidCombatOperationsAreRejected() = runTest {
     val viewModel = createViewModel()
     advanceUntilIdle()
     viewModel.addEnemy(
@@ -213,7 +217,8 @@ class GameGMViewModelTest {
   }
 
   @Test
-  fun `negative armor class stored in character stats is rejected`() = runTest {
+  // Rejects enemies with a negative armor class.
+  fun negativeArmorClassIsRejected() = runTest {
     val viewModel = createViewModel()
     advanceUntilIdle()
 
@@ -236,7 +241,8 @@ class GameGMViewModelTest {
   }
 
   @Test
-  fun `failed session write does not update state and exposes repository error`() = runTest {
+  // Keeps combat state unchanged and exposes errors when session writes fail.
+  fun failedSessionWritePreservesStateAndExposesError() = runTest {
     val viewModel = createViewModel()
     advanceUntilIdle()
     repository.sessionWriteFailure = IllegalStateException("Permission denied")
@@ -249,7 +255,8 @@ class GameGMViewModelTest {
   }
 
   @Test
-  fun `session observation failure is exposed and loading finishes`() = runTest {
+  // Exposes session observation failures and ends the loading state.
+  fun sessionObservationFailureIsExposedAndLoadingFinishes() = runTest {
     repository.sessionObservationFailure = IllegalStateException("Session unavailable")
 
     val viewModel = createViewModel()
@@ -260,7 +267,26 @@ class GameGMViewModelTest {
   }
 
   @Test
-  fun `npc changes are persisted and loaded through the session flow`() = runTest {
+  // Retries session observation through loadNPCs and loads the NPC list.
+  fun loadNPCsRetriesObservationAndLoadsNPCs() = runTest {
+    repository.sessionObservationFailure = IllegalStateException("Session unavailable")
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    assertEquals("Session unavailable", viewModel.uiState.value.error)
+
+    repository.sessionObservationFailure = null
+    repository.session.value =
+        GameSessionSnapshot(npcs = listOf(GameNpc("n1", "Innkeeper", null, "Friendly")))
+    viewModel.loadNPCs()
+    advanceUntilIdle()
+
+    assertEquals(listOf(Npc("n1", "Innkeeper", null, "Friendly")), viewModel.uiState.value.npcs)
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  // Persists NPC additions, updates, and removals through the session flow.
+  fun npcChangesPersistThroughSessionFlow() = runTest {
     val viewModel = createViewModel()
     advanceUntilIdle()
     val npc = Npc("n1", "Innkeeper", "portrait.png", "Friendly")
@@ -280,7 +306,59 @@ class GameGMViewModelTest {
   }
 
   @Test
-  fun `lore saves visibility changes and selection are reflected after persistence`() = runTest {
+  // Reports invalid and duplicate NPC additions without saving them.
+  fun invalidAndDuplicateNpcAdditionsAreRejected() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    viewModel.addNPC(Npc("", "Innkeeper", null, "Friendly"))
+    advanceUntilIdle()
+    assertEquals("NPC ID cannot be empty.", viewModel.uiState.value.error)
+
+    viewModel.addNPC(Npc("n1", " ", null, "Friendly"))
+    advanceUntilIdle()
+    assertEquals("NPC name cannot be empty.", viewModel.uiState.value.error)
+
+    val npc = Npc("n1", "Innkeeper", null, "Friendly")
+    viewModel.addNPC(npc)
+    advanceUntilIdle()
+    viewModel.addNPC(npc)
+    advanceUntilIdle()
+
+    assertEquals("NPC already exists.", viewModel.uiState.value.error)
+    assertEquals(listOf(npc), viewModel.uiState.value.npcs)
+    assertEquals(1, repository.savedSessions.size)
+  }
+
+  @Test
+  // Reports invalid and missing NPC updates without changing the saved NPC.
+  fun invalidAndMissingNpcUpdatesAreRejected() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    val npc = Npc("n1", "Innkeeper", null, "Friendly")
+    viewModel.addNPC(npc)
+    advanceUntilIdle()
+
+    viewModel.updateNPC("n1", npc.copy(id = "n2"))
+    advanceUntilIdle()
+    assertEquals("NPC ID cannot be changed.", viewModel.uiState.value.error)
+
+    viewModel.updateNPC("n1", npc.copy(name = " "))
+    advanceUntilIdle()
+    assertEquals("NPC name cannot be empty.", viewModel.uiState.value.error)
+
+    viewModel.updateNPC("missing", npc.copy(id = "missing"))
+    advanceUntilIdle()
+
+    assertEquals("NPC was not found.", viewModel.uiState.value.error)
+    assertEquals(listOf(npc), viewModel.uiState.value.npcs)
+    assertEquals(listOf(npc.toSnapshotNpc()), repository.session.value.npcs)
+    assertEquals(1, repository.savedSessions.size)
+  }
+
+  @Test
+  // Persists lore documents and synchronizes their visibility and selection.
+  fun loreSavesVisibilityAndSelectionAfterPersistence() = runTest {
     val viewModel = createViewModel()
     advanceUntilIdle()
     val lore =
@@ -310,7 +388,8 @@ class GameGMViewModelTest {
   }
 
   @Test
-  fun `lore write failure preserves prior state and exposes error`() = runTest {
+  // Preserves lore state and exposes the error when a lore write fails.
+  fun loreWriteFailurePreservesStateAndExposesError() = runTest {
     val viewModel = createViewModel()
     advanceUntilIdle()
     repository.loreWriteFailure = IllegalStateException("Lore write rejected")
@@ -329,7 +408,8 @@ class GameGMViewModelTest {
   }
 
   @Test
-  fun `lore visibility failure preserves current sharing state`() = runTest {
+  // Preserves sharing state and exposes the error when visibility updates fail.
+  fun loreVisibilityFailurePreservesSharingState() = runTest {
     repository.lore.value =
         listOf(
             GameLoreEntry(
@@ -350,7 +430,8 @@ class GameGMViewModelTest {
   }
 
   @Test
-  fun `activity feed loads dice rolls and observes player actions`() = runTest {
+  // Loads dice rolls and observes new player actions in the activity feed.
+  fun activityFeedLoadsDiceRollsAndObservesPlayerActions() = runTest {
     val viewModel = createViewModel()
     repository.activityHistory =
         listOf(
@@ -385,7 +466,8 @@ class GameGMViewModelTest {
   }
 
   @Test
-  fun `activity feed load failures are visible in state`() = runTest {
+  // Exposes repository failures encountered while loading activity history.
+  fun activityFeedLoadFailureIsExposed() = runTest {
     val viewModel = createViewModel()
     advanceUntilIdle()
     repository.activityFailure = IllegalStateException("Dice history unavailable")
