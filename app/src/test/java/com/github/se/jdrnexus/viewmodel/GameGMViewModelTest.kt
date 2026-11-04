@@ -388,6 +388,41 @@ class GameGMViewModelTest {
   }
 
   @Test
+  // Retries lore observation and loads documents after the repository recovers.
+  fun loadLoreDocumentsRetriesObservationAndLoadsDocuments() = runTest {
+    repository.loreObservationFailure = IllegalStateException("Lore unavailable")
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    assertEquals("Lore unavailable", viewModel.uiState.value.error)
+
+    repository.loreObservationFailure = null
+    val lore = GameLoreEntry("l1", LoreFile("The Crypt", emptyList()), true)
+    repository.lore.value = listOf(lore)
+    viewModel.loadLoreDocuments()
+    advanceUntilIdle()
+
+    assertEquals(listOf(LoreDocument("l1", lore.lore, true)), viewModel.uiState.value.loreDocuments)
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  // Rejects lore documents with a blank ID or title before calling the repository.
+  fun loreSaveRejectsBlankIdAndTitle() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    val sections = listOf(LoreSection("overview", "Overview", "Darkness"))
+
+    viewModel.saveLoreDocument(LoreDocument("", LoreFile("The Crypt", sections)))
+    advanceUntilIdle()
+    assertEquals("Lore ID and title are required.", viewModel.uiState.value.error)
+
+    viewModel.saveLoreDocument(LoreDocument("l1", LoreFile(" ", sections)))
+    advanceUntilIdle()
+    assertEquals("Lore ID and title are required.", viewModel.uiState.value.error)
+    assertTrue(repository.lore.value.isEmpty())
+  }
+
+  @Test
   // Preserves lore state and exposes the error when a lore write fails.
   fun loreWriteFailurePreservesStateAndExposesError() = runTest {
     val viewModel = createViewModel()
@@ -405,6 +440,26 @@ class GameGMViewModelTest {
 
     assertTrue(viewModel.uiState.value.loreDocuments.isEmpty())
     assertEquals("Lore write rejected", viewModel.uiState.value.error)
+  }
+
+  @Test
+  // Catches and exposes exceptions thrown while saving lore.
+  fun loreSaveExceptionIsCaughtAndExposed() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    repository.loreWriteException = IllegalStateException("Lore save crashed")
+
+    viewModel.saveLoreDocument(
+        LoreDocument(
+            "l1",
+            LoreFile("The Crypt", listOf(LoreSection("overview", "Overview", "Darkness"))),
+            false,
+        )
+    )
+    advanceUntilIdle()
+
+    assertTrue(viewModel.uiState.value.loreDocuments.isEmpty())
+    assertEquals("Lore save crashed", viewModel.uiState.value.error)
   }
 
   @Test
@@ -427,6 +482,41 @@ class GameGMViewModelTest {
 
     assertFalse(viewModel.uiState.value.loreDocuments.single().isShared)
     assertEquals("Visibility update rejected", viewModel.uiState.value.error)
+  }
+
+  @Test
+  // Reports an error when visibility is requested for a missing lore document.
+  fun loreVisibilityRejectsMissingDocument() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    viewModel.setLoreVisibility("missing", true)
+    advanceUntilIdle()
+
+    assertTrue(viewModel.uiState.value.loreDocuments.isEmpty())
+    assertEquals("Lore document was not found.", viewModel.uiState.value.error)
+  }
+
+  @Test
+  // Catches and exposes exceptions thrown while updating lore visibility.
+  fun loreVisibilityExceptionIsCaughtAndExposed() = runTest {
+    repository.lore.value =
+        listOf(
+            GameLoreEntry(
+                "l1",
+                LoreFile("The Crypt", listOf(LoreSection("overview", "Overview", "Darkness"))),
+                false,
+            )
+        )
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    repository.visibilityWriteException = IllegalStateException("Visibility update crashed")
+
+    viewModel.setLoreVisibility("l1", true)
+    advanceUntilIdle()
+
+    assertFalse(viewModel.uiState.value.loreDocuments.single().isShared)
+    assertEquals("Visibility update crashed", viewModel.uiState.value.error)
   }
 
   @Test
@@ -487,6 +577,9 @@ class GameGMViewModelTest {
     val savedSessions = mutableListOf<GameSessionSnapshot>()
     var sessionWriteFailure: Throwable? = null
     var loreWriteFailure: Throwable? = null
+    var loreWriteException: Exception? = null
+    var loreObservationFailure: Throwable? = null
+    var visibilityWriteException: Exception? = null
     var activityFailure: Throwable? = null
     var sessionObservationFailure: Throwable? = null
     var activityHistory: List<GameActivityEntry> = emptyList()
@@ -507,12 +600,14 @@ class GameGMViewModelTest {
       return Result.success(Unit)
     }
 
-    override fun observeLore(groupId: String): Flow<List<GameLoreEntry>> = lore.asStateFlow()
+    override fun observeLore(groupId: String): Flow<List<GameLoreEntry>> =
+        loreObservationFailure?.let { failure -> flow { throw failure } } ?: lore.asStateFlow()
 
     override fun observeSharedLore(groupId: String): Flow<List<GameLoreEntry>> =
         lore.asStateFlow().map { entries -> entries.filter { it.isShared } }
 
     override suspend fun saveLore(groupId: String, lore: GameLoreEntry): Result<Unit> {
+      loreWriteException?.let { throw it }
       loreWriteFailure?.let {
         return Result.failure(it)
       }
@@ -525,6 +620,7 @@ class GameGMViewModelTest {
         documentId: String,
         isShared: Boolean,
     ): Result<Unit> {
+      visibilityWriteException?.let { throw it }
       loreWriteFailure?.let {
         return Result.failure(it)
       }
