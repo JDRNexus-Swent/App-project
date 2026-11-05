@@ -84,7 +84,10 @@ fun SignInScreen(
   var googleErrorMessage by remember { mutableStateOf<String?>(null) }
 
   val isLoading = uiState.status is AuthStatus.Loading
-  val errorMessage = (uiState.status as? AuthStatus.Error)?.message
+  val errorMessage =
+      (uiState.status as? AuthStatus.Error)?.message?.takeUnless {
+        it == uiState.emailError || it == uiState.passwordError
+      }
 
   // Keeps track of whether the password should be visible or masked.
   var passwordVisible by remember { mutableStateOf(false) }
@@ -184,6 +187,8 @@ fun SignInScreen(
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
+          isError = uiState.emailError != null,
+          supportingText = { uiState.emailError?.let { error -> Text(text = error) } },
       )
       Spacer(modifier = Modifier.height(20.dp))
 
@@ -238,9 +243,12 @@ fun SignInScreen(
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
-          isError = errorMessage != null,
-          supportingText = { errorMessage?.let { error -> Text(text = error) } },
+          isError = uiState.passwordError != null,
+          supportingText = { uiState.passwordError?.let { error -> Text(text = error) } },
       )
+      errorMessage?.let { error ->
+        Text(text = error, modifier = Modifier.fillMaxWidth(), color = colors.error)
+      }
 
       // button in case of forgotten password
       TextButton(
