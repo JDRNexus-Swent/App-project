@@ -3,11 +3,14 @@ package com.github.se.jdrnexus
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.repository.AuthRepository
@@ -16,6 +19,7 @@ import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.home.TestTags
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Rule
@@ -98,6 +102,50 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(C.Tag.dice_offline_screen).assertIsNotDisplayed()
   }
 
+  @Test
+  fun rapidCloseClicksDoNotRemoveHomeFromTheBackStack() {
+    val repository = FakeAuthRepository()
+    showApp(repository)
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onNodeWithTag(TestTags.DICEBUTTON).performClick()
+    waitForTag(C.Tag.dice_offline_close)
+
+    composeTestRule.onNodeWithTag(C.Tag.dice_offline_close).performTouchInput {
+      click()
+      click()
+    }
+
+    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
+  }
+
+  @Test
+  fun logoutDisablesNavigationUntilSignedOut() {
+    val repository = FakeAuthRepository()
+    repository.signOutResult = CompletableDeferred()
+    showApp(repository)
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    waitForTag(TestTags.TITLE)
+
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.onNodeWithTag(TestTags.DICEBUTTON).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(TestTags.PSPACEBUTTON).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(TestTags.DICEBUTTON).performClick()
+    repository.signOutResult?.complete(AuthResult.Success(Unit))
+
+    waitForTag(C.Tag.sign_in_sign_up)
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsNotDisplayed()
+    assert(repository.authState.value == null)
+  }
+
   private fun showApp(repository: FakeAuthRepository = FakeAuthRepository()) {
     val viewModel = AuthViewModel(repository)
     composeTestRule.setContent { JDRNexusApp(authViewModel = viewModel) }
@@ -114,6 +162,7 @@ class MainActivityNavigationTest {
     override val authState: StateFlow<AuthUser?> = mutableAuthState
     var signInCalls = 0
     var signUpCalls = 0
+    var signOutResult: CompletableDeferred<AuthResult<Unit>>? = null
 
     override suspend fun signUpWithEmail(
         email: String,
@@ -137,6 +186,11 @@ class MainActivityNavigationTest {
     }
 
     override suspend fun signOut(): AuthResult<Unit> {
+      signOutResult?.let {
+        val result = it.await()
+        if (result is AuthResult.Success) mutableAuthState.value = null
+        return result
+      }
       mutableAuthState.value = null
       return AuthResult.Success(Unit)
     }
