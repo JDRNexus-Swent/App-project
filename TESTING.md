@@ -83,7 +83,12 @@ How we test, for the team and for AI agents. Every PR that adds or changes code 
 
 - **No Firebase, no emulator, no Robolectric.** Pass **fake repositories** implementing the interfaces through the constructor (the same reason ViewModels never import Firebase).
 - Fakes are small in-memory classes with controllable results (`MutableStateFlow` of data, a `CompletableDeferred` to hold an operation, a field to inject a failure). Prefer them to `mockk`: they fail at compile time when the interface changes.
-- Replace `Dispatchers.Main` with a test dispatcher through a `TestWatcher` rule, and run tests in `runTest { … }`. Advance with `runCurrent()` / `advanceUntilIdle()`.
+- Replace `Dispatchers.Main` with a test dispatcher through a `TestWatcher` rule, and run tests in `runTest { … }`.
+- Advance the test scheduler explicitly:
+  - `runCurrent()` runs what is already scheduled, without moving virtual time. Use it by default.
+  - `advanceUntilIdle()` runs until no task is left. Use it only when the work under test eventually finishes. If the VM polls, retries or repeats a `delay`, it never returns: use `advanceTimeBy(ms)` followed by `runCurrent()` instead.
+  - With `SharingStarted.WhileSubscribed(timeout)`, avoid `advanceUntilIdle()`: it skips past the timeout and can stop the upstream. Keep a subscriber active and advance by a specific amount.
+- Launch collectors that never complete (e.g. collecting a `StateFlow` to record its emissions) in `backgroundScope`, never directly in the `runTest` scope, or `runTest` fails because the coroutine is still active.
 - Assert on the exposed `StateFlow` value **at each step**: the loading state, then the final state, then the error state. For actions, also assert what reached the fake repository (the arguments it was called with).
 - Test the `Factory` only if it holds logic.
 
