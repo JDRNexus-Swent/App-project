@@ -43,6 +43,26 @@ class GroupVisibilityTest {
   }
 
   @Test
+  fun player_doesNotSeeFilesNotSharedWithGroup() {
+    val result =
+        listOf(visible).visibleInGroup("other-group", userId = "player", isGameMaster = false)
+
+    assertTrue("File not shared with the group should not be visible", result.isEmpty())
+  }
+
+  @Test
+  fun player_doesNotSeeFilesHiddenInAnotherGroup() {
+    val result =
+        listOf(hiddenElsewhere)
+            .visibleInGroup("other-group", userId = "player", isGameMaster = false)
+
+    assertTrue(
+        "File explicitly hidden in the requested group should not be visible",
+        result.isEmpty(),
+    )
+  }
+
+  @Test
   fun gameMaster_seesEverything() {
     val result = all.visibleInGroup("group", userId = "gm", isGameMaster = true)
 

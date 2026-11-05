@@ -984,7 +984,10 @@ class WorkspaceRepositoryFirestoreTest {
         runAndPumpMainLooper("setItemHidden") { repository.setItemHidden("file", "group", true) }
 
     assertTrue(result.isSuccess)
-    assertEquals(hiddenIn(file, "group"), getPersistedFile("file"))
+    assertEquals(
+        file.withPlacement("group", Placement("group", true)),
+        getPersistedFile(fileId = "file"),
+    )
   }
 
   @Test
