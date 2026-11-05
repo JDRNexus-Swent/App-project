@@ -1,16 +1,15 @@
 // Co-authored-by: OpenAI Codex
 package com.github.se.jdrnexus.model.map
 
+import com.firebase.geofire.GeoFireUtils
+import com.firebase.geofire.GeoLocation
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.GeoPoint
+import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
-import kotlin.math.asin
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -18,26 +17,61 @@ import kotlinx.coroutines.tasks.await
  *
  * Campaign groups are readable only by their members, so nearby players discover sessions through
  * this separate listing collection. Malformed listings are skipped rather than failing the map.
+ *
+ * Firestore cannot query a radius, so each listing must store, next to its `coordinates`, a
+ * [GEOHASH_FIELD] computed with `GeoFireUtils.getGeoHashForLocation`. Listings without it never
+ * appear around a location.
  */
 class MapRepositoryFirestore(
     private val firestore: FirebaseFirestore,
     private val zoneId: ZoneId = ZoneId.systemDefault(),
+    private val now: () -> Instant = Instant::now,
 ) : MapRepository {
 
   override suspend fun loadGamesNear(location: MapLocation?): List<MapGame> {
-    val games =
-        firestore.collection(MAP_SESSIONS_COLLECTION).get().await().documents.mapNotNull {
-          it.toMapGame(location)
+    val sessions = firestore.collection(MAP_SESSIONS_COLLECTION)
+    val now = now()
+    if (location == null) {
+      // Without a center there is no radius, so show every upcoming session, soonest first.
+      return sessions
+          .whereGreaterThanOrEqualTo(DATE_FIELD, Timestamp(now.epochSecond, now.nano))
+          .get()
+          .await()
+          .documents
+          .mapNotNull { it.toMapGame(center = null, now = now) }
+          .sortedBy { it.dateTime }
+    }
+
+    // Each bound is a geohash range covering part of the circle; together they cover all of it.
+    // The queries start together and run in parallel.
+    val center = GeoLocation(location.latitude, location.longitude)
+    val queries =
+        GeoFireUtils.getGeoHashQueryBounds(center, RADIUS_KM * 1000).map { bound ->
+          sessions.orderBy(GEOHASH_FIELD).startAt(bound.startHash).endAt(bound.endHash).get()
         }
-    // The card defines no radius: order by proximity instead of silently excluding sessions.
-    return if (location == null) games.sortedBy { it.dateTime }
-    else games.sortedBy { it.distanceKm }
+    return queries
+        .flatMap { it.await().documents }
+        .distinctBy { it.id }
+        .mapNotNull { it.toMapGame(center, now) }
+        .sortedBy { it.distanceKm }
   }
 
-  private fun DocumentSnapshot.toMapGame(origin: MapLocation?): MapGame? {
+  /**
+   * The listing as a [MapGame], or null if it is malformed, has already started, or lies outside
+   * the radius around [center]. The geohash ranges reach slightly past the circle, and Firestore
+   * cannot combine them with a date range, so both are checked here.
+   */
+  private fun DocumentSnapshot.toMapGame(center: GeoLocation?, now: Instant): MapGame? {
     val point = get("coordinates") as? GeoPoint ?: return null
-    val date = get("dateTime") as? Timestamp ?: return null
-    val seats = (get("availableSeats") as? Long)?.takeIf { it in 0..Int.MAX_VALUE } ?: return null
+    val start = (get(DATE_FIELD) as? Timestamp)?.toDate()?.toInstant() ?: return null
+    if (start.isBefore(now)) return null
+    val distanceKm = center?.let {
+      GeoFireUtils.getDistanceBetween(GeoLocation(point.latitude, point.longitude), it) / 1000
+    }
+    if (distanceKm != null && distanceKm > RADIUS_KM) return null
+    val seats =
+        (get("availableSeats") as? Number)?.toLong()?.takeIf { it in 0..Int.MAX_VALUE }
+            ?: return null
     return MapGame(
         id = id,
         latitude = point.latitude,
@@ -45,30 +79,22 @@ class MapRepositoryFirestore(
         title = text("title") ?: return null,
         gameMasterName = text("gameMasterName") ?: return null,
         gameSystem = text("gameSystem") ?: return null,
-        dateTime = LocalDateTime.ofInstant(date.toDate().toInstant(), zoneId),
+        dateTime = LocalDateTime.ofInstant(start, zoneId),
         availableSeats = seats.toInt(),
-        distanceKm = origin?.let { distanceKm(it, point) },
+        distanceKm = distanceKm,
     )
   }
 
   private fun DocumentSnapshot.text(field: String): String? =
       (get(field) as? String)?.takeIf { it.isNotBlank() }
 
-  /** Great-circle distance using the haversine formula. */
-  private fun distanceKm(origin: MapLocation, destination: GeoPoint): Double {
-    val latitudeSine = sin(Math.toRadians(destination.latitude - origin.latitude) / 2)
-    val longitudeSine = sin(Math.toRadians(destination.longitude - origin.longitude) / 2)
-    val haversine =
-        latitudeSine * latitudeSine +
-            cos(Math.toRadians(origin.latitude)) *
-                cos(Math.toRadians(destination.latitude)) *
-                longitudeSine *
-                longitudeSine
-    return 2 * EARTH_RADIUS_KM * asin(sqrt(haversine.coerceIn(0.0, 1.0)))
-  }
-
   companion object {
     const val MAP_SESSIONS_COLLECTION = "map_sessions"
-    private const val EARTH_RADIUS_KM = 6371.0088
+    const val GEOHASH_FIELD = "geohash"
+
+    /** Sessions further than this from the searched city or the user are not shown. */
+    const val RADIUS_KM = 50.0
+
+    private const val DATE_FIELD = "dateTime"
   }
 }

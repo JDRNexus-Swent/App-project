@@ -1,6 +1,9 @@
 // Co-authored-by: OpenAI Codex
 package com.github.se.jdrnexus.model.map
 
+import com.firebase.geofire.GeoFireUtils
+import com.firebase.geofire.GeoLocation
+import com.github.se.jdrnexus.model.map.MapRepositoryFirestore.Companion.GEOHASH_FIELD
 import com.github.se.jdrnexus.model.map.MapRepositoryFirestore.Companion.MAP_SESSIONS_COLLECTION
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
 import com.google.firebase.Timestamp
@@ -34,7 +37,7 @@ class MapRepositoryFirestoreTest {
   @Before
   fun setUp() {
     firestore = FirebaseEmulatorTestUtils.getFirestore()
-    repository = MapRepositoryFirestore(firestore, ZoneOffset.UTC)
+    repository = MapRepositoryFirestore(firestore, ZoneOffset.UTC) { NOW }
     runBlocking { FirebaseEmulatorTestUtils.clearCollection(firestore, MAP_SESSIONS_COLLECTION) }
   }
 
@@ -50,6 +53,11 @@ class MapRepositoryFirestoreTest {
   ): Map<String, Any?> =
       mapOf(
           "coordinates" to coordinates,
+          // Stored the way publishing a listing must store it.
+          GEOHASH_FIELD to
+              GeoFireUtils.getGeoHashForLocation(
+                  GeoLocation(coordinates.latitude, coordinates.longitude)
+              ),
           "title" to "Campaign",
           "gameMasterName" to "Alex",
           "gameSystem" to "Pathfinder",
@@ -82,6 +90,23 @@ class MapRepositoryFirestoreTest {
   }
 
   @Test
+  fun sessionsThatAlreadyStartedAreExcluded() = runBlocking {
+    seed(
+        "past" to session(date = "2026-10-31T23:59:00Z"),
+        "upcoming" to session(date = "2026-11-01T00:00:00Z"),
+    )
+
+    assertEquals(listOf("upcoming"), repository.loadGamesNear(null).map { it.id })
+  }
+
+  @Test
+  fun seatsStoredAsAnotherNumberTypeAreAccepted() = runBlocking {
+    seed("decimal" to session(overrides = mapOf("availableSeats" to 3.0)))
+
+    assertEquals(3, repository.loadGamesNear(null).single().availableSeats)
+  }
+
+  @Test
   fun withoutLocationGamesAreSortedByDate() = runBlocking {
     seed(
         "later" to session(date = "2026-12-01T10:00:00Z"),
@@ -92,25 +117,47 @@ class MapRepositoryFirestoreTest {
   }
 
   @Test
-  fun withLocationGamesAreSortedNearestFirstWithDistance() = runBlocking {
-    seed("far" to session(GeoPoint(0.0, 90.0)), "near" to session(GeoPoint(0.0, 0.0)))
+  fun withLocationOnlySessionsInsideTheRadiusAreReturnedNearestFirst() = runBlocking {
+    seed(
+        "outside" to session(GeoPoint(0.0, 1.0)), // About 111 km away.
+        "inside" to session(GeoPoint(0.0, 0.2)), // About 22 km away.
+        "here" to session(GeoPoint(0.0, 0.0)),
+    )
 
     val games = repository.loadGamesNear(MapLocation(0.0, 0.0))
 
-    assertEquals(listOf("near", "far"), games.map { it.id })
+    assertEquals(listOf("here", "inside"), games.map { it.id })
     assertEquals(0.0, games[0].distanceKm!!, 0.001)
-    assertEquals(10007.56, games[1].distanceKm!!, 0.1)
+    assertEquals(22.24, games[1].distanceKm!!, 0.1)
   }
 
   @Test
-  fun distanceCrossesTheDateLine() = runBlocking {
-    seed("across" to session(GeoPoint(0.0, -179.0)))
+  fun radiusCrossesTheDateLine() = runBlocking {
+    seed("across" to session(GeoPoint(0.0, -179.9)))
 
     assertEquals(
-        222.39,
-        repository.loadGamesNear(MapLocation(0.0, 179.0)).single().distanceKm!!,
+        22.24,
+        repository.loadGamesNear(MapLocation(0.0, 179.9)).single().distanceKm!!,
         0.1,
     )
+  }
+
+  @Test
+  fun withLocationSessionsThatAlreadyStartedAreExcluded() = runBlocking {
+    seed(
+        "past" to session(date = "2026-10-31T23:59:00Z"),
+        "upcoming" to session(date = "2026-11-01T00:00:00Z"),
+    )
+
+    assertEquals(listOf("upcoming"), repository.loadGamesNear(MapLocation(0.0, 0.0)).map { it.id })
+  }
+
+  @Test
+  fun listingsWithoutGeohashAreNotFoundAroundALocation() = runBlocking {
+    seed("unindexed" to session(overrides = mapOf(GEOHASH_FIELD to null)))
+
+    assertTrue(repository.loadGamesNear(MapLocation(0.0, 0.0)).isEmpty())
+    assertEquals(listOf("unindexed"), repository.loadGamesNear(null).map { it.id })
   }
 
   @Test
@@ -140,5 +187,10 @@ class MapRepositoryFirestoreTest {
     assertEquals("valid", game.id)
     assertEquals(0, game.availableSeats)
     assertNull(game.distanceKm)
+  }
+
+  private companion object {
+    /** Fixed clock: every seeded session is upcoming unless a test says otherwise. */
+    val NOW: Instant = Instant.parse("2026-11-01T00:00:00Z")
   }
 }
