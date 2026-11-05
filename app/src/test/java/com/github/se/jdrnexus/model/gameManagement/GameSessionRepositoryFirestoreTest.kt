@@ -63,7 +63,7 @@ class GameSessionRepositoryFirestoreTest {
         GameSessionSnapshot(
             enemies =
                 listOf(
-                    GameEnemy(
+                    GameCombatNPC(
                         id = "enemy-1",
                         character =
                             CharacterFile(
@@ -91,7 +91,7 @@ class GameSessionRepositoryFirestoreTest {
   @Test
   fun saveSession_rejectsDuplicateIdsInvalidEnemyStatsAndInvalidNpcs() = runBlocking {
     val enemy =
-        GameEnemy(
+        GameCombatNPC(
             "enemy",
             CharacterFile("Goblin", emptyList(), emptyList(), CharacterHealthPoints(6, 8)),
             12,
@@ -131,7 +131,7 @@ class GameSessionRepositoryFirestoreTest {
         repository.saveSession(groupId, invalidHp).exceptionOrNull()?.message,
     )
     assertEquals(
-        "Enemy AC cannot be negative.",
+        "Enemy AC must be finite and non-negative.",
         repository.saveSession(groupId, invalidArmorClass).exceptionOrNull()?.message,
     )
     assertEquals(
