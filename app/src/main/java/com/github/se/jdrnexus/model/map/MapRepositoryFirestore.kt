@@ -69,8 +69,9 @@ class MapRepositoryFirestore(
       GeoFireUtils.getDistanceBetween(GeoLocation(point.latitude, point.longitude), it) / 1000
     }
     if (distanceKm != null && distanceKm > RADIUS_KM) return null
+    // Fractional seats round down; negative and NaN values are malformed.
     val seats =
-        (get("availableSeats") as? Number)?.toLong()?.takeIf { it in 0..Int.MAX_VALUE }
+        (get("availableSeats") as? Number)?.toDouble()?.takeIf { it >= 0 && it <= Int.MAX_VALUE }
             ?: return null
     return MapGame(
         id = id,
