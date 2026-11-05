@@ -18,12 +18,15 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -80,6 +83,8 @@ import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.repository.DiceLogic
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
+import com.github.se.jdrnexus.resources.MAX_LANDSCAPE_CONTENT_WIDTH
+import com.github.se.jdrnexus.resources.useLandscapeLayout
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -158,17 +163,16 @@ fun DiceOfflineScreen(
 }
 
 /**
- * Stateless body of [DiceOfflineScreen], split out so previews can render it with a fixed [uiState]
- * and no Firebase.
+ * Stateless body of [DiceOfflineScreen], split out so previews and tests can render it with a fixed
+ * [uiState] and no Firebase.
  */
 @Composable
-private fun DiceOfflineContent(
+internal fun DiceOfflineContent(
     uiState: DiceUiState,
     diceViewModel: DiceInterfaceVM,
     onClose: () -> Unit,
 ) {
   val colors = diceThemeColors()
-  val controlsEnabled = !uiState.isRolling
 
   BoxWithConstraints(
       modifier =
@@ -177,6 +181,7 @@ private fun DiceOfflineContent(
               .testTag(C.Tag.dice_offline_screen),
   ) {
     val dimens = DiceDimens(screenHeight = maxHeight)
+    val isLandscape = useLandscapeLayout(maxWidth, maxHeight)
     Surface(
         modifier =
             Modifier.fillMaxSize()
@@ -185,61 +190,212 @@ private fun DiceOfflineContent(
         color = colors.cardColor,
         border = BorderStroke(1.dp, colors.cardBorder),
     ) {
-      BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val contentPadding = dimens.scaled(16.dp)
-        DieFillingColumn(
-            viewportHeight = maxHeight - contentPadding * 2,
-            modifier =
-                Modifier.fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(contentPadding),
-            top = {
-              DiceHeader(uiState = uiState, colors = colors, onClose = onClose)
-              Spacer(Modifier.height(dimens.scaled(16.dp)))
-            },
-            die = {
-              DieImage(
-                  uiState = uiState,
-                  colors = colors,
-                  onRollAnimationFinished = diceViewModel::onRollAnimationFinished,
-              )
-            },
-        ) {
-          DieResultText(uiState = uiState, colors = colors)
+      if (isLandscape) {
+        DiceLandscapeBody(
+            uiState = uiState,
+            diceViewModel = diceViewModel,
+            colors = colors,
+            dimens = dimens,
+            onClose = onClose,
+        )
+      } else {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+          val contentPadding = dimens.scaled(16.dp)
+          DieFillingColumn(
+              viewportHeight = maxHeight - contentPadding * 2,
+              modifier =
+                  Modifier.fillMaxSize()
+                      .verticalScroll(rememberScrollState())
+                      .padding(contentPadding),
+              top = {
+                DiceHeader(uiState = uiState, colors = colors, onClose = onClose)
+                Spacer(Modifier.height(dimens.scaled(16.dp)))
+              },
+              die = {
+                DieImage(
+                    uiState = uiState,
+                    colors = colors,
+                    onRollAnimationFinished = diceViewModel::onRollAnimationFinished,
+                )
+              },
+          ) {
+            DieResultText(uiState = uiState, colors = colors)
 
-          Spacer(Modifier.height(dimens.scaled(24.dp)))
-          ModifierControls(
-              modifier = uiState.modifier,
-              enabled = controlsEnabled,
-              colors = colors,
-              onChange = diceViewModel::increaseModifier,
-          )
-
-          Spacer(Modifier.height(dimens.scaled(20.dp)))
-          DiceSelector(
-              selected = uiState.selectedDice,
-              enabled = controlsEnabled,
-              colors = colors,
-              dimens = dimens,
-              onSelect = diceViewModel::selectDice,
-          )
-
-          uiState.errorMessage?.let { message ->
-            Spacer(Modifier.height(dimens.scaled(16.dp)))
-            ErrorBanner(message = message, colors = colors, onDismiss = diceViewModel::dismissError)
+            Spacer(Modifier.height(dimens.scaled(24.dp)))
+            DiceControls(
+                uiState = uiState,
+                diceViewModel = diceViewModel,
+                colors = colors,
+                dimens = dimens,
+            )
           }
-
-          Spacer(Modifier.height(dimens.scaled(20.dp)))
-          RollButton(
-              enabled = controlsEnabled,
-              colors = colors,
-              dimens = dimens,
-              onClick = diceViewModel::rollDice,
-          )
         }
       }
     }
   }
+}
+
+/** Share of the landscape card's content width given to the die panel. */
+private const val LANDSCAPE_DIE_WIDTH_FRACTION = 1f / 3f
+
+/** Space between the die panel and the controls panel, as a share of the card's content width. */
+private const val LANDSCAPE_PANEL_GAP_FRACTION = 0.03f
+
+/**
+ * Landscape body of the dice card: the die alone in the left third, and on the right the title,
+ * close button, result, modifier, dice selector and roll button, so a short, wide screen keeps a
+ * big die and every control without scrolling.
+ */
+@Composable
+private fun DiceLandscapeBody(
+    uiState: DiceUiState,
+    diceViewModel: DiceInterfaceVM,
+    colors: DiceThemeColors,
+    dimens: DiceDimens,
+    onClose: () -> Unit,
+) {
+  // Panel widths and the gap are fractions of the card rather than fixed dp, so the die keeps the
+  // same share of the screen on every phone. The gap comes out of the controls panel, so the die
+  // panel is exactly a third. Past MAX_LANDSCAPE_CONTENT_WIDTH (tablets) the panels stop growing
+  // and are centered, so the controls are not stretched.
+  Box(
+      modifier = Modifier.fillMaxSize().padding(dimens.scaled(16.dp)),
+      contentAlignment = Alignment.Center,
+  ) {
+    BoxWithConstraints(
+        modifier = Modifier.widthIn(max = MAX_LANDSCAPE_CONTENT_WIDTH).fillMaxSize()
+    ) {
+      val diePanelWidth = maxWidth * LANDSCAPE_DIE_WIDTH_FRACTION
+      // Square, so the die is as big as its panel allows in both directions.
+      val dieSize = minOf(diePanelWidth, maxHeight)
+      Row(
+          modifier = Modifier.fillMaxSize(),
+          horizontalArrangement = Arrangement.spacedBy(maxWidth * LANDSCAPE_PANEL_GAP_FRACTION),
+      ) {
+        Box(
+            modifier = Modifier.width(diePanelWidth).fillMaxHeight(),
+            contentAlignment = Alignment.Center,
+        ) {
+          Box(Modifier.size(dieSize)) {
+            DieImage(
+                uiState = uiState,
+                colors = colors,
+                onRollAnimationFinished = diceViewModel::onRollAnimationFinished,
+            )
+          }
+        }
+
+        DiceLandscapeControlsPanel(
+            uiState = uiState,
+            diceViewModel = diceViewModel,
+            colors = colors,
+            dimens = dimens,
+            onClose = onClose,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+        )
+      }
+    }
+  }
+}
+
+/**
+ * Right panel of [DiceLandscapeBody]: title, close button, result and [DiceControls], centered
+ * vertically.
+ */
+@Composable
+private fun DiceLandscapeControlsPanel(
+    uiState: DiceUiState,
+    diceViewModel: DiceInterfaceVM,
+    colors: DiceThemeColors,
+    dimens: DiceDimens,
+    onClose: () -> Unit,
+    modifier: Modifier,
+) {
+  BoxWithConstraints(modifier = modifier) {
+    // At least as tall as the panel so the content is centered in it; it only scrolls when it
+    // cannot fit, e.g. with a very large system font.
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier =
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight),
+    ) {
+      Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        // Same width as the close button, so the title stays centered over the controls.
+        Spacer(Modifier.width(MIN_TOUCH_TARGET))
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+          DiceTitleText(colors = colors)
+          Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(12.dp),
+          ) {
+            SelectedDieText(uiState = uiState, colors = colors)
+            RangePill(uiState = uiState, colors = colors)
+          }
+        }
+        DiceCloseButton(colors = colors, onClose = onClose)
+      }
+
+      DieResultText(uiState = uiState, colors = colors)
+
+      Spacer(Modifier.height(dimens.scaled(20.dp)))
+      DiceControls(
+          uiState = uiState,
+          diceViewModel = diceViewModel,
+          colors = colors,
+          dimens = dimens,
+          oneRowSelector = true,
+      )
+    }
+  }
+}
+
+/**
+ * Modifier, dice selector, error banner and roll button, shared by both orientations. They are
+ * disabled while a roll is in progress. [oneRowSelector] keeps the six dice on one row, to save
+ * height in landscape.
+ */
+@Composable
+private fun DiceControls(
+    uiState: DiceUiState,
+    diceViewModel: DiceInterfaceVM,
+    colors: DiceThemeColors,
+    dimens: DiceDimens,
+    oneRowSelector: Boolean = false,
+) {
+  val controlsEnabled = !uiState.isRolling
+  ModifierControls(
+      modifier = uiState.modifier,
+      enabled = controlsEnabled,
+      colors = colors,
+      onChange = diceViewModel::increaseModifier,
+  )
+
+  Spacer(Modifier.height(dimens.scaled(20.dp)))
+  DiceSelector(
+      selected = uiState.selectedDice,
+      enabled = controlsEnabled,
+      colors = colors,
+      dimens = dimens,
+      oneRow = oneRowSelector,
+      onSelect = diceViewModel::selectDice,
+  )
+
+  uiState.errorMessage?.let { message ->
+    Spacer(Modifier.height(dimens.scaled(16.dp)))
+    ErrorBanner(message = message, colors = colors, onDismiss = diceViewModel::dismissError)
+  }
+
+  Spacer(Modifier.height(dimens.scaled(20.dp)))
+  RollButton(
+      enabled = controlsEnabled,
+      colors = colors,
+      dimens = dimens,
+      onClick = diceViewModel::rollDice,
+  )
 }
 
 /** Height of the phone the screen was designed on; its spacing is defined for this height. */
@@ -318,14 +474,39 @@ private fun DiceHeader(uiState: DiceUiState, colors: DiceThemeColors, onClose: (
     Box(modifier = Modifier.width(120.dp).align(Alignment.TopCenter).padding(top = 12.dp)) {
       DivideWithDiamonds(color = colors.accentColor)
     }
-    IconButton(
-        onClick = onClose,
-        modifier = Modifier.align(Alignment.TopEnd).testTag(C.Tag.dice_offline_close),
-    ) {
-      Icon(Icons.Filled.Close, contentDescription = "Close", tint = colors.secondaryText)
-    }
+    DiceCloseButton(colors = colors, onClose = onClose, modifier = Modifier.align(Alignment.TopEnd))
   }
 
+  DiceTitle(uiState = uiState, colors = colors)
+}
+
+/** Button closing the dice roller. */
+@Composable
+private fun DiceCloseButton(
+    colors: DiceThemeColors,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+  IconButton(onClick = onClose, modifier = modifier.testTag(C.Tag.dice_offline_close)) {
+    Icon(Icons.Filled.Close, contentDescription = "Close", tint = colors.secondaryText)
+  }
+}
+
+/** Screen title, then the selected die and its valid range including the modifier. */
+@Composable
+private fun DiceTitle(uiState: DiceUiState, colors: DiceThemeColors) {
+  DiceTitleText(colors = colors)
+
+  Spacer(Modifier.height(4.dp))
+  SelectedDieText(uiState = uiState, colors = colors)
+
+  Spacer(Modifier.height(8.dp))
+  RangePill(uiState = uiState, colors = colors)
+}
+
+/** The "Dice Roller" title. */
+@Composable
+private fun DiceTitleText(colors: DiceThemeColors) {
   Text(
       text = "Dice Roller",
       color = colors.primaryText,
@@ -333,8 +514,11 @@ private fun DiceHeader(uiState: DiceUiState, colors: DiceThemeColors, onClose: (
       fontWeight = FontWeight.SemiBold,
       fontSize = 30.sp,
   )
+}
 
-  Spacer(Modifier.height(4.dp))
+/** Name of the selected die, e.g. "D20". */
+@Composable
+private fun SelectedDieText(uiState: DiceUiState, colors: DiceThemeColors) {
   Text(
       text = uiState.selectedDice.name,
       color = colors.accentColor,
@@ -342,8 +526,11 @@ private fun DiceHeader(uiState: DiceUiState, colors: DiceThemeColors, onClose: (
       fontSize = 18.sp,
       modifier = Modifier.testTag(C.Tag.dice_offline_selected_type),
   )
+}
 
-  Spacer(Modifier.height(8.dp))
+/** Lowest and highest possible totals of the selected die with the current modifier. */
+@Composable
+private fun RangePill(uiState: DiceUiState, colors: DiceThemeColors) {
   val min = 1 + uiState.modifier
   val max = uiState.selectedDice.maxValue + uiState.modifier
   Surface(
@@ -560,7 +747,8 @@ private fun SquareIconButton(
 }
 
 /**
- * Below this width, the six dice buttons no longer fit on one row and wrap into two rows of three.
+ * Below this width, the six dice buttons wrap into two rows of three, unless the caller asks for
+ * one row to save height (landscape); even then they wrap below [MIN_TOUCH_TARGET].
  */
 private val MIN_ONE_ROW_TILE_WIDTH = 64.dp
 
@@ -572,7 +760,8 @@ private val MAX_DICE_ICON_SIZE = 32.dp
 
 /**
  * One selection button per [DiceType]; the selected one is highlighted. The buttons share the
- * available width evenly, on one row when it is wide enough and on two rows of three otherwise.
+ * available width evenly, on one row when it is wide enough (or when [oneRow] asks for it and each
+ * button stays a usable touch target) and on two rows of three otherwise.
  */
 @Composable
 private fun DiceSelector(
@@ -580,6 +769,7 @@ private fun DiceSelector(
     enabled: Boolean,
     colors: DiceThemeColors,
     dimens: DiceDimens,
+    oneRow: Boolean = false,
     onSelect: (DiceType) -> Unit,
 ) {
   val padding = dimens.scaled(8.dp)
@@ -588,7 +778,9 @@ private fun DiceSelector(
     val rowWidth = maxWidth - padding * 2
     val diceCount = DiceType.entries.size
     val oneRowTileWidth = (rowWidth - gap * (diceCount - 1)) / diceCount
-    val perRow = if (oneRowTileWidth >= MIN_ONE_ROW_TILE_WIDTH) diceCount else diceCount / 2
+    val fitsOneRow =
+        oneRowTileWidth >= MIN_ONE_ROW_TILE_WIDTH || (oneRow && oneRowTileWidth >= MIN_TOUCH_TARGET)
+    val perRow = if (fitsOneRow) diceCount else diceCount / 2
     val tileWidth = (rowWidth - gap * (perRow - 1)) / perRow
     val iconSize = (tileWidth * DICE_ICON_WIDTH_FRACTION).coerceAtMost(MAX_DICE_ICON_SIZE)
 

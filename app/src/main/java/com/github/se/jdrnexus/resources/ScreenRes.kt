@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.github.se.jdrnexus.R
 
@@ -114,3 +115,25 @@ fun darkFieldColors(
         unfocusedTextColor = textPrimary,
         cursorColor = primary,
     )
+
+/**
+ * Narrowest screen that gets a side-by-side landscape layout: the smallest common phone in
+ * landscape (640x360dp), where both panes still keep 48dp touch targets. Narrower ones, such as a
+ * phone in split screen, keep the portrait layout, which scrolls.
+ */
+val MIN_LANDSCAPE_LAYOUT_WIDTH = 640.dp
+
+/**
+ * Whether a screen of [width] by [height] should use its side-by-side landscape layout: wider than
+ * tall, and wide enough for two panes. Based on the space the screen gets rather than the device
+ * orientation, so a resized window or split screen gets the layout that fits it.
+ */
+fun useLandscapeLayout(width: Dp, height: Dp): Boolean =
+    width > height && width >= MIN_LANDSCAPE_LAYOUT_WIDTH
+
+/**
+ * Widest content of a landscape layout, about the widest phone in landscape. On wider screens, such
+ * as tablets, the content is centered at this width instead of stretched, so it keeps the
+ * proportions it has on a phone.
+ */
+val MAX_LANDSCAPE_CONTENT_WIDTH = 1000.dp
