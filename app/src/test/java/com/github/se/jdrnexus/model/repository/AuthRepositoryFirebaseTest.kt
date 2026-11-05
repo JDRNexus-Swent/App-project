@@ -2,9 +2,11 @@
 package com.github.se.jdrnexus.model.repository
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
@@ -100,6 +102,30 @@ class AuthRepositoryFirebaseTest {
     assertNotNull(cancellation)
     assertFalse(client.accountExists)
     assertEquals(1, client.deleteAccountCalls)
+    assertEquals(1, client.signOutCalls)
+  }
+
+  @Test
+  fun cancellingSignUpDuringCleanupStillDeletesAccountAndSignsOut() = runBlocking {
+    val client =
+        FakeFirebaseAuthClient().apply {
+          usernameFailure = AuthError.NETWORK_ERROR
+          holdAccountDeletion = true
+        }
+    val repository = AuthRepositoryFirebase(client)
+    var result: AuthResult<AuthUser>? = null
+
+    val signUp = launch {
+      result = repository.signUpWithEmail("player@example.com", "password123", "Player")
+    }
+    client.accountDeletionStarted.await()
+    signUp.cancel()
+    client.accountDeletionGate.complete(Unit)
+    signUp.join()
+
+    assertEquals(null, result)
+    assertFalse(client.accountExists)
+    assertEquals(null, client.authState.value)
     assertEquals(1, client.signOutCalls)
   }
 
@@ -214,6 +240,9 @@ class AuthRepositoryFirebaseTest {
     var deleteFailure: AuthError? = null
     var signOutFailure: AuthError? = null
     var cancelUsernameUpdate = false
+    var holdAccountDeletion = false
+    val accountDeletionStarted = CompletableDeferred<Unit>()
+    val accountDeletionGate = CompletableDeferred<Unit>()
     var deleteAccountCalls = 0
     var signOutCalls = 0
 
@@ -234,6 +263,10 @@ class AuthRepositoryFirebaseTest {
 
     override suspend fun deleteAccount(uid: String) {
       deleteAccountCalls++
+      if (holdAccountDeletion) {
+        accountDeletionStarted.complete(Unit)
+        accountDeletionGate.await()
+      }
       deleteFailure?.let { throw AuthOperationException(it) }
       accountExists = false
       authState.value = null
