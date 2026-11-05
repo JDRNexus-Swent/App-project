@@ -6,7 +6,7 @@ import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import kotlinx.coroutines.flow.Flow
 
 /** An enemy whose combat state is synchronized with the campaign. */
-data class GameEnemy(
+data class GameCombatNPC(
     val id: String,
     val character: CharacterFile,
     val initiative: Int,
@@ -22,7 +22,7 @@ data class GameNpc(
 
 /** Persisted combat and NPC state for one campaign. */
 data class GameSessionSnapshot(
-    val enemies: List<GameEnemy> = emptyList(),
+    val enemies: List<GameCombatNPC> = emptyList(),
     val isCombatActive: Boolean = false,
     val currentRound: Int = 1,
     val npcs: List<GameNpc> = emptyList(),
@@ -40,8 +40,12 @@ data class GameSessionSnapshot(
       ) {
         "Enemy HP must be between zero and max HP."
       }
-      require(enemy.character.stats.filter { it.statID == "armorClass" }.all { it.value >= 0.0 }) {
-        "Enemy AC cannot be negative."
+      require(
+          enemy.character.stats
+              .filter { it.statID == "armorClass" }
+              .all { it.value.isFinite() && it.value >= 0.0 }
+      ) {
+        "Enemy AC must be finite and non-negative."
       }
     }
     require(npcs.map { it.id }.toSet().size == npcs.size) { "NPC IDs must be unique." }

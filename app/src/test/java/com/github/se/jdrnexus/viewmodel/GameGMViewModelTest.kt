@@ -9,12 +9,12 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
 import com.github.se.jdrnexus.model.gameManagement.GameActivityEntry
-import com.github.se.jdrnexus.model.gameManagement.GameEnemy
+import com.github.se.jdrnexus.model.gameManagement.GameCombatNPC
 import com.github.se.jdrnexus.model.gameManagement.GameLoreEntry
 import com.github.se.jdrnexus.model.gameManagement.GameNpc
 import com.github.se.jdrnexus.model.gameManagement.GameSessionRepository
 import com.github.se.jdrnexus.model.gameManagement.GameSessionSnapshot
-import com.github.se.jdrnexus.ui.gameManagement.Enemy
+import com.github.se.jdrnexus.ui.gameManagement.CombatNPC
 import com.github.se.jdrnexus.ui.gameManagement.GameViewModelGMViewModel
 import com.github.se.jdrnexus.ui.gameManagement.GameViewModelGMViewModelFactory
 import com.github.se.jdrnexus.ui.gameManagement.LoreDocument
@@ -63,7 +63,7 @@ class GameGMViewModelTest {
         GameSessionSnapshot(
             enemies =
                 listOf(
-                    GameEnemy(
+                    GameCombatNPC(
                         id = "e1",
                         character =
                             CharacterFile(
@@ -102,7 +102,9 @@ class GameGMViewModelTest {
 
     val state = viewModel.uiState.value
     assertEquals(
-        repository.session.value.enemies.single().let { Enemy(it.id, it.character, it.initiative) },
+        repository.session.value.enemies.single().let {
+          CombatNPC(it.id, it.character, it.initiative)
+        },
         state.enemies.single(),
     )
     assertEquals("Poisoned", state.enemies.single().character.actions.last().name)
@@ -112,7 +114,7 @@ class GameGMViewModelTest {
     assertEquals(Npc("n1", "Innkeeper", null, "Friendly"), state.npcs.single())
     assertEquals(LoreDocument("l1", loreFile, true), state.loreDocuments.single())
     assertFalse(state.isLoading)
-    Assert.assertNull(state.error)
+    assertEquals("", state.error)
   }
 
   @Test
@@ -136,7 +138,7 @@ class GameGMViewModelTest {
     val viewModel = createViewModel()
     advanceUntilIdle()
     val enemy =
-        Enemy(
+        CombatNPC(
             id = "e1",
             character =
                 CharacterFile(
@@ -190,7 +192,7 @@ class GameGMViewModelTest {
     val viewModel = createViewModel()
     advanceUntilIdle()
     viewModel.addEnemy(
-        Enemy(
+        CombatNPC(
             id = "bad",
             character =
                 CharacterFile(
@@ -223,7 +225,7 @@ class GameGMViewModelTest {
     advanceUntilIdle()
 
     viewModel.addEnemy(
-        Enemy(
+        CombatNPC(
             id = "bad",
             character =
                 CharacterFile(
@@ -237,7 +239,55 @@ class GameGMViewModelTest {
     advanceUntilIdle()
 
     assertTrue(viewModel.uiState.value.enemies.isEmpty())
-    assertEquals("Enemy AC cannot be negative.", viewModel.uiState.value.error)
+    assertEquals("Enemy AC must be finite and non-negative.", viewModel.uiState.value.error)
+  }
+
+  @Test
+  // Rejects enemies without a name and those with a non-finite armor class.
+  fun blankNameAndNonFiniteArmorClassAreRejected() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    viewModel.addEnemy(
+        CombatNPC(
+            id = "blank-name",
+            character =
+                CharacterFile(
+                    name = "  ",
+                    stats = emptyList(),
+                    actions = emptyList(),
+                    hp = CharacterHealthPoints(10, 10),
+                ),
+        )
+    )
+    advanceUntilIdle()
+
+    assertTrue(viewModel.uiState.value.enemies.isEmpty())
+    assertEquals("Enemy name cannot be empty.", viewModel.uiState.value.error)
+
+    viewModel.addEnemy(
+        CombatNPC(
+            id = "infinite-ac",
+            character =
+                CharacterFile(
+                    name = "Goblin",
+                    stats =
+                        listOf(
+                            CharacterStat(
+                                "armorClass",
+                                "Armor Class",
+                                Double.POSITIVE_INFINITY,
+                            )
+                        ),
+                    actions = emptyList(),
+                    hp = CharacterHealthPoints(10, 10),
+                ),
+        )
+    )
+    advanceUntilIdle()
+
+    assertTrue(viewModel.uiState.value.enemies.isEmpty())
+    assertEquals("Enemy AC must be finite and non-negative.", viewModel.uiState.value.error)
   }
 
   @Test
@@ -381,10 +431,55 @@ class GameGMViewModelTest {
     assertEquals(lore.lore.sections, repository.lore.value.single().lore.sections)
 
     viewModel.selectLoreDocument("l1")
+    viewModel.updateLoreTitle("The Forgotten Crypt")
+    viewModel.addLoreSection("Geography", "Beneath the old city")
+    viewModel.updateLoreSectionTitle("overview", "First Impressions")
+    viewModel.updateLoreSectionDescription("overview", "A sealed entrance")
+    viewModel.removeLoreSection("history")
+
+    val editedLore = viewModel.uiState.value.selectedLoreDocument!!
+    assertTrue(viewModel.uiState.value.hasUnsavedLoreChanges)
+    assertEquals("The Crypt", repository.lore.value.single().lore.title)
+    assertEquals("The Forgotten Crypt", editedLore.title)
+    val overview = editedLore.lore.sections.first { it.sectionID == "overview" }
+    assertEquals("First Impressions", overview.title)
+    assertEquals("A sealed entrance", overview.description)
+    assertEquals("Geography", editedLore.lore.sections.last().title)
+    assertTrue(editedLore.lore.sections.last().sectionID.isNotBlank())
+
+    viewModel.saveLoreDocument(editedLore)
+    advanceUntilIdle()
+
+    assertFalse(viewModel.uiState.value.hasUnsavedLoreChanges)
+    assertEquals(editedLore, viewModel.uiState.value.loreDocuments.single())
+    assertEquals(editedLore.toRepositoryLore(), repository.lore.value.single())
+
     viewModel.setLoreVisibility("l1", true)
     advanceUntilIdle()
     assertTrue(viewModel.uiState.value.selectedLoreDocument?.isShared == true)
     assertTrue(repository.lore.value.single().isShared)
+  }
+
+  @Test
+  // Rejects lore edits without a selection and edits for unknown sections.
+  fun loreEditsRequireASelectionAndKnownSection() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    viewModel.updateLoreTitle("No selection")
+    advanceUntilIdle()
+    assertEquals("Select a lore document before editing.", viewModel.uiState.value.error)
+
+    val lore = LoreDocument("l1", LoreFile("The Crypt", emptyList()))
+    viewModel.saveLoreDocument(lore)
+    advanceUntilIdle()
+    viewModel.selectLoreDocument("l1")
+    viewModel.addLoreSection(" ", "Description")
+    assertEquals("Lore section title cannot be empty.", viewModel.uiState.value.error)
+
+    viewModel.updateLoreSectionTitle("missing", "Title")
+    assertEquals("Lore section was not found.", viewModel.uiState.value.error)
+    assertFalse(viewModel.uiState.value.hasUnsavedLoreChanges)
   }
 
   @Test
@@ -659,7 +754,7 @@ class GameGMViewModelTest {
   }
 }
 
-private fun Enemy.toSnapshotEnemy() = GameEnemy(id, character, initiative)
+private fun CombatNPC.toSnapshotEnemy() = GameCombatNPC(id, character, initiative)
 
 private fun Npc.toSnapshotNpc() = GameNpc(id, name, portraitUrl, information)
 

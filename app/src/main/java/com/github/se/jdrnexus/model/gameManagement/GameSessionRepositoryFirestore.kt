@@ -286,7 +286,7 @@ class GameSessionRepositoryFirestore(
         (data["enemies"] as? List<*>)
             ?.map { item ->
               val enemy = item as? Map<*, *> ?: error("Invalid enemy data.")
-              GameEnemy(
+              GameCombatNPC(
                   id = enemy.string("id"),
                   character =
                       JDRFileJsonCodec.deserializeCharacter(

@@ -5,12 +5,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
+import com.github.se.jdrnexus.model.filerepresentation.LoreSection
 import com.github.se.jdrnexus.model.gameManagement.GameActivityEntry
-import com.github.se.jdrnexus.model.gameManagement.GameEnemy
+import com.github.se.jdrnexus.model.gameManagement.GameCombatNPC
 import com.github.se.jdrnexus.model.gameManagement.GameLoreEntry
 import com.github.se.jdrnexus.model.gameManagement.GameNpc
 import com.github.se.jdrnexus.model.gameManagement.GameSessionRepository
 import com.github.se.jdrnexus.model.gameManagement.GameSessionSnapshot
+import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,9 +67,10 @@ class GameViewModelGMViewModel(
     observeActivityFeed()
   }
 
-  override fun addEnemy(enemy: Enemy) {
+  override fun addEnemy(enemy: CombatNPC) {
     mutateSession { session ->
       require(enemy.id.isNotBlank()) { "Enemy ID cannot be empty." }
+      require(enemy.name.isNotBlank()) { "Enemy name cannot be empty." }
       require(session.enemies.none { it.id == enemy.id }) { "Enemy already exists." }
       session.copy(enemies = session.enemies + enemy.toRepositoryEnemy())
     }
@@ -124,7 +127,7 @@ class GameViewModelGMViewModel(
     activityLoaded = false
     refreshLoading()
     viewModelScope.launch {
-      _uiState.update { it.copy(error = null) }
+      _uiState.update { it.copy(error = "") }
       try {
         sessionRepository
             .loadActivities(groupId)
@@ -194,7 +197,51 @@ class GameViewModelGMViewModel(
 
   override fun selectLoreDocument(documentId: String) {
     _uiState.update { state ->
-      state.copy(selectedLoreDocument = state.loreDocuments.find { it.id == documentId })
+      state.copy(
+          selectedLoreDocument = state.loreDocuments.find { it.id == documentId },
+          hasUnsavedLoreChanges = false,
+      )
+    }
+  }
+
+  override fun updateLoreTitle(title: String) {
+    updateSelectedLoreDocument { document ->
+      document.copy(lore = document.lore.copy(title = title))
+    }
+  }
+
+  override fun addLoreSection(title: String, description: String) {
+    if (title.isBlank()) {
+      reportError(IllegalArgumentException(LORE_SECTION_TITLE_ERROR), LORE_EDIT_ERROR)
+      return
+    }
+    val section = LoreSection(UUID.randomUUID().toString(), title, description)
+    updateSelectedLoreDocument { document ->
+      document.copy(lore = document.lore.copy(sections = document.lore.sections + section))
+    }
+  }
+
+  override fun updateLoreSectionTitle(sectionID: String, title: String) {
+    updateLoreSection(sectionID) { it.copy(title = title) }
+  }
+
+  override fun updateLoreSectionDescription(sectionID: String, description: String) {
+    updateLoreSection(sectionID) { it.copy(description = description) }
+  }
+
+  override fun removeLoreSection(sectionID: String) {
+    updateSelectedLoreDocument { document ->
+      if (document.lore.sections.none { it.sectionID == sectionID }) {
+        reportError(IllegalArgumentException(LORE_SECTION_NOT_FOUND_ERROR), LORE_EDIT_ERROR)
+        null
+      } else {
+        document.copy(
+            lore =
+                document.lore.copy(
+                    sections = document.lore.sections.filterNot { it.sectionID == sectionID }
+                )
+        )
+      }
     }
   }
 
@@ -218,7 +265,10 @@ class GameViewModelGMViewModel(
                     state.copy(
                         loreDocuments = documents,
                         selectedLoreDocument = selected,
-                        error = null,
+                        hasUnsavedLoreChanges =
+                            if (state.selectedLoreDocument?.id == document.id) false
+                            else state.hasUnsavedLoreChanges,
+                        error = "",
                     )
                   }
                 },
@@ -255,7 +305,7 @@ class GameViewModelGMViewModel(
                     state.copy(
                         loreDocuments = documents,
                         selectedLoreDocument = selected,
-                        error = null,
+                        error = "",
                     )
                   }
                 },
@@ -307,7 +357,8 @@ class GameViewModelGMViewModel(
                   loreDocuments = documents,
                   selectedLoreDocument =
                       state.selectedLoreDocument?.let { selected ->
-                        documents.find { it.id == selected.id }
+                        if (state.hasUnsavedLoreChanges) selected
+                        else documents.find { it.id == selected.id }
                       },
               )
             }
@@ -337,7 +388,7 @@ class GameViewModelGMViewModel(
           sessionRepository
               .saveSession(groupId, updated)
               .fold(
-                  onSuccess = { _uiState.update { it.withSession(updated).copy(error = null) } },
+                  onSuccess = { _uiState.update { it.withSession(updated).copy(error = "") } },
                   onFailure = { failure -> reportError(failure, SESSION_SAVE_ERROR) },
               )
         } catch (cancellation: CancellationException) {
@@ -392,6 +443,42 @@ class GameViewModelGMViewModel(
     _uiState.update { it.copy(error = message) }
   }
 
+  private fun updateLoreSection(sectionID: String, transform: (LoreSection) -> LoreSection) {
+    updateSelectedLoreDocument { document ->
+      if (document.lore.sections.none { it.sectionID == sectionID }) {
+        reportError(IllegalArgumentException(LORE_SECTION_NOT_FOUND_ERROR), LORE_EDIT_ERROR)
+        null
+      } else {
+        document.copy(
+            lore =
+                document.lore.copy(
+                    sections =
+                        document.lore.sections.map { section ->
+                          if (section.sectionID == sectionID) transform(section) else section
+                        }
+                )
+        )
+      }
+    }
+  }
+
+  private fun updateSelectedLoreDocument(transform: (LoreDocument) -> LoreDocument?) {
+    val state = _uiState.value
+    val document =
+        state.selectedLoreDocument
+            ?: return reportError(
+                IllegalStateException(LORE_DOCUMENT_REQUIRED_ERROR),
+                LORE_EDIT_ERROR,
+            )
+    val updated = transform(document) ?: return
+    _uiState.value =
+        state.copy(
+            selectedLoreDocument = updated,
+            hasUnsavedLoreChanges = true,
+            error = "",
+        )
+  }
+
   /** Converts the current screen state into a repository session snapshot. */
   private fun GameViewModelGMUiState.toSession() =
       GameSessionSnapshot(
@@ -411,10 +498,10 @@ class GameViewModelGMViewModel(
       )
 
   /** Converts this UI enemy to its repository model. */
-  private fun Enemy.toRepositoryEnemy() = GameEnemy(id, character, initiative)
+  private fun CombatNPC.toRepositoryEnemy() = GameCombatNPC(id, character, initiative)
 
   /** Converts this repository enemy to its UI model. */
-  private fun GameEnemy.toUiEnemy() = Enemy(id, character, initiative)
+  private fun GameCombatNPC.toUiEnemy() = CombatNPC(id, character, initiative)
 
   /** Converts this UI NPC to its repository model. */
   private fun Npc.toRepositoryNpc() = GameNpc(id, name, portraitUrl, information)
@@ -432,7 +519,11 @@ class GameViewModelGMViewModel(
     const val SESSION_LOAD_ERROR = "Failed to load the campaign session."
     const val SESSION_SAVE_ERROR = "Failed to save the campaign session."
     const val LORE_LOAD_ERROR = "Failed to load campaign lore."
+    const val LORE_EDIT_ERROR = "Failed to edit campaign lore."
     const val LORE_SAVE_ERROR = "Failed to save campaign lore."
+    const val LORE_DOCUMENT_REQUIRED_ERROR = "Select a lore document before editing."
+    const val LORE_SECTION_TITLE_ERROR = "Lore section title cannot be empty."
+    const val LORE_SECTION_NOT_FOUND_ERROR = "Lore section was not found."
     const val LORE_VISIBILITY_ERROR = "Failed to update lore visibility."
     const val ACTIVITY_LOAD_ERROR = "Failed to load the activity feed."
     const val ACTIVITY_SYNC_ERROR = "Failed to synchronize the activity feed."
