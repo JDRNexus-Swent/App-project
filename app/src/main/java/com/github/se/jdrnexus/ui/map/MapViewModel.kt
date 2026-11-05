@@ -7,6 +7,7 @@ import com.github.se.jdrnexus.model.map.MapGame
 import com.github.se.jdrnexus.model.map.MapLocation
 import com.github.se.jdrnexus.model.map.MapLocationRepository
 import com.github.se.jdrnexus.model.map.MapRepository
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -60,7 +61,7 @@ class MapViewModel(
     cancelLocationRequests()
     beginOperation(MapOperation.CITY_SEARCH)
     citySearchJob =
-        launchOperation(MapOperation.CITY_SEARCH, "Unable to search cities.") {
+        launchOperation(MapOperation.CITY_SEARCH, CITY_SEARCH_ERROR) {
           val location = locationRepository.searchCity(query)
           currentCoroutineContext().ensureActive()
           if (location == null) {
@@ -101,7 +102,7 @@ class MapViewModel(
           MapStatus(
               MapOperation.DEVICE_LOCATION,
               MapStatusType.PERMISSION_DENIED,
-              "Location permission was denied.",
+              PERMISSION_DENIED_MESSAGE,
           ),
       )
       return
@@ -109,7 +110,7 @@ class MapViewModel(
 
     beginOperation(MapOperation.DEVICE_LOCATION)
     deviceLocationJob =
-        launchOperation(MapOperation.DEVICE_LOCATION, "Unable to get device location.") {
+        launchOperation(MapOperation.DEVICE_LOCATION, DEVICE_LOCATION_ERROR) {
           val location = locationRepository.getDeviceLocation()
           currentCoroutineContext().ensureActive()
           _uiState.update {
@@ -140,7 +141,7 @@ class MapViewModel(
     gamesJob?.cancel()
     if (!operationAlreadyStarted) beginOperation(MapOperation.GAMES)
     gamesJob =
-        launchOperation(MapOperation.GAMES, "Unable to load games.") {
+        launchOperation(MapOperation.GAMES, GAMES_ERROR) {
           val loaded = mapRepository.loadGamesNear(location)
           currentCoroutineContext().ensureActive()
           allGames = loaded.map { it.toUi() }
@@ -157,10 +158,13 @@ class MapViewModel(
         }
   }
 
-  /** Runs [block] for [operation], exposing failures as a retryable error status. */
+  /**
+   * Runs [block] for [operation]. A revoked permission is shown as a permission denial, and any
+   * other failure as a retryable error with [errorMessage].
+   */
   private fun launchOperation(
       operation: MapOperation,
-      fallbackMessage: String,
+      errorMessage: String,
       block: suspend () -> Unit,
   ): Job = viewModelScope.launch {
     try {
@@ -169,11 +173,21 @@ class MapViewModel(
       // A cancelled Firebase task can throw while this coroutine is still active.
       if (currentCoroutineContext().isActive) finishOperation(operation)
       throw cancellation
-    } catch (failure: Exception) {
-      val message = failure.message?.takeIf(String::isNotBlank) ?: fallbackMessage
+    } catch (revoked: SecurityException) {
       finishOperation(
           operation,
-          MapStatus(operation, MapStatusType.ERROR, message, canRetry = true),
+          MapStatus(operation, MapStatusType.PERMISSION_DENIED, PERMISSION_DENIED_MESSAGE),
+      )
+    } catch (failure: Exception) {
+      // Device location errors are written for users; other messages (Firestore, Geocoder) are
+      // technical, so the fixed message is shown instead.
+      val userMessage =
+          (failure as? IOException)?.message?.takeIf {
+            operation == MapOperation.DEVICE_LOCATION && it.isNotBlank()
+          }
+      finishOperation(
+          operation,
+          MapStatus(operation, MapStatusType.ERROR, userMessage ?: errorMessage, canRetry = true),
       )
     }
   }
@@ -250,9 +264,15 @@ class MapViewModel(
 
   private fun MapCoordinates.toModel() = MapLocation(latitude, longitude, label)
 
-  private companion object {
-    const val CITY_ZOOM = 12f
-    const val USER_LOCATION_ZOOM = 15f
-    const val GAME_ZOOM = 16f
+  internal companion object {
+    const val PERMISSION_DENIED_MESSAGE = "Location permission was denied."
+    const val CITY_SEARCH_ERROR =
+        "Unable to search for this city. Check your connection and try again."
+    const val DEVICE_LOCATION_ERROR = "Unable to get your location. Try again."
+    const val GAMES_ERROR = "Unable to load games. Check your connection and try again."
+
+    private const val CITY_ZOOM = 12f
+    private const val USER_LOCATION_ZOOM = 15f
+    private const val GAME_ZOOM = 16f
   }
 }

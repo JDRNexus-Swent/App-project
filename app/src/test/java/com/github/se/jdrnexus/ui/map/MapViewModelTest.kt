@@ -6,6 +6,7 @@ import com.github.se.jdrnexus.model.map.MapLocation
 import com.github.se.jdrnexus.model.map.MapLocationRepository
 import com.github.se.jdrnexus.model.map.MapRepository
 import com.github.se.jdrnexus.ui.authentication.MainDispatcherRule
+import java.io.IOException
 import java.time.LocalDateTime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -186,16 +187,70 @@ class MapViewModelTest {
     advanceUntilIdle()
 
     assertEquals(
-        MapStatus(MapOperation.DEVICE_LOCATION, MapStatusType.ERROR, "offline", canRetry = true),
+        MapStatus(
+            MapOperation.DEVICE_LOCATION,
+            MapStatusType.ERROR,
+            MapViewModel.DEVICE_LOCATION_ERROR,
+            canRetry = true,
+        ),
         viewModel.uiState.value.status,
     )
+  }
+
+  @Test
+  fun deviceLocationMessageWrittenForUsersIsShownAsIs() = runTest {
+    val message = "Enable device location to find nearby games."
+    val locations = FakeMapLocationRepository(deviceLocationFailure = IOException(message))
+    val viewModel = MapViewModel(FakeMapRepository(), locations)
+
+    viewModel.onLocationPermissionResult(true)
+    advanceUntilIdle()
+
+    assertEquals(message, viewModel.uiState.value.status?.message)
+  }
+
+  @Test
+  fun revokedLocationPermissionIsShownAsPermissionDenied() = runTest {
+    val locations =
+        FakeMapLocationRepository(deviceLocationFailure = SecurityException("uid 10123 denied"))
+    val viewModel = MapViewModel(FakeMapRepository(), locations)
+
+    viewModel.onLocationPermissionResult(true)
+    advanceUntilIdle()
+
+    assertEquals(
+        MapStatus(
+            MapOperation.DEVICE_LOCATION,
+            MapStatusType.PERMISSION_DENIED,
+            MapViewModel.PERMISSION_DENIED_MESSAGE,
+        ),
+        viewModel.uiState.value.status,
+    )
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun technicalCitySearchErrorIsReplacedByFriendlyMessage() = runTest {
+    val viewModel =
+        MapViewModel(
+            FakeMapRepository(),
+            FakeMapLocationRepository(cityFailure = IOException("grpc failed")),
+        )
+
+    viewModel.onCityQueryChange("Lausanne")
+    viewModel.searchCity()
+    advanceUntilIdle()
+
+    assertEquals(MapViewModel.CITY_SEARCH_ERROR, viewModel.uiState.value.status?.message)
   }
 
   @Test
   fun loadFailureIsExposedToScreen() = runTest {
     val viewModel =
         MapViewModel(
-            FakeMapRepository(failure = IllegalStateException("offline")),
+            FakeMapRepository(
+                failure = IllegalStateException("PERMISSION_DENIED: Missing permissions.")
+            ),
             FakeMapLocationRepository(),
         )
 
@@ -203,7 +258,12 @@ class MapViewModelTest {
     advanceUntilIdle()
 
     assertEquals(
-        MapStatus(MapOperation.GAMES, MapStatusType.ERROR, "offline", canRetry = true),
+        MapStatus(
+            MapOperation.GAMES,
+            MapStatusType.ERROR,
+            MapViewModel.GAMES_ERROR,
+            canRetry = true,
+        ),
         viewModel.uiState.value.status,
     )
   }
@@ -378,7 +438,7 @@ class MapViewModelTest {
     vm.onCityQueryChange("City")
     vm.searchCity()
     advanceUntilIdle()
-    assertEquals("offline", vm.uiState.value.status?.message)
+    assertEquals(MapViewModel.CITY_SEARCH_ERROR, vm.uiState.value.status?.message)
     vm.onCityQueryChange("Next")
     assertNull(vm.uiState.value.status)
     vm.onLocationPermissionResult(false)
