@@ -49,6 +49,7 @@ class HomeScreenS1Test {
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.PROFILE_PIC).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.QUICKTOOLS).assertIsDisplayed()
+    composeTestRule.onNodeWithText("More features coming soon").assertIsDisplayed()
     composeTestRule
         .onNodeWithTag(com.github.se.jdrnexus.resources.C.Tag.shared_bottom_bar)
         .assertIsDisplayed()
@@ -73,7 +74,14 @@ class HomeScreenS1Test {
     TestTags.BUTTONS.forEachIndexed { index, tag ->
       val button = composeTestRule.onNodeWithTag(tag)
       button.assertIsDisplayed()
-      composeTestRule.onNodeWithText(listOf("Dice", "Group Management")[index]).assertIsDisplayed()
+      composeTestRule
+          .onNodeWithTag(
+              listOf(TestTags.DICE_ICON, TestTags.GROUPMANAGEMENT_ICON)[index],
+              useUnmergedTree = true,
+          )
+          .assertIsDisplayed()
+      composeTestRule.onNodeWithText("Dice").assertIsNotDisplayed()
+      composeTestRule.onNodeWithText("Group Management").assertIsNotDisplayed()
       val bounds = button.fetchSemanticsNode().boundsInRoot
       Assert.assertEquals(bounds.width, bounds.height, 1f)
       button.performClick()
@@ -125,6 +133,8 @@ class HomeScreenS1Test {
     }
 
     composeTestRule.onNodeWithTag(TestTags.PSPACEBUTTON).performClick()
+    composeTestRule.onNodeWithTag(TestTags.PSPACE_ICON, useUnmergedTree = true).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Personal Space").assertIsNotDisplayed()
 
     Assert.assertTrue(clicked)
   }

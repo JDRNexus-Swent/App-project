@@ -43,10 +43,10 @@ screens commonly use 8–16 dp between related elements and 16–24 dp for conte
 insets. Let content use available width where possible, and make long forms
 scrollable instead of shrinking controls to fit.
 
-Give interactive controls a comfortable touch target (about 48 dp or larger)
-and a visible enabled, disabled, loading, or error state where applicable.
-Provide meaningful accessibility labels for icon-only actions; decorative
-icons should not announce redundant descriptions.
+Give interactive controls a comfortable touch target and a visible enabled,
+disabled, loading, or error state where applicable. Provide meaningful
+accessibility labels for icon-only actions; decorative icons should not
+announce redundant descriptions.
 
 ## Theme colors
 
