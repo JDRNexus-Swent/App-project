@@ -4,6 +4,7 @@ package com.github.se.jdrnexus.model.personalSpace
 import kotlin.to
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class CascadeRulesTest {
@@ -33,6 +34,7 @@ class CascadeRulesTest {
       )
 
   @Test
+  /** A file has no content: it is returned alone and `childrenOf` is never called. */
   fun subtreeOf_aFileIsAloneAndIsNotExpanded() = runBlocking {
     val tree = FakeTree(emptyMap())
     val root = file("file")
@@ -53,6 +55,7 @@ class CascadeRulesTest {
   }
 
   @Test
+  /** Walk order: each folder comes before its content, and each item appears once. */
   fun subtreeOf_listsEveryDescendantOnceAndAFolderBeforeItsContent() = runBlocking {
     val dungeon = folder("dungeon")
     val room = folder("room")
@@ -72,6 +75,7 @@ class CascadeRulesTest {
   }
 
   @Test
+  /** Only folders are asked for their content: files are never read, so `reads` lists folders. */
   fun subtreeOf_readsOnlyFolders() = runBlocking {
     val dungeon = folder("dungeon")
     val room = folder("room")
@@ -89,6 +93,7 @@ class CascadeRulesTest {
   }
 
   @Test
+  /** Two folders that contain each other (broken data) do not make the walk loop forever. */
   fun subtreeOf_stopsWhenTheDataLoops() = runBlocking {
     val a = folder("a")
     val b = folder("b")
@@ -161,6 +166,10 @@ class CascadeRulesTest {
     assertEquals(listOf(true, true, true, true), result.map { it.isHidden })
   }
 
+  /**
+   * The destination folder is hidden, so everything added under it is hidden, even without
+   * `hideNew`.
+   */
   @Test
   fun planAddition_aHiddenDestinationHidesEverythingThatIsAdded() {
     val result = plan(listOf(dungeon, map, room, goblin), destinationHidden = true)
@@ -177,6 +186,7 @@ class CascadeRulesTest {
     assertEquals(listOf("dungeon", "map", "goblin"), result.map { it.id })
   }
 
+  /** `goblin` is placed under `room` (already in the group), not under the destination folder. */
   @Test
   fun planAddition_theContentOfAnItemAlreadyInTheGroupGoesUnderIt() {
     val placedRoom = item("room", "dungeon", DocumentType.FOLDER, Placement("elsewhere"))
@@ -186,6 +196,10 @@ class CascadeRulesTest {
     assertEquals(GroupPlacement("goblin", "room", false), result.last())
   }
 
+  /**
+   * `hideNew` hides what is added, not what is already in the group: the visible room is left
+   * untouched and only the goblin under it is added, hidden.
+   */
   @Test
   fun planAddition_hideNewAlsoHidesNewItemsUnderAVisibleItemAlreadyInTheGroup() {
     val placedRoom = item("room", "dungeon", DocumentType.FOLDER, Placement("elsewhere", false))
@@ -193,8 +207,10 @@ class CascadeRulesTest {
     val result = plan(listOf(dungeon, placedRoom, goblin), hideNew = true)
 
     assertEquals(GroupPlacement("goblin", "room", true), result.last())
+    assertFalse(result.any { it.id == "room" })
   }
 
+  /** `room` is already in the group and hidden, so the new `goblin` under it is hidden too. */
   @Test
   fun planAddition_aNewItemUnderAHiddenItemAlreadyInTheGroupIsHidden() {
     val hiddenRoom = item("room", "dungeon", DocumentType.FOLDER, Placement("elsewhere", true))
@@ -247,6 +263,9 @@ class CascadeRulesTest {
     assertEquals(emptyList<GroupPlacement>(), result.reattached)
   }
 
+  /**
+   * A folder and all its content owned by the same user leave together, and nothing is reattached.
+   */
   @Test
   fun planRemoval_aFolderLeavesWithAllContentOfTheSameOwner() = runBlocking {
     val folder = placed("folder", type = DocumentType.FOLDER)
@@ -277,6 +296,7 @@ class CascadeRulesTest {
   }
 
   @Test
+  /** The folder is at the top of the group, so the other owner's item goes to the group root. */
   fun planRemoval_aFolderAtTheGroupRootReattachesToTheGroupRoot() = runBlocking {
     val folder = placed("folder", "group", type = DocumentType.FOLDER)
     val tree = FakeTree(mapOf("folder" to listOf(placed("theirs", "folder", owner = "B"))))
@@ -287,6 +307,7 @@ class CascadeRulesTest {
   }
 
   @Test
+  /** B's folder is kept with its content: the walk stops at it, so A's file below it stays. */
   fun planRemoval_stopsAtAFolderOfAnotherOwnerAndKeepsItsContent() = runBlocking {
     val folder = placed("folder", type = DocumentType.FOLDER)
     val theirs = placed("theirs", "folder", owner = "B", type = DocumentType.FOLDER)
@@ -305,6 +326,7 @@ class CascadeRulesTest {
     assertEquals(listOf("folder"), tree.reads)
   }
 
+  /** The parent is visible, so a hidden item of another owner stays hidden (never revealed). */
   @Test
   fun planRemoval_aHiddenParentHidesTheReattachedItems() = runBlocking {
     val folder = placed("folder", "parent", type = DocumentType.FOLDER)
@@ -315,6 +337,7 @@ class CascadeRulesTest {
     assertEquals(true, result.reattached.single().isHidden)
   }
 
+  /** The parent is visible, so an item that was already hidden stays hidden (never revealed). */
   @Test
   fun planRemoval_aVisibleParentNeverRevealsAnItem() = runBlocking {
     val folder = placed("folder", "parent", type = DocumentType.FOLDER)
@@ -343,6 +366,9 @@ class CascadeRulesTest {
     assertEquals(IllegalStateException::class.java, error?.javaClass)
   }
 
+  /**
+   * The walk stops at a folder of another owner: it is reattached and its content is never read.
+   */
   @Test
   fun planRemoval_stopsAtAnotherOwnersFolderAndDoesNotReadIt() = runBlocking {
     val reads = mutableListOf<String>()
@@ -407,6 +433,10 @@ class CascadeRulesTest {
     assertEquals(listOf(GroupPlacement("theirs", "parent", false)), result.reattached)
   }
 
+  /**
+   * A's item is not deleted (it is not in the personal tree of deleted folder), so it is reattached
+   * too.
+   */
   @Test
   fun planDeletion_anItemOfTheOwnerThatIsNotDeletedIsReattachedToo() = runBlocking {
     val folder = placed("folder", type = DocumentType.FOLDER)
@@ -419,6 +449,10 @@ class CascadeRulesTest {
     assertEquals(listOf(GroupPlacement("notDeleted", "group", false)), result.reattached)
   }
 
+  /**
+   * B's folder `x` sits between two deleted folders: it stays and `theirs` below it is reattached
+   * under it.
+   */
   @Test
   fun planDeletion_anItemBetweenDeletedFoldersStaysAndKeepsItsContent() = runBlocking {
     val d1 = placed("d1", type = DocumentType.FOLDER)
@@ -441,6 +475,7 @@ class CascadeRulesTest {
     )
   }
 
+  /** B's folder sits between two deleted folders: it stays and adopts the items below. */
   @Test
   fun planDeletion_aFolderOfAnotherOwnerBetweenDeletedFoldersStaysAndAdoptsTheItemsBelow() =
       runBlocking {
@@ -468,6 +503,7 @@ class CascadeRulesTest {
         )
       }
 
+  /** A file placed in two groups gets one result per group, each computed separately. */
   @Test
   fun planDeletion_decidesEachGroupOnItsOwn() = runBlocking {
     val file =
