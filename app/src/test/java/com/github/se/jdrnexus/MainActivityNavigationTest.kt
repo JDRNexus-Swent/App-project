@@ -17,6 +17,7 @@ import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.home.TestTags
 import kotlinx.coroutines.CompletableDeferred
@@ -146,6 +147,29 @@ class MainActivityNavigationTest {
     assert(repository.authState.value == null)
   }
 
+  @Test
+  fun signOutExceptionKeepsAppAliveAndHomeUsable() {
+    val repository = FakeAuthRepository()
+    repository.signOutFailure = IllegalStateException("Sign-out failed")
+    val viewModel = AuthViewModel(repository)
+    composeTestRule.setContent { JDRNexusApp(authViewModel = viewModel) }
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    waitForTag(TestTags.TITLE)
+
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.waitUntil(5_000) {
+      viewModel.uiState.value.status is AuthStatus.Error &&
+          composeTestRule.onAllNodesWithTag(TestTags.LOGOUT).fetchSemanticsNodes().isNotEmpty()
+    }
+
+    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(TestTags.DICEBUTTON).assertIsDisplayed().performClick()
+    composeTestRule.onNodeWithTag(C.Tag.dice_offline_screen).assertIsDisplayed()
+  }
+
   private fun showApp(repository: FakeAuthRepository = FakeAuthRepository()) {
     val viewModel = AuthViewModel(repository)
     composeTestRule.setContent { JDRNexusApp(authViewModel = viewModel) }
@@ -163,6 +187,7 @@ class MainActivityNavigationTest {
     var signInCalls = 0
     var signUpCalls = 0
     var signOutResult: CompletableDeferred<AuthResult<Unit>>? = null
+    var signOutFailure: Exception? = null
 
     override suspend fun signUpWithEmail(
         email: String,
@@ -186,6 +211,7 @@ class MainActivityNavigationTest {
     }
 
     override suspend fun signOut(): AuthResult<Unit> {
+      signOutFailure?.let { throw it }
       signOutResult?.let {
         val result = it.await()
         if (result is AuthResult.Success) mutableAuthState.value = null
