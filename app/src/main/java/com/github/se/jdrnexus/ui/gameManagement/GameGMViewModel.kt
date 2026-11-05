@@ -58,6 +58,7 @@ class GameViewModelGMViewModel(
   private var loreJob: Job? = null
   private var activityJob: Job? = null
   private var sessionLoaded = false
+  private var sessionLoadCompleted = false
   private var loreLoaded = false
   private var activityLoaded = false
 
@@ -323,13 +324,14 @@ class GameViewModelGMViewModel(
   private fun observeSession() {
     if (sessionJob?.isActive == true) return
     sessionLoaded = false
+    sessionLoadCompleted = false
     refreshLoading()
     sessionJob = viewModelScope.launch {
       sessionRepository
           .observeSession(groupId)
           .catch { failure ->
             reportError(failure, SESSION_LOAD_ERROR)
-            markSessionLoaded()
+            markSessionLoadCompleted()
           }
           .collect { session ->
             _uiState.update { it.withSession(session) }
@@ -414,9 +416,15 @@ class GameViewModelGMViewModel(
     _uiState.update { it.copy(activityFeed = activities) }
   }
 
-  /** Marks the campaign session as loaded and refreshes the screen loading state. */
+  /** Marks a session snapshot as available for mutations and finishes initial loading. */
   private fun markSessionLoaded() {
     sessionLoaded = true
+    markSessionLoadCompleted()
+  }
+
+  /** Finishes initial loading without implying that a session snapshot was received. */
+  private fun markSessionLoadCompleted() {
+    sessionLoadCompleted = true
     refreshLoading()
   }
 
@@ -434,7 +442,7 @@ class GameViewModelGMViewModel(
 
   /** Keeps the screen loading until the session, lore, and activity feed have all loaded. */
   private fun refreshLoading() {
-    _uiState.update { it.copy(isLoading = !(sessionLoaded && loreLoaded && activityLoaded)) }
+    _uiState.update { it.copy(isLoading = !(sessionLoadCompleted && loreLoaded && activityLoaded)) }
   }
 
   /** Exposes a failure message in the UI state, using [fallback] when none is available. */

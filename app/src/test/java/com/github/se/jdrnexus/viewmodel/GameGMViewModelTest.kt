@@ -314,6 +314,13 @@ class GameGMViewModelTest {
 
     assertFalse(viewModel.uiState.value.isLoading)
     assertEquals("Session unavailable", viewModel.uiState.value.error)
+
+    viewModel.startCombat()
+    advanceUntilIdle()
+
+    assertFalse(viewModel.uiState.value.isCombatActive)
+    assertTrue(repository.savedSessions.isEmpty())
+    assertEquals("Campaign session is not loaded.", viewModel.uiState.value.error)
   }
 
   @Test
