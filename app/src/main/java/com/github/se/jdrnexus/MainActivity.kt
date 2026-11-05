@@ -74,7 +74,8 @@ enum class AllRoutes {
  */
 @Composable
 fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
-  val altAuthViewModel: AuthViewModel = viewModel(factory = AuthViewModel.Factory)
+  val resolvedAuthViewModel: AuthViewModel =
+      authViewModel ?: viewModel(factory = AuthViewModel.Factory)
   val context = LocalContext.current
   val credentialManager = remember(context) { CredentialManager.create(context) }
   val navController = rememberNavController()
@@ -98,23 +99,13 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
             launchSingleTop = true
           }
         }
-        if (authViewModel == null) {
-          SignInScreen(
-              signInViewModel = altAuthViewModel,
-              credentialManager = credentialManager,
-              onSignUp = onSignUp,
-              onSignInSuccess = onSignInSuccess,
-              forgotPassword = {},
-          )
-        } else {
-          SignInScreen(
-              signInViewModel = authViewModel,
-              credentialManager = credentialManager,
-              onSignUp = onSignUp,
-              onSignInSuccess = onSignInSuccess,
-              forgotPassword = {},
-          )
-        }
+        SignInScreen(
+            signInViewModel = resolvedAuthViewModel,
+            credentialManager = credentialManager,
+            onSignUp = onSignUp,
+            onSignInSuccess = onSignInSuccess,
+            forgotPassword = {},
+        )
       }
 
       composable(route = AllRoutes.Home.name) {
@@ -128,23 +119,13 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
         val onPersonalSpaceClicked = { navController.navigate(AllRoutes.PersoSpace.name) }
         val onDiceClicked = { navController.navigate(AllRoutes.Dice.name) }
         val onGroupManagementClicked = { navController.navigate(AllRoutes.GroupManagement.name) }
-        if (authViewModel == null) {
-          HomeScreen(
-              viewModel = altAuthViewModel,
-              onLogout = onLogout,
-              onPersonalSpaceClick = onPersonalSpaceClicked,
-              onDiceClick = onDiceClicked,
-              onGroupManagementClick = onGroupManagementClicked,
-          )
-        } else {
-          HomeScreen(
-              viewModel = authViewModel,
-              onLogout = onLogout,
-              onPersonalSpaceClick = onPersonalSpaceClicked,
-              onDiceClick = onDiceClicked,
-              onGroupManagementClick = onGroupManagementClicked,
-          )
-        }
+        HomeScreen(
+            viewModel = resolvedAuthViewModel,
+            onLogout = onLogout,
+            onPersonalSpaceClick = onPersonalSpaceClicked,
+            onDiceClick = onDiceClicked,
+            onGroupManagementClick = onGroupManagementClicked,
+        )
       }
 
       composable(route = AllRoutes.SignUp.name) {
@@ -157,19 +138,11 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
         }
         // Return to the existing SignIn entry rather than pushing a duplicate.
         val onSignInScreen: () -> Unit = { navController.popBackStack() }
-        if (authViewModel == null) {
-          SignUpScreen(
-              signUpViewModel = altAuthViewModel,
-              onRegister = onRegister,
-              onSignInScreen = onSignInScreen,
-          )
-        } else {
-          SignUpScreen(
-              signUpViewModel = authViewModel,
-              onRegister = onRegister,
-              onSignInScreen = onSignInScreen,
-          )
-        }
+        SignUpScreen(
+            signUpViewModel = resolvedAuthViewModel,
+            onRegister = onRegister,
+            onSignInScreen = onSignInScreen,
+        )
       }
 
       composable(route = AllRoutes.PersoSpace.name) {
