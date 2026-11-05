@@ -185,6 +185,9 @@ class SignUpScreenTest {
     assertEquals(1, repository.signUpCalls)
     composeTestRule.onAllNodesWithText("Register").assertCountEquals(0)
     composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).assertIsDisplayed().assertIsNotEnabled()
+    usernameInput().assertIsNotEnabled()
+    emailInput(C.Tag.sign_up_email).assertIsNotEnabled()
+    passwordInput(C.Tag.sign_up_password).assertIsNotEnabled()
     composeTestRule
         .onAllNodes(
             SemanticsMatcher.expectValue(

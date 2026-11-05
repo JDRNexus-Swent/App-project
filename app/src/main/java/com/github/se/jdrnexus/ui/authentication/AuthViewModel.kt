@@ -89,9 +89,10 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
   }
 
   fun signOut() {
-    viewModelScope.launch {
-      setStatus(AuthStatus.Loading)
+    if (_uiState.value.status is AuthStatus.Loading) return
+    setStatus(AuthStatus.Loading)
 
+    viewModelScope.launch {
       val status =
           try {
             when (val result = repository.signOut()) {

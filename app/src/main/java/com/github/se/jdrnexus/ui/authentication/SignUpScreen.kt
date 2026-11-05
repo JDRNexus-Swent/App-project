@@ -147,6 +147,7 @@ fun SignUpScreen(
       OutlinedTextField(
           value = uiState.username,
           onValueChange = { signUpViewModel.onUsernameChange(it) },
+          enabled = !isAuthenticationLocked,
           shape = RoundedCornerShape(45.dp),
           placeholder = { Text(text = "Username", color = colors.tertiary) },
           singleLine = true,
@@ -174,6 +175,7 @@ fun SignUpScreen(
       OutlinedTextField(
           value = uiState.email,
           onValueChange = { signUpViewModel.onEmailChange(it) },
+          enabled = !isAuthenticationLocked,
           shape = RoundedCornerShape(45.dp),
           leadingIcon = {
             Icon(
@@ -208,6 +210,7 @@ fun SignUpScreen(
       OutlinedTextField(
           value = uiState.password,
           onValueChange = { signUpViewModel.onPasswordChange(it) },
+          enabled = !isAuthenticationLocked,
           shape = RoundedCornerShape(45.dp),
           leadingIcon = {
             Icon(

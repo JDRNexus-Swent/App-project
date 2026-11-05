@@ -369,6 +369,33 @@ class AuthViewModelTest {
   }
 
   @Test
+  fun signOutIsIgnoredWhileAuthenticationIsInProgressAndAllowedAfterSuccess() = runTest {
+    val repository = FakeAuthRepository().apply { signInGate = CompletableDeferred() }
+    val viewModel = AuthViewModel(repository)
+    fillForm(viewModel)
+
+    viewModel.signIn()
+    runCurrent()
+    viewModel.signOut()
+    runCurrent()
+
+    assertEquals(1, repository.signInCalls)
+    assertEquals(0, repository.signOutCalls)
+    assertEquals(AuthStatus.Loading, viewModel.uiState.value.status)
+
+    repository.signInGate?.complete(Unit)
+    runCurrent()
+
+    assertEquals(AuthStatus.Success(USER), viewModel.uiState.value.status)
+
+    viewModel.signOut()
+    runCurrent()
+
+    assertEquals(1, repository.signOutCalls)
+    assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
+  }
+
+  @Test
   fun signOutExposesRepositoryFailure() = runTest {
     val repository =
         FakeAuthRepository().apply {

@@ -329,6 +329,8 @@ class SignInScreenTest {
     assertEquals(1, repository.signInCalls)
     composeTestRule.onAllNodesWithText("Sign In").assertCountEquals(0)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).assertIsDisplayed().assertIsNotEnabled()
+    emailInput(C.Tag.sign_in_email).assertIsNotEnabled()
+    passwordInput(C.Tag.sign_in_password).assertIsNotEnabled()
     composeTestRule
         .onAllNodes(
             SemanticsMatcher.expectValue(

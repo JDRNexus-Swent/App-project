@@ -168,6 +168,7 @@ fun SignInScreen(
       OutlinedTextField(
           value = email,
           onValueChange = { signInViewModel.onEmailChange(it) },
+          enabled = !isAuthenticationLocked,
           shape = RoundedCornerShape(45.dp),
           leadingIcon = {
             Icon(
@@ -202,6 +203,7 @@ fun SignInScreen(
       OutlinedTextField(
           value = password,
           onValueChange = { signInViewModel.onPasswordChange(it) },
+          enabled = !isAuthenticationLocked,
           keyboardOptions =
               KeyboardOptions(
                   keyboardType = KeyboardType.Password,
