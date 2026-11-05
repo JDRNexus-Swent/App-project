@@ -1,6 +1,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus
 
+import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.hasTestTag
@@ -11,6 +12,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
@@ -18,6 +20,7 @@ import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.home.TestTags
+import com.google.firebase.FirebaseApp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Rule
@@ -106,6 +109,10 @@ class MainActivityNavigationTest {
   }
 
   private fun showApp(repository: FakeAuthRepository = FakeAuthRepository()) {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    if (FirebaseApp.getApps(context).isEmpty()) {
+      checkNotNull(FirebaseApp.initializeApp(context))
+    }
     val viewModel = AuthViewModel(repository)
     composeTestRule.setContent { JDRNexusApp(authViewModel = viewModel) }
   }
