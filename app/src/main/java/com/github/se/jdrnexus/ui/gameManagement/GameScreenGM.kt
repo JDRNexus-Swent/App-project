@@ -2,6 +2,9 @@
 package com.github.se.jdrnexus.ui.gameManagement
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,40 +13,36 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -58,162 +57,176 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.github.se.jdrnexus.ui.theme.SampleAppTheme
-
-object GameScreenGMTestTags {
-  const val LOADING = "game_gm_loading"
-  const val ERROR = "game_gm_error"
-  const val EMPTY_COMBAT = "game_gm_empty_combat"
-  const val ADD_ENEMY = "game_gm_add_enemy"
-  const val START_COMBAT = "game_gm_start_combat"
-  const val NEXT_ROUND = "game_gm_next_round"
-  const val END_COMBAT = "game_gm_end_combat"
-  const val DISMISS_ACTIVITY = "game_gm_dismiss_activity"
-  const val ADD_ENEMY_DIALOG = "game_gm_add_enemy_dialog"
-  const val ENEMY_NAME = "game_gm_enemy_name"
-
-  fun enemy(id: String) = "game_gm_enemy_$id"
-
-  fun enemyIncrease(id: String) = "game_gm_enemy_increase_$id"
-
-  fun enemyDecrease(id: String) = "game_gm_enemy_decrease_$id"
-
-  fun enemyRemove(id: String) = "game_gm_enemy_remove_$id"
-
-  fun npc(id: String) = "game_gm_npc_$id"
-
-  fun lore(id: String) = "game_gm_lore_$id"
-
-  fun navigationTab(name: String) = "game_gm_navigation_$name"
-}
+import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
+import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
+import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
+import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
+import com.github.se.jdrnexus.resources.C
 
 @Composable
 fun GameScreenGM(
     viewModel: GameViewModelGM,
     onTabSelected: (String) -> Unit = {},
-    groupID: String = "",
+    onDiceClick: () -> Unit = {},
+    groupName: String = "",
 ) {
   val uiState by viewModel.uiState.collectAsState()
   GameScreenGMContent(
       uiState = uiState,
+      groupName = groupName,
       onAddEnemy = viewModel::addEnemy,
       onRemoveEnemy = viewModel::removeEnemy,
       onUpdateEnemyHp = viewModel::updateEnemyHP,
       onStartCombat = viewModel::startCombat,
       onNextRound = viewModel::nextRound,
       onEndCombat = viewModel::endCombat,
+      onRetry = {
+        viewModel.loadActivityFeed()
+        viewModel.loadNPCs()
+        viewModel.loadLoreDocuments()
+      },
       onSelectLore = viewModel::selectLoreDocument,
       onTabSelected = onTabSelected,
-      groupID = groupID,
+      onDiceClick = onDiceClick,
   )
 }
 
 @Composable
 internal fun GameScreenGMContent(
     uiState: GameViewModelGMUiState,
-    onAddEnemy: (Enemy) -> Unit = {},
+    groupName: String = "",
+    onAddEnemy: (CombatNPC) -> Unit = {},
     onRemoveEnemy: (String) -> Unit = {},
     onUpdateEnemyHp: (String, Int) -> Unit = { _, _ -> },
     onStartCombat: () -> Unit = {},
     onNextRound: () -> Unit = {},
     onEndCombat: () -> Unit = {},
+    onRetry: () -> Unit = {},
     onSelectLore: (String) -> Unit = {},
     onTabSelected: (String) -> Unit = {},
-    groupID: String = "",
+    onDiceClick: () -> Unit = {},
 ) {
   var showAddEnemyDialog by rememberSaveable { mutableStateOf(false) }
   var selectedNpcId by rememberSaveable { mutableStateOf<String?>(null) }
   var activityVisible by rememberSaveable { mutableStateOf(true) }
   var expandedLoreId by rememberSaveable { mutableStateOf<String?>(null) }
   val selectedNpc = uiState.npcs.firstOrNull { it.id == selectedNpcId }
-  val color = MaterialTheme.colorScheme
 
   Scaffold(
-      bottomBar = { GameGMNavigationBar(onTabSelected) },
+      // bottomBar = { GameGMNavigationBar(onTabSelected) },
+      containerColor = MaterialTheme.colorScheme.background,
+      contentColor = MaterialTheme.colorScheme.onSurface,
       floatingActionButton = {
-        FloatingActionButton(onClick = { showAddEnemyDialog = true }) {
-          Icon(Icons.Filled.Add, contentDescription = "Add enemy")
+        FloatingActionButton(
+            onClick = onDiceClick,
+            modifier = Modifier.testTag(C.Tag.game_gm_dice),
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+        ) {
+          Icon(
+              imageVector = Icons.Default.Casino,
+              contentDescription = "Roll dice",
+          )
         }
       },
-      contentColor = color.background,
   ) { padding ->
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       item {
-        Column {
+        Column(modifier = Modifier.padding(horizontal = 2.dp)) {
           Text(
-              "Campaign Game Master",
-              style = MaterialTheme.typography.headlineSmall,
-              color = color.tertiary,
-              fontSize = 13.sp,
+              "Campaign · Game Master",
+              color = MaterialTheme.colorScheme.tertiary,
+              style = MaterialTheme.typography.labelLarge,
           )
-          Text(groupID, color = color.onSecondary)
+          Text(
+              groupName,
+              color = MaterialTheme.colorScheme.onSecondary,
+              fontFamily = FontFamily.Serif,
+              fontSize = 30.sp,
+              lineHeight = 34.sp,
+          )
         }
       }
       item {
-        SectionCard("Combat Live") {
+        SectionCard("Combat Live", titleTrailing = "Round ${uiState.currentRound}") {
           Row(
               modifier = Modifier.fillMaxWidth(),
               horizontalArrangement = Arrangement.SpaceBetween,
               verticalAlignment = Alignment.CenterVertically,
           ) {
-            Column { Text("Round ${uiState.currentRound}") }
-            if (uiState.isCombatActive) {
-              Text("LIVE", color = color.primary, fontWeight = FontWeight.Bold)
-            }
+            Text(
+                if (uiState.isCombatActive) "ACTIVE" else "INACTIVE",
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+            )
           }
-          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.End,
+              verticalAlignment = Alignment.CenterVertically,
+          ) {
             if (!uiState.isCombatActive) {
               Button(
                   onClick = onStartCombat,
-                  modifier = Modifier.testTag(GameScreenGMTestTags.START_COMBAT),
+                  modifier = Modifier.testTag(C.Tag.game_gm_start_combat),
+                  colors =
+                      ButtonDefaults.buttonColors(
+                          containerColor = MaterialTheme.colorScheme.primary,
+                          contentColor = MaterialTheme.colorScheme.onPrimary,
+                      ),
               ) {
                 Icon(Icons.Filled.PlayArrow, contentDescription = null)
                 Spacer(Modifier.width(4.dp))
-                Text("Start")
+                Text("Start", color = MaterialTheme.colorScheme.background)
               }
             } else {
               OutlinedButton(
                   onClick = onNextRound,
-                  modifier = Modifier.testTag(GameScreenGMTestTags.NEXT_ROUND),
-                  shape = RoundedCornerShape(50.dp),
+                  modifier = Modifier.testTag(C.Tag.game_gm_next_round),
+                  shape = CircleShape,
+                  contentPadding = PaddingValues(horizontal = 14.dp),
               ) {
                 Icon(Icons.Filled.SkipNext, contentDescription = null)
                 Spacer(Modifier.width(4.dp))
               }
               OutlinedButton(
                   onClick = onEndCombat,
-                  modifier = Modifier.testTag(GameScreenGMTestTags.END_COMBAT),
+                  modifier = Modifier.testTag(C.Tag.game_gm_end_combat),
+                  shape = CircleShape,
+                  contentPadding = PaddingValues(horizontal = 14.dp),
               ) {
                 Icon(Icons.Filled.Stop, contentDescription = null)
                 Spacer(Modifier.width(4.dp))
-                Text("End")
               }
             }
             OutlinedButton(
                 onClick = { showAddEnemyDialog = true },
-                modifier = Modifier.testTag(GameScreenGMTestTags.ADD_ENEMY),
+                modifier = Modifier.testTag(C.Tag.game_gm_add_enemy),
+                shape = CircleShape,
+                contentPadding = PaddingValues(horizontal = 14.dp),
             ) {
               Icon(Icons.Filled.Add, contentDescription = null)
               Spacer(Modifier.width(4.dp))
-              Text("Enemy")
             }
           }
           if (uiState.enemies.isEmpty()) {
             Text(
                 "No enemies in this encounter.",
-                modifier = Modifier.testTag(GameScreenGMTestTags.EMPTY_COMBAT),
+                modifier = Modifier.testTag(C.Tag.game_gm_empty_combat),
+                color = MaterialTheme.colorScheme.tertiary,
             )
           } else {
             uiState.enemies.forEach { enemy ->
@@ -230,7 +243,7 @@ internal fun GameScreenGMContent(
       if (uiState.isLoading) {
         item {
           Column(
-              modifier = Modifier.fillMaxWidth().testTag(GameScreenGMTestTags.LOADING),
+              modifier = Modifier.fillMaxWidth().testTag(C.Tag.game_gm_loading),
               horizontalAlignment = Alignment.CenterHorizontally,
           ) {
             CircularProgressIndicator()
@@ -238,29 +251,41 @@ internal fun GameScreenGMContent(
           }
         }
       }
-      uiState.error?.let { message ->
+      if (uiState.error.isNotBlank()) {
         item {
-          Text(
-              message,
-              color = MaterialTheme.colorScheme.error,
-              modifier = Modifier.testTag(GameScreenGMTestTags.ERROR),
-          )
+          Column(
+              modifier = Modifier.fillMaxWidth().testTag(C.Tag.game_gm_error),
+              verticalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            Text(uiState.error, color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = onRetry) { Text("Retry") }
+          }
         }
       }
       if (activityVisible) {
         item {
-          SectionCard("Activity Feed", onDismiss = { activityVisible = false }) {
+          SectionCard(
+              "Activity Feed",
+              onDismiss = { activityVisible = false },
+          ) {
             if (uiState.activityFeed.isEmpty()) {
-              Text("No recent player activity.")
+              Text("No recent player activity.", color = MaterialTheme.colorScheme.tertiary)
             } else {
               uiState.activityFeed.takeLast(8).reversed().forEach { activity ->
-                Column {
+                Row(
+                    modifier = Modifier.testTag(C.Tag.gameGmActivity(activity.id)),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                  Text("•", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                   Text(
-                      "${activity.playerName}: ${activity.action} (${activity.diceResult})",
-                      fontWeight = FontWeight.Bold,
-                      color = color.onSecondary,
+                      buildString {
+                        append(activity.playerName)
+                        append(" · ")
+                        append(activity.action)
+                        activity.diceResult?.let { append(" ($it)") }
+                      },
+                      color = MaterialTheme.colorScheme.onSecondary,
                   )
-                  activity.diceResult?.let { Text("Dice result: $it") }
                 }
               }
             }
@@ -270,28 +295,53 @@ internal fun GameScreenGMContent(
       item {
         SectionCard("NPCs") {
           if (uiState.npcs.isEmpty()) {
-            Text("No NPCs available.")
+            Text(
+                "No NPCs available.",
+                modifier = Modifier.testTag(C.Tag.game_gm_empty_npcs),
+                color = MaterialTheme.colorScheme.tertiary,
+            )
           } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-              uiState.npcs.forEach { npc ->
-                Column(
-                    modifier = Modifier.width(92.dp).testTag(GameScreenGMTestTags.npc(npc.id)),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                  Box(
-                      modifier = Modifier.size(56.dp).clip(CircleShape),
-                      contentAlignment = Alignment.Center,
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+              LazyRow(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.spacedBy(16.dp),
+              ) {
+                items(uiState.npcs.size) { index ->
+                  val npc = uiState.npcs[index]
+                  Column(
+                      modifier = Modifier.width(84.dp).clickable { selectedNpcId = npc.id },
+                      horizontalAlignment = Alignment.CenterHorizontally,
+                      verticalArrangement = Arrangement.spacedBy(4.dp),
                   ) {
-                    Icon(
-                        Icons.Filled.Person,
-                        contentDescription =
-                            if (npc.portraitUrl.isNullOrBlank()) "No portrait"
-                            else "Portrait of ${npc.name}",
-                        modifier = Modifier.size(36.dp),
+                    Box(
+                        modifier =
+                            Modifier.size(48.dp)
+                                .clip(CircleShape)
+                                .border(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.tertiary,
+                                    CircleShape,
+                                ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                      Icon(
+                          Icons.Filled.Person,
+                          contentDescription = null,
+                          tint = MaterialTheme.colorScheme.onSecondary,
+                      )
+                    }
+
+                    Text(
+                        text = npc.name,
+                        color = MaterialTheme.colorScheme.onSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                   }
-                  Text(npc.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                  TextButton(onClick = { selectedNpcId = npc.id }) { Text("Details") }
                 }
               }
             }
@@ -301,36 +351,22 @@ internal fun GameScreenGMContent(
       item {
         SectionCard("Campaign Lore") {
           if (uiState.loreDocuments.isEmpty()) {
-            Text("No lore documents available.")
+            Text(
+                "No lore documents available.",
+                modifier = Modifier.testTag(C.Tag.game_gm_empty_lore),
+                color = MaterialTheme.colorScheme.tertiary,
+            )
           } else {
-            uiState.loreDocuments.forEach { document ->
-              Column(modifier = Modifier.testTag(GameScreenGMTestTags.lore(document.id))) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  Column(modifier = Modifier.weight(1f)) {
-                    Text(document.title, fontWeight = FontWeight.Bold)
-                    Text(
-                        document.content,
-                        maxLines = if (expandedLoreId == document.id) Int.MAX_VALUE else 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                  }
-                  TextButton(
-                      onClick = {
-                        expandedLoreId = if (expandedLoreId == document.id) null else document.id
-                      }
-                  ) {
-                    Text(if (expandedLoreId == document.id) "Collapse" else "Read")
-                  }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  Text(if (document.isShared) "Shared with players" else "Private")
-                  Spacer(Modifier.width(8.dp))
-                  TextButton(onClick = { onSelectLore(document.id) }) {
-                    Icon(Icons.Filled.Share, contentDescription = null)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Select")
-                  }
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+              uiState.loreDocuments.forEach { document ->
+                LoreRow(
+                    document = document,
+                    expanded = expandedLoreId == document.id,
+                    onExpand = {
+                      expandedLoreId = if (expandedLoreId == document.id) null else document.id
+                    },
+                    onSelect = { onSelectLore(document.id) },
+                )
               }
             }
           }
@@ -362,37 +398,56 @@ internal fun GameScreenGMContent(
 private fun SectionCard(
     title: String,
     onDismiss: (() -> Unit)? = null,
+    titleTrailing: String? = null,
     content: @Composable () -> Unit,
 ) {
   Card(
-      colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.onBackground),
+      colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
       border =
           BorderStroke(
               1.dp,
-              MaterialTheme.colorScheme.onSurface,
+              MaterialTheme.colorScheme.tertiary,
           ),
-      shape = RoundedCornerShape(24.dp),
+      shape = RoundedCornerShape(22.dp),
   ) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxWidth().padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       Row(
           modifier = Modifier.fillMaxWidth(),
           verticalAlignment = Alignment.CenterVertically,
       ) {
         Text(
-            title,
-            style = MaterialTheme.typography.titleMedium,
+            text = title,
             modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.headlineSmall,
+            fontFamily = FontFamily.Serif,
             color = MaterialTheme.colorScheme.onSecondary,
         )
+
+        titleTrailing?.let {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(8.dp)
+                    .background(
+                        MaterialTheme.colorScheme.primary,
+                        CircleShape,
+                    )
+            )
+
+            Spacer(Modifier.width(6.dp))
+
+            Text(
+                it,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Medium,
+            )
+          }
+        }
+
         onDismiss?.let {
-          OutlinedButton(
-              onClick = it,
-              modifier = Modifier.testTag(GameScreenGMTestTags.DISMISS_ACTIVITY),
-              shape = CircleShape,
-          ) {
+          IconButton(onClick = it) {
             Icon(
                 Icons.Filled.Close,
                 contentDescription = "Dismiss",
@@ -401,6 +456,7 @@ private fun SectionCard(
           }
         }
       }
+
       content()
     }
   }
@@ -408,67 +464,216 @@ private fun SectionCard(
 
 @Composable
 private fun EnemyRow(
-    enemy: Enemy,
+    enemy: CombatNPC,
     onIncrease: () -> Unit,
     onDecrease: () -> Unit,
     onRemove: () -> Unit,
 ) {
-  val progress = (enemy.hp.toFloat() / enemy.maxHp.coerceAtLeast(1)).coerceIn(0f, 1f)
-  Column(modifier = Modifier.fillMaxWidth().testTag(GameScreenGMTestTags.enemy(enemy.id))) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-      Column(modifier = Modifier.weight(1f)) {
+  val hpRatio = (enemy.hp.toFloat() / enemy.maxHp.coerceAtLeast(1)).coerceIn(0f, 1f)
+
+  val armorClass =
+      enemy.character.stats.firstOrNull { it.statID == "armorClass" }?.value?.toInt() ?: 0
+
+  val condition =
+      enemy.character.actions.firstOrNull { it.actionID.startsWith("condition_") }?.name ?: "Normal"
+
+  val hpColor =
+      when {
+        hpRatio >= 0.65f -> MaterialTheme.colorScheme.onSecondary
+        hpRatio >= 0.35f -> MaterialTheme.colorScheme.primary
+        else -> Color.Red
+      }
+
+  Column(
+      modifier = Modifier.fillMaxWidth().testTag(C.Tag.gameGmEnemy(enemy.id)),
+      verticalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+      // Enemy name and condition.
+      Column(
+          modifier = Modifier.weight(1f),
+          verticalArrangement = Arrangement.spacedBy(2.dp),
+      ) {
         Text(
-            enemy.name,
-            fontWeight = FontWeight.Bold,
+            text = enemy.name,
+            fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSecondary,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
+
         Text(
-            "AC 10 · Normal",
+            text = "$condition · AC $armorClass",
             color = MaterialTheme.colorScheme.tertiary,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
       }
 
-      IconButton(
-          onClick = onDecrease,
-          enabled = enemy.hp > 0,
-          modifier = Modifier.testTag(GameScreenGMTestTags.enemyDecrease(enemy.id)),
+      // HP controls: minus, current HP, maximum HP, plus.
+      Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(5.dp),
       ) {
-        Icon(Icons.Filled.Remove, contentDescription = "Decrease HP")
-      }
+        HpControlButton(
+            symbol = "−",
+            enabled = enemy.hp > 0,
+            onClick = onDecrease,
+            modifier = Modifier.testTag(C.Tag.gameGmEnemyDecrease(enemy.id)),
+        )
 
-      Text(
-          "${enemy.hp} / ${enemy.maxHp}HP",
-          fontWeight = FontWeight.Bold,
-      )
+        Box(
+            modifier =
+                Modifier.width(42.dp)
+                    .border(
+                        width = 1.5.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = RoundedCornerShape(8.dp),
+                    )
+                    .padding(vertical = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+          Text(
+              text = enemy.hp.toString(),
+              color = MaterialTheme.colorScheme.onSecondary,
+              fontWeight = FontWeight.SemiBold,
+          )
+        }
 
-      IconButton(
-          onClick = onIncrease,
-          enabled = enemy.hp < enemy.maxHp,
-          modifier = Modifier.testTag(GameScreenGMTestTags.enemyIncrease(enemy.id)),
-      ) {
-        Icon(Icons.Filled.Add, contentDescription = "Increase HP")
-      }
+        Text(
+            text = "/ ${enemy.maxHp} HP",
+            color = MaterialTheme.colorScheme.tertiary,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+        )
 
-      IconButton(
-          onClick = onRemove,
-          modifier = Modifier.testTag(GameScreenGMTestTags.enemyRemove(enemy.id)),
-      ) {
-        Icon(Icons.Filled.Delete, contentDescription = "Remove enemy")
+        HpControlButton(
+            symbol = "+",
+            enabled = enemy.hp < enemy.maxHp,
+            onClick = onIncrease,
+            modifier = Modifier.testTag(C.Tag.gameGmEnemyIncrease(enemy.id)),
+        )
+
+        IconButton(
+            onClick = onRemove,
+            modifier = Modifier.testTag(C.Tag.gameGmEnemyRemove(enemy.id)),
+        ) {
+          Icon(
+              imageVector = Icons.Filled.Delete,
+              contentDescription = "Remove ${enemy.name}",
+              tint = MaterialTheme.colorScheme.error,
+          )
+        }
       }
     }
-    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-    Divider()
+
+    LinearProgressIndicator(
+        progress = { hpRatio },
+        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)),
+        color = hpColor,
+        trackColor = MaterialTheme.colorScheme.background,
+    )
   }
 }
 
 @Composable
-private fun AddEnemyDialog(onDismiss: () -> Unit, onAdd: (Enemy) -> Unit) {
+private fun HpControlButton(
+    symbol: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+  Box(
+      modifier =
+          modifier
+              .size(42.dp)
+              .clip(RoundedCornerShape(8.dp))
+              .clickable(enabled = enabled, onClick = onClick),
+      contentAlignment = Alignment.Center,
+  ) {
+    Text(
+        text = symbol,
+        color =
+            if (enabled) {
+              MaterialTheme.colorScheme.onSecondary
+            } else {
+              MaterialTheme.colorScheme.tertiary
+            },
+        fontWeight = FontWeight.Bold,
+        fontSize = 20.sp,
+    )
+  }
+}
+
+@Composable
+private fun LoreRow(
+    document: LoreDocument,
+    expanded: Boolean,
+    onExpand: () -> Unit,
+    onSelect: () -> Unit,
+) {
+  Column(modifier = Modifier.testTag(C.Tag.gameGmLore(document.id))) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Column(modifier = Modifier.weight(1f)) {
+        Text(
+            document.title,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSecondary,
+        )
+        val content = document.lore.sections.joinToString("\n") { "${it.title}: ${it.description}" }
+        Text(
+            content,
+            maxLines = if (expanded) Int.MAX_VALUE else 2,
+            overflow = TextOverflow.Ellipsis,
+            color = MaterialTheme.colorScheme.onSecondary,
+        )
+      }
+      TextButton(
+          onClick = onExpand,
+          modifier = Modifier.testTag(C.Tag.gameGmLoreExpand(document.id)),
+      ) {
+        Text(if (expanded) "Collapse" else "Read", color = MaterialTheme.colorScheme.primary)
+      }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Text(
+          if (document.isShared) "Shared with players" else "Private",
+          color = MaterialTheme.colorScheme.onSecondary,
+      )
+      Spacer(Modifier.width(8.dp))
+      TextButton(
+          onClick = onSelect,
+          modifier = Modifier.testTag(C.Tag.gameGmLoreSelect(document.id)),
+      ) {
+        Icon(Icons.Filled.Share, contentDescription = null)
+        Spacer(Modifier.width(4.dp))
+        Text("Select", color = MaterialTheme.colorScheme.primary)
+      }
+    }
+  }
+}
+
+@Composable
+private fun AddEnemyDialog(onDismiss: () -> Unit, onAdd: (CombatNPC) -> Unit) {
   var name by rememberSaveable { mutableStateOf("") }
   var hp by rememberSaveable { mutableStateOf("10") }
   var maxHp by rememberSaveable { mutableStateOf("10") }
-  var initiative by rememberSaveable { mutableStateOf("0") }
+  var armorClass by rememberSaveable { mutableStateOf("10") }
+  var condition by rememberSaveable { mutableStateOf("") }
+  val currentHp = hp.toIntOrNull()
+  val maximumHp = maxHp.toIntOrNull()
+  val ac = armorClass.toIntOrNull()
+  val isValid = isValidEnemyInput(name, currentHp, maximumHp, ac)
   Dialog(onDismissRequest = onDismiss) {
-    Card(modifier = Modifier.testTag(GameScreenGMTestTags.ADD_ENEMY_DIALOG)) {
+    Card(
+        modifier = Modifier.testTag(C.Tag.game_gm_add_enemy_dialog),
+        shape = RoundedCornerShape(20.dp),
+    ) {
       Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Add enemy", style = MaterialTheme.typography.titleLarge)
         OutlinedTextField(
@@ -476,29 +681,65 @@ private fun AddEnemyDialog(onDismiss: () -> Unit, onAdd: (Enemy) -> Unit) {
             onValueChange = { name = it },
             label = { Text("Name") },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth().testTag(GameScreenGMTestTags.ENEMY_NAME),
+            modifier = Modifier.fillMaxWidth().testTag(C.Tag.game_gm_enemy_name),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          NumberField("HP", hp, { hp = it }, Modifier.weight(1f))
-          NumberField("Max HP", maxHp, { maxHp = it }, Modifier.weight(1f))
-          NumberField("Initiative", initiative, { initiative = it }, Modifier.weight(1f))
-        }
+        NumberField("HP", hp, { hp = it }, Modifier.fillMaxWidth())
+        NumberField("Max HP", maxHp, { maxHp = it }, Modifier.fillMaxWidth())
+        NumberField("AC", armorClass, { armorClass = it }, Modifier.fillMaxWidth())
+        OutlinedTextField(
+            value = condition,
+            onValueChange = { condition = it },
+            label = { Text("Condition") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
           TextButton(onClick = onDismiss) { Text("Cancel") }
           Button(
               onClick = {
-                val maximum = maxHp.toIntOrNull()?.coerceAtLeast(1) ?: 10
-                onAdd(
-                    Enemy(
-                        id = "enemy-${System.currentTimeMillis()}",
-                        name = name.trim(),
-                        hp = hp.toIntOrNull()?.coerceIn(0, maximum) ?: maximum,
-                        maxHp = maximum,
-                        initiative = initiative.toIntOrNull() ?: 0,
-                    )
-                )
+                if (isValid) {
+                  val submittedCurrentHp = requireNotNull(currentHp)
+                  val submittedMaximumHp = requireNotNull(maximumHp)
+                  val submittedAc = requireNotNull(ac)
+                  onAdd(
+                      CombatNPC(
+                          id = "enemy-${System.currentTimeMillis()}",
+                          character =
+                              CharacterFile(
+                                  name = name.trim(),
+                                  stats =
+                                      listOf(
+                                          CharacterStat(
+                                              "armorClass",
+                                              "Armor Class",
+                                              submittedAc.toDouble(),
+                                          )
+                                      ),
+                                  actions =
+                                      condition
+                                          .trim()
+                                          .takeIf { it.isNotEmpty() }
+                                          ?.let {
+                                            listOf(
+                                                CharacterAction(
+                                                    "condition_${it.lowercase()}",
+                                                    it,
+                                                    "",
+                                                )
+                                            )
+                                          } ?: emptyList(),
+                                  hp =
+                                      CharacterHealthPoints(
+                                          submittedCurrentHp,
+                                          submittedMaximumHp,
+                                      ),
+                              ),
+                          initiative = 0,
+                      )
+                  )
+                }
               },
-              enabled = name.isNotBlank(),
+              enabled = isValid,
           ) {
             Text("Add")
           }
@@ -507,6 +748,21 @@ private fun AddEnemyDialog(onDismiss: () -> Unit, onAdd: (Enemy) -> Unit) {
     }
   }
 }
+
+internal fun isValidEnemyInput(
+    name: String,
+    currentHp: Int?,
+    maximumHp: Int?,
+    armorClass: Int?,
+): Boolean =
+    name.isNotBlank() &&
+        currentHp != null &&
+        currentHp >= 0 &&
+        maximumHp != null &&
+        maximumHp > 0 &&
+        currentHp <= maximumHp &&
+        armorClass != null &&
+        armorClass >= 0
 
 @Composable
 private fun NumberField(
@@ -523,109 +779,4 @@ private fun NumberField(
       keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
       modifier = modifier,
   )
-}
-
-@Composable
-private fun GameGMNavigationBar(onTabSelected: (String) -> Unit) {
-  val tabs =
-      listOf(
-          "Home" to Icons.Filled.Home,
-          "Campaigns" to Icons.AutoMirrored.Outlined.MenuBook,
-          "Files" to Icons.Outlined.Folder,
-          "Map" to Icons.Outlined.Map,
-      )
-  NavigationBar {
-    tabs.forEach { (label, icon) ->
-      NavigationBarItem(
-          selected = label == "Campaigns",
-          onClick = { onTabSelected(label) },
-          icon = { Icon(icon, contentDescription = label) },
-          label = { Text(label) },
-          modifier = Modifier.testTag(GameScreenGMTestTags.navigationTab(label)),
-      )
-    }
-  }
-}
-
-private val previewEnemies =
-    listOf(
-        Enemy("ogre", "Ashen Ogre", 34, 59, 11),
-        Enemy("cultist", "Cultist", 7, 18, 13),
-        Enemy("wraith", "Wraith", 42, 42, 15),
-    )
-
-private val previewNpcs =
-    listOf(
-        Npc(
-            "captain",
-            "Captain Mira",
-            "https://example.com/mira.png",
-            "A stern captain who knows the old sea routes.",
-        ),
-        Npc("keeper", "The Archivist", null, "Keeper of the sealed campaign records."),
-    )
-
-private val previewActivities =
-    listOf(
-        ActivityItem("a1", "Elara", "Rolled a Dexterity check", "d20 = 18"),
-        ActivityItem("a2", "Borin", "Attacked the Ashen Ogre", "d20 = 12"),
-        ActivityItem("a3", "Mira", "Moved to the western gate", null),
-    )
-
-private val previewLore =
-    listOf(
-        LoreDocument(
-            "l1",
-            "The Sunken Crown",
-            "The crown lies beneath the black water, guarded by a forgotten oath.",
-            true,
-        ),
-        LoreDocument(
-            "l2",
-            "Old Harbor",
-            "A short history of the harbor and its vanished founders.",
-            false,
-        ),
-    )
-
-@Preview(showBackground = true, widthDp = 420, heightDp = 900)
-@Composable
-private fun GameScreenGMPreview() {
-  SampleAppTheme {
-    GameScreenGMContent(
-        uiState =
-            GameViewModelGMUiState(
-                enemies = previewEnemies,
-                isCombatActive = true,
-                currentRound = 3,
-                activityFeed = previewActivities,
-                npcs = previewNpcs,
-                loreDocuments = previewLore,
-            )
-    )
-  }
-}
-
-@Preview(showBackground = true, widthDp = 420, heightDp = 900, backgroundColor = 0xFF1C1816)
-@Composable
-private fun GameScreenGMDarkPreview() {
-  SampleAppTheme(darkTheme = true) {
-    GameScreenGMContent(
-        uiState =
-            GameViewModelGMUiState(
-                enemies = previewEnemies,
-                isCombatActive = true,
-                currentRound = 3,
-                activityFeed = previewActivities,
-                npcs = previewNpcs,
-                loreDocuments = previewLore,
-            )
-    )
-  }
-}
-
-@Preview(showBackground = true, widthDp = 420, heightDp = 700)
-@Composable
-private fun GameScreenGMEmptyPreview() {
-  SampleAppTheme { GameScreenGMContent(uiState = GameViewModelGMUiState()) }
 }
