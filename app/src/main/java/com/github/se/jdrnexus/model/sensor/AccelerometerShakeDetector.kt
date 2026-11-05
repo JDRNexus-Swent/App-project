@@ -16,6 +16,9 @@ private const val NANOS_PER_MILLI = 1_000_000L
 /**
  * [ShakeDetector] backed by the device accelerometer through [SensorManager]. The listener is
  * registered when [shakes] starts being collected and unregistered when the collection stops.
+ *
+ * If Android refuses to register the listener, [shakes] completes without emitting, as on a phone
+ * without an accelerometer, instead of staying open forever with nothing to report.
  */
 class AccelerometerShakeDetector(context: Context) : ShakeDetector {
   private val sensorManager = context.getSystemService(SensorManager::class.java)
@@ -38,7 +41,10 @@ class AccelerometerShakeDetector(context: Context) : ShakeDetector {
 
           override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
-    sensorManager.registerListener(listener, accelerometer, SensorManager.SENSOR_DELAY_UI)
+    if (!sensorManager.registerListener(listener, accelerometer, SensorManager.SENSOR_DELAY_UI)) {
+      close()
+      return@callbackFlow
+    }
     awaitClose { sensorManager.unregisterListener(listener) }
   }
 }

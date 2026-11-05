@@ -13,6 +13,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -53,6 +55,9 @@ private const val SETTLED_MILLIS = SHAKE_MILLIS + DEFAULT_SHAKE_SETTLE_MILLIS + 
 /** The calm reading after that one, which must not roll a second time. */
 private const val NEXT_READING_MILLIS = SETTLED_MILLIS + READING_INTERVAL_MILLIS
 
+/** Virtual time after which a flow that should already have completed counts as hung. */
+private const val HANG_TIMEOUT_MILLIS = 1_000L
+
 /** Every accuracy level Android can report for a sensor, from best to worst. */
 private val ALL_ACCURACY_LEVELS =
     listOf(
@@ -67,6 +72,9 @@ private val ALL_ACCURACY_LEVELS =
 class AccelerometerShakeDetectorTest {
   private val context: Context = RuntimeEnvironment.getApplication()
   private val shadowSensorManager = shadowOf(context.getSystemService(SensorManager::class.java))
+
+  /** The failure switch is shared by all tests; never let one leak into the next. */
+  @After fun allowListenerRegistrationAgain() = shadowSensorManager.setForceListenersToFail(false)
 
   /** Gives the simulated phone an accelerometer, and returns it. */
   private fun addAccelerometer(): Sensor =
@@ -93,6 +101,16 @@ class AccelerometerShakeDetectorTest {
     addAccelerometer()
 
     assertTrue(AccelerometerShakeDetector(context).isAvailable)
+  }
+
+  @Test
+  fun shakesCompletesEmptyWhenTheListenerCannotBeRegistered() = runTest {
+    addAccelerometer()
+    shadowSensorManager.setForceListenersToFail(true)
+    val detector = AccelerometerShakeDetector(context)
+
+    assertTrue(detector.isAvailable)
+    assertEquals(emptyList<Unit>(), withTimeout(HANG_TIMEOUT_MILLIS) { detector.shakes.toList() })
   }
 
   @Test
