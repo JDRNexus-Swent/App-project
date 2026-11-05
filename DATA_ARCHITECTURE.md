@@ -92,7 +92,7 @@ Every campaign group has one root document, created with the group.
 | A **new** document | `JDRFile.withPlacement` builds an in-memory copy that is written whole by `createFile`. |
 | A document that **already exists** | A targeted update in the repository (`addPlacementUpdate`, `removePlacementUpdate`, `hiddenUpdate`) that touches one group only: it writes `placements.<groupId>` and uses `arrayUnion` / `arrayRemove` on `sharedGroupsIds` in the **same** update. |
 
-Why not the helpers for an existing document: they would send a `placements` map read earlier, so two members sharing the same file into different groups at the same time would erase each other's placement. For the same reason **`updateFile` never writes `placements` or `sharedGroupsIds`**: saving an edit made from an older copy of a file must not undo a share made meanwhile.
+Why not the helpers for an existing document: sending a previously read `placements` map could overwrite concurrent changes (like a GM hiding the file), accidentally revealing secrets. For the same reason, **`updateFile` never writes `placements` or `sharedGroupsIds`**: saving an edit made from an older copy must not undo visibility changes made meanwhile.
 
 Never use `arrayUnion` / `arrayRemove` on `sharedGroupsIds` alone, and never write these fields by hand outside these mechanisms.
 
@@ -139,7 +139,7 @@ Never use `arrayUnion` / `arrayRemove` on `sharedGroupsIds` alone, and never wri
 - Moving a document already in the group to another folder is out of scope: adding an item that is already in the group is refused.
 ### `addItemToGroup(itemId, groupId, folderId, isHidden, includeContent)`
 
-- **Hide** (`isHidden`): the placement starts hidden. Default: off.
+- **Hide** (isHidden): if true, the placement starts hidden for the other players. Default: false (visible).
 - **Include content** (`includeContent`, folders only): the whole personal subtree of the folder is added in **one batch**. Default: off, so sharing stays explicit.
 - Checks, in this order: ids not blank, item exists, item is not a `GROUP_ROOT`, item is not already in the group, destination exists, destination is a container, destination belongs to the group.
 - If the destination is hidden, Hide is **forced on**.
