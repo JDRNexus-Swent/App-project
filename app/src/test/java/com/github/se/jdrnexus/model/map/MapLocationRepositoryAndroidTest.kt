@@ -74,6 +74,13 @@ class MapLocationRepositoryAndroidTest {
   }
 
   @Test
+  fun cityWithoutCoordinatesReturnsNoLocation() = runTest {
+    val address = Address(Locale.ENGLISH).apply { locality = "Nowhere" }
+    every { geocoder.getFromLocationName("Nowhere", 1) } returns listOf(address)
+    assertNull(repository.searchCity("Nowhere"))
+  }
+
+  @Test
   fun cityProviderFailureIsPropagated() = runTest {
     every { geocoder.getFromLocationName(any(), 1) } throws IOException("offline")
     assertEquals("offline", assertFails<IOException> { repository.searchCity("City") }.message)
@@ -123,12 +130,37 @@ class MapLocationRepositoryAndroidTest {
   }
 
   @Test
-  fun disabledProvidersAndUnavailableFixAreErrors() = runTest {
-    providers(false, false)
-    assertFalse(assertFails<IOException> { repository.getDeviceLocation() }.message.isNullOrBlank())
+  fun gpsIsUsedWhenNetworkHasNoFix() = runTest {
     providers()
     locationResult(LocationManager.NETWORK_PROVIDER, null)
-    assertFalse(assertFails<IOException> { repository.getDeviceLocation() }.message.isNullOrBlank())
+    locationResult(
+        LocationManager.GPS_PROVIDER,
+        Location("gps").apply {
+          latitude = 1.0
+          longitude = 2.0
+        },
+    )
+    assertEquals(MapLocation(1.0, 2.0), repository.getDeviceLocation())
+  }
+
+  @Test
+  fun disabledProvidersAreAnError() = runTest {
+    providers(false, false)
+    assertEquals(
+        "Enable device location to find nearby games.",
+        assertFails<IOException> { repository.getDeviceLocation() }.message,
+    )
+  }
+
+  @Test
+  fun noFixFromAnyProviderIsAnError() = runTest {
+    providers()
+    locationResult(LocationManager.NETWORK_PROVIDER, null)
+    locationResult(LocationManager.GPS_PROVIDER, null)
+    assertEquals(
+        UNAVAILABLE_MESSAGE,
+        assertFails<IOException> { repository.getDeviceLocation() }.message,
+    )
   }
 
   @Test
@@ -164,14 +196,22 @@ class MapLocationRepositoryAndroidTest {
   }
 
   @Test
-  fun missingCallbackTimesOutAndCancelsNativeRequest() = runTest {
+  fun missingCallbacksTimeOutOnEveryProviderAndCancelNativeRequests() = runTest {
     providers()
-    val signal = slot<CancellationSignal>()
+    val signals = mutableListOf<CancellationSignal>()
     every {
-      LocationManagerCompat.getCurrentLocation(manager, any(), capture(signal), executor, any())
+      LocationManagerCompat.getCurrentLocation(manager, any(), capture(signals), executor, any())
     } just Runs
-    assertFails<IOException> { repository.getDeviceLocation() }
-    assertTrue(signal.captured.isCanceled)
+    assertEquals(
+        UNAVAILABLE_MESSAGE,
+        assertFails<IOException> { repository.getDeviceLocation() }.message,
+    )
+    assertEquals(2, signals.size)
+    assertTrue(signals.all { it.isCanceled })
+  }
+
+  private companion object {
+    const val UNAVAILABLE_MESSAGE = "Device location is unavailable. Try again."
   }
 
   /** Returns the [T] thrown by [block]; inline so [block] may call suspend functions. */
