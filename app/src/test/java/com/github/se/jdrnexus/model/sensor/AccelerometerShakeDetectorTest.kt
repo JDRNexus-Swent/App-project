@@ -53,14 +53,24 @@ private const val SETTLED_MILLIS = SHAKE_MILLIS + DEFAULT_SHAKE_SETTLE_MILLIS + 
 /** The calm reading after that one, which must not roll a second time. */
 private const val NEXT_READING_MILLIS = SETTLED_MILLIS + READING_INTERVAL_MILLIS
 
+/** Every accuracy level Android can report for a sensor, from best to worst. */
+private val ALL_ACCURACY_LEVELS =
+    listOf(
+        SensorManager.SENSOR_STATUS_ACCURACY_HIGH,
+        SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
+        SensorManager.SENSOR_STATUS_ACCURACY_LOW,
+        SensorManager.SENSOR_STATUS_UNRELIABLE,
+    )
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
 class AccelerometerShakeDetectorTest {
   private val context: Context = RuntimeEnvironment.getApplication()
   private val shadowSensorManager = shadowOf(context.getSystemService(SensorManager::class.java))
 
-  private fun addAccelerometer() =
-      shadowSensorManager.addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+  /** Gives the simulated phone an accelerometer, and returns it. */
+  private fun addAccelerometer(): Sensor =
+      ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER).also { shadowSensorManager.addSensor(it) }
 
   /** Delivers one reading along the z axis to every registered listener. */
   private fun sendReading(z: Float, timestampMillis: Long) {
@@ -101,7 +111,7 @@ class AccelerometerShakeDetectorTest {
 
   @Test
   fun emitsOnceWhenTheShakeStops() = runTest {
-    addAccelerometer()
+    val accelerometer = addAccelerometer()
     val detector = AccelerometerShakeDetector(context)
     val shakes = mutableListOf<Unit>()
     val job =
@@ -109,6 +119,11 @@ class AccelerometerShakeDetectorTest {
 
     sendReading(SHAKE_READING, SHAKE_MILLIS)
     assertTrue("Still shaking: no roll yet", shakes.isEmpty())
+
+    // Accuracy changes in the middle of a shake must neither roll nor stop the listening.
+    val listener = shadowSensorManager.listeners.single()
+    for (accuracy in ALL_ACCURACY_LEVELS) listener.onAccuracyChanged(accelerometer, accuracy)
+    assertTrue("An accuracy change is not a shake", shakes.isEmpty())
 
     sendReading(STILL_READING, SETTLED_MILLIS)
     sendReading(STILL_READING, NEXT_READING_MILLIS)
