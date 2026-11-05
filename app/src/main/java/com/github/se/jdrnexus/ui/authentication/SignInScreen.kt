@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.authentication
 
 import androidx.compose.foundation.BorderStroke
@@ -64,6 +65,7 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
 import com.github.se.jdrnexus.resources.JdrNexusLogo
 import com.github.se.jdrnexus.resources.darkFieldColors
+import com.github.se.jdrnexus.resources.showComingSoon
 
 @Composable
 fun SignInScreen(
@@ -71,7 +73,7 @@ fun SignInScreen(
     credentialManager: CredentialManager = CredentialManager.create(LocalContext.current),
     onSignInSuccess: () -> Unit = {},
     onSignUp: () -> Unit = {},
-    forgotPassword: () -> Unit = {},
+    forgotPassword: (() -> Unit)? = null,
 ) {
   val uiState by signInViewModel.uiState.collectAsState()
   // Get the colors defined by the application's Material theme.
@@ -244,7 +246,7 @@ fun SignInScreen(
 
       // button in case of forgotten password
       TextButton(
-          onClick = forgotPassword,
+          onClick = { forgotPassword?.invoke() ?: showComingSoon(context, "Password recovery") },
           modifier = Modifier.align(Alignment.End).testTag(C.Tag.sign_in_forgot_password),
       ) {
         Text(

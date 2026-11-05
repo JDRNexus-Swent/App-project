@@ -18,22 +18,23 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -80,6 +81,7 @@ import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import com.github.se.jdrnexus.model.repository.DiceLogic
 import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
+import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
 import com.google.firebase.firestore.FirebaseFirestore
@@ -181,6 +183,8 @@ private fun DiceOfflineContent(
       modifier =
           Modifier.fillMaxSize()
               .background(colors.backgroundColor)
+              // Keep controls clear of system navigation while the background draws edge-to-edge.
+              .windowInsetsPadding(WindowInsets.navigationBars)
               .testTag(C.Tag.dice_offline_screen),
   ) {
     val dimens = DiceDimens(screenHeight = maxHeight)
@@ -321,27 +325,14 @@ private fun DieFillingColumn(
 /** Title, decorative divider, close button and the selected die with its valid range. */
 @Composable
 private fun DiceHeader(uiState: DiceUiState, colors: DiceThemeColors, onClose: () -> Unit) {
-  Box(modifier = Modifier.fillMaxWidth()) {
-    Box(modifier = Modifier.width(120.dp).align(Alignment.TopCenter).padding(top = 12.dp)) {
-      DivideWithDiamonds(color = colors.accentColor)
-    }
-    IconButton(
-        onClick = onClose,
-        modifier = Modifier.align(Alignment.TopEnd).testTag(C.Tag.dice_offline_close),
-    ) {
-      Icon(Icons.Filled.Close, contentDescription = "Close", tint = colors.secondaryText)
-    }
-  }
-
-  Text(
-      text = "Dice Roller",
-      color = colors.primaryText,
-      fontFamily = FontFamily.Serif,
-      fontWeight = FontWeight.SemiBold,
-      fontSize = 30.sp,
+  AppTopBar(
+      title = "Dice Roller",
+      onBack = onClose,
+      backTestTag = C.Tag.dice_offline_close,
   )
 
-  Spacer(Modifier.height(4.dp))
+  DivideWithDiamonds(color = colors.accentColor)
+  Spacer(Modifier.height(12.dp))
   Text(
       text = uiState.selectedDice.name,
       color = colors.accentColor,

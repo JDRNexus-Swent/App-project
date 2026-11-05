@@ -1,7 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.home
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,11 +11,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -24,26 +24,27 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.github.se.jdrnexus.resources.AppTopBar
+import com.github.se.jdrnexus.resources.ScreenBottomBar
+import com.github.se.jdrnexus.resources.showComingSoon
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
+import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 
 object TestTags {
   const val TITLE = "home_title"
-  const val OBJECTSROW = "home_placeholder_objects"
   const val PROFILE_PIC = "home_image_placeholder"
-  const val ADVENTURES = "home_local_adventures"
   const val QUICKTOOLS = "home_quicktools"
   const val PSPACEBUTTON = "home_to_pspace"
   const val DICEBUTTON = "home_to_dice"
   const val GROUPMANAGEMENTBUTTON = "home_to_group_management"
   const val LOGOUT = "home_logout"
   val BUTTONS = listOf(DICEBUTTON, GROUPMANAGEMENTBUTTON)
-  val placeholderObjects = listOf("home_placeholder_1", "home_placeholder_2", "home_placeholder_3")
 }
 
 @Composable
@@ -58,6 +59,8 @@ fun HomeScreen(
 
   val uiState by viewModel.uiState.collectAsState()
   var logoutRequested by remember { mutableStateOf(false) }
+  val context = LocalContext.current
+  val colors = LocalAppUiColors.current
 
   LaunchedEffect(uiState.status) {
     when (uiState.status) {
@@ -72,79 +75,57 @@ fun HomeScreen(
     }
   }
 
-  Surface(
+  Scaffold(
       modifier = modifier.fillMaxSize(),
-      color = MaterialTheme.colorScheme.background,
-      contentColor = MaterialTheme.colorScheme.onBackground,
-  ) {
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-      Row(
-          modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-          horizontalArrangement = Arrangement.SpaceBetween,
-          verticalAlignment = Alignment.CenterVertically,
-      ) {
-        Surface(
-            modifier = Modifier.size(48.dp).testTag(TestTags.PROFILE_PIC),
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            shape = MaterialTheme.shapes.medium,
-        ) {
-          // This box will contain the profile picture (and maybe more)
-          Box {}
-        }
-        Button(
-            onClick = {
-              logoutRequested = true
-              viewModel.signOut()
+      containerColor = colors.background,
+      topBar = {
+        AppTopBar(
+            title = "JDRNexus",
+            titleModifier = Modifier.testTag(TestTags.TITLE),
+            leadingContent = {
+              Surface(
+                  modifier = Modifier.size(40.dp).testTag(TestTags.PROFILE_PIC),
+                  color = colors.raisedSurface,
+                  shape = MaterialTheme.shapes.medium,
+              ) {
+                Box {}
+              }
             },
-            modifier = Modifier.testTag(TestTags.LOGOUT),
-        ) {
-          Text("Log out")
-        }
-      }
-
-      Text(
-          text = "JDRNexus",
-          modifier = Modifier.testTag(TestTags.TITLE),
-          style = MaterialTheme.typography.headlineLarge,
-      )
-
-      Row(
-          modifier =
-              Modifier.testTag(TestTags.OBJECTSROW)
-                  .horizontalScroll(rememberScrollState())
-                  .padding(vertical = 16.dp)
-      ) {
-        placeholderObjects.forEachIndexed { index, placeholder ->
-          Surface(
-              modifier = Modifier.padding(end = 12.dp),
-              color = MaterialTheme.colorScheme.primaryContainer,
-              shape = MaterialTheme.shapes.medium,
-          ) {
-            Text(
-                text = placeholder,
-                modifier =
-                    Modifier.testTag(TestTags.placeholderObjects[index])
-                        .padding(horizontal = 24.dp, vertical = 32.dp),
-                style = MaterialTheme.typography.titleMedium,
-            )
-          }
-        }
-      }
-
-      Text(
-          text = "Local Adventures",
-          modifier = Modifier.testTag(TestTags.ADVENTURES),
-          style = MaterialTheme.typography.headlineSmall,
-      )
-
+            trailingContent = {
+              TextButton(
+                  onClick = {
+                    logoutRequested = true
+                    viewModel.signOut()
+                  },
+                  modifier = Modifier.testTag(TestTags.LOGOUT),
+              ) {
+                Text("Log out")
+              }
+            },
+        )
+      },
+      bottomBar = {
+        ScreenBottomBar(
+            selectedTab = "Home",
+            onTabSelected = { tab ->
+              when (tab) {
+                "Home" -> Unit
+                "Campaigns" -> onGroupManagementClick()
+                "Files" -> onPersonalSpaceClick()
+                "Map" -> showComingSoon(context, "Map")
+              }
+            },
+        )
+      },
+  ) { contentPadding ->
+    Column(modifier = Modifier.fillMaxSize().padding(contentPadding).padding(16.dp)) {
       Spacer(modifier = Modifier.weight(1f))
-
       Text(
           text = "Quicktools",
           modifier = Modifier.testTag(TestTags.QUICKTOOLS),
           style = MaterialTheme.typography.headlineSmall,
+          color = colors.primaryText,
       )
-
       Row(
           modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
           horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -171,5 +152,3 @@ fun HomeScreen(
     }
   }
 }
-
-private val placeholderObjects = listOf("Adventure 1", "Adventure 2", "Adventure 3")

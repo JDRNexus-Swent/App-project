@@ -438,7 +438,6 @@ class GameManagementScreenTest {
             onManageGroup = onManageGroup,
             onInvite = {},
             onTabSelected = onTabSelected,
-            darkTheme = darkTheme,
         )
       }
     }
