@@ -34,9 +34,11 @@ import com.github.se.jdrnexus.model.sensor.ShakeDetector
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.google.firebase.firestore.FirebaseFirestore
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.transform
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -66,9 +68,24 @@ private object SignedOutAuthRepository : AuthRepository {
 /** Upper bound for a roll to end after a click, far above the screen's roll animation. */
 private const val WAIT_TIMEOUT_MILLIS = 5_000L
 
-/** Shake source driven by hand; room for one event, so tryEmit never drops a shake. */
+/**
+ * Shake source driven by hand; room for one event, so [sendShake] never drops a shake.
+ * [handledShakes] counts the shakes the screen has finished handling, so a test can tell "ignored"
+ * from "not read yet".
+ */
 private class FakeShakeDetector(override val isAvailable: Boolean = true) : ShakeDetector {
-  override val shakes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+  val source = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+  private val handled = AtomicInteger(0)
+  val handledShakes: Int
+    get() = handled.get()
+
+  // emit() returns once the screen's collect block has run, so counting after it means "handled".
+  override val shakes: Flow<Unit> = source.transform {
+    emit(it)
+    handled.incrementAndGet()
+  }
+
+  fun sendShake(): Boolean = source.tryEmit(Unit)
 }
 
 /** Lifecycle the tests move by hand, to pause and resume the screen. */
@@ -112,7 +129,7 @@ class DiceOfflineScreenTest {
 
   private fun node(tag: String) = composeTestRule.onNodeWithTag(tag, useUnmergedTree = true)
 
-  private fun FakeShakeDetector.isListening() = shakes.subscriptionCount.value > 0
+  private fun FakeShakeDetector.isListening() = source.subscriptionCount.value > 0
 
   private fun FakeShakeDetector.awaitListening() =
       composeTestRule.waitUntil(WAIT_TIMEOUT_MILLIS) { isListening() }
@@ -123,7 +140,7 @@ class DiceOfflineScreenTest {
   /** Waits until the screen listens to [detector], then shakes once. */
   private fun shake(detector: FakeShakeDetector) {
     detector.awaitListening()
-    assertTrue(detector.shakes.tryEmit(Unit))
+    assertTrue(detector.sendShake())
   }
 
   private fun awaitRollFinished(vm: DiceViewModel) =
@@ -357,13 +374,14 @@ class DiceOfflineScreenTest {
     // Freeze virtual time so the 1 s roll animation cannot end during the test.
     composeTestRule.mainClock.autoAdvance = false
 
-    assertTrue(shaker.shakes.tryEmit(Unit))
+    assertTrue(shaker.sendShake())
     composeTestRule.mainClock.advanceTimeByFrame()
     assertTrue(vm.uiState.value.isRolling)
     val firstRoll = vm.uiState.value.currentResult
 
-    assertTrue(shaker.shakes.tryEmit(Unit))
+    assertTrue(shaker.sendShake())
     composeTestRule.mainClock.advanceTimeByFrame()
+    assertEquals("The screen must have handled the second shake", 2, shaker.handledShakes)
 
     assertSame("A second shake must not reroll", firstRoll, vm.uiState.value.currentResult)
     composeTestRule.mainClock.autoAdvance = true
@@ -379,7 +397,7 @@ class DiceOfflineScreenTest {
 
     node(C.Tag.dice_offline_shake_toggle).performClick().assertIsOff()
     shaker.awaitNotListening()
-    shaker.shakes.tryEmit(Unit) // Nobody listens: the shake is dropped.
+    shaker.sendShake() // Nobody listens: the shake is dropped.
     composeTestRule.waitForIdle()
     assertNull(vm.uiState.value.currentResult)
 
