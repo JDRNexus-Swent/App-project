@@ -55,14 +55,29 @@ class AuthRepositoryFirebaseEmulatorTest {
 
   private fun randomEmail() = "player-${UUID.randomUUID()}@example.com"
 
+  private fun signUp(email: String): AuthUser {
+    val user = call {
+      repository.signUpWithEmail(email, "secret1", "Ranger")
+    }
+        .requireUser("email sign-up")
+    assertEquals(email, user.email)
+    assertEquals("Ranger", user.username)
+    return user
+  }
+
+  private fun AuthResult<AuthUser>.requireUser(operation: String): AuthUser =
+      when (this) {
+        is AuthResult.Success -> value
+        is AuthResult.Failure -> throw AssertionError("Expected $operation to succeed, got $error")
+        is AuthResult.AccountCreatedNeedsRecovery -> throw AssertionError(message)
+      }
+
   @Test
   fun authStateFollowsSignUpAndSignOut() {
     val email = randomEmail()
 
-    val signedUp = call { repository.signUpWithEmail(email, "secret1", "Ranger") }
-    val user = (signedUp as AuthResult.Success).value
+    val user = signUp(email)
 
-    assertEquals(email, user.email)
     // waitFor pumps the main looper itself, so it is not wrapped in call.
     assertEquals(user, runBlocking { repository.authState.waitFor { it?.username == "Ranger" } })
 
@@ -73,13 +88,14 @@ class AuthRepositoryFirebaseEmulatorTest {
   @Test
   fun signUpWithUsedEmailReturnsEmailAlreadyInUse() {
     val email = randomEmail()
-    call { repository.signUpWithEmail(email, "secret1", "Ranger") }
-    call { repository.signOut() }
+    signUp(email)
+    assertEquals(AuthResult.Success(Unit), call { repository.signOut() })
 
     assertEquals(
         AuthResult.Failure(AuthError.EMAIL_ALREADY_IN_USE),
         call { repository.signUpWithEmail(email, "secret1", "Ranger") },
     )
+    assertEquals(null, firebaseAuth.currentUser)
   }
 
   @Test
@@ -101,12 +117,26 @@ class AuthRepositoryFirebaseEmulatorTest {
   @Test
   fun signInWithWrongPasswordReturnsWrongPassword() {
     val email = randomEmail()
-    call { repository.signUpWithEmail(email, "secret1", "Ranger") }
-    call { repository.signOut() }
+    signUp(email)
+    assertEquals(AuthResult.Success(Unit), call { repository.signOut() })
 
     assertEquals(
         AuthResult.Failure(AuthError.WRONG_PASSWORD),
         call { repository.signInWithEmail(email, "wrong-password") },
+    )
+    assertEquals(null, firebaseAuth.currentUser)
+  }
+
+  @Test
+  fun usernameIsStoredOnTheAccount() {
+    val email = randomEmail()
+    val user = signUp(email)
+    assertEquals(AuthResult.Success(Unit), call { repository.signOut() })
+
+    // A fresh sign-in reads the profile from the server, not the local user object.
+    assertEquals(
+        AuthResult.Success(user),
+        call { repository.signInWithEmail(email, "secret1") },
     )
   }
 
@@ -116,6 +146,7 @@ class AuthRepositoryFirebaseEmulatorTest {
         AuthResult.Failure(AuthError.USER_NOT_FOUND),
         call { repository.signInWithEmail(randomEmail(), "secret1") },
     )
+    assertEquals(null, firebaseAuth.currentUser)
   }
 
   @Test
@@ -124,9 +155,9 @@ class AuthRepositoryFirebaseEmulatorTest {
     // The Auth emulator accepts an unsigned JSON payload as Google id token.
     val idToken = """{"sub":"${UUID.randomUUID()}","email":"$email","email_verified":true}"""
 
-    val result = call { repository.signInWithGoogle(idToken) }
+    val user = call { repository.signInWithGoogle(idToken) }.requireUser("Google sign-in")
 
-    assertEquals(email, (result as AuthResult.Success).value.email)
+    assertEquals(email, user.email)
     assertEquals(email, firebaseAuth.currentUser?.email)
   }
 }

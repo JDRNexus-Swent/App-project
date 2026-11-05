@@ -1,15 +1,19 @@
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.repository
 
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -40,6 +44,21 @@ class AuthRepositoryFirebaseTest {
     )
     assertFalse(client.accountExists)
     assertEquals(0, client.deleteAccountCalls)
+  }
+
+  @Test
+  fun cancellationDuringAccountCreationIsRethrownWithoutCleanup() = runBlocking {
+    val client = FakeFirebaseAuthClient().apply { cancelAccountCreation = true }
+    val repository = AuthRepositoryFirebase(client)
+
+    val cancellation = expectCancellation {
+      repository.signUpWithEmail("player@example.com", "password123", "Player")
+    }
+
+    assertEquals("Account creation cancelled", cancellation.message)
+    assertFalse(client.accountExists)
+    assertEquals(0, client.deleteAccountCalls)
+    assertEquals(0, client.signOutCalls)
   }
 
   @Test
@@ -84,21 +103,22 @@ class AuthRepositoryFirebaseTest {
   }
 
   @Test
-  fun cancellationDuringUsernameUpdateCleansUpAndIsRethrown() = runBlocking {
-    val client = FakeFirebaseAuthClient().apply { cancelUsernameUpdate = true }
+  fun cancellingSignUpDuringUsernameUpdateStillCleansUp() = runBlocking {
+    val client = FakeFirebaseAuthClient().apply { suspendUsernameUpdate = true }
     val repository = AuthRepositoryFirebase(client)
-    var cancellation: CancellationException? = null
+    var result: AuthResult<AuthUser>? = null
 
-    try {
-      withContext(NonCancellable) {
-        repository.signUpWithEmail("player@example.com", "password123", "Player")
-      }
-    } catch (failure: CancellationException) {
-      cancellation = failure
+    val signUp = launch {
+      result = repository.signUpWithEmail("player@example.com", "password123", "Player")
     }
+    client.usernameUpdateStarted.await()
+    signUp.cancelAndJoin()
 
-    assertNotNull(cancellation)
+    // No result: the cancellation is propagated, but cleanup ran even though the job was cancelled.
+    assertTrue(signUp.isCancelled)
+    assertEquals(null, result)
     assertFalse(client.accountExists)
+    assertEquals(null, client.authState.value)
     assertEquals(1, client.deleteAccountCalls)
     assertEquals(1, client.signOutCalls)
   }
@@ -121,33 +141,81 @@ class AuthRepositoryFirebaseTest {
         repository.signUpWithEmail("player@example.com", "password123", "Player"),
     )
     assertFalse(client.accountExists)
+    assertEquals(1, client.deleteAccountCalls)
+    assertEquals(1, client.signOutCalls)
+  }
+
+  @Test
+  fun cancellingSignUpDuringCleanupStillDeletesAccountAndSignsOut() = runBlocking {
+    val client =
+        FakeFirebaseAuthClient().apply {
+          usernameFailure = AuthError.NETWORK_ERROR
+          holdAccountDeletion = true
+        }
+    val repository = AuthRepositoryFirebase(client)
+    var result: AuthResult<AuthUser>? = null
+
+    val signUp = launch {
+      result = repository.signUpWithEmail("player@example.com", "password123", "Player")
+    }
+    client.accountDeletionStarted.await()
+    signUp.cancel()
+    client.accountDeletionGate.complete(Unit)
+    signUp.join()
+
+    // Cleanup must not be abandoned halfway: no orphan account, no session left open.
+    assertEquals(null, result)
+    assertFalse(client.accountExists)
+    assertEquals(null, client.authState.value)
+    assertEquals(1, client.signOutCalls)
+  }
+
+  @Test
+  fun cancellationDuringSignInIsRethrown() = runBlocking {
+    val client =
+        FakeFirebaseAuthClient().apply {
+          unexpectedSignInFailure = CancellationException("Sign-in cancelled")
+        }
+    val repository = AuthRepositoryFirebase(client)
+
+    val cancellation = expectCancellation {
+      repository.signInWithEmail("player@example.com", "secret")
+    }
+
+    assertEquals("Sign-in cancelled", cancellation.message)
   }
 
   @Test
   fun cancellationWithFailedCleanupKeepsCleanupErrorAsSuppressed() = runBlocking {
     val client =
         FakeFirebaseAuthClient().apply {
-          cancelUsernameUpdate = true
+          suspendUsernameUpdate = true
           deleteFailure = AuthError.NETWORK_ERROR
         }
     val repository = AuthRepositoryFirebase(client)
     var cancellation: CancellationException? = null
 
-    try {
-      withContext(NonCancellable) {
+    val signUp = launch {
+      try {
         repository.signUpWithEmail("player@example.com", "password123", "Player")
+      } catch (failure: CancellationException) {
+        cancellation = failure
+        throw failure
       }
-    } catch (failure: CancellationException) {
-      cancellation = failure
     }
+    client.usernameUpdateStarted.await()
+    signUp.cancelAndJoin()
 
     // Coroutines debug mode may rethrow a copy of the exception, with the original as its cause.
-    val suppressed =
+    val cleanupErrors =
         generateSequence<Throwable>(requireNotNull(cancellation)) { it.cause }
             .flatMap { it.suppressed.asSequence() }
-            .single() as AuthOperationException
-    assertEquals(AuthError.NETWORK_ERROR, suppressed.error)
+            .filterIsInstance<AuthOperationException>()
+            .map { it.error }
+            .toList()
+    assertEquals(listOf(AuthError.NETWORK_ERROR), cleanupErrors)
     assertTrue(client.accountExists)
+    assertEquals(1, client.signOutCalls)
   }
 
   @Test
@@ -260,7 +328,8 @@ class AuthRepositoryFirebaseTest {
 
   @Test
   fun blankUsernameAndGoogleTokenReturnReadableFailures() = runBlocking {
-    val repository = AuthRepositoryFirebase(FakeFirebaseAuthClient())
+    val client = FakeFirebaseAuthClient()
+    val repository = AuthRepositoryFirebase(client)
 
     assertEquals(
         AuthResult.Failure(AuthError.INVALID_USERNAME),
@@ -270,7 +339,17 @@ class AuthRepositoryFirebaseTest {
         AuthResult.Failure(AuthError.INVALID_GOOGLE_CREDENTIAL),
         repository.signInWithGoogle(" "),
     )
+    assertEquals(null, client.createdPassword)
+    assertEquals(null, client.googleIdToken)
   }
+
+  private suspend fun expectCancellation(operation: suspend () -> Unit): CancellationException =
+      try {
+        operation()
+        throw AssertionError("Expected cancellation")
+      } catch (failure: CancellationException) {
+        failure
+      }
 
   private class FakeFirebaseAuthClient(initialUser: AuthUser? = null) : FirebaseAuthClient {
     override val authState = MutableStateFlow(initialUser)
@@ -286,11 +365,17 @@ class AuthRepositoryFirebaseTest {
     var deleteFailure: AuthError? = null
     var signOutFailure: AuthError? = null
     var unexpectedSignInFailure: Exception? = null
-    var cancelUsernameUpdate = false
+    var suspendUsernameUpdate = false
+    val usernameUpdateStarted = CompletableDeferred<Unit>()
+    var cancelAccountCreation = false
+    var holdAccountDeletion = false
+    val accountDeletionStarted = CompletableDeferred<Unit>()
+    val accountDeletionGate = CompletableDeferred<Unit>()
     var deleteAccountCalls = 0
     var signOutCalls = 0
 
     override suspend fun createEmailAccount(email: String, password: String): AuthUser {
+      if (cancelAccountCreation) throw CancellationException("Account creation cancelled")
       createFailure?.let { throw AuthOperationException(it) }
       createdPassword = password
       val createdUser = AuthUser("user-1", email, null)
@@ -300,13 +385,22 @@ class AuthRepositoryFirebaseTest {
     }
 
     override suspend fun updateUsername(uid: String, username: String): AuthUser {
-      if (cancelUsernameUpdate) throw CancellationException("Username update cancelled")
+      if (suspendUsernameUpdate) {
+        usernameUpdateStarted.complete(Unit)
+        awaitCancellation()
+      }
       usernameFailure?.let { throw AuthOperationException(it) }
       return requireNotNull(authState.value).copy(username = username).also { authState.value = it }
     }
 
     override suspend fun deleteAccount(uid: String) {
       deleteAccountCalls++
+      if (holdAccountDeletion) {
+        accountDeletionStarted.complete(Unit)
+        accountDeletionGate.await()
+      }
+      // Like Task.await(), fails if the caller is cancelled: cleanup must run as NonCancellable.
+      currentCoroutineContext().ensureActive()
       deleteFailure?.let { throw AuthOperationException(it) }
       accountExists = false
       authState.value = null
