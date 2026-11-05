@@ -82,8 +82,8 @@ interface WorkspaceRepository {
    * touched.
    *
    * @param isHidden whether the item starts hidden from the other members.
-   * @param includeContent reserved for adding a folder together with its content, which comes with
-   *   the cascade operations.
+   * @param includeContent for a folder, also adds everything inside it in its owner's personal
+   *   space, keeping the same structure.
    */
   suspend fun addItemToGroup(
       itemId: String,
