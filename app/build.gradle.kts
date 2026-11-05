@@ -190,6 +190,7 @@ dependencies {
   implementation(libs.firebase.auth)
   implementation(libs.firebase.messaging)
   implementation(libs.firebase.dataconnect)
+  implementation(libs.geofire.android.common)
   implementation(libs.kotlinx.serialization.core)
   implementation(libs.kotlinx.coroutines.play.services)
 }

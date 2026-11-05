@@ -23,6 +23,8 @@ sonar = "7.5.0.8588"
 # Every com.google.firebase artifact is versioned by this BOM. KTX artifacts were removed
 # from the BOM in 34.0.0 - their APIs now live in the main artifacts.
 firebaseBom = "34.18.0"
+# Geohash helpers for Firestore radius queries (not part of the BOM).
+geofire = "3.2.0"
 
 googleServices = "4.4.1"
 
@@ -66,6 +68,7 @@ firebase-auth = { module = "com.google.firebase:firebase-auth" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
 firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
 firebase-dataconnect = { module = "com.google.firebase:firebase-dataconnect" }
+geofire-android-common = { module = "com.firebase:geofire-android-common", version.ref = "geofire" }
 kotlinx-serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "kotlinxSerialization" }
 kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
