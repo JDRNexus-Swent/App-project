@@ -5,7 +5,7 @@
 ## Definition of Done
 
 - The feature works and matches its acceptance criteria (the milestone's tests).
-- **All new code comes with unit tests.**
+- **All new code comes with unit tests**, written as described in `TESTING.md`.
 - `./gradlew check` is green (unit tests + lint) and `./gradlew ktfmtCheck` passes (formatting) before you submit.
 
 ## How to work
