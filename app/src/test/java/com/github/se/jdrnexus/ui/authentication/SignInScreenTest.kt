@@ -300,7 +300,9 @@ class SignInScreenTest {
         .assert(hasText(AuthError.INVALID_EMAIL.message))
     composeTestRule
         .onNodeWithTag(C.Tag.sign_in_password)
-        .assert(hasText("Password must be at least 6 characters."))
+        .assert(
+            hasText("Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters.")
+        )
   }
 
   @Test
@@ -312,7 +314,7 @@ class SignInScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
 
     val emailError = AuthError.INVALID_EMAIL.message
-    val passwordError = "Password must be at least 6 characters."
+    val passwordError = "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters."
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).assert(hasText(emailError))
     composeTestRule.onNodeWithTag(C.Tag.sign_in_password).assert(hasText(passwordError))
 
