@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -126,6 +127,22 @@ class HomeScreenS1Test {
   }
 
   @Test
+  fun logoutCannotBeRequestedAgainWhileSignOutIsPending() {
+    val signOutResult = CompletableDeferred<AuthResult<Unit>>()
+    val repository = FakeAuthRepository { signOutResult.await() }
+    val viewModel = AuthViewModel(repository)
+    composeTestRule.setContent { SampleAppTheme { HomeScreen(viewModel) } }
+
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.waitUntil(5_000) { repository.signOutCalls == 1 }
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    Assert.assertEquals(1, repository.signOutCalls)
+
+    signOutResult.complete(AuthResult.Success(Unit))
+  }
+
+  @Test
   fun personalSpaceButtonInvokesCallback() {
     var clicked = false
     composeTestRule.setContent {
@@ -142,6 +159,8 @@ class HomeScreenS1Test {
   private class FakeAuthRepository(
       private val signOutAction: suspend () -> AuthResult<Unit> = { AuthResult.Success(Unit) }
   ) : AuthRepository {
+    var signOutCalls = 0
+
     override val authState: Flow<AuthUser?> = emptyFlow()
 
     override suspend fun signUpWithEmail(
@@ -158,6 +177,9 @@ class HomeScreenS1Test {
     override suspend fun signInWithGoogle(idToken: String): AuthResult<AuthUser> =
         AuthResult.Failure(AuthError.UNKNOWN)
 
-    override suspend fun signOut(): AuthResult<Unit> = signOutAction()
+    override suspend fun signOut(): AuthResult<Unit> {
+      signOutCalls++
+      return signOutAction()
+    }
   }
 }
