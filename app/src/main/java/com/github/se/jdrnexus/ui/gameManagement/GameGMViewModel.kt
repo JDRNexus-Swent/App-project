@@ -332,7 +332,7 @@ class GameViewModelGMViewModel(
         val current = _uiState.value.toSession()
         try {
           val updated = change(current)
-          validateSession(updated)
+          updated.validate()
           if (updated == current) return@withLock
           sessionRepository
               .saveSession(groupId, updated)
@@ -346,37 +346,6 @@ class GameViewModelGMViewModel(
           reportError(failure, SESSION_SAVE_ERROR)
         }
       }
-    }
-  }
-
-  /**
-   * Checks session invariants required before saving, including round, enemy, and NPC constraints.
-   *
-   * @throws IllegalArgumentException if the session violates an invariant.
-   */
-  private fun validateSession(session: GameSessionSnapshot) {
-    require(session.currentRound >= 1) { "Combat round must be at least one." }
-    require(session.enemies.map { it.id }.toSet().size == session.enemies.size) {
-      "Enemy IDs must be unique."
-    }
-    session.enemies.forEach { enemy ->
-      require(enemy.id.isNotBlank() && enemy.character.name.isNotBlank()) {
-        "Enemy ID and name are required."
-      }
-      require(
-          enemy.character.hp.max > 0 && enemy.character.hp.current in 0..enemy.character.hp.max
-      ) {
-        "Enemy HP must be between zero and max HP."
-      }
-      require(enemy.character.stats.filter { it.statID == "armorClass" }.all { it.value >= 0.0 }) {
-        "Enemy AC cannot be negative."
-      }
-    }
-    require(session.npcs.map { it.id }.toSet().size == session.npcs.size) {
-      "NPC IDs must be unique."
-    }
-    session.npcs.forEach { npc ->
-      require(npc.id.isNotBlank() && npc.name.isNotBlank()) { "NPC ID and name are required." }
     }
   }
 
