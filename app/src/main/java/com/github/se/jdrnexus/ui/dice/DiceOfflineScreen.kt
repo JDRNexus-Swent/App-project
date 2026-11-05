@@ -77,12 +77,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.R
-import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import com.github.se.jdrnexus.model.repository.DiceLogic
-import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -151,11 +148,7 @@ fun DiceOfflineScreen(
             factory =
                 DiceViewModelFactory(
                     diceLogic = DiceLogic(),
-                    diceRepository =
-                        DiceRepositoryFirestore(
-                            FirebaseFirestore.getInstance(),
-                            AuthRepositoryFirebase(),
-                        ),
+                    diceRepository = null,
                 )
         ),
     onClose: () -> Unit = {},

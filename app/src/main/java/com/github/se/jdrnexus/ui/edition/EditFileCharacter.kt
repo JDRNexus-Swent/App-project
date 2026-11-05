@@ -322,7 +322,7 @@ private fun StatRow(
         value = stat.name,
         onValueChange = onNameChange,
         modifier = Modifier.weight(1f).testTag("stat_name_${stat.statID}"),
-        label = { Text(stringResource(R.string.edit_character_name_label)) },
+        label = { Text(stringResource(R.string.edit_character_stat_name_label)) },
         singleLine = true,
         isError = nameError != null,
         supportingText = nameError?.let { message -> ({ Text(message) }) },
