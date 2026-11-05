@@ -21,8 +21,10 @@ import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.CHARACTER_RE
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.CURRENT_HP_ERROR
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.CURRENT_HP_EXCEEDS_MAX_ERROR
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.GROUP_NOT_FOUND_ERROR
+import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.LOAD_ERROR
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.SAVE_ERROR
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.SIGNED_OUT_ERROR
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -161,6 +163,45 @@ class GamePlayerViewModelTest {
   }
 
   @Test
+  fun loadFailureWithoutMessageShowsGenericLoadError() = runTest {
+    val viewModel = createViewModel(FakeWorkspaceRepository(failure = IllegalStateException()))
+
+    viewModel.loadSession(group.id)
+    advanceUntilIdle()
+
+    assertEquals(LOAD_ERROR, viewModel.uiState.value.error)
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun signingBackInClearsTheSignedOutErrorAndLoadsTheCharacter() = runTest {
+    val auth = FakeAuthRepository(user = null)
+    val workspace = FakeWorkspaceRepository(group.id to listOf(characterFile("own", player.uid)))
+    val viewModel = createViewModel(workspace, auth = auth)
+    viewModel.loadSession(group.id)
+    advanceUntilIdle()
+    assertEquals(SIGNED_OUT_ERROR, viewModel.uiState.value.error)
+
+    auth.authState.value = player
+    advanceUntilIdle()
+
+    assertNull(viewModel.uiState.value.error)
+    assertEquals("own", viewModel.uiState.value.character!!.file.id)
+  }
+
+  @Test
+  fun playerTextFileIsNotTakenAsTheirCharacter() = runTest {
+    val notes = characterFile("notes", player.uid).copy(type = DocumentType.TEXT)
+    val viewModel = createViewModel(FakeWorkspaceRepository(group.id to listOf(notes)))
+
+    viewModel.loadSession(group.id)
+    advanceUntilIdle()
+
+    assertNull(viewModel.uiState.value.character)
+    assertNull(viewModel.uiState.value.error)
+  }
+
+  @Test
   fun editsTheCharacterLocallyAndMarksItUnsaved() = runTest {
     val (viewModel, _) = ownSheetSession()
     viewModel.loadSession(group.id)
@@ -271,6 +312,91 @@ class GamePlayerViewModelTest {
   }
 
   @Test
+  fun editsMadeWhileSavingStayUnsavedAfterTheSave() = runTest {
+    val saveGate = CompletableDeferred<Unit>()
+    val workspace =
+        FakeWorkspaceRepository(
+            group.id to listOf(characterFile("own", player.uid)),
+            updateGate = saveGate,
+        )
+    val viewModel = createViewModel(workspace)
+    viewModel.loadSession(group.id)
+    advanceUntilIdle()
+    viewModel.updateCharacterHp(3)
+    viewModel.saveCharacter()
+    advanceUntilIdle()
+
+    viewModel.updateCharacterHp(7)
+    saveGate.complete(Unit)
+    advanceUntilIdle()
+
+    val saved = JDRFileJsonCodec.deserializeCharacter(workspace.updatedFiles.single().content)
+    assertEquals(3, saved.hp.current)
+    val sheet = viewModel.uiState.value.character!!
+    assertEquals(7, sheet.character.hp.current)
+    assertTrue(sheet.hasUnsavedChanges)
+    assertFalse(viewModel.uiState.value.isSaving)
+  }
+
+  @Test
+  fun failedSaveShowsTheRepositoryMessage() = runTest {
+    val workspace =
+        FakeWorkspaceRepository(
+            group.id to listOf(characterFile("own", player.uid)),
+            updateResult = Result.failure(IllegalStateException("Permission denied")),
+        )
+    val viewModel = createViewModel(workspace)
+    viewModel.loadSession(group.id)
+    advanceUntilIdle()
+    viewModel.updateCharacterHp(3)
+
+    viewModel.saveCharacter()
+    advanceUntilIdle()
+
+    assertEquals("Permission denied", viewModel.uiState.value.error)
+    assertFalse(viewModel.uiState.value.isSaving)
+  }
+
+  @Test
+  fun cancelledSaveStopsSavingWithoutErrorAndKeepsEditsUnsaved() = runTest {
+    val workspace =
+        FakeWorkspaceRepository(
+            group.id to listOf(characterFile("own", player.uid)),
+            updateResult = Result.failure(CancellationException("Save cancelled")),
+        )
+    val viewModel = createViewModel(workspace)
+    viewModel.loadSession(group.id)
+    advanceUntilIdle()
+    viewModel.updateCharacterHp(3)
+
+    viewModel.saveCharacter()
+    advanceUntilIdle()
+
+    assertFalse(viewModel.uiState.value.isSaving)
+    assertNull(viewModel.uiState.value.error)
+    val sheet = viewModel.uiState.value.character!!
+    assertTrue(sheet.hasUnsavedChanges)
+    assertEquals(3, sheet.character.hp.current)
+  }
+
+  @Test
+  fun unsavedEditsAreDroppedWhenTheSheetIsReplacedByAnotherFile() = runTest {
+    val (viewModel, workspace) = ownSheetSession()
+    viewModel.loadSession(group.id)
+    advanceUntilIdle()
+    viewModel.updateCharacterHp(1)
+
+    workspace.folders.getValue(group.id).value =
+        listOf(characterFile("replacement", player.uid, villain))
+    advanceUntilIdle()
+
+    val sheet = viewModel.uiState.value.character!!
+    assertEquals("replacement", sheet.file.id)
+    assertEquals(villain, sheet.character)
+    assertFalse(sheet.hasUnsavedChanges)
+  }
+
+  @Test
   fun remoteUpdatesReplaceASavedCharacterButKeepUnsavedEdits() = runTest {
     val (viewModel, workspace) = ownSheetSession()
     viewModel.loadSession(group.id)
@@ -357,7 +483,7 @@ class GamePlayerViewModelTest {
   }
 
   private class FakeAuthRepository(user: AuthUser?) : AuthRepository {
-    override val authState: Flow<AuthUser?> = MutableStateFlow(user)
+    override val authState = MutableStateFlow(user)
 
     override suspend fun signUpWithEmail(email: String, password: String, username: String) =
         AuthResult.Failure(AuthError.UNKNOWN)
