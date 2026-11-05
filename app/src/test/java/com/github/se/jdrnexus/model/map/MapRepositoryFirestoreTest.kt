@@ -100,10 +100,10 @@ class MapRepositoryFirestoreTest {
   }
 
   @Test
-  fun seatsStoredAsAnotherNumberTypeAreAccepted() = runBlocking {
-    seed("decimal" to session(overrides = mapOf("availableSeats" to 3.0)))
+  fun fractionalSeatsRoundDown() = runBlocking {
+    seed("decimal" to session(overrides = mapOf("availableSeats" to 2.7)))
 
-    assertEquals(3, repository.loadGamesNear(null).single().availableSeats)
+    assertEquals(2, repository.loadGamesNear(null).single().availableSeats)
   }
 
   @Test
@@ -175,6 +175,8 @@ class MapRepositoryFirestoreTest {
             mapOf("gameSystem" to null),
             mapOf("dateTime" to "tomorrow"),
             mapOf("availableSeats" to -1L),
+            mapOf("availableSeats" to -0.5),
+            mapOf("availableSeats" to Double.NaN),
         )
     seed(
         "valid" to session(overrides = mapOf("availableSeats" to 0L)),
