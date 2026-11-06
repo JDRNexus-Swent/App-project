@@ -3,7 +3,6 @@ package com.github.se.jdrnexus.ui.gameManagement
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,17 +22,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,7 +37,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -57,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -67,7 +62,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
+import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.JdrNexusLogo
+import com.github.se.jdrnexus.resources.ScreenBottomBar
+import com.github.se.jdrnexus.resources.showComingSoon
+import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementUiState
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
@@ -84,31 +83,26 @@ private data class GameManagementColors(
     val outline: Color,
     val accent: Color,
     val accentContent: Color,
+    val bannerText: Color,
+    val bannerColors: List<Color>,
 )
 
-private val lightGameManagementColors =
-    GameManagementColors(
-        background = Color(0xFFF5E9DE),
-        card = Color(0xFFE4D5C8),
-        raised = Color(0xFFF7EDE4),
-        text = Color(0xFF33251D),
-        secondaryText = Color(0xFF96745E),
-        outline = Color(0xFFB9A08D),
-        accent = Color(0xFF704222),
-        accentContent = Color(0xFFFFFFFF),
-    )
-
-private val darkGameManagementColors =
-    GameManagementColors(
-        background = Color(0xFF17100D),
-        card = Color(0xFF2C211B),
-        raised = Color(0xFF1C140F),
-        text = Color(0xFFE9DDD2),
-        secondaryText = Color(0xFFA98E79),
-        outline = Color(0xFF705E50),
-        accent = Color(0xFFE2BC32),
-        accentContent = Color(0xFF17100D),
-    )
+@Composable
+private fun gameManagementColors(): GameManagementColors {
+  val colors = LocalAppUiColors.current
+  return GameManagementColors(
+      background = colors.background,
+      card = colors.surface,
+      raised = colors.raisedSurface,
+      text = colors.primaryText,
+      secondaryText = colors.secondaryText,
+      outline = colors.outline,
+      accent = colors.accent,
+      accentContent = colors.accentContent,
+      bannerText = colors.bannerText,
+      bannerColors = colors.bannerColors,
+  )
+}
 
 internal object GameManagementTestTags {
   const val CREATE_GROUP_BUTTON = "game_management_create_group"
@@ -126,8 +120,8 @@ internal object GameManagementTestTags {
 @Composable
 fun GameManagementScreen(
     onEnterWorkspace: (String) -> Unit,
-    onManageGroup: (String) -> Unit = {},
-    onTabSelected: (String) -> Unit = {},
+    onManageGroup: (String) -> Unit,
+    onTabSelected: (String) -> Unit,
     gameManagementViewModel: GameManagementViewModel,
 ) {
   val uiState by gameManagementViewModel.uiState.collectAsState()
@@ -162,16 +156,16 @@ internal fun GameManagementScreenContent(
     onManageGroup: (String) -> Unit,
     onInvite: (String) -> Unit,
     onTabSelected: (String) -> Unit,
-    darkTheme: Boolean = isSystemInDarkTheme(),
     renderCreateDialogAsWindow: Boolean = true,
 ) {
-  val colors = if (darkTheme) darkGameManagementColors else lightGameManagementColors
+  val colors = gameManagementColors()
 
   Scaffold(
       containerColor = colors.background,
+      topBar = { GameManagementHeader(colors) },
       bottomBar = {
-        GameManagementBottomBar(
-            colors = colors,
+        ScreenBottomBar(
+            selectedTab = "Campaigns",
             onTabSelected = onTabSelected,
         )
       },
@@ -181,7 +175,6 @@ internal fun GameManagementScreenContent(
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-      item { GameManagementHeader(colors) }
       item { GroupHeading(uiState = uiState, colors = colors) }
       item {
         Button(
@@ -277,39 +270,46 @@ internal fun GameManagementScreenContent(
 /** Shows the profile, app identity, and notification affordance at the top of the screen. */
 @Composable
 private fun GameManagementHeader(colors: GameManagementColors) {
-  Row(
-      modifier = Modifier.fillMaxWidth().height(76.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.SpaceBetween,
-  ) {
-    Box(
-        modifier =
-            Modifier.size(38.dp)
-                .clip(CircleShape)
-                .background(colors.raised)
-                .border(1.dp, colors.outline, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-      Icon(Icons.Filled.Person, contentDescription = "Profile", tint = colors.secondaryText)
-    }
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-      JdrNexusLogo(Modifier.size(34.dp))
-      Text(
-          text = "JDRNexus",
-          color = colors.text,
-          fontFamily = FontFamily.Serif,
-          fontSize = 20.sp,
-          lineHeight = 22.sp,
-      )
-    }
-    IconButton(onClick = {}, modifier = Modifier.size(38.dp)) {
-      Icon(
-          Icons.Filled.Notifications,
-          contentDescription = "Notifications",
-          tint = colors.accent,
-      )
-    }
-  }
+  val context = LocalContext.current
+  AppTopBar(
+      title = "JDRNexus",
+      titleContent = {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+          JdrNexusLogo(Modifier.size(28.dp))
+          Text(
+              text = "JDRNexus",
+              color = colors.text,
+              fontFamily = FontFamily.Serif,
+              fontSize = 17.sp,
+              lineHeight = 18.sp,
+          )
+        }
+      },
+      leadingContent = {
+        Box(
+            modifier =
+                Modifier.size(38.dp)
+                    .clip(CircleShape)
+                    .background(colors.raised)
+                    .border(1.dp, colors.outline, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+          Icon(Icons.Filled.Person, contentDescription = "Profile", tint = colors.secondaryText)
+        }
+      },
+      trailingContent = {
+        IconButton(
+            onClick = { showComingSoon(context, "Notifications") },
+            modifier = Modifier.size(38.dp),
+        ) {
+          Icon(
+              Icons.Filled.Notifications,
+              contentDescription = "Notifications",
+              tint = colors.accent,
+          )
+        }
+      },
+  )
 }
 
 /** Displays the group section title and the loaded group count, when available. */
@@ -591,22 +591,16 @@ private fun CampaignGroupCard(
 /** Renders the decorative campaign banner using the selected theme colors. */
 @Composable
 private fun CampaignBanner(groupName: String, colors: GameManagementColors) {
-  val colorsForBanner =
-      if (colors == darkGameManagementColors) {
-        listOf(Color(0xFF51402F), Color(0xFF271C17), Color(0xFF80632D))
-      } else {
-        listOf(Color(0xFF9D7354), Color(0xFF4E5D55), Color(0xFFC49B66))
-      }
   Box(
       modifier =
           Modifier.fillMaxWidth()
               .height(82.dp)
-              .background(Brush.horizontalGradient(colorsForBanner)),
+              .background(Brush.horizontalGradient(colors.bannerColors)),
       contentAlignment = Alignment.Center,
   ) {
     Text(
         text = "✦     ${groupName.take(1).uppercase()}     ✦",
-        color = Color.White.copy(alpha = 0.75f),
+        color = colors.bannerText.copy(alpha = 0.75f),
         fontFamily = FontFamily.Serif,
         fontSize = 24.sp,
         letterSpacing = 8.sp,
@@ -813,62 +807,6 @@ private fun CreateGroupDialog(
   }
 }
 
-/** Displays the screen's bottom navigation tabs. */
-@Composable
-private fun GameManagementBottomBar(
-    colors: GameManagementColors,
-    onTabSelected: (String) -> Unit,
-) {
-  Surface(
-      modifier = Modifier.fillMaxWidth().height(70.dp),
-      color = colors.card,
-      border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.outline),
-  ) {
-    Row(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceAround,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-      BottomTab("Home", Icons.Filled.Home, selected = false, colors, onTabSelected)
-      BottomTab(
-          "Campaigns",
-          Icons.AutoMirrored.Outlined.MenuBook,
-          selected = true,
-          colors,
-          onTabSelected,
-      )
-      BottomTab("Files", Icons.Outlined.Folder, selected = false, colors, onTabSelected)
-      BottomTab("Map", Icons.Outlined.Map, selected = false, colors, onTabSelected)
-    }
-  }
-}
-
-/** Renders one bottom-navigation item and reports its label when selected. */
-@Composable
-private fun BottomTab(
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    selected: Boolean,
-    colors: GameManagementColors,
-    onTabSelected: (String) -> Unit,
-) {
-  val tint = if (selected) colors.accent else colors.secondaryText
-  TextButton(
-      onClick = { onTabSelected(label) },
-      contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-  ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-      Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(19.dp))
-      Text(
-          label,
-          color = tint,
-          fontSize = 10.sp,
-          fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-      )
-    }
-  }
-}
-
 /** Previews the screen with sample GM and player groups in dark theme. */
 @Preview(showBackground = true, name = "Game management · dark")
 @Composable
@@ -929,7 +867,6 @@ private fun GameManagementScreenPreview() {
         onManageGroup = {},
         onInvite = {},
         onTabSelected = {},
-        darkTheme = true,
     )
   }
 }

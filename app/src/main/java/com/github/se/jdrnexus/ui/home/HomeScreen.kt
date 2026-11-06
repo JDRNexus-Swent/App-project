@@ -1,22 +1,28 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.home
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Casino
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -26,24 +32,29 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.github.se.jdrnexus.resources.AppTopBar
+import com.github.se.jdrnexus.resources.ScreenBottomBar
+import com.github.se.jdrnexus.resources.showComingSoon
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
+import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 
 object TestTags {
   const val TITLE = "home_title"
-  const val OBJECTSROW = "home_placeholder_objects"
   const val PROFILE_PIC = "home_image_placeholder"
-  const val ADVENTURES = "home_local_adventures"
   const val QUICKTOOLS = "home_quicktools"
   const val PSPACEBUTTON = "home_to_pspace"
   const val DICEBUTTON = "home_to_dice"
+  const val DICE_ICON = "home_dice_icon"
   const val GROUPMANAGEMENTBUTTON = "home_to_group_management"
+  const val GROUPMANAGEMENT_ICON = "home_group_management_icon"
+  const val PSPACE_ICON = "home_personal_space_icon"
   const val LOGOUT = "home_logout"
   val BUTTONS = listOf(DICEBUTTON, GROUPMANAGEMENTBUTTON)
-  val placeholderObjects = listOf("home_placeholder_1", "home_placeholder_2", "home_placeholder_3")
 }
 
 @Composable
@@ -59,6 +70,8 @@ fun HomeScreen(
   val uiState by viewModel.uiState.collectAsState()
   val logoutRequested = remember { mutableStateOf(false) }
   val canNavigate = { !logoutRequested.value && uiState.status !is AuthStatus.Loading }
+  val context = LocalContext.current
+  val colors = LocalAppUiColors.current
 
   LaunchedEffect(uiState.status) {
     when (uiState.status) {
@@ -73,110 +86,129 @@ fun HomeScreen(
     }
   }
 
-  Surface(
+  Scaffold(
       modifier = modifier.fillMaxSize(),
-      color = MaterialTheme.colorScheme.background,
-      contentColor = MaterialTheme.colorScheme.onBackground,
-  ) {
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-      Row(
-          modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-          horizontalArrangement = Arrangement.SpaceBetween,
-          verticalAlignment = Alignment.CenterVertically,
-      ) {
-        Surface(
-            modifier = Modifier.size(48.dp).testTag(TestTags.PROFILE_PIC),
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            shape = MaterialTheme.shapes.medium,
-        ) {
-          // This box will contain the profile picture (and maybe more)
-          Box {}
-        }
-        Button(
-            onClick = {
-              if (!logoutRequested.value) {
+      containerColor = colors.background,
+      topBar = {
+        AppTopBar(
+            title = "JDRNexus",
+            titleModifier = Modifier.testTag(TestTags.TITLE),
+            leadingContent = {
+              Surface(
+                  modifier = Modifier.size(40.dp).testTag(TestTags.PROFILE_PIC),
+                  color = colors.raisedSurface,
+                  shape = MaterialTheme.shapes.medium,
+              ) {
+                Box {}
+              }
+            },
+            trailingContent = {
+              TextButton(
+                  onClick = {
+                    if (!logoutRequested.value) {
                 logoutRequested.value = true
                 viewModel.signOut()
               }
             },
             enabled = !logoutRequested.value && uiState.status !is AuthStatus.Loading,
-            modifier = Modifier.testTag(TestTags.LOGOUT),
-        ) {
-          Text("Log out")
-        }
-      }
-
-      Text(
-          text = "JDRNexus",
-          modifier = Modifier.testTag(TestTags.TITLE),
-          style = MaterialTheme.typography.headlineLarge,
-      )
-
-      Row(
-          modifier =
-              Modifier.testTag(TestTags.OBJECTSROW)
-                  .horizontalScroll(rememberScrollState())
-                  .padding(vertical = 16.dp)
+                  modifier = Modifier.testTag(TestTags.LOGOUT),
+              ) {
+                Text("Log out")
+              }
+            },
+        )
+      },
+      bottomBar = {
+        ScreenBottomBar(
+            selectedTab = "Home",
+            enabled = canNavigate(),
+            onTabSelected = { tab ->
+              if (canNavigate()) {
+                when (tab) {
+                  "Home" -> Unit
+                  "Campaigns" -> onGroupManagementClick()
+                  "Files" -> onPersonalSpaceClick()
+                  "Map" -> showComingSoon(context, "Map")
+                }
+              }
+            },
+        )
+      },
+  ) { contentPadding ->
+    Column(modifier = Modifier.fillMaxSize().padding(contentPadding).padding(16.dp)) {
+      Box(
+          modifier = Modifier.weight(1f).fillMaxWidth(),
+          contentAlignment = Alignment.Center,
       ) {
-        placeholderObjects.forEachIndexed { index, placeholder ->
-          Surface(
-              modifier = Modifier.padding(end = 12.dp),
-              color = MaterialTheme.colorScheme.primaryContainer,
-              shape = MaterialTheme.shapes.medium,
-          ) {
-            Text(
-                text = placeholder,
-                modifier =
-                    Modifier.testTag(TestTags.placeholderObjects[index])
-                        .padding(horizontal = 24.dp, vertical = 32.dp),
-                style = MaterialTheme.typography.titleMedium,
-            )
-          }
-        }
+        // Placeholder until more Home screen features are available.
+        Text(
+            text = "More features coming soon",
+            style = MaterialTheme.typography.bodyLarge,
+            color = colors.secondaryText,
+        )
       }
-
-      Text(
-          text = "Local Adventures",
-          modifier = Modifier.testTag(TestTags.ADVENTURES),
-          style = MaterialTheme.typography.headlineSmall,
-      )
-
-      Spacer(modifier = Modifier.weight(1f))
-
       Text(
           text = "Quicktools",
           modifier = Modifier.testTag(TestTags.QUICKTOOLS),
           style = MaterialTheme.typography.headlineSmall,
+          color = colors.primaryText,
       )
-
       Row(
-          modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+          modifier = Modifier.fillMaxWidth(2f / 3f).padding(top = 12.dp),
           horizontalArrangement = Arrangement.spacedBy(12.dp),
       ) {
         Button(
             onClick = { if (canNavigate()) onDiceClick() },
             enabled = canNavigate(),
             modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.DICEBUTTON),
+            shape = RoundedCornerShape(8.dp),
+            colors =
+                ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.onPrimary,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                ),
         ) {
-          Text("Dice")
+          Icon(
+              imageVector = Icons.Filled.Casino,
+              contentDescription = null,
+              modifier = Modifier.size(32.dp).testTag(TestTags.DICE_ICON),
+          )
         }
         Button(
             onClick = { if (canNavigate()) onGroupManagementClick() },
             enabled = canNavigate(),
             modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.GROUPMANAGEMENTBUTTON),
+            shape = RoundedCornerShape(8.dp),
+            colors =
+                ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.onPrimary,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                ),
         ) {
-          Text("Group Management")
+          Icon(
+              imageVector = Icons.Filled.Mic,
+              contentDescription = null,
+              modifier = Modifier.size(32.dp).testTag(TestTags.GROUPMANAGEMENT_ICON),
+          )
         }
         Button(
             onClick = { if (canNavigate()) onPersonalSpaceClick() },
             enabled = canNavigate(),
             modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.PSPACEBUTTON),
+            shape = RoundedCornerShape(8.dp),
+            colors =
+                ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.onPrimary,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                ),
         ) {
-          Text("Personal Space")
+          Icon(
+              imageVector = Icons.Filled.Edit,
+              contentDescription = null,
+              modifier = Modifier.size(32.dp).testTag(TestTags.PSPACE_ICON),
+          )
         }
       }
     }
   }
 }
-
-private val placeholderObjects = listOf("Adventure 1", "Adventure 2", "Adventure 3")
