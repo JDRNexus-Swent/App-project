@@ -65,7 +65,7 @@
     <string name="workspace_back_description">Go back</string>
     <string name="workspace_groups">Groups</string>
     <string name="workspace_breadcrumb">%1$s%2$s</string>
-    <string name="workspace_breadcrumb_separator">  ›  </string>
+    <string name="workspace_breadcrumb_separator">"  ›  "</string>
     <string name="workspace_item_count">%1$d items · Shared group workspace</string>
     <string name="workspace_load_error">Unable to load workspace</string>
     <string name="workspace_operation_in_progress">Saving workspace changes…</string>
