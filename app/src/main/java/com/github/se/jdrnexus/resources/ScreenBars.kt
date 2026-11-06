@@ -3,6 +3,7 @@ package com.github.se.jdrnexus.resources
 
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -16,6 +17,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -115,6 +119,48 @@ fun ScreenBottomBar(
               ),
       )
     }
+  }
+}
+
+/**
+ * Side rail with the same destinations as [ScreenBottomBar], for short, wide windows such as a
+ * phone in landscape, where a bottom bar would take too much of the height. Material's adaptive
+ * navigation makes the same swap.
+ */
+@Composable
+fun ScreenNavigationRail(
+    selectedTab: String,
+    onTabSelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+  val colors = LocalAppUiColors.current
+  NavigationRail(
+      modifier = modifier.testTag(C.Tag.shared_navigation_rail),
+      containerColor = colors.surface,
+  ) {
+    // Centered vertically, so the tabs stay within thumb reach on a phone held sideways.
+    Spacer(Modifier.weight(1f))
+    screenTabs.forEach { tab ->
+      NavigationRailItem(
+          selected = selectedTab == tab.label,
+          onClick = { onTabSelected(tab.label) },
+          icon = { Icon(tab.icon, contentDescription = null) },
+          label = { Text(tab.label) },
+          modifier =
+              Modifier.testTag(C.Tag.railTab(tab.label.lowercase())).semantics {
+                selected = selectedTab == tab.label
+              },
+          colors =
+              NavigationRailItemDefaults.colors(
+                  selectedIconColor = colors.accent,
+                  selectedTextColor = colors.accent,
+                  indicatorColor = colors.raisedSurface,
+                  unselectedIconColor = colors.secondaryText,
+                  unselectedTextColor = colors.secondaryText,
+              ),
+      )
+    }
+    Spacer(Modifier.weight(1f))
   }
 }
 

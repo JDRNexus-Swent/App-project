@@ -181,7 +181,17 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
       }
 
       composable(route = AllRoutes.Dice.name) {
-        DiceOfflineScreen(onClose = { navController.popBackStack() })
+        DiceOfflineScreen(
+            onClose = { navController.popBackStack() },
+            onTabSelected = { tab ->
+              when (tab) {
+                "Home" -> navController.popBackStack(AllRoutes.Home.name, false)
+                "Campaigns" -> navController.navigate(AllRoutes.GroupManagement.name)
+                "Files" -> navController.navigate(AllRoutes.PersoSpace.name)
+                "Map" -> showComingSoon(context, "Map")
+              }
+            },
+        )
       }
 
       composable(route = AllRoutes.GroupManagement.name) {
