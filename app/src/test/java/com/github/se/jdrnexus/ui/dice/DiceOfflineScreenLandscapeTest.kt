@@ -9,6 +9,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -23,10 +25,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.repository.DiceLogic
+import com.github.se.jdrnexus.model.sensor.ShakeDetector
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.MAX_LANDSCAPE_CONTENT_WIDTH
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import kotlin.math.abs
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -294,11 +299,50 @@ class DiceOfflineScreenLandscapeTest {
     assertLandscapeLayout(screenSize)
   }
 
+  /**
+   * On a phone with an accelerometer, the "Shake to roll" toggle sits in the right-hand controls,
+   * between the dice selector and the Roll button, as in portrait, and it can be switched off.
+   */
+  @Test
+  fun landscapeShowsTheShakeToggleBetweenTheDiceAndTheRollButton() {
+    composeTestRule.setContent {
+      SampleAppTheme(darkTheme = true) {
+        Box(Modifier.size(screenSize)) {
+          DiceOfflineScreen(
+              diceViewModel = DiceViewModel(DiceLogic(), diceRepository = null),
+              shakeDetector = AvailableShakeDetector,
+          )
+        }
+      }
+    }
+    assertLandscapeLayout(screenSize)
+
+    val toggle = node(C.Tag.dice_offline_shake_toggle).performScrollTo().assertIsDisplayed()
+    val bounds = bounds(C.Tag.dice_offline_shake_toggle)
+    assertTrue(
+        "the toggle is not right of the die",
+        bounds.left >= bounds(C.Tag.dice_offline_die).right,
+    )
+    assertTrue(
+        "the toggle is not between the dice and the Roll button",
+        bounds.top >= bounds(C.Tag.diceOfflineSelect("D20")).bottom &&
+            bounds.bottom <= bounds(C.Tag.dice_offline_roll).top,
+    )
+    toggle.assertIsOn().performClick()
+    node(C.Tag.dice_offline_shake_toggle).assertIsOff()
+  }
+
   private fun assertInside(tag: String, inner: DpRect, outer: DpRect) {
     assertTrue("$tag goes left of the screen: $inner in $outer", inner.left >= outer.left)
     assertTrue("$tag goes above the screen: $inner in $outer", inner.top >= outer.top)
     assertTrue("$tag goes past the screen: $inner in $outer", inner.right <= outer.right)
     assertTrue("$tag goes below the screen: $inner in $outer", inner.bottom <= outer.bottom)
+  }
+
+  /** A device with an accelerometer that is never shaken, so the toggle shows. */
+  private object AvailableShakeDetector : ShakeDetector {
+    override val isAvailable = true
+    override val shakes: Flow<Unit> = emptyFlow()
   }
 
   /** Dice ViewModel that ignores every intent except dismissing the error. */

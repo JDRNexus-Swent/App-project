@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -42,12 +43,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -63,6 +70,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -81,9 +89,14 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.repository.DiceLogic
+import com.github.se.jdrnexus.model.sensor.AccelerometerShakeDetector
+import com.github.se.jdrnexus.model.sensor.ShakeDetector
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
@@ -150,7 +163,11 @@ internal const val ROLL_ANIMATION_MILLIS = 1000L
  * roll local and never touches the repository. This screen only renders its state and forwards user
  * intents.
  *
+ * Shaking the phone rolls too, through [shakeDetector], unless the user turns "Shake to roll" off.
+ * The toggle is hidden on devices without an accelerometer, where only the Roll button remains.
+ *
  * @param diceViewModel The ViewModel handling dice selection, modifiers and rolls.
+ * @param shakeDetector Source of shakes; the real accelerometer by default, a fake in tests.
  * @param onClose Called when the user closes the dice roller.
  */
 @Composable
@@ -163,11 +180,58 @@ fun DiceOfflineScreen(
                     diceRepository = null,
                 )
         ),
+    shakeDetector: ShakeDetector = rememberAccelerometerShakeDetector(),
     onClose: () -> Unit = {},
 ) {
   val uiState by diceViewModel.uiState.collectAsState()
-  DiceOfflineContent(uiState = uiState, diceViewModel = diceViewModel, onClose = onClose)
+  var shakeEnabled by rememberSaveable { mutableStateOf(true) }
+  if (shakeDetector.isAvailable && shakeEnabled) {
+    RollOnShake(shakeDetector = shakeDetector, diceViewModel = diceViewModel)
+  }
+  DiceOfflineContent(
+      uiState = uiState,
+      diceViewModel = diceViewModel,
+      onClose = onClose,
+      shakeToggle =
+          if (shakeDetector.isAvailable) {
+            ShakeToggleState(
+                shakeEnabled = shakeEnabled,
+                onShakeEnabledChange = { shakeEnabled = it },
+            )
+          } else {
+            null
+          },
+  )
 }
+
+/** The real accelerometer detector, kept across recompositions. */
+@Composable
+private fun rememberAccelerometerShakeDetector(): ShakeDetector {
+  val context = LocalContext.current.applicationContext
+  return remember(context) { AccelerometerShakeDetector(context) }
+}
+
+/**
+ * Forwards every shake from [shakeDetector] to [DiceInterfaceVM.rollDice], exactly as the Roll
+ * button does; the ViewModel ignores it while a roll is animating. It only listens while the screen
+ * is resumed: pausing the app or leaving the screen stops the collection, which unregisters the
+ * sensor.
+ */
+@Composable
+private fun RollOnShake(shakeDetector: ShakeDetector, diceViewModel: DiceInterfaceVM) {
+  val lifecycleOwner = LocalLifecycleOwner.current
+  LaunchedEffect(shakeDetector, diceViewModel, lifecycleOwner) {
+    lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+      shakeDetector.shakes.collect { diceViewModel.rollDice() }
+    }
+  }
+}
+
+/** State of the "Shake to roll" toggle; a null one in [DiceOfflineContent] hides it. */
+internal class ShakeToggleState(
+    val shakeEnabled: Boolean,
+    val onShakeEnabledChange: (Boolean) -> Unit,
+)
 
 /**
  * Stateless body of [DiceOfflineScreen], split out so previews and tests can render it with a fixed
@@ -178,6 +242,7 @@ internal fun DiceOfflineContent(
     uiState: DiceUiState,
     diceViewModel: DiceInterfaceVM,
     onClose: () -> Unit,
+    shakeToggle: ShakeToggleState? = null,
 ) {
   val colors = diceThemeColors()
 
@@ -206,6 +271,7 @@ internal fun DiceOfflineContent(
             colors = colors,
             dimens = dimens,
             onClose = onClose,
+            shakeToggle = shakeToggle,
         )
       } else {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -236,6 +302,7 @@ internal fun DiceOfflineContent(
                 diceViewModel = diceViewModel,
                 colors = colors,
                 dimens = dimens,
+                shakeToggle = shakeToggle,
             )
           }
         }
@@ -262,6 +329,7 @@ private fun DiceLandscapeBody(
     colors: DiceThemeColors,
     dimens: DiceDimens,
     onClose: () -> Unit,
+    shakeToggle: ShakeToggleState?,
 ) {
   // Panel widths and the gap are fractions of the card rather than fixed dp, so the die keeps the
   // same share of the screen on every phone. The gap comes out of the controls panel, so the die
@@ -300,6 +368,7 @@ private fun DiceLandscapeBody(
             colors = colors,
             dimens = dimens,
             onClose = onClose,
+            shakeToggle = shakeToggle,
             modifier = Modifier.weight(1f).fillMaxHeight(),
         )
       }
@@ -318,6 +387,7 @@ private fun DiceLandscapeControlsPanel(
     colors: DiceThemeColors,
     dimens: DiceDimens,
     onClose: () -> Unit,
+    shakeToggle: ShakeToggleState?,
     modifier: Modifier,
 ) {
   BoxWithConstraints(modifier = modifier) {
@@ -364,6 +434,7 @@ private fun DiceLandscapeControlsPanel(
           diceViewModel = diceViewModel,
           colors = colors,
           dimens = dimens,
+          shakeToggle = shakeToggle,
           oneRowSelector = true,
       )
     }
@@ -371,9 +442,9 @@ private fun DiceLandscapeControlsPanel(
 }
 
 /**
- * Modifier, dice selector, error banner and roll button, shared by both orientations. They are
- * disabled while a roll is in progress. [oneRowSelector] keeps the six dice on one row, to save
- * height in landscape.
+ * Modifier, dice selector, error banner, "Shake to roll" toggle and roll button, shared by both
+ * orientations. They are disabled while a roll is in progress. A null [shakeToggle] hides the
+ * toggle. [oneRowSelector] keeps the six dice on one row, to save height in landscape.
  */
 @Composable
 private fun DiceControls(
@@ -381,6 +452,7 @@ private fun DiceControls(
     diceViewModel: DiceInterfaceVM,
     colors: DiceThemeColors,
     dimens: DiceDimens,
+    shakeToggle: ShakeToggleState?,
     oneRowSelector: Boolean = false,
 ) {
   val controlsEnabled = !uiState.isRolling
@@ -404,6 +476,11 @@ private fun DiceControls(
   uiState.errorMessage?.let { message ->
     Spacer(Modifier.height(dimens.scaled(16.dp)))
     ErrorBanner(message = message, colors = colors, onDismiss = diceViewModel::dismissError)
+  }
+
+  shakeToggle?.let {
+    Spacer(Modifier.height(dimens.scaled(12.dp)))
+    ShakeToRollToggle(state = it, colors = colors)
   }
 
   Spacer(Modifier.height(dimens.scaled(20.dp)))
@@ -835,6 +912,47 @@ private fun ErrorBanner(message: String, colors: DiceThemeColors, onDismiss: () 
     TextButton(onClick = onDismiss, modifier = Modifier.testTag(C.Tag.dice_offline_error_dismiss)) {
       Text("Dismiss", color = colors.errorText, fontWeight = FontWeight.Bold)
     }
+  }
+}
+
+/** "Shake to roll" switch; the whole row is one toggleable target, for accessibility. */
+@Composable
+private fun ShakeToRollToggle(state: ShakeToggleState, colors: DiceThemeColors) {
+  Row(
+      verticalAlignment = Alignment.CenterVertically,
+      modifier =
+          Modifier.fillMaxWidth()
+              .heightIn(min = MIN_TOUCH_TARGET)
+              .clip(RoundedCornerShape(10.dp))
+              .background(colors.panelColor)
+              .border(1.dp, colors.panelBorder, RoundedCornerShape(10.dp))
+              .toggleable(
+                  value = state.shakeEnabled,
+                  role = Role.Switch,
+                  onValueChange = state.onShakeEnabledChange,
+              )
+              .padding(horizontal = 12.dp, vertical = 4.dp)
+              .testTag(C.Tag.dice_offline_shake_toggle),
+  ) {
+    Text(
+        text = "Shake to roll",
+        color = colors.primaryText,
+        fontSize = 15.sp,
+        modifier = Modifier.weight(1f),
+    )
+    Switch(
+        checked = state.shakeEnabled,
+        onCheckedChange = null, // Handled by the row, so the label is tappable too.
+        colors =
+            SwitchDefaults.colors(
+                checkedThumbColor = colors.rollText,
+                checkedTrackColor = colors.accentColor,
+                checkedBorderColor = colors.accentColor,
+                uncheckedThumbColor = colors.secondaryText,
+                uncheckedTrackColor = colors.panelColor,
+                uncheckedBorderColor = colors.panelBorder,
+            ),
+    )
   }
 }
 
