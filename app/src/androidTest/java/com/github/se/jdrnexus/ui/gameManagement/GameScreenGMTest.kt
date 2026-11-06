@@ -180,6 +180,7 @@ class GameScreenGMTest {
   @Test
   fun emptyLoreListShowsMessage() {
     setContent(GameViewModelGMUiState())
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_lore_section).performScrollTo()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_empty_lore).assertIsDisplayed()
   }
 
@@ -192,6 +193,7 @@ class GameScreenGMTest {
         GameViewModelGMUiState(loreDocuments = listOf(lore)),
         onSelectLore = { selected = it },
     )
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_lore_section).performScrollTo()
     composeTestRule.onNodeWithText("Ancient Ruins").assertIsDisplayed()
     composeTestRule.onNodeWithText("Read").performClick()
     composeTestRule.onNodeWithText("History: Fallen kingdom").assertIsDisplayed()
@@ -225,12 +227,16 @@ class GameScreenGMTest {
     setContent(GameViewModelGMUiState())
 
     composeTestRule.onNodeWithTag(C.Tag.game_gm_hide_combat).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_hidden_sections).performScrollTo()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_restore_combat).performClick()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_hide_activity).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_hidden_sections).performScrollTo()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_restore_activity).performClick()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_hide_npcs).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_hidden_sections).performScrollTo()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_restore_npcs).performClick()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_hide_lore).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_hidden_sections).performScrollTo()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_hidden_sections).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_restore_lore).performClick()
     composeTestRule.onAllNodesWithTag(C.Tag.game_gm_hidden_sections).assertCountEquals(0)

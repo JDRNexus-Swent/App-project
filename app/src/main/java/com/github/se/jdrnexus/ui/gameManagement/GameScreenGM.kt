@@ -423,6 +423,7 @@ internal fun GameScreenGMContent(
         item {
           SectionCard(
               title = "Campaign Lore",
+              modifier = Modifier.testTag(C.Tag.game_gm_lore_section),
               onDismiss = { loreVisible = false },
               dismissTestTag = C.Tag.game_gm_hide_lore,
           ) {

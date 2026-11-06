@@ -78,6 +78,7 @@ object C {
     const val game_gm_dismiss_activity = "game_gm_dismiss_activity"
     const val game_gm_dice = "game_gm_dice"
     const val game_gm_hidden_sections = "game_gm_hidden_sections"
+    const val game_gm_lore_section = "game_gm_lore_section"
     const val game_gm_hide_combat = "game_gm_hide_combat"
     const val game_gm_hide_activity = "game_gm_hide_activity"
     const val game_gm_hide_npcs = "game_gm_hide_npcs"
