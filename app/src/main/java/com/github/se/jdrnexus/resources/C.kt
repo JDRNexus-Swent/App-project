@@ -94,6 +94,7 @@ object C {
     /** Tag of the selection button for [diceName] (e.g. "D20"). */
     fun diceOfflineSelect(diceName: String) = "dice_offline_select_$diceName"
 
+    const val game_gm_list = "game_gm_list"
     const val game_gm_loading = "game_gm_loading"
     const val game_gm_error = "game_gm_error"
     const val game_gm_empty_combat = "game_gm_empty_combat"
