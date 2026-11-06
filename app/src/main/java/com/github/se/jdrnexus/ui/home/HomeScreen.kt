@@ -106,11 +106,11 @@ fun HomeScreen(
               TextButton(
                   onClick = {
                     if (!logoutRequested.value) {
-                logoutRequested.value = true
-                viewModel.signOut()
-              }
-            },
-            enabled = !logoutRequested.value && uiState.status !is AuthStatus.Loading,
+                      logoutRequested.value = true
+                      viewModel.signOut()
+                    }
+                  },
+                  enabled = !logoutRequested.value && uiState.status !is AuthStatus.Loading,
                   modifier = Modifier.testTag(TestTags.LOGOUT),
               ) {
                 Text("Log out")
