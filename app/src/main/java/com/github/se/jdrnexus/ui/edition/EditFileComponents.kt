@@ -6,13 +6,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -21,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.github.se.jdrnexus.resources.AppTopBar
 
 /**
  * Provides the shared loading, empty/error, and content states for an edit screen.
@@ -51,7 +49,7 @@ internal fun EditFileScaffold(
     content: @Composable () -> Unit,
 ) {
   Surface(
-      modifier = Modifier.fillMaxSize(),
+      modifier = Modifier.fillMaxSize().navigationBarsPadding(),
       color = MaterialTheme.colorScheme.background,
       contentColor = MaterialTheme.colorScheme.onBackground,
   ) {
@@ -109,19 +107,7 @@ internal fun EditFileHeader(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-  Row(
-      modifier = modifier.fillMaxWidth(),
-      verticalAlignment = Alignment.CenterVertically,
-  ) {
-    IconButton(onClick = onBack, modifier = Modifier.testTag(backTestTag)) {
-      Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-    }
-    Text(
-        text = title,
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.primary,
-    )
-  }
+  AppTopBar(title = title, onBack = onBack, backTestTag = backTestTag, modifier = modifier)
 }
 
 /**

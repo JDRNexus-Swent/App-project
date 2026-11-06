@@ -186,7 +186,7 @@ class GameSessionRepositoryFirestore(
       session: GameSessionSnapshot,
   ): Result<Unit> = writeResult {
     require(groupId.isNotBlank()) { "Group ID cannot be empty." }
-    validateSession(session)
+    session.validate()
     firestore
         .collection(GROUPS_COLLECTION)
         .document(groupId)
@@ -286,7 +286,7 @@ class GameSessionRepositoryFirestore(
         (data["enemies"] as? List<*>)
             ?.map { item ->
               val enemy = item as? Map<*, *> ?: error("Invalid enemy data.")
-              GameEnemy(
+              GameCombatNPC(
                   id = enemy.string("id"),
                   character =
                       JDRFileJsonCodec.deserializeCharacter(
@@ -317,34 +317,8 @@ class GameSessionRepositoryFirestore(
             currentRound = round,
             npcs = npcs,
         )
-    validateSession(session)
+    session.validate()
     return session
-  }
-
-  private fun validateSession(session: GameSessionSnapshot) {
-    require(session.currentRound >= 1) { "Combat round must be at least one." }
-    require(session.enemies.map { it.id }.toSet().size == session.enemies.size) {
-      "Enemy IDs must be unique."
-    }
-    session.enemies.forEach { enemy ->
-      require(enemy.id.isNotBlank() && enemy.character.name.isNotBlank()) {
-        "Enemy ID and name are required."
-      }
-      require(
-          enemy.character.hp.max > 0 && enemy.character.hp.current in 0..enemy.character.hp.max
-      ) {
-        "Enemy HP must be between zero and max HP."
-      }
-      require(enemy.character.stats.filter { it.statID == "armorClass" }.all { it.value >= 0.0 }) {
-        "Enemy AC cannot be negative."
-      }
-    }
-    require(session.npcs.map { it.id }.toSet().size == session.npcs.size) {
-      "NPC IDs must be unique."
-    }
-    session.npcs.forEach { npc ->
-      require(npc.id.isNotBlank() && npc.name.isNotBlank()) { "NPC ID and name are required." }
-    }
   }
 
   private fun encodeLore(lore: GameLoreEntry): Map<String, Any?> =

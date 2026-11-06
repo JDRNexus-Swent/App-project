@@ -6,7 +6,7 @@ import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import kotlinx.coroutines.flow.Flow
 
 /** An enemy whose combat state is synchronized with the campaign. */
-data class GameEnemy(
+data class GameCombatNPC(
     val id: String,
     val character: CharacterFile,
     val initiative: Int,
@@ -22,11 +22,38 @@ data class GameNpc(
 
 /** Persisted combat and NPC state for one campaign. */
 data class GameSessionSnapshot(
-    val enemies: List<GameEnemy> = emptyList(),
+    val enemies: List<GameCombatNPC> = emptyList(),
     val isCombatActive: Boolean = false,
     val currentRound: Int = 1,
     val npcs: List<GameNpc> = emptyList(),
-)
+) {
+  /** Checks the invariants required before this session can be persisted or used by the UI. */
+  fun validate() {
+    require(currentRound >= 1) { "Combat round must be at least one." }
+    require(enemies.map { it.id }.toSet().size == enemies.size) { "Enemy IDs must be unique." }
+    enemies.forEach { enemy ->
+      require(enemy.id.isNotBlank() && enemy.character.name.isNotBlank()) {
+        "Enemy ID and name are required."
+      }
+      require(
+          enemy.character.hp.max > 0 && enemy.character.hp.current in 0..enemy.character.hp.max
+      ) {
+        "Enemy HP must be between zero and max HP."
+      }
+      require(
+          enemy.character.stats
+              .filter { it.statID == "armorClass" }
+              .all { it.value.isFinite() && it.value >= 0.0 }
+      ) {
+        "Enemy AC must be finite and non-negative."
+      }
+    }
+    require(npcs.map { it.id }.toSet().size == npcs.size) { "NPC IDs must be unique." }
+    npcs.forEach { npc ->
+      require(npc.id.isNotBlank() && npc.name.isNotBlank()) { "NPC ID and name are required." }
+    }
+  }
+}
 
 /** A lore document with visibility scoped to its campaign. */
 data class GameLoreEntry(
