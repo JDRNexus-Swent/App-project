@@ -256,15 +256,22 @@ class GameScreenGMTest {
   fun dashboardSectionsCanBeDismissedAndRestored() {
     setContent { GameScreenGMContent(GameViewModelGMUiState()) }
 
+    // While a section is hidden, the Hidden Sections card takes index 1 and the others shift down.
+    scrollToItem(COMBAT_ITEM)
     composeTestRule.onNodeWithTag(C.Tag.gameGmHide("combat")).performClick()
+    scrollToItem(HIDDEN_ITEM)
     composeTestRule.onNodeWithTag(C.Tag.gameGmRestore("combat")).performClick()
+    scrollToItem(ACTIVITY_ITEM)
     composeTestRule.onNodeWithTag(C.Tag.gameGmHide("activity")).performClick()
+    scrollToItem(HIDDEN_ITEM)
     composeTestRule.onNodeWithTag(C.Tag.gameGmRestore("activity")).performClick()
+    scrollToItem(NPCS_ITEM)
     composeTestRule.onNodeWithTag(C.Tag.gameGmHide("npcs")).performClick()
+    scrollToItem(HIDDEN_ITEM)
     composeTestRule.onNodeWithTag(C.Tag.gameGmRestore("npcs")).performClick()
-    // Lore is the last item (index 4); scrolling to the end lifts its close button above the FAB.
-    composeTestRule.onNode(hasScrollToIndexAction()).performScrollToIndex(4)
+    scrollToItem(LORE_ITEM)
     composeTestRule.onNodeWithTag(C.Tag.gameGmHide("lore")).performClick()
+    scrollToItem(HIDDEN_ITEM)
     composeTestRule.onNodeWithTag(C.Tag.game_gm_hidden_sections).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.gameGmRestore("lore")).performClick()
     composeTestRule.onAllNodesWithTag(C.Tag.game_gm_hidden_sections).assertCountEquals(0)
