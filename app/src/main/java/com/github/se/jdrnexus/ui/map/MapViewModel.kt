@@ -2,11 +2,16 @@
 package com.github.se.jdrnexus.ui.map
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.se.jdrnexus.model.map.MapGame
 import com.github.se.jdrnexus.model.map.MapLocation
 import com.github.se.jdrnexus.model.map.MapLocationRepository
 import com.github.se.jdrnexus.model.map.MapRepository
+import com.github.se.jdrnexus.model.map.MapRepositoryProvider
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -19,7 +24,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-/** Coordinates map data requests and exposes map screen state. */
+/**
+ * Coordinates map data requests and exposes map screen state. The screen obtains it with
+ * `viewModel<MapViewModel>(factory = MapViewModel.Factory)`; tests pass fake repositories.
+ */
 class MapViewModel(
     private val mapRepository: MapRepository,
     private val locationRepository: MapLocationRepository,
@@ -78,8 +86,8 @@ class MapViewModel(
                 camera = MapCamera(location.toUi(), CITY_ZOOM),
             )
           }
-          beginOperation(MapOperation.GAMES)
           finishOperation(MapOperation.CITY_SEARCH)
+          beginOperation(MapOperation.GAMES)
           loadGamesNear(location, operationAlreadyStarted = true)
         }
   }
@@ -95,8 +103,10 @@ class MapViewModel(
   }
 
   override fun onLocationPermissionResult(granted: Boolean) {
-    cancelLocationRequests()
     if (!granted) {
+      // A denial is not a new location request: a games load or city search still in flight keeps
+      // running, otherwise the map would stay empty behind the denial message.
+      deviceLocationJob?.cancel()
       finishOperation(
           MapOperation.DEVICE_LOCATION,
           MapStatus(
@@ -108,6 +118,7 @@ class MapViewModel(
       return
     }
 
+    cancelLocationRequests()
     beginOperation(MapOperation.DEVICE_LOCATION)
     deviceLocationJob =
         launchOperation(MapOperation.DEVICE_LOCATION, DEVICE_LOCATION_ERROR) {
@@ -120,8 +131,7 @@ class MapViewModel(
                 camera = MapCamera(location.toUi(), USER_LOCATION_ZOOM),
             )
           }
-          beginOperation(MapOperation.GAMES)
-          finishOperation(MapOperation.DEVICE_LOCATION)
+          replaceOperation(MapOperation.DEVICE_LOCATION, MapOperation.GAMES)
           loadGamesNear(location, operationAlreadyStarted = true)
         }
   }
@@ -133,7 +143,7 @@ class MapViewModel(
   override fun applyFilters() {
     _uiState.update { state ->
       val updated = state.copy(appliedFilters = state.filters)
-      updated.withVisibleGames(allGames).withEmptyStatus()
+      updated.withVisibleGames(allGames).withEmptyStatus(allGames, hasLoadedGames)
     }
   }
 
@@ -147,7 +157,10 @@ class MapViewModel(
           allGames = loaded.map { it.toUi() }
           hasLoadedGames = true
           _uiState.update { state ->
-            state.withVisibleGames(allGames).withEmptyStatus().finishLoading(MapOperation.GAMES)
+            state
+                .withVisibleGames(allGames)
+                .withEmptyStatus(allGames, hasLoadedGames)
+                .finishLoading(MapOperation.GAMES)
           }
           if (_uiState.value.camera == null) {
             val firstGame = _uiState.value.games.firstOrNull()
@@ -210,6 +223,19 @@ class MapViewModel(
     }
   }
 
+  /**
+   * Hands loading over from [finished] to [next] in one state update, so the screen never sees a
+   * state with neither operation loading (a spinner flicker).
+   */
+  private fun replaceOperation(finished: MapOperation, next: MapOperation) {
+    _uiState.update { state ->
+      state.copy(
+          loadingOperations = state.loadingOperations - finished + next,
+          status = state.status?.takeUnless { it.operation == finished || it.operation == next },
+      )
+    }
+  }
+
   private fun finishOperation(operation: MapOperation, status: MapStatus? = null) {
     _uiState.update { state ->
       state
@@ -234,12 +260,15 @@ class MapViewModel(
     return copy(games = visibleGames, selectedGame = selected)
   }
 
-  private fun MapUiState.withEmptyStatus(): MapUiState {
+  private fun MapUiState.withEmptyStatus(
+      loadedGames: List<MapGameUiModel>,
+      hasLoaded: Boolean,
+  ): MapUiState {
     // Never replace an error or permission message with an empty-state message.
-    if (!hasLoadedGames || (status != null && status.type != MapStatusType.EMPTY)) return this
+    if (!hasLoaded || (status != null && status.type != MapStatusType.EMPTY)) return this
     val emptyMessage =
         when {
-          allGames.isEmpty() -> "No games found."
+          loadedGames.isEmpty() -> "No games found."
           games.isEmpty() -> "No games match your filters."
           else -> null
         }
@@ -265,14 +294,25 @@ class MapViewModel(
   private fun MapCoordinates.toModel() = MapLocation(latitude, longitude, label)
 
   internal companion object {
+    /** Builds a [MapViewModel] with the app's map repositories. */
+    val Factory: ViewModelProvider.Factory = viewModelFactory {
+      initializer {
+        val application = checkNotNull(this[APPLICATION_KEY])
+        MapViewModel(
+            MapRepositoryProvider.mapRepository,
+            MapRepositoryProvider.locationRepository(application),
+        )
+      }
+    }
+
     const val PERMISSION_DENIED_MESSAGE = "Location permission was denied."
     const val CITY_SEARCH_ERROR =
         "Unable to search for this city. Check your connection and try again."
     const val DEVICE_LOCATION_ERROR = "Unable to get your location. Try again."
     const val GAMES_ERROR = "Unable to load games. Check your connection and try again."
 
-    private const val CITY_ZOOM = 12f
-    private const val USER_LOCATION_ZOOM = 15f
-    private const val GAME_ZOOM = 16f
+    const val CITY_ZOOM = 12f
+    const val USER_LOCATION_ZOOM = 15f
+    const val GAME_ZOOM = 16f
   }
 }

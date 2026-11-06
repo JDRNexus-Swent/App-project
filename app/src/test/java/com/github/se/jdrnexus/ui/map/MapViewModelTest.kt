@@ -11,6 +11,8 @@ import java.time.LocalDateTime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -90,7 +92,7 @@ class MapViewModelTest {
     assertEquals(city.toUi(), viewModel.uiState.value.searchedCity)
     assertEquals("  Lausanne  ", viewModel.uiState.value.cityQuery)
     assertEquals(city, repository.requestedLocations.single())
-    assertEquals(MapCamera(city.toUi(), 12f), viewModel.uiState.value.camera)
+    assertEquals(MapCamera(city.toUi(), MapViewModel.CITY_ZOOM), viewModel.uiState.value.camera)
     assertNull(viewModel.uiState.value.status)
   }
 
@@ -154,11 +156,46 @@ class MapViewModelTest {
         MapStatus(
             MapOperation.DEVICE_LOCATION,
             MapStatusType.PERMISSION_DENIED,
-            "Location permission was denied.",
+            MapViewModel.PERMISSION_DENIED_MESSAGE,
         ),
         viewModel.uiState.value.status,
     )
     assertEquals(0, locations.deviceLocationRequests)
+  }
+
+  @Test
+  fun deniedPermissionDoesNotCancelPendingGamesLoad() = runTest {
+    val response = CompletableDeferred<List<MapGame>>()
+    val viewModel =
+        MapViewModel(FakeMapRepository(response = response), FakeMapLocationRepository())
+    viewModel.loadNearbyGames()
+    runCurrent()
+
+    viewModel.onLocationPermissionResult(false)
+    response.complete(listOf(game("one")))
+    advanceUntilIdle()
+
+    assertEquals(listOf("one"), viewModel.uiState.value.games.map(MapGameUiModel::id))
+    assertEquals(MapStatusType.PERMISSION_DENIED, viewModel.uiState.value.status?.type)
+  }
+
+  @Test
+  fun deniedPermissionDoesNotCancelPendingCitySearch() = runTest {
+    val cityResult = CompletableDeferred<MapLocation?>()
+    val city = MapLocation(46.52, 6.63, "Lausanne")
+    val repository = FakeMapRepository(games = listOf(game("nearby")))
+    val viewModel = MapViewModel(repository, FakeMapLocationRepository(cityResponse = cityResult))
+    viewModel.onCityQueryChange("Lausanne")
+    viewModel.searchCity()
+    runCurrent()
+
+    viewModel.onLocationPermissionResult(false)
+    cityResult.complete(city)
+    advanceUntilIdle()
+
+    assertEquals(city.toUi(), viewModel.uiState.value.searchedCity)
+    assertEquals(city, repository.requestedLocations.single())
+    assertEquals(MapStatusType.PERMISSION_DENIED, viewModel.uiState.value.status?.type)
   }
 
   @Test
@@ -173,7 +210,10 @@ class MapViewModelTest {
 
     assertEquals(device.toUi(), viewModel.uiState.value.userLocation)
     assertEquals(device, repository.requestedLocations.single())
-    assertEquals(MapCamera(device.toUi(), 15f), viewModel.uiState.value.camera)
+    assertEquals(
+        MapCamera(device.toUi(), MapViewModel.USER_LOCATION_ZOOM),
+        viewModel.uiState.value.camera,
+    )
     assertNull(viewModel.uiState.value.status)
   }
 
@@ -270,95 +310,158 @@ class MapViewModelTest {
 
   @Test
   fun filtersDoNotReplacePermissionDenialWithEmptyStatus() = runTest {
-    val vm = MapViewModel(FakeMapRepository(), FakeMapLocationRepository())
-    vm.loadNearbyGames()
+    val viewModel = MapViewModel(FakeMapRepository(), FakeMapLocationRepository())
+    viewModel.loadNearbyGames()
     advanceUntilIdle()
-    vm.onLocationPermissionResult(false)
-    vm.applyFilters()
-    assertEquals(MapStatusType.PERMISSION_DENIED, vm.uiState.value.status?.type)
+    viewModel.onLocationPermissionResult(false)
+
+    viewModel.applyFilters()
+
+    assertEquals(MapStatusType.PERMISSION_DENIED, viewModel.uiState.value.status?.type)
   }
 
   @Test
   fun latestLocationActionCancelsOlderCitySearch() = runTest {
     val cityResult = CompletableDeferred<MapLocation?>()
-    val locations = FakeMapLocationRepository(cityResponse = cityResult)
-    val vm = MapViewModel(FakeMapRepository(), locations)
-    vm.onCityQueryChange("Paris")
-    vm.searchCity()
+    val viewModel =
+        MapViewModel(FakeMapRepository(), FakeMapLocationRepository(cityResponse = cityResult))
+    viewModel.onCityQueryChange("Paris")
+    viewModel.searchCity()
     runCurrent()
-    assertTrue(vm.uiState.value.isLoading)
-    vm.onLocationPermissionResult(true)
+
+    viewModel.onLocationPermissionResult(true)
     runCurrent()
     cityResult.complete(MapLocation(48.85, 2.35, "Paris"))
     advanceUntilIdle()
-    assertNull(vm.uiState.value.searchedCity)
-    assertEquals(MapCoordinates(0.0, 0.0), vm.uiState.value.camera?.target)
-    assertFalse(vm.uiState.value.isLoading)
+
+    assertNull(viewModel.uiState.value.searchedCity)
+    assertEquals(MapCoordinates(0.0, 0.0), viewModel.uiState.value.camera?.target)
+    assertFalse(viewModel.uiState.value.isLoading)
   }
 
   @Test
-  fun gamesLoadDoesNotClearCityErrorAndExposesLoadingUntilCompletion() = runTest {
+  fun gamesLoadKeepsCityErrorWhileLoadingAndAfterCompletion() = runTest {
     val response = CompletableDeferred<List<MapGame>>()
-    val vm = MapViewModel(FakeMapRepository(response = response), FakeMapLocationRepository())
-    vm.searchCity()
-    val error = vm.uiState.value.status
-    vm.loadNearbyGames()
+    val viewModel =
+        MapViewModel(FakeMapRepository(response = response), FakeMapLocationRepository())
+    viewModel.searchCity()
+    val error = viewModel.uiState.value.status
+
+    viewModel.loadNearbyGames()
     runCurrent()
-    assertTrue(vm.uiState.value.isLoading)
-    assertEquals(error, vm.uiState.value.status)
+
+    assertTrue(viewModel.uiState.value.isLoading)
+    assertEquals(error, viewModel.uiState.value.status)
+
     response.complete(listOf(game("one")))
     advanceUntilIdle()
-    assertEquals(error, vm.uiState.value.status)
-    assertFalse(vm.uiState.value.isLoading)
+
+    assertFalse(viewModel.uiState.value.isLoading)
+    assertEquals(error, viewModel.uiState.value.status)
   }
 
   @Test
   fun cancelledRepositoryCallDoesNotLeaveLoadingStuck() = runTest {
-    val vm =
+    val viewModel =
         MapViewModel(
             FakeMapRepository(failure = CancellationException()),
             FakeMapLocationRepository(),
         )
-    vm.loadNearbyGames()
+
+    viewModel.loadNearbyGames()
     advanceUntilIdle()
-    assertFalse(vm.uiState.value.isLoading)
-    assertNull(vm.uiState.value.status)
+
+    assertFalse(viewModel.uiState.value.isLoading)
+    assertNull(viewModel.uiState.value.status)
   }
 
   @Test
-  fun cityFailureAndRetryExposeErrorThenRecoveredLocation() = runTest {
+  fun cityFailureExposesRetryableError() = runTest {
+    val locations = FakeMapLocationRepository(cityFailure = IllegalStateException())
+    val viewModel = MapViewModel(FakeMapRepository(), locations)
+    viewModel.onCityQueryChange("Lausanne")
+
+    viewModel.searchCity()
+    advanceUntilIdle()
+
+    assertEquals(
+        MapStatus(
+            MapOperation.CITY_SEARCH,
+            MapStatusType.ERROR,
+            MapViewModel.CITY_SEARCH_ERROR,
+            canRetry = true,
+        ),
+        viewModel.uiState.value.status,
+    )
+  }
+
+  @Test
+  fun citySearchRetryAfterFailureShowsTheCity() = runTest {
     val locations =
         FakeMapLocationRepository(
             city = MapLocation(46.52, 6.63),
             cityFailure = IllegalStateException(),
         )
-    val vm = MapViewModel(FakeMapRepository(games = listOf(game("one"))), locations)
-    vm.onCityQueryChange("Lausanne")
-    vm.searchCity()
+    val viewModel = MapViewModel(FakeMapRepository(games = listOf(game("one"))), locations)
+    viewModel.onCityQueryChange("Lausanne")
+    viewModel.searchCity()
     advanceUntilIdle()
-    assertEquals(MapOperation.CITY_SEARCH, vm.uiState.value.status?.operation)
-    assertTrue(vm.uiState.value.status!!.canRetry)
-    assertFalse(vm.uiState.value.status!!.message.isBlank())
     locations.cityFailure = null
-    vm.searchCity()
+
+    viewModel.searchCity()
     advanceUntilIdle()
-    assertNull(vm.uiState.value.status)
-    assertFalse(vm.uiState.value.isLoading)
-    assertEquals(MapCoordinates(46.52, 6.63), vm.uiState.value.searchedCity)
+
+    assertEquals(MapCoordinates(46.52, 6.63), viewModel.uiState.value.searchedCity)
+    assertNull(viewModel.uiState.value.status)
+    assertFalse(viewModel.uiState.value.isLoading)
   }
 
   @Test
-  fun refreshUsesSelectedCityAndMapsEveryDisplayedField() = runTest {
-    val item = game("one").copy(distanceKm = 2.5)
-    val repo = FakeMapRepository(games = listOf(item))
-    val vm =
-        MapViewModel(repo, FakeMapLocationRepository(city = MapLocation(46.52, 6.63, "Lausanne")))
-    vm.onCityQueryChange("Lausanne")
-    vm.searchCity()
+  fun citySearchHandsLoadingOverToGamesWithoutAGap() = runTest {
+    val games = CompletableDeferred<List<MapGame>>()
+    val viewModel =
+        MapViewModel(
+            FakeMapRepository(response = games),
+            FakeMapLocationRepository(city = MapLocation(46.52, 6.63)),
+        )
+    val loadingStates = mutableListOf<Boolean>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      viewModel.uiState.collect { loadingStates += it.isLoading }
+    }
+    viewModel.onCityQueryChange("Lausanne")
+
+    viewModel.searchCity()
+    runCurrent()
+    games.complete(emptyList())
     advanceUntilIdle()
-    vm.loadNearbyGames()
+
+    // Idle, then loading (city search, then games) without interruption, then idle.
+    assertEquals(listOf(false, true, false), loadingStates.distinctUntilChangedValues())
+  }
+
+  @Test
+  fun refreshReloadsGamesAroundSearchedCity() = runTest {
+    val city = MapLocation(46.52, 6.63, "Lausanne")
+    val repository = FakeMapRepository(games = listOf(game("one")))
+    val viewModel = MapViewModel(repository, FakeMapLocationRepository(city = city))
+    viewModel.onCityQueryChange("Lausanne")
+    viewModel.searchCity()
     advanceUntilIdle()
-    assertEquals(MapLocation(46.52, 6.63, "Lausanne"), repo.requestedLocations.last())
+
+    viewModel.loadNearbyGames()
+    advanceUntilIdle()
+
+    assertEquals(listOf(city, city), repository.requestedLocations)
+  }
+
+  @Test
+  fun loadedGameExposesEveryDisplayedField() = runTest {
+    val repository = FakeMapRepository(games = listOf(game("one").copy(distanceKm = 2.5)))
+    val viewModel = MapViewModel(repository, FakeMapLocationRepository())
+
+    viewModel.loadNearbyGames()
+    advanceUntilIdle()
+
     assertEquals(
         MapGameUiModel(
             "one",
@@ -370,135 +473,242 @@ class MapViewModelTest {
             1,
             2.5,
         ),
-        vm.uiState.value.games.single(),
+        viewModel.uiState.value.games.single(),
     )
-    vm.selectGame("one")
-    assertEquals(vm.uiState.value.games.single(), vm.uiState.value.selectedGame)
-    assertEquals(MapCoordinates(46.52, 6.63), vm.uiState.value.camera?.target)
-    vm.selectGame(null)
-    assertNull(vm.uiState.value.selectedGame)
-    vm.selectGame("missing")
-    assertNull(vm.uiState.value.selectedGame)
   }
 
   @Test
-  fun applyingFiltersBeforeLoadingDoesNotClaimEmptyAndResetRestoresGames() = runTest {
-    val vm =
+  fun selectingGameCentersCameraOnIt() = runTest {
+    val viewModel =
         MapViewModel(FakeMapRepository(games = listOf(game("one"))), FakeMapLocationRepository())
-    vm.onFiltersChange(MapFilters(gameSystem = "Other"))
-    vm.applyFilters()
-    assertNull(vm.uiState.value.status)
-    vm.loadNearbyGames()
+    viewModel.loadNearbyGames()
     advanceUntilIdle()
-    assertEquals(MapStatusType.EMPTY, vm.uiState.value.status?.type)
-    vm.onFiltersChange(MapFilters(gameSystem = "  "))
-    vm.applyFilters()
-    assertEquals(1, vm.uiState.value.games.size)
-    assertNull(vm.uiState.value.status)
+
+    viewModel.selectGame("one")
+
+    assertEquals(viewModel.uiState.value.games.single(), viewModel.uiState.value.selectedGame)
+    assertEquals(
+        MapCamera(MapCoordinates(46.52, 6.63), MapViewModel.GAME_ZOOM),
+        viewModel.uiState.value.camera,
+    )
   }
 
   @Test
-  fun refreshUsesDeviceLocationAndRetainsCamera() = runTest {
-    val repo = FakeMapRepository(games = listOf(game("one")))
-    val vm = MapViewModel(repo, FakeMapLocationRepository())
-    vm.onLocationPermissionResult(true)
+  fun selectingNoGameClearsSelection() = runTest {
+    val viewModel =
+        MapViewModel(FakeMapRepository(games = listOf(game("one"))), FakeMapLocationRepository())
+    viewModel.loadNearbyGames()
     advanceUntilIdle()
-    vm.selectGame("one")
-    val camera = vm.uiState.value.camera
-    vm.loadNearbyGames()
-    advanceUntilIdle()
-    assertEquals(MapLocation(0.0, 0.0), repo.requestedLocations.last())
-    assertEquals(camera, vm.uiState.value.camera)
-    assertEquals("one", vm.uiState.value.selectedGame?.id)
+    viewModel.selectGame("one")
+
+    viewModel.selectGame(null)
+
+    assertNull(viewModel.uiState.value.selectedGame)
   }
 
   @Test
-  fun failureWithBlankMessageCanRetryAndRecoverGames() = runTest {
-    val repo = FakeMapRepository(games = listOf(game("one")), failure = IllegalStateException(" "))
-    val vm = MapViewModel(repo, FakeMapLocationRepository())
-    vm.loadNearbyGames()
+  fun selectingUnknownGameClearsSelection() = runTest {
+    val viewModel =
+        MapViewModel(FakeMapRepository(games = listOf(game("one"))), FakeMapLocationRepository())
+    viewModel.loadNearbyGames()
     advanceUntilIdle()
-    assertFalse(vm.uiState.value.status!!.message.isBlank())
-    assertTrue(vm.uiState.value.status!!.canRetry)
-    repo.failure = null
-    vm.loadNearbyGames()
-    advanceUntilIdle()
-    assertNull(vm.uiState.value.status)
-    assertEquals(1, vm.uiState.value.games.size)
-    assertFalse(vm.uiState.value.isLoading)
+    viewModel.selectGame("one")
+
+    viewModel.selectGame("missing")
+
+    assertNull(viewModel.uiState.value.selectedGame)
   }
 
   @Test
-  fun cityQueryEditingClearsOnlyItsOwnError() = runTest {
-    val vm =
+  fun applyingFiltersBeforeFirstLoadDoesNotClaimEmptyResult() = runTest {
+    val viewModel =
+        MapViewModel(FakeMapRepository(games = listOf(game("one"))), FakeMapLocationRepository())
+    viewModel.onFiltersChange(MapFilters(gameSystem = "Other"))
+
+    viewModel.applyFilters()
+
+    assertNull(viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun filtersMatchingNoLoadedGameExposeFilteredEmptyStatus() = runTest {
+    val viewModel =
+        MapViewModel(FakeMapRepository(games = listOf(game("one"))), FakeMapLocationRepository())
+    viewModel.onFiltersChange(MapFilters(gameSystem = "Other"))
+    viewModel.applyFilters()
+
+    viewModel.loadNearbyGames()
+    advanceUntilIdle()
+
+    assertEquals(
+        MapStatus(MapOperation.GAMES, MapStatusType.EMPTY, "No games match your filters."),
+        viewModel.uiState.value.status,
+    )
+  }
+
+  @Test
+  fun blankGameSystemFilterRestoresAllGames() = runTest {
+    val viewModel =
+        MapViewModel(FakeMapRepository(games = listOf(game("one"))), FakeMapLocationRepository())
+    viewModel.onFiltersChange(MapFilters(gameSystem = "Other"))
+    viewModel.applyFilters()
+    viewModel.loadNearbyGames()
+    advanceUntilIdle()
+
+    viewModel.onFiltersChange(MapFilters(gameSystem = "  "))
+    viewModel.applyFilters()
+
+    assertEquals(listOf("one"), viewModel.uiState.value.games.map(MapGameUiModel::id))
+    assertNull(viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun refreshReloadsGamesAroundDeviceLocation() = runTest {
+    val repository = FakeMapRepository(games = listOf(game("one")))
+    val viewModel = MapViewModel(repository, FakeMapLocationRepository())
+    viewModel.onLocationPermissionResult(true)
+    advanceUntilIdle()
+
+    viewModel.loadNearbyGames()
+    advanceUntilIdle()
+
+    assertEquals(MapLocation(0.0, 0.0), repository.requestedLocations.last())
+  }
+
+  @Test
+  fun refreshKeepsCameraAndSelection() = runTest {
+    val viewModel =
+        MapViewModel(FakeMapRepository(games = listOf(game("one"))), FakeMapLocationRepository())
+    viewModel.onLocationPermissionResult(true)
+    advanceUntilIdle()
+    viewModel.selectGame("one")
+    val camera = viewModel.uiState.value.camera
+
+    viewModel.loadNearbyGames()
+    advanceUntilIdle()
+
+    assertEquals(camera, viewModel.uiState.value.camera)
+    assertEquals("one", viewModel.uiState.value.selectedGame?.id)
+  }
+
+  @Test
+  fun gamesRetryAfterFailureRecoversGames() = runTest {
+    val repository =
+        FakeMapRepository(games = listOf(game("one")), failure = IllegalStateException())
+    val viewModel = MapViewModel(repository, FakeMapLocationRepository())
+    viewModel.loadNearbyGames()
+    advanceUntilIdle()
+    repository.failure = null
+
+    viewModel.loadNearbyGames()
+    advanceUntilIdle()
+
+    assertEquals(listOf("one"), viewModel.uiState.value.games.map(MapGameUiModel::id))
+    assertNull(viewModel.uiState.value.status)
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun editingCityQueryClearsCitySearchError() = runTest {
+    val viewModel =
         MapViewModel(
             FakeMapRepository(),
             FakeMapLocationRepository(cityFailure = IllegalStateException("offline")),
         )
-    vm.onCityQueryChange("City")
-    vm.searchCity()
+    viewModel.onCityQueryChange("City")
+    viewModel.searchCity()
     advanceUntilIdle()
-    assertEquals(MapViewModel.CITY_SEARCH_ERROR, vm.uiState.value.status?.message)
-    vm.onCityQueryChange("Next")
-    assertNull(vm.uiState.value.status)
-    vm.onLocationPermissionResult(false)
-    vm.onCityQueryChange("Another")
-    assertEquals(MapStatusType.PERMISSION_DENIED, vm.uiState.value.status?.type)
+
+    viewModel.onCityQueryChange("Next")
+
+    assertNull(viewModel.uiState.value.status)
   }
 
   @Test
-  fun deviceFailureWithNoMessageRecoversOnRetry() = runTest {
+  fun editingCityQueryKeepsPermissionDenial() = runTest {
+    val viewModel = MapViewModel(FakeMapRepository(), FakeMapLocationRepository())
+    viewModel.onLocationPermissionResult(false)
+
+    viewModel.onCityQueryChange("Another")
+
+    assertEquals(MapStatusType.PERMISSION_DENIED, viewModel.uiState.value.status?.type)
+  }
+
+  @Test
+  fun blankDeviceLocationMessageIsReplacedByFixedMessage() = runTest {
+    val locations = FakeMapLocationRepository(deviceLocationFailure = IOException(" "))
+    val viewModel = MapViewModel(FakeMapRepository(), locations)
+
+    viewModel.onLocationPermissionResult(true)
+    advanceUntilIdle()
+
+    assertEquals(MapViewModel.DEVICE_LOCATION_ERROR, viewModel.uiState.value.status?.message)
+  }
+
+  @Test
+  fun deviceLocationRetryAfterFailureLoadsGames() = runTest {
     val locations = FakeMapLocationRepository(deviceLocationFailure = IllegalStateException())
-    val vm = MapViewModel(FakeMapRepository(games = listOf(game("one"))), locations)
-    vm.onLocationPermissionResult(true)
+    val viewModel = MapViewModel(FakeMapRepository(games = listOf(game("one"))), locations)
+    viewModel.onLocationPermissionResult(true)
     advanceUntilIdle()
-    assertFalse(vm.uiState.value.status!!.message.isBlank())
-    assertFalse(vm.uiState.value.isLoading)
     locations.deviceLocationFailure = null
-    vm.onLocationPermissionResult(true)
+
+    viewModel.onLocationPermissionResult(true)
     advanceUntilIdle()
-    assertNull(vm.uiState.value.status)
-    assertEquals(1, vm.uiState.value.games.size)
+
+    assertEquals(listOf("one"), viewModel.uiState.value.games.map(MapGameUiModel::id))
+    assertNull(viewModel.uiState.value.status)
+    assertFalse(viewModel.uiState.value.isLoading)
   }
 
   @Test
-  fun cancelledLocationRepositoriesFinishLoadingWithoutError() = runTest {
-    val locations =
-        FakeMapLocationRepository(
-            cityFailure = CancellationException(),
-            deviceLocationFailure = CancellationException(),
-        )
-    val vm = MapViewModel(FakeMapRepository(), locations)
-    vm.onCityQueryChange("City")
-    vm.searchCity()
+  fun cancelledCitySearchFinishesLoadingWithoutError() = runTest {
+    val locations = FakeMapLocationRepository(cityFailure = CancellationException())
+    val viewModel = MapViewModel(FakeMapRepository(), locations)
+    viewModel.onCityQueryChange("City")
+
+    viewModel.searchCity()
     advanceUntilIdle()
-    assertFalse(vm.uiState.value.isLoading)
-    assertNull(vm.uiState.value.status)
-    vm.onLocationPermissionResult(true)
+
+    assertFalse(viewModel.uiState.value.isLoading)
+    assertNull(viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun cancelledDeviceLocationFinishesLoadingWithoutError() = runTest {
+    val locations = FakeMapLocationRepository(deviceLocationFailure = CancellationException())
+    val viewModel = MapViewModel(FakeMapRepository(), locations)
+
+    viewModel.onLocationPermissionResult(true)
     advanceUntilIdle()
-    assertFalse(vm.uiState.value.isLoading)
-    assertNull(vm.uiState.value.status)
+
+    assertFalse(viewModel.uiState.value.isLoading)
+    assertNull(viewModel.uiState.value.status)
   }
 
   @Test
   fun replacementGameRequestKeepsLoadingUntilItsResultArrives() = runTest {
     val first = CompletableDeferred<List<MapGame>>()
     val second = CompletableDeferred<List<MapGame>>()
-    val repo = FakeMapRepository(response = first)
-    val vm = MapViewModel(repo, FakeMapLocationRepository())
-    vm.loadNearbyGames()
+    val repository = FakeMapRepository(response = first)
+    val viewModel = MapViewModel(repository, FakeMapLocationRepository())
+    viewModel.loadNearbyGames()
     runCurrent()
-    repo.response = second
-    vm.loadNearbyGames()
+    repository.response = second
+
+    viewModel.loadNearbyGames()
     runCurrent()
     first.complete(listOf(game("old")))
     runCurrent()
-    assertTrue(vm.uiState.value.isLoading)
-    assertTrue(vm.uiState.value.games.isEmpty())
+
+    assertTrue(viewModel.uiState.value.isLoading)
+    assertTrue(viewModel.uiState.value.games.isEmpty())
+
     second.complete(listOf(game("new")))
     advanceUntilIdle()
-    assertEquals("new", vm.uiState.value.games.single().id)
-    assertFalse(vm.uiState.value.isLoading)
+
+    assertEquals(listOf("new"), viewModel.uiState.value.games.map(MapGameUiModel::id))
+    assertFalse(viewModel.uiState.value.isLoading)
   }
 
   @Test
@@ -506,31 +716,36 @@ class MapViewModelTest {
     val response = CompletableDeferred<MapLocation>()
     val locations =
         FakeMapLocationRepository(city = MapLocation(46.52, 6.63), deviceResponse = response)
-    val vm = MapViewModel(FakeMapRepository(), locations)
-    vm.onLocationPermissionResult(true)
+    val viewModel = MapViewModel(FakeMapRepository(), locations)
+    viewModel.onLocationPermissionResult(true)
     runCurrent()
-    vm.onCityQueryChange("Lausanne")
-    vm.searchCity()
+
+    viewModel.onCityQueryChange("Lausanne")
+    viewModel.searchCity()
     runCurrent()
     response.complete(MapLocation(48.0, 2.0))
     advanceUntilIdle()
-    assertNull(vm.uiState.value.userLocation)
-    assertEquals(MapCoordinates(46.52, 6.63), vm.uiState.value.camera?.target)
-    assertFalse(vm.uiState.value.isLoading)
+
+    assertNull(viewModel.uiState.value.userLocation)
+    assertEquals(MapCoordinates(46.52, 6.63), viewModel.uiState.value.camera?.target)
+    assertFalse(viewModel.uiState.value.isLoading)
   }
 
   @Test
   fun deniedPermissionCancelsPendingDeviceRequest() = runTest {
     val response = CompletableDeferred<MapLocation>()
-    val vm = MapViewModel(FakeMapRepository(), FakeMapLocationRepository(deviceResponse = response))
-    vm.onLocationPermissionResult(true)
+    val viewModel =
+        MapViewModel(FakeMapRepository(), FakeMapLocationRepository(deviceResponse = response))
+    viewModel.onLocationPermissionResult(true)
     runCurrent()
-    vm.onLocationPermissionResult(false)
+
+    viewModel.onLocationPermissionResult(false)
     response.complete(MapLocation(48.0, 2.0))
     advanceUntilIdle()
-    assertNull(vm.uiState.value.userLocation)
-    assertEquals(MapStatusType.PERMISSION_DENIED, vm.uiState.value.status?.type)
-    assertFalse(vm.uiState.value.isLoading)
+
+    assertNull(viewModel.uiState.value.userLocation)
+    assertEquals(MapStatusType.PERMISSION_DENIED, viewModel.uiState.value.status?.type)
+    assertFalse(viewModel.uiState.value.isLoading)
   }
 
   @Test
@@ -538,22 +753,32 @@ class MapViewModelTest {
     val first = CompletableDeferred<MapLocation?>()
     val second = CompletableDeferred<MapLocation?>()
     val locations = FakeMapLocationRepository(cityResponse = first)
-    val vm = MapViewModel(FakeMapRepository(), locations)
-    vm.onCityQueryChange("Old")
-    vm.searchCity()
+    val viewModel = MapViewModel(FakeMapRepository(), locations)
+    viewModel.onCityQueryChange("Old")
+    viewModel.searchCity()
     runCurrent()
     locations.cityResponse = second
-    vm.onCityQueryChange("New")
-    vm.searchCity()
+
+    viewModel.onCityQueryChange("New")
+    viewModel.searchCity()
     runCurrent()
     first.complete(MapLocation(1.0, 1.0))
     runCurrent()
-    assertTrue(vm.uiState.value.isLoading)
+
+    assertTrue(viewModel.uiState.value.isLoading)
+
     second.complete(MapLocation(2.0, 2.0))
     advanceUntilIdle()
-    assertEquals(MapCoordinates(2.0, 2.0), vm.uiState.value.searchedCity)
-    assertFalse(vm.uiState.value.isLoading)
+
+    assertEquals(MapCoordinates(2.0, 2.0), viewModel.uiState.value.searchedCity)
+    assertFalse(viewModel.uiState.value.isLoading)
   }
+
+  /** Drops consecutive duplicates, so the test checks transitions rather than emission count. */
+  private fun List<Boolean>.distinctUntilChangedValues(): List<Boolean> =
+      filterIndexed { index, value ->
+        index == 0 || value != this[index - 1]
+      }
 
   private fun game(id: String, system: String = "Pathfinder", seats: Int = 1) =
       MapGame(
