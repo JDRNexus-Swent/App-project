@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -94,7 +96,13 @@ class GameScreenGMTest {
   @Test
   fun addEnemyDialogOpensClosesAndSubmitsValidEnemy() {
     var added: CombatNPC? = null
-    setContent { GameScreenGMContent(GameViewModelGMUiState(), onAddEnemy = { added = it }) }
+    setContent {
+      GameScreenGMContent(
+          GameViewModelGMUiState(),
+          onAddEnemy = { added = it },
+          renderAddEnemyDialogAsWindow = false,
+      )
+    }
 
     composeTestRule.onNodeWithTag(C.Tag.game_gm_add_enemy).performClick()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_add_enemy_dialog).assertIsDisplayed()
@@ -113,7 +121,9 @@ class GameScreenGMTest {
   // Verifies invalid enemy input disables submission.
   @Test
   fun invalidEnemyInputDisablesAddButton() {
-    setContent { GameScreenGMContent(GameViewModelGMUiState()) }
+    setContent {
+      GameScreenGMContent(GameViewModelGMUiState(), renderAddEnemyDialogAsWindow = false)
+    }
 
     composeTestRule.onNodeWithTag(C.Tag.game_gm_add_enemy).performClick()
     composeTestRule.onNodeWithText("Add").assertIsNotEnabled()
@@ -150,7 +160,17 @@ class GameScreenGMTest {
     setContent { GameScreenGMContent(GameViewModelGMUiState()) }
     composeTestRule.onNodeWithText("No recent player activity.").assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_empty_npcs).assertIsDisplayed()
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_empty_lore).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_empty_lore).performScrollTo().assertIsDisplayed()
+  }
+
+  // Verifies the feed shows at most the 8 newest entries, in the newest-first repository order.
+  @Test
+  fun activityFeedShowsNewestEightEntries() {
+    val feed = (9 downTo 1).map { ActivityItem("a$it", "Mira", "rolled $it", null) }
+    setContent { GameScreenGMContent(GameViewModelGMUiState(activityFeed = feed)) }
+    composeTestRule.onNodeWithTag(C.Tag.gameGmActivity("a9")).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.gameGmActivity("a2")).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(C.Tag.gameGmActivity("a1")).assertCountEquals(0)
   }
 
   // Verifies activity rendering, dice results, and dismiss behavior.
@@ -181,24 +201,20 @@ class GameScreenGMTest {
     composeTestRule.onAllNodesWithText("A quiet guide.").assertCountEquals(0)
   }
 
-  // Verifies lore expansion, collapse, and selection callback.
+  // Verifies lore expansion and collapse.
   @Test
-  fun loreDocumentsExpandCollapseAndSelect() {
+  fun loreDocumentsExpandAndCollapse() {
     val lore = testLore()
-    var selected = ""
-    setContent {
-      GameScreenGMContent(
-          GameViewModelGMUiState(loreDocuments = listOf(lore)),
-          onSelectLore = { selected = it },
-      )
-    }
+    setContent { GameScreenGMContent(GameViewModelGMUiState(loreDocuments = listOf(lore))) }
+    // Lore is the last item (index 4); scrolling to the end lifts its buttons above the dice FAB.
+    val list = composeTestRule.onNode(hasScrollToIndexAction())
+    list.performScrollToIndex(4)
     composeTestRule.onNodeWithText("Ancient Ruins").assertIsDisplayed()
     composeTestRule.onNodeWithText("Read").performClick()
-    composeTestRule.onNodeWithText("History: Fallen kingdom").assertIsDisplayed()
+    composeTestRule.onNodeWithText("History: Fallen kingdom").performScrollTo().assertIsDisplayed()
+    list.performScrollToIndex(4)
     composeTestRule.onNodeWithText("Collapse").performClick()
     composeTestRule.onNodeWithText("Read").assertIsDisplayed()
-    composeTestRule.onNodeWithTag(C.Tag.gameGmLoreSelect(lore.id)).performClick()
-    assertEquals(lore.id, selected)
   }
 
   // Verifies shared bottom navigation and dice FAB callback dispatch.
@@ -232,6 +248,8 @@ class GameScreenGMTest {
     composeTestRule.onNodeWithTag(C.Tag.gameGmRestore("activity")).performClick()
     composeTestRule.onNodeWithTag(C.Tag.gameGmHide("npcs")).performClick()
     composeTestRule.onNodeWithTag(C.Tag.gameGmRestore("npcs")).performClick()
+    // Lore is the last item (index 4); scrolling to the end lifts its close button above the FAB.
+    composeTestRule.onNode(hasScrollToIndexAction()).performScrollToIndex(4)
     composeTestRule.onNodeWithTag(C.Tag.gameGmHide("lore")).performClick()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_hidden_sections).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.gameGmRestore("lore")).performClick()

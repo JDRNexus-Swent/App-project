@@ -31,4 +31,46 @@
     <string name="edit_character_description_label">Description</string>
     <string name="edit_character_add_action">Add action</string>
     <string name="edit_character_action_label">Action</string>
+
+    <!-- Game master screen -->
+    <string name="game_gm_dice_cd">Roll dice</string>
+    <string name="game_gm_header">Campaign · Game Master</string>
+    <string name="game_gm_section_combat">Combat Live</string>
+    <string name="game_gm_section_activity">Activity Feed</string>
+    <string name="game_gm_section_npcs">NPCs</string>
+    <string name="game_gm_section_lore">Campaign Lore</string>
+    <string name="game_gm_round">Round %1$d</string>
+    <string name="game_gm_combat_active">ACTIVE</string>
+    <string name="game_gm_combat_inactive">INACTIVE</string>
+    <string name="game_gm_start_combat">Start</string>
+    <string name="game_gm_empty_combat">No enemies in this encounter.</string>
+    <string name="game_gm_loading">Loading campaign data…</string>
+    <string name="game_gm_retry">Retry</string>
+    <string name="game_gm_empty_activity">No recent player activity.</string>
+    <string name="game_gm_activity">%1$s · %2$s</string>
+    <string name="game_gm_dice_result">" (%1$s)"</string>
+    <string name="game_gm_empty_npcs">No NPCs available.</string>
+    <string name="game_gm_empty_lore">No lore documents available.</string>
+    <string name="game_gm_npc_no_information">No information available.</string>
+    <string name="game_gm_close">Close</string>
+    <string name="game_gm_hidden_sections">Hidden Sections</string>
+    <string name="game_gm_restore_section">+ %1$s</string>
+    <string name="game_gm_dismiss_cd">Dismiss</string>
+    <string name="game_gm_condition_normal">Normal</string>
+    <string name="game_gm_condition_ac">%1$s · AC %2$d</string>
+    <string name="game_gm_max_hp">/ %1$d HP</string>
+    <string name="game_gm_remove_enemy_cd">Remove %1$s</string>
+    <string name="game_gm_lore_section">%1$s: %2$s</string>
+    <string name="game_gm_lore_collapse">Collapse</string>
+    <string name="game_gm_lore_read">Read</string>
+    <string name="game_gm_lore_shared">Shared with players</string>
+    <string name="game_gm_lore_private">Private</string>
+    <string name="game_gm_add_enemy_title">Add enemy</string>
+    <string name="game_gm_enemy_name">Name</string>
+    <string name="game_gm_enemy_hp">HP</string>
+    <string name="game_gm_enemy_max_hp">Max HP</string>
+    <string name="game_gm_enemy_ac">AC</string>
+    <string name="game_gm_enemy_condition">Condition</string>
+    <string name="game_gm_cancel">Cancel</string>
+    <string name="game_gm_add">Add</string>
 </resources>

@@ -92,8 +92,6 @@ object C {
 
     fun gameGmLore(id: String) = "game_gm_lore_$id"
 
-    fun gameGmLoreSelect(id: String) = "game_gm_lore_select_$id"
-
     fun gameGmLoreExpand(id: String) = "game_gm_lore_expand_$id"
 
     /** Tag of the button hiding the GM dashboard section [key] (e.g. "combat"). */

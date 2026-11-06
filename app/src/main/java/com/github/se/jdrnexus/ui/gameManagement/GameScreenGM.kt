@@ -2,6 +2,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.gameManagement
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,7 +32,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
@@ -61,6 +61,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -68,6 +69,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
 import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
@@ -78,14 +80,14 @@ import com.github.se.jdrnexus.resources.ScreenBottomBar
 /**
  * Dashboard sections the GM can hide, in the order they are listed when hidden.
  *
- * @property title Heading shown on the section card and its restore button.
+ * @property title Resource of the heading shown on the section card and its restore button.
  * @property key Suffix of the section's hide/restore test tags.
  */
-private enum class GmSection(val title: String, val key: String) {
-  COMBAT("Combat Live", "combat"),
-  ACTIVITY("Activity Feed", "activity"),
-  NPCS("NPCs", "npcs"),
-  LORE("Campaign Lore", "lore"),
+private enum class GmSection(@StringRes val title: Int, val key: String) {
+  COMBAT(R.string.game_gm_section_combat, "combat"),
+  ACTIVITY(R.string.game_gm_section_activity, "activity"),
+  NPCS(R.string.game_gm_section_npcs, "npcs"),
+  LORE(R.string.game_gm_section_lore, "lore"),
 }
 
 /**
@@ -118,7 +120,6 @@ fun GameScreenGM(
         viewModel.loadNPCs()
         viewModel.loadLoreDocuments()
       },
-      onSelectLore = viewModel::selectLoreDocument,
       onTabSelected = onTabSelected,
       onDiceClick = onDiceClick,
   )
@@ -136,9 +137,10 @@ fun GameScreenGM(
  * @param onNextRound Advances the encounter round.
  * @param onEndCombat Ends the encounter.
  * @param onRetry Requests the unavailable session data again.
- * @param onSelectLore Selects a lore document.
  * @param onTabSelected Receives shared bottom-navigation selections.
  * @param onDiceClick Opens the dice roller.
+ * @param renderAddEnemyDialogAsWindow Whether the add-enemy dialog opens in its own window; tests
+ *   pass `false` to render it inline.
  */
 @Composable
 internal fun GameScreenGMContent(
@@ -151,9 +153,9 @@ internal fun GameScreenGMContent(
     onNextRound: () -> Unit = {},
     onEndCombat: () -> Unit = {},
     onRetry: () -> Unit = {},
-    onSelectLore: (String) -> Unit = {},
     onTabSelected: (String) -> Unit = {},
     onDiceClick: () -> Unit = {},
+    renderAddEnemyDialogAsWindow: Boolean = true,
 ) {
   var showAddEnemyDialog by rememberSaveable { mutableStateOf(false) }
   var selectedNpcId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -172,19 +174,23 @@ internal fun GameScreenGMContent(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
         ) {
-          Icon(imageVector = Icons.Default.Casino, contentDescription = "Roll dice")
+          Icon(
+              imageVector = Icons.Default.Casino,
+              contentDescription = stringResource(R.string.game_gm_dice_cd),
+          )
         }
       },
   ) { padding ->
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 24.dp),
+        // 96dp = 24dp gap + 56dp FAB + 16dp FAB margin, so the last card can scroll above the FAB.
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       item {
         Column(modifier = Modifier.padding(horizontal = 2.dp)) {
           Text(
-              "Campaign · Game Master",
+              stringResource(R.string.game_gm_header),
               color = MaterialTheme.colorScheme.tertiary,
               style = MaterialTheme.typography.labelLarge,
           )
@@ -205,16 +211,19 @@ internal fun GameScreenGMContent(
           SectionCard(
               GmSection.COMBAT,
               onDismiss = { hidden += GmSection.COMBAT },
-              titleTrailing = "Round ${uiState.currentRound}",
+              titleTrailing = stringResource(R.string.game_gm_round, uiState.currentRound),
           ) {
             Text(
-                if (uiState.isCombatActive) "ACTIVE" else "INACTIVE",
+                stringResource(
+                    if (uiState.isCombatActive) R.string.game_gm_combat_active
+                    else R.string.game_gm_combat_inactive
+                ),
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold,
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
               if (!uiState.isCombatActive) {
@@ -224,7 +233,10 @@ internal fun GameScreenGMContent(
                 ) {
                   Icon(Icons.Filled.PlayArrow, contentDescription = null)
                   Spacer(Modifier.width(4.dp))
-                  Text("Start", color = MaterialTheme.colorScheme.background)
+                  Text(
+                      stringResource(R.string.game_gm_start_combat),
+                      color = MaterialTheme.colorScheme.background,
+                  )
                 }
               } else {
                 CombatIconButton(Icons.Filled.SkipNext, C.Tag.game_gm_next_round, onNextRound)
@@ -234,21 +246,21 @@ internal fun GameScreenGMContent(
                 showAddEnemyDialog = true
               }
             }
-          }
-          if (uiState.enemies.isEmpty()) {
-            Text(
-                "No enemies in this encounter.",
-                modifier = Modifier.testTag(C.Tag.game_gm_empty_combat),
-                color = MaterialTheme.colorScheme.tertiary,
-            )
-          } else {
-            uiState.enemies.forEach { enemy ->
-              EnemyRow(
-                  enemy = enemy,
-                  onIncrease = { onUpdateEnemyHp(enemy.id, 1) },
-                  onDecrease = { onUpdateEnemyHp(enemy.id, -1) },
-                  onRemove = { onRemoveEnemy(enemy.id) },
+            if (uiState.enemies.isEmpty()) {
+              Text(
+                  stringResource(R.string.game_gm_empty_combat),
+                  modifier = Modifier.testTag(C.Tag.game_gm_empty_combat),
+                  color = MaterialTheme.colorScheme.tertiary,
               )
+            } else {
+              uiState.enemies.forEach { enemy ->
+                EnemyRow(
+                    enemy = enemy,
+                    onIncrease = { onUpdateEnemyHp(enemy.id, 1) },
+                    onDecrease = { onUpdateEnemyHp(enemy.id, -1) },
+                    onRemove = { onRemoveEnemy(enemy.id) },
+                )
+              }
             }
           }
         }
@@ -260,7 +272,7 @@ internal fun GameScreenGMContent(
               horizontalAlignment = Alignment.CenterHorizontally,
           ) {
             CircularProgressIndicator()
-            Text("Loading campaign data...")
+            Text(stringResource(R.string.game_gm_loading))
           }
         }
       }
@@ -271,7 +283,7 @@ internal fun GameScreenGMContent(
               verticalArrangement = Arrangement.spacedBy(8.dp),
           ) {
             Text(uiState.error, color = MaterialTheme.colorScheme.error)
-            TextButton(onClick = onRetry) { Text("Retry") }
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.game_gm_retry)) }
           }
         }
       }
@@ -279,9 +291,13 @@ internal fun GameScreenGMContent(
         item {
           SectionCard(GmSection.ACTIVITY, onDismiss = { hidden += GmSection.ACTIVITY }) {
             if (uiState.activityFeed.isEmpty()) {
-              Text("No recent player activity.", color = MaterialTheme.colorScheme.tertiary)
+              Text(
+                  stringResource(R.string.game_gm_empty_activity),
+                  color = MaterialTheme.colorScheme.tertiary,
+              )
             }
-            uiState.activityFeed.takeLast(8).reversed().forEach { activity ->
+            // The repository already orders the feed newest first.
+            uiState.activityFeed.take(8).forEach { activity ->
               Row(
                   modifier = Modifier.testTag(C.Tag.gameGmActivity(activity.id)),
                   horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -292,8 +308,14 @@ internal fun GameScreenGMContent(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    "${activity.playerName} · ${activity.action}" +
-                        activity.diceResult?.let { " ($it)" }.orEmpty(),
+                    stringResource(
+                        R.string.game_gm_activity,
+                        activity.playerName,
+                        activity.action,
+                    ) +
+                        activity.diceResult
+                            ?.let { stringResource(R.string.game_gm_dice_result, it) }
+                            .orEmpty(),
                     color = MaterialTheme.colorScheme.onSecondary,
                 )
               }
@@ -306,7 +328,7 @@ internal fun GameScreenGMContent(
           SectionCard(GmSection.NPCS, onDismiss = { hidden += GmSection.NPCS }) {
             if (uiState.npcs.isEmpty()) {
               Text(
-                  "No NPCs available.",
+                  stringResource(R.string.game_gm_empty_npcs),
                   modifier = Modifier.testTag(C.Tag.game_gm_empty_npcs),
                   color = MaterialTheme.colorScheme.tertiary,
               )
@@ -326,7 +348,7 @@ internal fun GameScreenGMContent(
           SectionCard(GmSection.LORE, onDismiss = { hidden += GmSection.LORE }) {
             if (uiState.loreDocuments.isEmpty()) {
               Text(
-                  "No lore documents available.",
+                  stringResource(R.string.game_gm_empty_lore),
                   modifier = Modifier.testTag(C.Tag.game_gm_empty_lore),
                   color = MaterialTheme.colorScheme.tertiary,
               )
@@ -339,7 +361,6 @@ internal fun GameScreenGMContent(
                       onExpand = {
                         expandedLoreId = if (expandedLoreId == document.id) null else document.id
                       },
-                      onSelect = { onSelectLore(document.id) },
                   )
                 }
               }
@@ -357,14 +378,21 @@ internal fun GameScreenGMContent(
           onAddEnemy(it)
           showAddEnemyDialog = false
         },
+        renderAsWindow = renderAddEnemyDialogAsWindow,
     )
   }
   selectedNpc?.let { npc ->
     AlertDialog(
         onDismissRequest = { selectedNpcId = null },
         title = { Text(npc.name) },
-        text = { Text(npc.information.ifBlank { "No information available." }) },
-        confirmButton = { TextButton(onClick = { selectedNpcId = null }) { Text("Close") } },
+        text = {
+          Text(npc.information.ifBlank { stringResource(R.string.game_gm_npc_no_information) })
+        },
+        confirmButton = {
+          TextButton(onClick = { selectedNpcId = null }) {
+            Text(stringResource(R.string.game_gm_close))
+          }
+        },
     )
   }
 }
@@ -372,7 +400,10 @@ internal fun GameScreenGMContent(
 /** Displays restore actions for dashboard [sections] hidden by the user. */
 @Composable
 private fun HiddenSections(sections: List<GmSection>, onRestore: (GmSection) -> Unit) {
-  SectionCard("Hidden Sections", modifier = Modifier.testTag(C.Tag.game_gm_hidden_sections)) {
+  SectionCard(
+      stringResource(R.string.game_gm_hidden_sections),
+      modifier = Modifier.testTag(C.Tag.game_gm_hidden_sections),
+  ) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       sections.forEach { section ->
         OutlinedButton(
@@ -380,7 +411,7 @@ private fun HiddenSections(sections: List<GmSection>, onRestore: (GmSection) -> 
             modifier = Modifier.testTag(C.Tag.gameGmRestore(section.key)),
             contentPadding = PaddingValues(horizontal = 12.dp),
         ) {
-          Text("+ ${section.title}")
+          Text(stringResource(R.string.game_gm_restore_section, stringResource(section.title)))
         }
       }
     }
@@ -396,10 +427,10 @@ private fun SectionCard(
     content: @Composable () -> Unit,
 ) =
     SectionCard(
-        section.title,
+        stringResource(section.title),
+        Modifier,
         onDismiss,
         titleTrailing,
-        Modifier,
         C.Tag.gameGmHide(section.key),
         content,
     )
@@ -408,16 +439,18 @@ private fun SectionCard(
  * Displays a titled card section with optional dismissal and trailing status text.
  *
  * @param title Section heading.
+ * @param modifier Modifier applied to the card.
  * @param onDismiss Optional callback for the section's close action.
  * @param titleTrailing Optional status text shown beside the heading.
+ * @param dismissTestTag Test tag of the close action.
  * @param content Content rendered inside the card.
  */
 @Composable
 private fun SectionCard(
     title: String,
+    modifier: Modifier = Modifier,
     onDismiss: (() -> Unit)? = null,
     titleTrailing: String? = null,
-    modifier: Modifier = Modifier,
     dismissTestTag: String? = null,
     content: @Composable () -> Unit,
 ) {
@@ -451,7 +484,7 @@ private fun SectionCard(
           ) {
             Icon(
                 Icons.Filled.Close,
-                contentDescription = "Dismiss",
+                contentDescription = stringResource(R.string.game_gm_dismiss_cd),
                 tint = MaterialTheme.colorScheme.tertiary,
             )
           }
@@ -527,7 +560,8 @@ private fun EnemyRow(
   val armorClass =
       enemy.character.stats.firstOrNull { it.statID == "armorClass" }?.value?.toInt() ?: 0
   val condition =
-      enemy.character.actions.firstOrNull { it.actionID.startsWith("condition_") }?.name ?: "Normal"
+      enemy.character.actions.firstOrNull { it.actionID.startsWith("condition_") }?.name
+          ?: stringResource(R.string.game_gm_condition_normal)
   val hpColor =
       when {
         hpRatio >= 0.65f -> MaterialTheme.colorScheme.onSecondary
@@ -550,7 +584,7 @@ private fun EnemyRow(
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            text = "$condition · AC $armorClass",
+            text = stringResource(R.string.game_gm_condition_ac, condition, armorClass),
             color = MaterialTheme.colorScheme.tertiary,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
@@ -576,7 +610,7 @@ private fun EnemyRow(
           )
         }
         Text(
-            text = "/ ${enemy.maxHp} HP",
+            text = stringResource(R.string.game_gm_max_hp, enemy.maxHp),
             color = MaterialTheme.colorScheme.tertiary,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
@@ -593,7 +627,7 @@ private fun EnemyRow(
         ) {
           Icon(
               imageVector = Icons.Filled.Delete,
-              contentDescription = "Remove ${enemy.name}",
+              contentDescription = stringResource(R.string.game_gm_remove_enemy_cd, enemy.name),
               tint = MaterialTheme.colorScheme.error,
           )
         }
@@ -648,15 +682,10 @@ private fun HpControlButton(
  * @param document Lore document being summarized.
  * @param expanded Whether the full section text is visible.
  * @param onExpand Toggles the document's expanded state.
- * @param onSelect Selects the document for editing or review.
  */
 @Composable
-private fun LoreRow(
-    document: LoreDocument,
-    expanded: Boolean,
-    onExpand: () -> Unit,
-    onSelect: () -> Unit,
-) {
+private fun LoreRow(document: LoreDocument, expanded: Boolean, onExpand: () -> Unit) {
+  val sectionFormat = stringResource(R.string.game_gm_lore_section)
   Column(modifier = Modifier.testTag(C.Tag.gameGmLore(document.id))) {
     Row(verticalAlignment = Alignment.CenterVertically) {
       Column(modifier = Modifier.weight(1f)) {
@@ -666,7 +695,9 @@ private fun LoreRow(
             fontWeight = FontWeight.Bold,
         )
         Text(
-            document.lore.sections.joinToString("\n") { "${it.title}: ${it.description}" },
+            document.lore.sections.joinToString("\n") {
+              sectionFormat.format(it.title, it.description)
+            },
             color = MaterialTheme.colorScheme.onSecondary,
             maxLines = if (expanded) Int.MAX_VALUE else 2,
             overflow = TextOverflow.Ellipsis,
@@ -676,24 +707,20 @@ private fun LoreRow(
           onClick = onExpand,
           modifier = Modifier.testTag(C.Tag.gameGmLoreExpand(document.id)),
       ) {
-        Text(if (expanded) "Collapse" else "Read", color = MaterialTheme.colorScheme.primary)
+        Text(
+            stringResource(
+                if (expanded) R.string.game_gm_lore_collapse else R.string.game_gm_lore_read
+            ),
+            color = MaterialTheme.colorScheme.primary,
+        )
       }
     }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-      Text(
-          if (document.isShared) "Shared with players" else "Private",
-          color = MaterialTheme.colorScheme.onSecondary,
-      )
-      Spacer(Modifier.width(8.dp))
-      TextButton(
-          onClick = onSelect,
-          modifier = Modifier.testTag(C.Tag.gameGmLoreSelect(document.id)),
-      ) {
-        Icon(Icons.Filled.Share, contentDescription = null)
-        Spacer(Modifier.width(4.dp))
-        Text("Select", color = MaterialTheme.colorScheme.primary)
-      }
-    }
+    Text(
+        stringResource(
+            if (document.isShared) R.string.game_gm_lore_shared else R.string.game_gm_lore_private
+        ),
+        color = MaterialTheme.colorScheme.onSecondary,
+    )
   }
 }
 
@@ -702,9 +729,14 @@ private fun LoreRow(
  *
  * @param onDismiss Closes the dialog without adding an enemy.
  * @param onAdd Receives the constructed enemy after validation.
+ * @param renderAsWindow Whether the content opens in a dialog window or renders inline.
  */
 @Composable
-private fun AddEnemyDialog(onDismiss: () -> Unit, onAdd: (CombatNPC) -> Unit) {
+private fun AddEnemyDialog(
+    onDismiss: () -> Unit,
+    onAdd: (CombatNPC) -> Unit,
+    renderAsWindow: Boolean,
+) {
   var name by rememberSaveable { mutableStateOf("") }
   var hp by rememberSaveable { mutableStateOf("10") }
   var maxHp by rememberSaveable { mutableStateOf("10") }
@@ -712,7 +744,7 @@ private fun AddEnemyDialog(onDismiss: () -> Unit, onAdd: (CombatNPC) -> Unit) {
   var condition by rememberSaveable { mutableStateOf("") }
   val isValid =
       isValidEnemyInput(name, hp.toIntOrNull(), maxHp.toIntOrNull(), armorClass.toIntOrNull())
-  Dialog(onDismissRequest = onDismiss) {
+  val content: @Composable () -> Unit = {
     Card(
         modifier = Modifier.testTag(C.Tag.game_gm_add_enemy_dialog),
         shape = RoundedCornerShape(20.dp),
@@ -721,14 +753,30 @@ private fun AddEnemyDialog(onDismiss: () -> Unit, onAdd: (CombatNPC) -> Unit) {
           modifier = Modifier.padding(20.dp),
           verticalArrangement = Arrangement.spacedBy(8.dp),
       ) {
-        Text("Add enemy", style = MaterialTheme.typography.titleLarge)
-        EnemyField("Name", name, C.Tag.game_gm_enemy_name) { name = it }
-        EnemyField("HP", hp, C.Tag.game_gm_enemy_hp, numeric = true) { hp = it }
-        EnemyField("Max HP", maxHp, C.Tag.game_gm_enemy_max_hp, numeric = true) { maxHp = it }
-        EnemyField("AC", armorClass, C.Tag.game_gm_enemy_ac, numeric = true) { armorClass = it }
-        EnemyField("Condition", condition, C.Tag.game_gm_enemy_condition) { condition = it }
+        Text(
+            stringResource(R.string.game_gm_add_enemy_title),
+            style = MaterialTheme.typography.titleLarge,
+        )
+        EnemyField(R.string.game_gm_enemy_name, name, C.Tag.game_gm_enemy_name) { name = it }
+        EnemyField(R.string.game_gm_enemy_hp, hp, C.Tag.game_gm_enemy_hp, numeric = true) {
+          hp = it
+        }
+        EnemyField(
+            R.string.game_gm_enemy_max_hp,
+            maxHp,
+            C.Tag.game_gm_enemy_max_hp,
+            numeric = true,
+        ) {
+          maxHp = it
+        }
+        EnemyField(R.string.game_gm_enemy_ac, armorClass, C.Tag.game_gm_enemy_ac, numeric = true) {
+          armorClass = it
+        }
+        EnemyField(R.string.game_gm_enemy_condition, condition, C.Tag.game_gm_enemy_condition) {
+          condition = it
+        }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-          TextButton(onClick = onDismiss) { Text("Cancel") }
+          TextButton(onClick = onDismiss) { Text(stringResource(R.string.game_gm_cancel)) }
           // isValid guarantees the three numbers parse, so toInt() cannot throw here.
           Button(
               onClick = {
@@ -737,12 +785,14 @@ private fun AddEnemyDialog(onDismiss: () -> Unit, onAdd: (CombatNPC) -> Unit) {
               },
               enabled = isValid,
           ) {
-            Text("Add")
+            Text(stringResource(R.string.game_gm_add))
           }
         }
       }
     }
   }
+  // Text fields inside a Dialog window opened after the first frame never let Robolectric go idle.
+  if (renderAsWindow) Dialog(onDismissRequest = onDismiss) { content() } else content()
 }
 
 /** Builds the enemy for validated dialog input; a blank [condition] adds no condition action. */
@@ -791,7 +841,7 @@ internal fun isValidEnemyInput(
 /** Single-line field of the enemy dialog; [numeric] fields open the number keyboard. */
 @Composable
 private fun EnemyField(
-    label: String,
+    @StringRes label: Int,
     value: String,
     testTag: String,
     numeric: Boolean = false,
@@ -800,7 +850,7 @@ private fun EnemyField(
   OutlinedTextField(
       value = value,
       onValueChange = onValueChange,
-      label = { Text(label) },
+      label = { Text(stringResource(label)) },
       singleLine = true,
       keyboardOptions =
           if (numeric) KeyboardOptions(keyboardType = KeyboardType.Number)
