@@ -9,7 +9,7 @@ import com.github.se.jdrnexus.model.map.MapGame
 import com.github.se.jdrnexus.model.map.MapLocation
 import com.github.se.jdrnexus.model.map.MapRepository
 import com.github.se.jdrnexus.model.map.MapRepositoryProvider
-import com.github.se.jdrnexus.ui.authentication.MainDispatcherRule
+import com.github.se.jdrnexus.utils.MainDispatcherRule
 import com.google.firebase.FirebaseApp
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle

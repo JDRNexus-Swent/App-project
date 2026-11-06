@@ -5,7 +5,7 @@ import com.github.se.jdrnexus.model.map.MapGame
 import com.github.se.jdrnexus.model.map.MapLocation
 import com.github.se.jdrnexus.model.map.MapLocationRepository
 import com.github.se.jdrnexus.model.map.MapRepository
-import com.github.se.jdrnexus.ui.authentication.MainDispatcherRule
+import com.github.se.jdrnexus.utils.MainDispatcherRule
 import java.io.IOException
 import java.time.LocalDateTime
 import kotlinx.coroutines.CancellationException
