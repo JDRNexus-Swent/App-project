@@ -75,6 +75,7 @@ import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.JdrNexusLogo
+import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.resources.darkFieldColors
 import com.github.se.jdrnexus.viewmodel.LoadState
 import kotlin.collections.emptyList
@@ -114,7 +115,7 @@ fun GroupWorkSpaceScreen(
   var folderName by rememberSaveable { mutableStateOf("") }
   var editedName by rememberSaveable { mutableStateOf("") }
   var editedContent by rememberSaveable { mutableStateOf("") }
-  var showTabUnavailable by rememberSaveable { mutableStateOf(false) }
+  var selectedTab by rememberSaveable { mutableStateOf("Campaigns") }
   val isDialogOpen =
       showCreateFolderDialog ||
           showAddFilesDialog ||
@@ -170,13 +171,9 @@ fun GroupWorkSpaceScreen(
           }
         },
         bottomBar = {
-          GroupWorkspaceBottomBar(
-              selectedTab = GroupWorkspaceTab.CAMPAIGNS,
-              onTabSelected = {
-                if (it != GroupWorkspaceTab.CAMPAIGNS) {
-                  showTabUnavailable = true
-                }
-              },
+          ScreenBottomBar(
+              selectedTab = selectedTab,
+              onTabSelected = { selectedTab = it },
           )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },

@@ -4,6 +4,7 @@ package com.github.se.jdrnexus.ui.groupWorkSpace
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -61,22 +62,31 @@ class GroupWorkSpaceScreenInstrumentedTest {
   fun initialScreenShowsDefaultCampaignsTabAndEmptyState() {
     showScreen(WorkspaceFakeRepository(), Role.PLAYER)
 
+    // Verify the default Campaigns tab is displayed and selected.
     composeTestRule.onNodeWithText("Campaigns").assertIsDisplayed()
-    composeTestRule.onNodeWithContentDescription("Campaigns").assertIsDisplayed()
+    composeTestRule
+      .onNodeWithTag(C.Tag.bottomTab("campaigns"))
+      .assertIsDisplayed()
+      .assertIsSelected()
+
+    // Verify the player role and empty workspace state.
     composeTestRule.onNodeWithText("PLAYER").assertIsDisplayed()
     composeTestRule.onNodeWithText("No files yet").assertIsDisplayed()
   }
 
-  // Verifies that only the supported Campaigns destination is shown and selected.
+  // Verifies the shared bottom navigation destinations and selection behavior.
   @Test
-  fun bottomNavigationShowsOnlyCampaignsTab() {
+  fun bottomNavigationShowsSharedTabsAndUpdatesSelection() {
     showScreen(WorkspaceFakeRepository(), Role.PLAYER)
 
-    composeTestRule.onNodeWithText("Campaigns").assertIsDisplayed()
-    composeTestRule.onNodeWithContentDescription("Campaigns").assertIsDisplayed()
-    composeTestRule.onAllNodesWithText("Home").assertCountEquals(0)
-    composeTestRule.onAllNodesWithText("Files").assertCountEquals(0)
-    composeTestRule.onAllNodesWithText("Map").assertCountEquals(0)
+    composeTestRule.onNodeWithTag(C.Tag.shared_bottom_bar).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).assertIsSelected()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).assertIsSelected()
   }
 
   // Verifies root back navigation invokes the parent navigation callback.
