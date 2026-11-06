@@ -86,8 +86,7 @@ class MapViewModel(
                 camera = MapCamera(location.toUi(), CITY_ZOOM),
             )
           }
-          finishOperation(MapOperation.CITY_SEARCH)
-          beginOperation(MapOperation.GAMES)
+          replaceOperation(MapOperation.CITY_SEARCH, MapOperation.GAMES)
           loadGamesNear(location, operationAlreadyStarted = true)
         }
   }
