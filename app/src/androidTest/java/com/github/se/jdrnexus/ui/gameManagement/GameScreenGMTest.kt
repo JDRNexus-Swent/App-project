@@ -289,6 +289,15 @@ class GameScreenGMTest {
     composeTestRule.setContent { SampleAppTheme { content() } }
   }
 
+  /**
+   * Scrolls the dashboard so the item at [index] starts at the top. Lazy items off screen are not
+   * composed, so a test must scroll to an item before it can find or click anything inside it; and
+   * aligning the item to the top keeps its buttons clear of the dice FAB on any screen size.
+   */
+  private fun scrollToItem(index: Int) {
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_list).performScrollToIndex(index)
+  }
+
   private fun testEnemy() =
       CombatNPC(
           id = "enemy-1",
