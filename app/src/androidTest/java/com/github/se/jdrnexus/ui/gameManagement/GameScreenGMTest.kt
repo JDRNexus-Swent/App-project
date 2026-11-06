@@ -168,9 +168,12 @@ class GameScreenGMTest {
   @Test
   fun emptySessionShowsSectionMessages() {
     setContent { GameScreenGMContent(GameViewModelGMUiState()) }
+    scrollToItem(ACTIVITY_ITEM)
     composeTestRule.onNodeWithText("No recent player activity.").assertIsDisplayed()
+    scrollToItem(NPCS_ITEM)
     composeTestRule.onNodeWithTag(C.Tag.game_gm_empty_npcs).assertIsDisplayed()
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_empty_lore).performScrollTo().assertIsDisplayed()
+    scrollToItem(LORE_ITEM)
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_empty_lore).assertIsDisplayed()
   }
 
   // Verifies the feed shows at most the 8 newest entries, in the newest-first repository order.
