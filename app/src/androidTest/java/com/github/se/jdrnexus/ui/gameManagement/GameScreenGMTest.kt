@@ -222,13 +222,11 @@ class GameScreenGMTest {
   fun loreDocumentsExpandAndCollapse() {
     val lore = testLore()
     setContent { GameScreenGMContent(GameViewModelGMUiState(loreDocuments = listOf(lore))) }
-    // Lore is the last item (index 4); scrolling to the end lifts its buttons above the dice FAB.
-    val list = composeTestRule.onNode(hasScrollToIndexAction())
-    list.performScrollToIndex(4)
+    scrollToItem(LORE_ITEM)
     composeTestRule.onNodeWithText("Ancient Ruins").assertIsDisplayed()
     composeTestRule.onNodeWithText("Read").performClick()
     composeTestRule.onNodeWithText("History: Fallen kingdom").performScrollTo().assertIsDisplayed()
-    list.performScrollToIndex(4)
+    scrollToItem(LORE_ITEM)
     composeTestRule.onNodeWithText("Collapse").performClick()
     composeTestRule.onNodeWithText("Read").assertIsDisplayed()
   }
