@@ -182,7 +182,7 @@ internal fun GameScreenGMContent(
       },
   ) { padding ->
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(padding),
+        modifier = Modifier.fillMaxSize().padding(padding).testTag(C.Tag.game_gm_list),
         // 96dp = 24dp gap + 56dp FAB + 16dp FAB margin, so the last card can scroll above the FAB.
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
