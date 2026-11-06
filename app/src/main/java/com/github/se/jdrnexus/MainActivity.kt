@@ -98,7 +98,14 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
         modifier = Modifier.fillMaxSize().padding(innerPadding),
     ) {
       composable(route = AllRoutes.SignIn.name) {
-        val onSignUp = { navController.navigate(AllRoutes.SignUp.name) }
+        val onSignUp = {
+          if (navController.currentDestination?.route == AllRoutes.SignIn.name) {
+            navController.navigate(AllRoutes.SignUp.name) {
+              popUpTo(AllRoutes.SignIn.name)
+              launchSingleTop = true
+            }
+          }
+        }
         val onSignInSuccess = {
           navController.navigate(AllRoutes.Home.name) {
             // Authenticated users should not return to either auth screen with Back.
@@ -143,7 +150,11 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
           }
         }
         // Return to the existing SignIn entry rather than pushing a duplicate.
-        val onSignInScreen: () -> Unit = { navController.popBackStack() }
+        val onSignInScreen: () -> Unit = {
+          if (navController.currentDestination?.route == AllRoutes.SignUp.name) {
+            navController.popBackStack(AllRoutes.SignIn.name, inclusive = false)
+          }
+        }
         SignUpScreen(
             signUpViewModel = activeAuthViewModel,
             onRegister = onRegister,

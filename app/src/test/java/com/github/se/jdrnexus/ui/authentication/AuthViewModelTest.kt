@@ -163,6 +163,40 @@ class AuthViewModelTest {
   }
 
   @Test
+  fun rapidAuthenticationRequestsAreIgnoredWhileOneIsRunning() = runTest {
+    val signUpRepository = FakeAuthRepository().apply { signUpResponse = CompletableDeferred() }
+    val signUpViewModel = AuthViewModel(signUpRepository)
+    fillForm(signUpViewModel)
+
+    signUpViewModel.signUp()
+    signUpViewModel.signUp()
+    runCurrent()
+
+    assertEquals(1, signUpRepository.signUpCalls)
+    assertEquals(AuthStatus.Loading, signUpViewModel.uiState.value.status)
+
+    val signInRepository = FakeAuthRepository().apply { signInGate = CompletableDeferred() }
+    val signInViewModel = AuthViewModel(signInRepository)
+    fillForm(signInViewModel)
+
+    signInViewModel.signIn()
+    signInViewModel.signIn()
+    runCurrent()
+
+    assertEquals(1, signInRepository.signInCalls)
+    assertEquals(AuthStatus.Loading, signInViewModel.uiState.value.status)
+
+    val googleRepository = FakeAuthRepository()
+    val googleViewModel = AuthViewModel(googleRepository)
+
+    googleViewModel.signInWithGoogle("id-token")
+    googleViewModel.signInWithGoogle("id-token")
+    runCurrent()
+
+    assertEquals(1, googleRepository.googleSignInCalls)
+  }
+
+  @Test
   fun signUpSetsLoadingAndSuccessAndPassesTrimmedFormValues() = runTest {
     val repository = FakeAuthRepository()
     val response = CompletableDeferred<AuthResult<AuthUser>>()
@@ -331,6 +365,33 @@ class AuthViewModelTest {
     response.complete(AuthResult.Success(Unit))
     runCurrent()
 
+    assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun signOutIsIgnoredWhileAuthenticationIsInProgressAndAllowedAfterSuccess() = runTest {
+    val repository = FakeAuthRepository().apply { signInGate = CompletableDeferred() }
+    val viewModel = AuthViewModel(repository)
+    fillForm(viewModel)
+
+    viewModel.signIn()
+    runCurrent()
+    viewModel.signOut()
+    runCurrent()
+
+    assertEquals(1, repository.signInCalls)
+    assertEquals(0, repository.signOutCalls)
+    assertEquals(AuthStatus.Loading, viewModel.uiState.value.status)
+
+    repository.signInGate?.complete(Unit)
+    runCurrent()
+
+    assertEquals(AuthStatus.Success(USER), viewModel.uiState.value.status)
+
+    viewModel.signOut()
+    runCurrent()
+
+    assertEquals(1, repository.signOutCalls)
     assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
   }
 
