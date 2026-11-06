@@ -198,6 +198,7 @@ class GameScreenGMTest {
       )
     }
 
+    scrollToItem(ACTIVITY_ITEM)
     composeTestRule.onNodeWithText("Mira · rolled (1d20 = 18)").assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.gameGmHide("activity")).performClick()
     composeTestRule.onAllNodesWithText("Activity Feed").assertCountEquals(0)
