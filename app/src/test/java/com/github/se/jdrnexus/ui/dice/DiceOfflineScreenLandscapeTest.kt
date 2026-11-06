@@ -305,13 +305,11 @@ class DiceOfflineScreenLandscapeTest {
    */
   @Test
   fun landscapeShowsTheShakeToggleBetweenTheDiceAndTheRollButton() {
+    val vm = DiceViewModel(DiceLogic(), diceRepository = null)
     composeTestRule.setContent {
       SampleAppTheme(darkTheme = true) {
         Box(Modifier.size(screenSize)) {
-          DiceOfflineScreen(
-              diceViewModel = DiceViewModel(DiceLogic(), diceRepository = null),
-              shakeDetector = AvailableShakeDetector,
-          )
+          DiceOfflineScreen(diceViewModel = vm, shakeDetector = AvailableShakeDetector)
         }
       }
     }
