@@ -744,6 +744,41 @@ class GroupWorkSpaceViewModelTest {
     assertEquals(listOf(item.id to true, item.id to false), repository.hiddenRequests)
   }
 
+  // A visibility repository failure is exposed through the shared workspace error state.
+  @Test
+  fun visibilityChangeFailureSetsError() = runTest {
+    val item = groupFile("owned", ownerId = OWNER_ID)
+    val repository = FakeWorkspaceRepository(listOf(item))
+    repository.hiddenFailure = IllegalStateException("visibility update failed")
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    player.setItemHidden(item, true)
+    runCurrent()
+
+    assertEquals("visibility update failed", player.uiState.value.errorMessage)
+    assertFalse(player.uiState.value.isOperationInProgress)
+    assertFalse(repository.files.getValue(item.id).placements.getValue(GROUP_ID).isHidden)
+  }
+
+  // A missing selected folder redirects to the root while preserving its transient error.
+  @Test
+  fun missingFolderErrorSurvivesRedirectToRoot() = runTest {
+    val folder = groupFolder("folder")
+    val repository = FakeWorkspaceRepository(listOf(folder))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    gm.loadWorkspace(folder.id)
+    runCurrent()
+    repository.deleteFile(folder.id)
+    runCurrent()
+
+    assertEquals("", gm.uiState.value.currentFolderId)
+    assertEquals("This folder is no longer available.", gm.uiState.value.errorMessage)
+    assertEquals(LoadState.Success, gm.uiState.value.loadState)
+  }
+
   // Revealing an owned item is rejected while its parent folder remains hidden.
   @Test
   fun cannotRevealOwnedItemInsideHiddenParent() = runTest {
@@ -938,6 +973,7 @@ class GroupWorkSpaceViewModelTest {
         mutableMapOf<Pair<String, String>, MutableStateFlow<List<JDRFile>>>()
     private var nextId = 0
     var updateFailure: Exception? = null
+    var hiddenFailure: Exception? = null
     val addRequests = mutableListOf<AddRequest>()
     val removeRequests = mutableListOf<RemovalRequest>()
     val hiddenRequests = mutableListOf<Pair<String, Boolean>>()
@@ -1016,6 +1052,7 @@ class GroupWorkSpaceViewModelTest {
         groupId: String,
         isHidden: Boolean,
     ): Result<Unit> = runCatching {
+      hiddenFailure?.let { throw it }
       hiddenRequests += itemId to isHidden
       val item = requireNotNull(files[itemId])
       val parentId = item.placements[groupId]?.folderId

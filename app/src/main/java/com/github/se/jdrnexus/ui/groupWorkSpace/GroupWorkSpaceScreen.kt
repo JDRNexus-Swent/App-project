@@ -1,6 +1,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -31,7 +32,6 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -47,13 +47,16 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -63,58 +66,82 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.JdrNexusLogo
 import com.github.se.jdrnexus.resources.darkFieldColors
 import com.github.se.jdrnexus.viewmodel.LoadState
 import kotlin.collections.emptyList
 import kotlinx.coroutines.launch
 
+/**
+ * Displays a group's workspace and its files and folders.
+ *
+ * @param gwViewModel ViewModel that provides and updates the workspace state.
+ * @param groupId Group identifier; must match the group ID used by the ViewModel.
+ * @param groupName Name displayed for the group.
+ * @param onBack Called when the user navigates back from the workspace root.
+ * @param onItemClicked Called when the user opens an item; the Boolean indicates whether the user
+ *   can edit the clicked item.
+ * @param personalItems Personal files available to add to the group.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroupWorkSpaceScreen(
-    gwViewModel: GroupWorkspaceViewModel = viewModel(),
+    gwViewModel: GroupWorkspaceViewModel,
     groupId: String,
     groupName: String,
     onBack: () -> Unit = {},
-    onItemClicked: (JDRFile, Boolean) -> Unit = { _, _ -> },
+    onItemClicked: ((JDRFile, Boolean) -> Unit)? = null,
     personalItems: List<JDRFile> = emptyList(),
 ) {
   val uiState by gwViewModel.uiState.collectAsState()
   val scope = rememberCoroutineScope()
+  val snackbarHostState = remember { SnackbarHostState() }
 
-  var showCreateFolderDialog by remember { mutableStateOf(false) }
-  var showAddFilesDialog by remember { mutableStateOf(false) }
-  var itemToEdit by remember { mutableStateOf<JDRFile?>(null) }
-  var itemToRemove by remember { mutableStateOf<JDRFile?>(null) }
+  var showCreateFolderDialog by rememberSaveable { mutableStateOf(false) }
+  var showAddFilesDialog by rememberSaveable { mutableStateOf(false) }
+  var itemToEditId by rememberSaveable { mutableStateOf<String?>(null) }
+  var itemToRemoveId by rememberSaveable { mutableStateOf<String?>(null) }
+  var itemToViewId by rememberSaveable { mutableStateOf<String?>(null) }
 
-  var folderName by remember { mutableStateOf("") }
-  var editedName by remember { mutableStateOf("") }
-  var editedContent by remember { mutableStateOf("") }
-  var selectedTab by rememberSaveable { mutableStateOf(GroupWorkspaceTab.CAMPAIGNS) }
+  var folderName by rememberSaveable { mutableStateOf("") }
+  var editedName by rememberSaveable { mutableStateOf("") }
+  var editedContent by rememberSaveable { mutableStateOf("") }
+  var showTabUnavailable by rememberSaveable { mutableStateOf(false) }
+  val isDialogOpen =
+      showCreateFolderDialog ||
+          showAddFilesDialog ||
+          itemToEditId != null ||
+          itemToRemoveId != null ||
+          itemToViewId != null
 
-  val folderStack = remember { mutableStateListOf<String>() }
+  LaunchedEffect(uiState.errorMessage, isDialogOpen) {
+    val message = uiState.errorMessage
+    if (message.isNotBlank() && !isDialogOpen) {
+      snackbarHostState.showSnackbar(message)
+      if (gwViewModel.uiState.value.errorMessage == message) {
+        gwViewModel.clearError()
+      }
+    }
+  }
 
   // Close a dialog after a successful operation.
   // An error leaves the dialog open so the user can correct or retry.
 
-  fun openFolder(folderId: String) {
-    folderStack.add(uiState.currentFolderId)
-    gwViewModel.loadWorkspace(folderId)
-  }
-
   fun navigateBack() {
-    if (folderStack.isNotEmpty()) {
-      gwViewModel.loadWorkspace(folderStack.removeAt(folderStack.lastIndex))
-    } else {
+    if (!gwViewModel.navigateBack()) {
       onBack()
     }
   }
+
+  BackHandler(enabled = uiState.folderHistory.isNotEmpty()) { navigateBack() }
 
   Box(Modifier.fillMaxSize().background(color().background)) {
     Box(
@@ -144,10 +171,15 @@ fun GroupWorkSpaceScreen(
         },
         bottomBar = {
           GroupWorkspaceBottomBar(
-              selectedTab = selectedTab,
-              onTabSelected = { selectedTab = it },
+              selectedTab = GroupWorkspaceTab.CAMPAIGNS,
+              onTabSelected = {
+                if (it != GroupWorkspaceTab.CAMPAIGNS) {
+                  showTabUnavailable = true
+                }
+              },
           )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
       Column(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 14.dp)) {
         WorkspaceHeader(
@@ -156,10 +188,14 @@ fun GroupWorkSpaceScreen(
             itemCount = uiState.items.size,
             onBack = { navigateBack() },
             roleLabel =
-                if (uiState.canCreateFolder) {
-                  "GAME MASTER"
+                if (uiState.loadState == LoadState.Success) {
+                  if (uiState.canCreateFolder) {
+                    stringResource(R.string.workspace_role_game_master)
+                  } else {
+                    stringResource(R.string.workspace_role_player)
+                  }
                 } else {
-                  "PLAYER"
+                  null
                 },
         )
 
@@ -170,23 +206,25 @@ fun GroupWorkSpaceScreen(
             groupId = groupId,
             onItemClick = { file ->
               if (file.type == DocumentType.FOLDER) {
-                openFolder(file.id)
+                gwViewModel.openFolder(file.id)
               } else {
-                onItemClicked(
-                    file,
-                    uiState.canEditItems || file.ownerId == uiState.currentUserId,
-                )
+                val canEdit = uiState.canEditItems || file.ownerId == uiState.currentUserId
+                if (onItemClicked != null) {
+                  onItemClicked(file, canEdit)
+                } else {
+                  itemToViewId = file.id
+                }
               }
             },
             onEdit = {
               gwViewModel.clearError()
-              itemToEdit = it
+              itemToEditId = it.id
               editedName = it.name
               editedContent = it.content
             },
             onRemove = {
               gwViewModel.clearError()
-              itemToRemove = it
+              itemToRemoveId = it.id
             },
             canEditItems = uiState.canEditItems,
             currentUserId = uiState.currentUserId,
@@ -199,29 +237,24 @@ fun GroupWorkSpaceScreen(
   // Create folder
   if (showCreateFolderDialog) {
     AlertDialog(
-        modifier = Modifier.testTag("create_folder_dialog"),
+        modifier = Modifier.testTag(C.Tag.workspace_create_folder_dialog),
         containerColor = color().surface,
         onDismissRequest = {
           if (!uiState.isOperationInProgress) {
             showCreateFolderDialog = false
+            gwViewModel.clearError()
           }
         },
-        title = { Text("New folder", color = color().tertiary) },
+        title = { Text(stringResource(R.string.workspace_new_folder), color = color().tertiary) },
         text = {
           OutlinedTextField(
-              modifier = Modifier.testTag("create_folder_name_input"),
+              modifier = Modifier.testTag(C.Tag.workspace_create_folder_name_input),
               value = folderName,
               onValueChange = { folderName = it },
-              label = { Text("Folder name") },
+              label = { Text(stringResource(R.string.workspace_folder_name)) },
               singleLine = true,
               enabled = !uiState.isOperationInProgress,
-              colors =
-                  darkFieldColors(
-                      container = color().onBackground,
-                      border = color().onSurface,
-                      textPrimary = color().onSecondary,
-                      primary = color().primary,
-                  ),
+              colors = workspaceFieldColors(),
               isError = uiState.errorMessage.isNotBlank(),
               supportingText = {
                 if (uiState.errorMessage.isNotBlank()) {
@@ -234,7 +267,7 @@ fun GroupWorkSpaceScreen(
         },
         confirmButton = {
           TextButton(
-              modifier = Modifier.testTag("create_folder_confirm"),
+              modifier = Modifier.testTag(C.Tag.workspace_create_folder_confirm),
               enabled = !uiState.isOperationInProgress,
               onClick = {
                 gwViewModel.clearError()
@@ -250,19 +283,23 @@ fun GroupWorkSpaceScreen(
                 }
               },
           ) {
-            Text("Create", color = color().primary)
+            OperationButtonContent(
+                isInProgress = uiState.isOperationInProgress,
+                progressTag = C.Tag.workspace_create_folder_progress,
+                label = stringResource(R.string.workspace_create),
+            )
           }
         },
         dismissButton = {
           TextButton(
-              modifier = Modifier.testTag("create_folder_cancel"),
+              modifier = Modifier.testTag(C.Tag.workspace_create_folder_cancel),
               enabled = !uiState.isOperationInProgress,
               onClick = {
                 showCreateFolderDialog = false
                 gwViewModel.clearError()
               },
           ) {
-            Text("Cancel", color = color().primary)
+            Text(stringResource(R.string.workspace_cancel), color = color().primary)
           }
         },
     )
@@ -279,13 +316,16 @@ fun GroupWorkSpaceScreen(
         )
 
     AlertDialog(
-        modifier = Modifier.testTag("add_files_dialog"),
+        modifier = Modifier.testTag(C.Tag.workspace_add_files_dialog),
         onDismissRequest = {
           if (!uiState.isOperationInProgress) {
             showAddFilesDialog = false
+            gwViewModel.clearError()
           }
         },
-        title = { Text("Add files to workspace", color = color().tertiary) },
+        title = {
+          Text(stringResource(R.string.workspace_add_files_title), color = color().tertiary)
+        },
         text = {
           Column {
             // Display any error from the ViewModel.
@@ -296,44 +336,44 @@ fun GroupWorkSpaceScreen(
                   modifier = Modifier.padding(bottom = 8.dp),
               )
             }
-          }
 
-          if (availableFiles.isEmpty()) {
-            Text("No personal files available to add.")
-          } else {
-            LazyColumn(
-                modifier =
-                    Modifier.size(
-                            width = 300.dp,
-                            height = 280.dp,
-                        )
-                        .testTag("add_files_list")
-            ) {
-              items(availableFiles, key = { it.id }) { file ->
-                Row(
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .clickable(enabled = !uiState.isOperationInProgress) {
-                              gwViewModel.clearError()
+            if (availableFiles.isEmpty()) {
+              Text(stringResource(R.string.workspace_no_personal_files))
+            } else {
+              LazyColumn(
+                  modifier =
+                      Modifier.size(
+                              width = 300.dp,
+                              height = 280.dp,
+                          )
+                          .testTag(C.Tag.workspace_add_files_list)
+              ) {
+                items(availableFiles, key = { it.id }) { file ->
+                  Row(
+                      modifier =
+                          Modifier.fillMaxWidth()
+                              .clickable(enabled = !uiState.isOperationInProgress) {
+                                gwViewModel.clearError()
 
-                              scope.launch {
-                                val job = gwViewModel.addFile(file.id)
-                                job?.join()
+                                scope.launch {
+                                  val job = gwViewModel.addFile(file.id)
+                                  job?.join()
 
-                                if (gwViewModel.uiState.value.errorMessage.isEmpty()) {
-                                  showAddFilesDialog = false
+                                  if (gwViewModel.uiState.value.errorMessage.isEmpty()) {
+                                    showAddFilesDialog = false
+                                  }
                                 }
                               }
-                            }
-                            .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                  Icon(
-                      Icons.Default.Description,
-                      contentDescription = null,
-                  )
-                  Text(file.name)
+                              .padding(vertical = 12.dp),
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.spacedBy(12.dp),
+                  ) {
+                    Icon(
+                        Icons.Default.Description,
+                        contentDescription = null,
+                    )
+                    Text(file.name)
+                  }
                 }
               }
             }
@@ -342,159 +382,236 @@ fun GroupWorkSpaceScreen(
         containerColor = color().surface,
         confirmButton = {
           TextButton(
-              modifier = Modifier.testTag("add_files_done"),
+              modifier = Modifier.testTag(C.Tag.workspace_add_files_done),
               enabled = !uiState.isOperationInProgress,
-              onClick = { showAddFilesDialog = false },
+              onClick = {
+                showAddFilesDialog = false
+                gwViewModel.clearError()
+              },
           ) {
-            Text("Done", color = color().primary)
+            Text(stringResource(R.string.workspace_done), color = color().primary)
           }
         },
     )
   }
 
   // Edit file or folder
-  itemToEdit?.let { file ->
-    AlertDialog(
-        modifier = Modifier.testTag("edit_item_dialog"),
-        containerColor = color().surface,
-        onDismissRequest = { if (!uiState.isOperationInProgress) itemToEdit = null },
-        title = {
-          Text(
-              if (file.type == DocumentType.FOLDER) {
-                "Edit folder"
-              } else {
-                "Edit file"
+  itemToEditId?.let { itemId ->
+    uiState.items
+        .firstOrNull { it.id == itemId }
+        ?.let { file ->
+          AlertDialog(
+              modifier = Modifier.testTag(C.Tag.workspace_edit_item_dialog),
+              containerColor = color().surface,
+              onDismissRequest = {
+                if (!uiState.isOperationInProgress) {
+                  itemToEditId = null
+                  gwViewModel.clearError()
+                }
               },
-              color = color().tertiary,
-          )
-        },
-        text = {
-          Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                modifier = Modifier.testTag("edit_item_name_input"),
-                value = editedName,
-                onValueChange = { editedName = it },
-                label = { Text("Name", color = color().primary) },
-                singleLine = true,
-                enabled = !uiState.isOperationInProgress,
-                colors =
-                    darkFieldColors(
-                        container = color().onBackground,
-                        border = color().onSurface,
-                        textPrimary = color().onSecondary,
-                        primary = color().primary,
-                    ),
-                isError = uiState.errorMessage.isNotBlank(),
-                supportingText = {
-                  if (uiState.errorMessage.isNotBlank()) {
-                    Text(text = uiState.errorMessage)
-                  }
-                },
-            )
+              title = {
+                Text(
+                    if (file.type == DocumentType.FOLDER) {
+                      stringResource(R.string.workspace_edit_folder)
+                    } else {
+                      stringResource(R.string.workspace_edit_file)
+                    },
+                    color = color().tertiary,
+                )
+              },
+              text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  OutlinedTextField(
+                      modifier = Modifier.testTag(C.Tag.workspace_edit_item_name_input),
+                      value = editedName,
+                      onValueChange = { editedName = it },
+                      label = {
+                        Text(stringResource(R.string.workspace_name), color = color().primary)
+                      },
+                      singleLine = true,
+                      enabled = !uiState.isOperationInProgress,
+                      colors = workspaceFieldColors(),
+                      isError = uiState.errorMessage.isNotBlank(),
+                      supportingText = {
+                        if (uiState.errorMessage.isNotBlank()) {
+                          Text(text = uiState.errorMessage)
+                        }
+                      },
+                  )
 
-            if (file.type != DocumentType.FOLDER) {
-              OutlinedTextField(
-                  modifier = Modifier.testTag("edit_item_content_input"),
-                  value = editedContent,
-                  onValueChange = { editedContent = it },
-                  label = { Text("Content", color = color().primary) },
-                  enabled = !uiState.isOperationInProgress,
-                  colors =
-                      darkFieldColors(
-                          container = color().onBackground,
-                          border = color().onSurface,
-                          textPrimary = color().onSecondary,
-                          primary = color().primary,
-                      ),
-              )
-            }
-          }
-        },
-        confirmButton = {
-          TextButton(
-              modifier = Modifier.testTag("edit_item_save"),
-              enabled = !uiState.isOperationInProgress,
-              onClick = {
-                gwViewModel.clearError()
-
-                scope.launch {
-                  val job =
-                      gwViewModel.editItem(
-                          file.copy(
-                              name = editedName.trim(),
-                              content = editedContent,
-                          )
-                      )
-
-                  job?.join()
-
-                  if (gwViewModel.uiState.value.errorMessage.isEmpty()) {
-                    itemToEdit = null
+                  if (file.type != DocumentType.FOLDER) {
+                    OutlinedTextField(
+                        modifier = Modifier.testTag(C.Tag.workspace_edit_item_content_input),
+                        value = editedContent,
+                        onValueChange = { editedContent = it },
+                        label = {
+                          Text(stringResource(R.string.workspace_content), color = color().primary)
+                        },
+                        enabled = !uiState.isOperationInProgress,
+                        colors = workspaceFieldColors(),
+                    )
                   }
                 }
               },
-          ) {
-            Text("Save", color = color().primary)
-          }
-        },
-        dismissButton = {
-          TextButton(
-              modifier = Modifier.testTag("edit_item_cancel"),
-              enabled = !uiState.isOperationInProgress,
-              onClick = {
-                itemToEdit = null
-                gwViewModel.clearError()
+              confirmButton = {
+                TextButton(
+                    modifier = Modifier.testTag(C.Tag.workspace_edit_item_save),
+                    enabled = !uiState.isOperationInProgress,
+                    onClick = {
+                      gwViewModel.clearError()
+
+                      scope.launch {
+                        val job =
+                            gwViewModel.editItem(
+                                file.copy(
+                                    name = editedName.trim(),
+                                    content = editedContent,
+                                )
+                            )
+
+                        job?.join()
+
+                        if (gwViewModel.uiState.value.errorMessage.isEmpty()) {
+                          itemToEditId = null
+                        }
+                      }
+                    },
+                ) {
+                  OperationButtonContent(
+                      isInProgress = uiState.isOperationInProgress,
+                      progressTag = C.Tag.workspace_edit_item_progress,
+                      label = stringResource(R.string.workspace_save),
+                  )
+                }
               },
-          ) {
-            Text("Cancel", color = color().primary)
-          }
-        },
-    )
+              dismissButton = {
+                TextButton(
+                    modifier = Modifier.testTag(C.Tag.workspace_edit_item_cancel),
+                    enabled = !uiState.isOperationInProgress,
+                    onClick = {
+                      itemToEditId = null
+                      gwViewModel.clearError()
+                    },
+                ) {
+                  Text(stringResource(R.string.workspace_cancel), color = color().primary)
+                }
+              },
+          )
+        }
   }
 
   // Remove item from this group's workspace
-  itemToRemove?.let { file ->
-    AlertDialog(
-        modifier = Modifier.testTag("remove_item_dialog"),
-        containerColor = color().surface,
-        onDismissRequest = { if (!uiState.isOperationInProgress) itemToRemove = null },
-        title = { Text("Remove from workspace?", color = color().tertiary) },
-        text = {
-          Text("${file.name} will be deleted from this group.", color = color().onSecondary)
-        },
-        confirmButton = {
-          TextButton(
-              modifier = Modifier.testTag("remove_item_confirm"),
-              enabled = !uiState.isOperationInProgress,
-              onClick = {
-                gwViewModel.clearError()
-
-                scope.launch {
-                  val job = gwViewModel.removeItem(file)
-                  job.join()
-
-                  if (gwViewModel.uiState.value.errorMessage.isEmpty()) {
-                    itemToRemove = null
-                  }
+  itemToRemoveId?.let { itemId ->
+    uiState.items
+        .firstOrNull { it.id == itemId }
+        ?.let { file ->
+          AlertDialog(
+              modifier = Modifier.testTag(C.Tag.workspace_remove_item_dialog),
+              containerColor = color().surface,
+              onDismissRequest = {
+                if (!uiState.isOperationInProgress) {
+                  itemToRemoveId = null
+                  gwViewModel.clearError()
                 }
               },
-          ) {
-            Text("Remove", color = color().primary)
-          }
-        },
-        dismissButton = {
-          TextButton(
-              modifier = Modifier.testTag("remove_item_cancel"),
-              enabled = !uiState.isOperationInProgress,
-              onClick = { itemToRemove = null },
-          ) {
-            Text("Cancel", color = color().primary)
-          }
-        },
-    )
+              title = {
+                Text(stringResource(R.string.workspace_remove_title), color = color().tertiary)
+              },
+              text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  if (uiState.errorMessage.isNotBlank()) {
+                    Text(
+                        text = uiState.errorMessage,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                  }
+                  Text(
+                      stringResource(R.string.workspace_remove_message, file.name),
+                      color = color().onSecondary,
+                  )
+                }
+              },
+              confirmButton = {
+                TextButton(
+                    modifier = Modifier.testTag(C.Tag.workspace_remove_item_confirm),
+                    enabled = !uiState.isOperationInProgress,
+                    onClick = {
+                      gwViewModel.clearError()
+
+                      scope.launch {
+                        val job = gwViewModel.removeItem(file)
+                        job.join()
+
+                        if (gwViewModel.uiState.value.errorMessage.isEmpty()) {
+                          itemToRemoveId = null
+                        }
+                      }
+                    },
+                ) {
+                  OperationButtonContent(
+                      isInProgress = uiState.isOperationInProgress,
+                      progressTag = C.Tag.workspace_remove_item_progress,
+                      label = stringResource(R.string.workspace_remove),
+                  )
+                }
+              },
+              dismissButton = {
+                TextButton(
+                    modifier = Modifier.testTag(C.Tag.workspace_remove_item_cancel),
+                    enabled = !uiState.isOperationInProgress,
+                    onClick = {
+                      itemToRemoveId = null
+                      gwViewModel.clearError()
+                    },
+                ) {
+                  Text(stringResource(R.string.workspace_cancel), color = color().primary)
+                }
+              },
+          )
+        }
+  }
+
+  itemToViewId?.let { itemId ->
+    uiState.items
+        .firstOrNull { it.id == itemId }
+        ?.let {
+          AlertDialog(
+              onDismissRequest = { itemToViewId = null },
+              title = {
+                Text(
+                    stringResource(R.string.workspace_file_viewing_unavailable),
+                    color = color().tertiary,
+                )
+              },
+              text = {
+                Text(
+                    stringResource(R.string.workspace_file_viewing_unavailable_message),
+                    color = color().onSecondary,
+                )
+              },
+              confirmButton = {
+                TextButton(onClick = { itemToViewId = null }) {
+                  Text(stringResource(R.string.workspace_ok), color = color().primary)
+                }
+              },
+          )
+        }
   }
 }
 
+/**
+ * Displays a file or folder in the workspace.
+ *
+ * @param file File or folder to display.
+ * @param canEdit Whether the item can be edited.
+ * @param canRemove Whether the item can be removed.
+ * @param isHidden Whether the item is hidden from the group.
+ * @param canChangeVisibility Whether the user can change the item's visibility.
+ * @param onOpen Called when the item is opened.
+ * @param onEdit Called when the item is edited.
+ * @param onRemove Called when the item is removed.
+ * @param onToggleVisibility Called when the item's visibility is toggled.
+ */
 @Composable
 fun WorkspaceCard(
     file: JDRFile,
@@ -502,6 +619,7 @@ fun WorkspaceCard(
     canRemove: Boolean,
     isHidden: Boolean,
     canChangeVisibility: Boolean,
+    operationInProgress: Boolean,
     onOpen: () -> Unit,
     onEdit: () -> Unit,
     onRemove: () -> Unit,
@@ -512,7 +630,7 @@ fun WorkspaceCard(
 
   Card(
       modifier =
-          Modifier.fillMaxWidth().clickable(onClick = onOpen).testTag("workspace_item_${file.id}"),
+          Modifier.fillMaxWidth().clickable(onClick = onOpen).testTag(C.Tag.workspaceItem(file.id)),
       shape = RoundedCornerShape(17.dp),
       border =
           BorderStroke(
@@ -554,9 +672,9 @@ fun WorkspaceCard(
         Text(
             text =
                 if (isFolder) {
-                  "FOLDER"
+                  stringResource(R.string.workspace_folder_type)
                 } else {
-                  file.type.name.replace("_", " ")
+                  stringResource(file.type.labelResource)
                 },
             style = MaterialTheme.typography.labelSmall,
             color = color().tertiary,
@@ -572,9 +690,9 @@ fun WorkspaceCard(
             text =
                 file.content.replace("\n", " ").ifBlank {
                   if (isFolder) {
-                    "Open folder to view its contents"
+                    stringResource(R.string.workspace_open_folder_description)
                   } else {
-                    "No description available"
+                    stringResource(R.string.workspace_no_description)
                   }
                 },
             style = MaterialTheme.typography.bodyMedium,
@@ -587,11 +705,13 @@ fun WorkspaceCard(
             if (canEdit) {
               IconButton(
                   onClick = onEdit,
-                  modifier = Modifier.size(36.dp).testTag("workspace_edit_${file.id}"),
+                  enabled = !operationInProgress,
+                  modifier = Modifier.size(36.dp).testTag(C.Tag.workspaceEdit(file.id)),
               ) {
                 Icon(
                     Icons.Default.Edit,
-                    contentDescription = "Edit ${file.name}",
+                    contentDescription =
+                        stringResource(R.string.workspace_edit_description, file.name),
                     tint = color().onSecondary,
                 )
               }
@@ -600,11 +720,13 @@ fun WorkspaceCard(
             if (canRemove) {
               IconButton(
                   onClick = onRemove,
-                  modifier = Modifier.size(36.dp).testTag("workspace_remove_${file.id}"),
+                  enabled = !operationInProgress,
+                  modifier = Modifier.size(36.dp).testTag(C.Tag.workspaceRemove(file.id)),
               ) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "Remove ${file.name}",
+                    contentDescription =
+                        stringResource(R.string.workspace_remove_description, file.name),
                     tint = color().onSecondary,
                 )
               }
@@ -612,7 +734,8 @@ fun WorkspaceCard(
             if (canChangeVisibility) {
               IconButton(
                   onClick = onToggleVisibility,
-                  modifier = Modifier.size(36.dp).testTag("workspace_visibility_${file.id}"),
+                  enabled = !operationInProgress,
+                  modifier = Modifier.size(36.dp).testTag(C.Tag.workspaceVisibility(file.id)),
               ) {
                 Icon(
                     imageVector =
@@ -623,9 +746,9 @@ fun WorkspaceCard(
                         },
                     contentDescription =
                         if (isHidden) {
-                          "Show ${file.name}"
+                          stringResource(R.string.workspace_show_description, file.name)
                         } else {
-                          "Hide ${file.name}"
+                          stringResource(R.string.workspace_hide_description, file.name)
                         },
                     tint = color().onSecondary,
                 )
@@ -638,7 +761,7 @@ fun WorkspaceCard(
       if (isFolder) {
         Icon(
             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-            contentDescription = "Open ${file.name}",
+            contentDescription = stringResource(R.string.workspace_open_description, file.name),
             tint = color().primary,
         )
       }
@@ -646,12 +769,20 @@ fun WorkspaceCard(
   }
 }
 
+/**
+ * Displays the workspace breadcrumb header and back navigation.
+ *
+ * @param groupName Current group or folder name.
+ * @param itemCount Number of items in the current folder.
+ * @param onBack Called when the back button is pressed.
+ * @param roleLabel Role label associated with the current user.
+ */
 @Composable
 fun WorkspaceHeader(
     groupName: String,
     itemCount: Int,
     onBack: () -> Unit,
-    roleLabel: String,
+    roleLabel: String?,
 ) {
 
   Column(modifier = Modifier.fillMaxWidth()) {
@@ -662,33 +793,25 @@ fun WorkspaceHeader(
       IconButton(onClick = onBack) {
         Icon(
             Icons.AutoMirrored.Filled.ArrowBack,
-            contentDescription = "Go back",
+            contentDescription = stringResource(R.string.workspace_back_description),
             tint = color().primary,
         )
       }
 
       Text(
-          "Groups",
+          stringResource(R.string.workspace_groups),
           color = color().tertiary,
           style = MaterialTheme.typography.bodyMedium,
       )
 
       Text(
-          "  ›  $groupName",
+          stringResource(R.string.workspace_breadcrumb, "  ›  $groupName"),
           color = color().onSecondary,
           style = MaterialTheme.typography.bodyMedium,
           maxLines = 1,
       )
 
       Spacer(Modifier.weight(1f))
-
-      IconButton(onClick = { /* Add search behavior */ }) {
-        Icon(
-            Icons.Default.Search,
-            contentDescription = "Search",
-            tint = color().primary,
-        )
-      }
     }
 
     Text(
@@ -702,27 +825,25 @@ fun WorkspaceHeader(
     Spacer(Modifier.height(8.dp))
 
     Text(
-        text = "$itemCount items · Shared group workspace",
+        text = stringResource(R.string.workspace_item_count, itemCount),
         style = MaterialTheme.typography.bodyMedium,
         color = color().tertiary,
     )
 
     Spacer(Modifier.height(10.dp))
 
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = color().onBackground,
-    ) {
-      Text(
-          text = roleLabel,
-          modifier =
-              Modifier.padding(
-                  horizontal = 10.dp,
-                  vertical = 5.dp,
-              ),
-          style = MaterialTheme.typography.labelMedium,
-          color = color().primary,
-      )
+    roleLabel?.let { role ->
+      Surface(
+          shape = RoundedCornerShape(8.dp),
+          color = color().onBackground,
+      ) {
+        Text(
+            text = role,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = color().primary,
+        )
+      }
     }
 
     Spacer(Modifier.height(16.dp))
@@ -759,43 +880,62 @@ private fun WorkspaceContent(
           contentAlignment = Alignment.Center,
       ) {
         val message = uiState.errorMessage.ifBlank { (uiState.loadState).message }
-        Text(message.ifBlank { "Unable to load workspace" })
+        Text(message.ifBlank { stringResource(R.string.workspace_load_error) })
       }
     }
 
     LoadState.Success -> {
-
-      if (uiState.items.isEmpty()) {
-        EmptyWorkspace()
-      } else {
-
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(bottom = 100.dp),
-        ) {
-          items(
-              uiState.items,
-              key = { it.id },
-          ) { file ->
-            val isHidden = file.placements[groupId]?.isHidden ?: false
-            val canChangeVisibility = uiState.canCreateFolder || currentUserId == file.ownerId
-            val itemCanEdit = canEditItems || file.ownerId == currentUserId
-            WorkspaceCard(
-                file = file,
-                canEdit = itemCanEdit,
-                canRemove = itemCanEdit,
-                isHidden = isHidden,
-                canChangeVisibility = canChangeVisibility,
-                onOpen = { onItemClick(file) },
-                onEdit = { onEdit(file) },
-                onRemove = { onRemove(file) },
-                onToggleVisibility = {
-                  viewModel.setItemHidden(
-                      item = file,
-                      isHidden = !isHidden,
-                  )
-                },
+      Column(modifier = Modifier.fillMaxSize()) {
+        if (uiState.isOperationInProgress) {
+          Row(
+              modifier =
+                  Modifier.fillMaxWidth()
+                      .padding(bottom = 10.dp)
+                      .testTag(C.Tag.workspace_operation_progress),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
             )
+            Text(stringResource(R.string.workspace_operation_in_progress))
+          }
+        }
+
+        if (uiState.items.isEmpty()) {
+          EmptyWorkspace()
+        } else {
+          LazyColumn(
+              modifier = Modifier.fillMaxSize(),
+              verticalArrangement = Arrangement.spacedBy(14.dp),
+              contentPadding = PaddingValues(bottom = 100.dp),
+          ) {
+            items(
+                uiState.items,
+                key = { it.id },
+            ) { file ->
+              val isHidden = file.placements[groupId]?.isHidden ?: false
+              val canChangeVisibility = uiState.canCreateFolder || currentUserId == file.ownerId
+              val itemCanEdit = canEditItems || file.ownerId == currentUserId
+              WorkspaceCard(
+                  file = file,
+                  canEdit = itemCanEdit,
+                  canRemove = itemCanEdit,
+                  isHidden = isHidden,
+                  canChangeVisibility = canChangeVisibility,
+                  operationInProgress = uiState.isOperationInProgress,
+                  onOpen = { onItemClick(file) },
+                  onEdit = { onEdit(file) },
+                  onRemove = { onRemove(file) },
+                  onToggleVisibility = {
+                    viewModel.setItemHidden(
+                        item = file,
+                        isHidden = !isHidden,
+                    )
+                  },
+              )
+            }
           }
         }
       }
@@ -803,6 +943,27 @@ private fun WorkspaceContent(
   }
 }
 
+@Composable
+private fun OperationButtonContent(
+    isInProgress: Boolean,
+    progressTag: String,
+    label: String,
+) {
+  Row(
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    if (isInProgress) {
+      CircularProgressIndicator(
+          modifier = Modifier.size(16.dp).testTag(progressTag),
+          strokeWidth = 2.dp,
+      )
+    }
+    Text(label, color = color().primary)
+  }
+}
+
+/** Displays the empty state for a workspace with no items. */
 @Composable
 fun EmptyWorkspace() {
 
@@ -821,19 +982,26 @@ fun EmptyWorkspace() {
       Spacer(Modifier.height(12.dp))
 
       Text(
-          "No files yet",
+          stringResource(R.string.workspace_empty_title),
           style = MaterialTheme.typography.titleLarge,
           color = color().tertiary,
       )
 
       Text(
-          "Add files to share them with the group.",
+          stringResource(R.string.workspace_empty_message),
           color = color().tertiary,
       )
     }
   }
 }
 
+/**
+ * Displays actions for adding a folder or file to the workspace.
+ *
+ * @param canCreateFolder Whether the folder action is available.
+ * @param onAddFolder Called when a folder should be added.
+ * @param onAddFile Called when a file should be added.
+ */
 @Composable
 fun WorkspaceFab(
     canCreateFolder: Boolean,
@@ -850,7 +1018,9 @@ fun WorkspaceFab(
 
           ExtendedFloatingActionButton(
               containerColor = color().surface,
-              text = { Text("Folder", color = color().primary) },
+              text = {
+                Text(stringResource(R.string.workspace_folder_action), color = color().primary)
+              },
               icon = {
                 Icon(
                     Icons.Default.CreateNewFolder,
@@ -858,8 +1028,11 @@ fun WorkspaceFab(
                     tint = color().primary,
                 )
               },
-              onClick = onAddFolder,
-              modifier = Modifier.width(120.dp).testTag("workspace_add_folder"),
+              onClick = {
+                expanded = false
+                onAddFolder()
+              },
+              modifier = Modifier.width(120.dp).testTag(C.Tag.workspace_add_folder),
           )
 
           Spacer(Modifier.height(8.dp))
@@ -867,7 +1040,9 @@ fun WorkspaceFab(
 
         ExtendedFloatingActionButton(
             containerColor = color().surface,
-            text = { Text("File", color = color().primary) },
+            text = {
+              Text(stringResource(R.string.workspace_file_action), color = color().primary)
+            },
             icon = {
               Icon(
                   Icons.Default.Description,
@@ -875,8 +1050,11 @@ fun WorkspaceFab(
                   tint = color().primary,
               )
             },
-            onClick = onAddFile,
-            modifier = Modifier.width(120.dp).testTag("workspace_add_file"),
+            onClick = {
+              expanded = false
+              onAddFile()
+            },
+            modifier = Modifier.width(120.dp).testTag(C.Tag.workspace_add_file),
         )
 
         Spacer(Modifier.height(8.dp))
@@ -887,7 +1065,7 @@ fun WorkspaceFab(
         containerColor = color().primary,
         onClick = { expanded = !expanded },
         shape = RoundedCornerShape(50),
-        modifier = Modifier.testTag("workspace_actions_fab"),
+        modifier = Modifier.testTag(C.Tag.workspace_actions_fab),
     ) {
       Icon(
           Icons.Default.Add,
@@ -902,6 +1080,22 @@ private fun color(): ColorScheme {
   return MaterialTheme.colorScheme
 }
 
+@Composable
+private fun workspaceFieldColors(): TextFieldColors =
+    darkFieldColors(
+        container = color().onBackground,
+        border = color().onSurface,
+        textPrimary = color().onSecondary,
+        primary = color().primary,
+    )
+
+/**
+ * Returns personal files that can be added to the specified group.
+ *
+ * @param personalItems Personal files to filter.
+ * @param groupId Group identifier whose existing shares should be excluded.
+ * @param ownerId Required owner identifier.
+ */
 fun availableFilesToAdd(
     personalItems: List<JDRFile>,
     groupId: String,
@@ -911,3 +1105,12 @@ fun availableFilesToAdd(
     file.ownerId == ownerId && file.type != DocumentType.FOLDER && groupId !in file.sharedGroupsIds
   }
 }
+
+private val DocumentType.labelResource: Int
+  get() =
+      when (this) {
+        DocumentType.FOLDER -> R.string.workspace_folder_type
+        DocumentType.TEXT -> R.string.workspace_text_type
+        DocumentType.CHARACTER -> R.string.workspace_character_type
+        DocumentType.GROUP_ROOT -> R.string.workspace_group_root_type
+      }

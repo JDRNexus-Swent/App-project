@@ -31,20 +31,28 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.github.se.jdrnexus.R
 
 enum class GroupWorkspaceTab(
-    val label: String,
     val icon: ImageVector,
 ) {
-  HOME("Home", Icons.Default.Home),
-  CAMPAIGNS("Campaigns", Icons.AutoMirrored.Filled.MenuBook),
-  FILES("Files", Icons.Default.Folder),
-  MAP("Map", Icons.Default.Map),
+  HOME(Icons.Default.Home),
+  CAMPAIGNS(Icons.AutoMirrored.Filled.MenuBook),
+  FILES(Icons.Default.Folder),
+  MAP(Icons.Default.Map),
 }
 
+/**
+ * Displays bottom navigation for the group workspace.
+ *
+ * @param selectedTab Currently selected destination.
+ * @param onTabSelected Called when a destination is selected.
+ * @param modifier Modifier applied to the bottom bar.
+ */
 @Composable
 fun GroupWorkspaceBottomBar(
     selectedTab: GroupWorkspaceTab,
@@ -68,8 +76,17 @@ fun GroupWorkspaceBottomBar(
         modifier = Modifier.fillMaxWidth().height(82.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-      GroupWorkspaceTab.entries.forEach { tab ->
+      listOf(GroupWorkspaceTab.CAMPAIGNS).forEach { tab ->
         val selected = tab == selectedTab
+        val label =
+            stringResource(
+                when (tab) {
+                  GroupWorkspaceTab.HOME -> R.string.workspace_tab_home
+                  GroupWorkspaceTab.CAMPAIGNS -> R.string.workspace_tab_campaigns
+                  GroupWorkspaceTab.FILES -> R.string.workspace_tab_files
+                  GroupWorkspaceTab.MAP -> R.string.workspace_tab_map
+                }
+            )
         val itemColor =
             if (selected) {
               colors.primary
@@ -101,7 +118,7 @@ fun GroupWorkspaceBottomBar(
 
           Icon(
               imageVector = tab.icon,
-              contentDescription = tab.label,
+              contentDescription = label,
               tint = itemColor,
               modifier = Modifier.size(28.dp),
           )
@@ -109,7 +126,7 @@ fun GroupWorkspaceBottomBar(
           Spacer(modifier = Modifier.height(7.dp))
 
           Text(
-              text = tab.label,
+              text = label,
               color = itemColor,
               fontSize = 14.sp,
               fontWeight =

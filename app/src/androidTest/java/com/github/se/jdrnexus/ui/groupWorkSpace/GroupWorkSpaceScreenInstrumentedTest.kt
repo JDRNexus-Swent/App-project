@@ -4,6 +4,8 @@ package com.github.se.jdrnexus.ui.groupWorkSpace
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -14,6 +16,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.ViewModelStore
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
@@ -25,6 +28,7 @@ import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
+import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.LoadState
 import java.util.concurrent.atomic.AtomicBoolean
@@ -63,15 +67,16 @@ class GroupWorkSpaceScreenInstrumentedTest {
     composeTestRule.onNodeWithText("No files yet").assertIsDisplayed()
   }
 
-  // Verifies that every navigation destination is visible and can be selected.
+  // Verifies that only the supported Campaigns destination is shown and selected.
   @Test
-  fun bottomNavigationTabsCanBeSelected() {
+  fun bottomNavigationShowsOnlyCampaignsTab() {
     showScreen(WorkspaceFakeRepository(), Role.PLAYER)
 
-    listOf("Home", "Campaigns", "Files", "Map").forEach { label ->
-      composeTestRule.onNodeWithText(label).performClick()
-      composeTestRule.onNodeWithContentDescription(label).assertIsDisplayed()
-    }
+    composeTestRule.onNodeWithText("Campaigns").assertIsDisplayed()
+    composeTestRule.onNodeWithContentDescription("Campaigns").assertIsDisplayed()
+    composeTestRule.onAllNodesWithText("Home").assertCountEquals(0)
+    composeTestRule.onAllNodesWithText("Files").assertCountEquals(0)
+    composeTestRule.onAllNodesWithText("Map").assertCountEquals(0)
   }
 
   // Verifies root back navigation invokes the parent navigation callback.
@@ -93,12 +98,80 @@ class GroupWorkSpaceScreenInstrumentedTest {
     val repository = WorkspaceFakeRepository(listOf(folder, nested))
     val viewModel = showScreen(repository, Role.GAME_MASTER)
 
-    composeTestRule.onNodeWithTag("workspace_item_folder", true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("folder"), true).performClick()
     composeTestRule.waitUntil(5_000) { viewModel.uiState.value.currentFolderId == folder.id }
-    composeTestRule.onNodeWithTag("workspace_item_nested", true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("nested"), true).assertIsDisplayed()
     composeTestRule.onNodeWithContentDescription("Go back").performClick()
     composeTestRule.waitUntil(5_000) { viewModel.uiState.value.currentFolderId.isEmpty() }
-    composeTestRule.onNodeWithTag("workspace_item_folder", true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("folder"), true).assertIsDisplayed()
+  }
+
+  // Verifies Android system back navigates from a subfolder instead of exiting the workspace.
+  @Test
+  fun systemBackFromSubfolderNavigatesToParent() {
+    val folder = file("folder", "World", DocumentType.FOLDER)
+    val nested = file("nested", "Map", DocumentType.TEXT, folder.id)
+    val viewModel =
+        showScreen(
+            WorkspaceFakeRepository(listOf(folder, nested)),
+            Role.GAME_MASTER,
+        )
+
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("folder"), true).performClick()
+
+    composeTestRule.waitUntil(5_000) { viewModel.uiState.value.currentFolderId == folder.id }
+
+    Espresso.pressBack()
+
+    composeTestRule.waitUntil(5_000) { viewModel.uiState.value.currentFolderId.isEmpty() }
+
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("folder"), true).assertIsDisplayed()
+  }
+
+  // Verifies folder history survives saved-state restoration and still supports back navigation.
+  @Test
+  fun backNavigationWorksAfterStateRestoration() {
+    val folder = file("folder", "World", DocumentType.FOLDER)
+    val nested = file("nested", "Map", DocumentType.TEXT, folder.id)
+    val viewModel =
+        showScreen(
+            WorkspaceFakeRepository(listOf(folder, nested)),
+            Role.GAME_MASTER,
+            setContent = false,
+        )
+    val restorationTester = StateRestorationTester(composeTestRule)
+
+    restorationTester.setContent {
+      SampleAppTheme {
+        GroupWorkSpaceScreen(
+            gwViewModel = viewModel,
+            groupId = GROUP,
+            groupName = "Ashen Realms",
+        )
+      }
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("folder"), true).performClick()
+    composeTestRule.waitUntil(5_000) { viewModel.uiState.value.currentFolderId == folder.id }
+    restorationTester.emulateSavedInstanceStateRestore()
+    composeTestRule.onNodeWithContentDescription("Go back").performClick()
+
+    composeTestRule.waitUntil(5_000) { viewModel.uiState.value.currentFolderId.isEmpty() }
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("folder"), true).assertIsDisplayed()
+  }
+
+  // Verifies opening a file without a navigation callback shows the placeholder dialog.
+  @Test
+  fun clickingFileShowsViewingPlaceholder() {
+    val notes = file("notes", "Notes", DocumentType.TEXT)
+    showScreen(WorkspaceFakeRepository(listOf(notes)), Role.PLAYER)
+
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("notes"), true).performClick()
+
+    composeTestRule.onNodeWithText("File viewing unavailable").assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText("Viewing files from the group workspace is not available yet.")
+        .assertIsDisplayed()
   }
 
   // Verifies a loading workspace is shown instead of an empty state.
@@ -127,13 +200,16 @@ class GroupWorkSpaceScreenInstrumentedTest {
     showScreen(repository, Role.GAME_MASTER)
 
     openActions()
-    composeTestRule.onNodeWithTag("workspace_add_folder", true).performClick()
-    composeTestRule.onNodeWithTag("create_folder_dialog", true).assertIsDisplayed()
-    composeTestRule.onNodeWithTag("create_folder_name_input", true).performTextInput("Treasure")
-    composeTestRule.onNodeWithTag("create_folder_confirm", true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_add_folder, true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_folder_dialog, true).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_add_folder, true).assertCountEquals(0)
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_create_folder_name_input, true)
+        .performTextInput("Treasure")
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_folder_confirm, true).performClick()
 
     composeTestRule.waitUntil(5_000) { repository.files.values.any { it.name == "Treasure" } }
-    composeTestRule.onNodeWithTag("workspace_item_created-1", true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("created-1"), true).assertIsDisplayed()
   }
 
   // Verifies players can add files but are not offered folder creation.
@@ -142,8 +218,8 @@ class GroupWorkSpaceScreenInstrumentedTest {
     showScreen(WorkspaceFakeRepository(), Role.PLAYER)
 
     openActions()
-    composeTestRule.onAllNodesWithTag("workspace_add_folder", true).assertCountEquals(0)
-    composeTestRule.onNodeWithTag("workspace_add_file", true).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_add_folder, true).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(C.Tag.workspace_add_file, true).assertIsDisplayed()
   }
 
   // Verifies the add-file dialog filters folders, foreign files, and already-shared files.
@@ -160,15 +236,16 @@ class GroupWorkSpaceScreenInstrumentedTest {
     )
 
     openActions()
-    composeTestRule.onNodeWithTag("workspace_add_file", true).performClick()
-    composeTestRule.onNodeWithTag("add_files_dialog", true).assertIsDisplayed()
-    composeTestRule.onNodeWithTag("add_files_list", true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_add_file, true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_add_files_dialog, true).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_add_file, true).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(C.Tag.workspace_add_files_list, true).assertIsDisplayed()
     composeTestRule.onNodeWithText("Notes").assertIsDisplayed()
     composeTestRule.onAllNodesWithText("Folder").assertCountEquals(0)
     composeTestRule.onAllNodesWithText("Shared").assertCountEquals(0)
     composeTestRule.onAllNodesWithText("Foreign").assertCountEquals(0)
-    composeTestRule.onNodeWithTag("add_files_done", true).performClick()
-    composeTestRule.onAllNodesWithTag("add_files_dialog", true).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(C.Tag.workspace_add_files_done, true).performClick()
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_add_files_dialog, true).assertCountEquals(0)
   }
 
   // Verifies selecting a personal file shares it and updates the visible workspace.
@@ -179,14 +256,36 @@ class GroupWorkSpaceScreenInstrumentedTest {
     showScreen(repository, Role.PLAYER, personalItems = listOf(personal))
 
     openActions()
-    composeTestRule.onNodeWithTag("workspace_add_file", true).performClick()
-    composeTestRule.onNodeWithTag("add_files_dialog", true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_add_file, true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_add_files_dialog, true).assertIsDisplayed()
     composeTestRule.onNodeWithText("Notes").performClick()
 
     composeTestRule.waitUntil(5_000) {
       GROUP in repository.files.getValue("personal").sharedGroupsIds
     }
-    composeTestRule.onNodeWithTag("workspace_item_personal", true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("personal"), true).assertIsDisplayed()
+  }
+
+  // Verifies an add-file error does not hide the available file list.
+  @Test
+  fun addFilesDialogShowsErrorAndAvailableFilesTogether() {
+    val personal = JDRFile("personal", "Notes", ownerId = USER)
+    val repository =
+        WorkspaceFakeRepository(
+            initialFiles = listOf(personal),
+            operationFailure = "Write denied",
+        )
+    showScreen(repository, Role.PLAYER, personalItems = listOf(personal))
+
+    openActions()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_add_file, true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_add_files_list, true).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Notes").performClick()
+
+    composeTestRule.waitUntil(5_000) { repository.lastError == "Write denied" }
+    composeTestRule.onNodeWithText("Write denied").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_add_files_list, true).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Notes").assertIsDisplayed()
   }
 
   // Verifies players see controls for their own files but not another player's files.
@@ -196,12 +295,14 @@ class GroupWorkSpaceScreenInstrumentedTest {
     val foreign = file("foreign", "Foreign", DocumentType.TEXT, ownerId = OTHER)
     showScreen(WorkspaceFakeRepository(listOf(own, foreign)), Role.PLAYER)
 
-    composeTestRule.onNodeWithTag("workspace_edit_own", true).assertIsDisplayed()
-    composeTestRule.onNodeWithTag("workspace_remove_own", true).assertIsDisplayed()
-    composeTestRule.onNodeWithTag("workspace_visibility_own", true).assertIsDisplayed()
-    composeTestRule.onAllNodesWithTag("workspace_edit_foreign", true).assertCountEquals(0)
-    composeTestRule.onAllNodesWithTag("workspace_remove_foreign", true).assertCountEquals(0)
-    composeTestRule.onAllNodesWithTag("workspace_visibility_foreign", true).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(C.Tag.workspaceEdit("own"), true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceRemove("own"), true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceVisibility("own"), true).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(C.Tag.workspaceEdit("foreign"), true).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(C.Tag.workspaceRemove("foreign"), true).assertCountEquals(0)
+    composeTestRule
+        .onAllNodesWithTag(C.Tag.workspaceVisibility("foreign"), true)
+        .assertCountEquals(0)
   }
 
   // Verifies a player can edit, hide, and remove their own file through tagged controls.
@@ -213,32 +314,36 @@ class GroupWorkSpaceScreenInstrumentedTest {
     val repository = WorkspaceFakeRepository(listOf(editable, removable))
     showScreen(repository, Role.PLAYER)
 
-    composeTestRule.onNodeWithTag("workspace_edit_own-edit", true).performClick()
-    composeTestRule.onNodeWithTag("edit_item_dialog", true).assertIsDisplayed()
-    composeTestRule.onNodeWithTag("edit_item_name_input", true).performTextClearance()
-    composeTestRule.onNodeWithTag("edit_item_name_input", true).performTextInput("Updated own")
-    composeTestRule.onNodeWithTag("edit_item_content_input", true).performTextClearance()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceEdit("own-edit"), true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_dialog, true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_name_input, true).performTextClearance()
     composeTestRule
-        .onNodeWithTag("edit_item_content_input", true)
+        .onNodeWithTag(C.Tag.workspace_edit_item_name_input, true)
+        .performTextInput("Updated own")
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_edit_item_content_input, true)
+        .performTextClearance()
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_edit_item_content_input, true)
         .performTextInput("Updated content")
-    composeTestRule.onNodeWithTag("edit_item_save", true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_save, true).performClick()
     composeTestRule.waitUntil(5_000) {
       repository.files.getValue("own-edit").name == "Updated own" &&
           repository.files.getValue("own-edit").content == "Updated content"
     }
 
-    composeTestRule.onNodeWithTag("workspace_visibility_own-edit", true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceVisibility("own-edit"), true).performClick()
     composeTestRule.waitUntil(5_000) {
       repository.files.getValue("own-edit").placements.getValue(GROUP).isHidden
     }
 
-    composeTestRule.onNodeWithTag("workspace_remove_own-remove", true).performClick()
-    composeTestRule.onNodeWithTag("remove_item_dialog", true).assertIsDisplayed()
-    composeTestRule.onNodeWithTag("remove_item_confirm", true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceRemove("own-remove"), true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_remove_item_dialog, true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_remove_item_confirm, true).performClick()
     composeTestRule.waitUntil(5_000) {
       GROUP !in repository.files.getValue("own-remove").sharedGroupsIds
     }
-    composeTestRule.onAllNodesWithTag("workspace_item_own-remove", true).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(C.Tag.workspaceItem("own-remove"), true).assertCountEquals(0)
   }
 
   // Verifies Game Masters can edit, hide, and remove another player's file.
@@ -249,23 +354,25 @@ class GroupWorkSpaceScreenInstrumentedTest {
     val repository = WorkspaceFakeRepository(listOf(editable, removable))
     showScreen(repository, Role.GAME_MASTER)
 
-    composeTestRule.onNodeWithTag("workspace_edit_foreign-edit", true).performClick()
-    composeTestRule.onNodeWithTag("edit_item_dialog", true).assertIsDisplayed()
-    composeTestRule.onNodeWithTag("edit_item_name_input", true).performTextClearance()
-    composeTestRule.onNodeWithTag("edit_item_name_input", true).performTextInput("Updated foreign")
-    composeTestRule.onNodeWithTag("edit_item_save", true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceEdit("foreign-edit"), true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_dialog, true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_name_input, true).performTextClearance()
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_edit_item_name_input, true)
+        .performTextInput("Updated foreign")
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_save, true).performClick()
     composeTestRule.waitUntil(5_000) {
       repository.files.getValue("foreign-edit").name == "Updated foreign"
     }
-    composeTestRule.onNodeWithTag("workspace_item_foreign-edit", true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("foreign-edit"), true).assertIsDisplayed()
 
-    composeTestRule.onNodeWithTag("workspace_visibility_foreign-edit", true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceVisibility("foreign-edit"), true).performClick()
     composeTestRule.waitUntil(5_000) {
       repository.files.getValue("foreign-edit").placements.getValue(GROUP).isHidden
     }
-    composeTestRule.onNodeWithTag("workspace_remove_foreign-remove", true).performClick()
-    composeTestRule.onNodeWithTag("remove_item_dialog", true).assertIsDisplayed()
-    composeTestRule.onNodeWithTag("remove_item_confirm", true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceRemove("foreign-remove"), true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_remove_item_dialog, true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_remove_item_confirm, true).performClick()
     composeTestRule.waitUntil(5_000) {
       GROUP !in repository.files.getValue("foreign-remove").sharedGroupsIds
     }
@@ -278,14 +385,52 @@ class GroupWorkSpaceScreenInstrumentedTest {
     val repository = WorkspaceFakeRepository(listOf(original))
     showScreen(repository, Role.PLAYER)
 
-    composeTestRule.onNodeWithTag("workspace_edit_notes", true).performClick()
-    composeTestRule.onNodeWithTag("edit_item_name_input", true).performTextClearance()
-    composeTestRule.onNodeWithTag("edit_item_save", true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceEdit("notes"), true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_name_input, true).performTextClearance()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_save, true).performClick()
     composeTestRule.onNodeWithText("The item name cannot be blank.").assertIsDisplayed()
-    composeTestRule.onNodeWithTag("edit_item_name_input", true).performTextInput("Updated")
-    composeTestRule.onNodeWithTag("edit_item_save", true).performClick()
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_edit_item_name_input, true)
+        .performTextInput("Updated")
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_save, true).performClick()
     composeTestRule.waitUntil(5_000) { repository.files.getValue("notes").name == "Updated" }
     composeTestRule.onNodeWithText("Updated").assertIsDisplayed()
+  }
+
+  // Verifies the edit dialog and entered text survive saved-state restoration.
+  @Test
+  fun editDialogRestoresVisibilityAndText() {
+    val original = file("notes", "Notes", DocumentType.TEXT, ownerId = USER)
+    val viewModel =
+        showScreen(
+            WorkspaceFakeRepository(listOf(original)),
+            Role.PLAYER,
+            setContent = false,
+        )
+    val restorationTester = StateRestorationTester(composeTestRule)
+
+    restorationTester.setContent {
+      SampleAppTheme {
+        GroupWorkSpaceScreen(
+            gwViewModel = viewModel,
+            groupId = GROUP,
+            groupName = "Ashen Realms",
+        )
+      }
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.workspaceEdit("notes"), true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_name_input, true).performTextClearance()
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_edit_item_name_input, true)
+        .performTextInput("Restored name")
+
+    restorationTester.emulateSavedInstanceStateRestore()
+
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_dialog, true).assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_edit_item_name_input, true)
+        .assertTextEquals("Restored name")
   }
 
   // Verifies failed operations keep dialogs open and expose the repository error.
@@ -295,11 +440,32 @@ class GroupWorkSpaceScreenInstrumentedTest {
     val repository = WorkspaceFakeRepository(listOf(original), operationFailure = "Write denied")
     showScreen(repository, Role.PLAYER)
 
-    composeTestRule.onNodeWithTag("workspace_edit_notes", true).performClick()
-    composeTestRule.onNodeWithTag("edit_item_save", true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceEdit("notes"), true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_save, true).performClick()
     composeTestRule.waitUntil(5_000) { repository.lastError == "Write denied" }
     composeTestRule.onNodeWithText("Write denied").assertIsDisplayed()
     composeTestRule.onNodeWithText("Edit file").assertIsDisplayed()
+  }
+
+  // Verifies failed removals keep the dialog open, show the error, and retain the item.
+  @Test
+  fun failedRemoveDisplaysErrorAndKeepsItemInWorkspace() {
+    val original = file("notes", "Notes", DocumentType.TEXT, ownerId = USER)
+    val repository = WorkspaceFakeRepository(listOf(original), operationFailure = "Remove denied")
+    showScreen(repository, Role.PLAYER)
+
+    composeTestRule.onNodeWithTag(C.Tag.workspaceRemove("notes"), true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_remove_item_confirm, true).performClick()
+    composeTestRule.waitUntil(5_000) { repository.lastError == "Remove denied" }
+
+    composeTestRule.onNodeWithText("Remove denied").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_remove_item_dialog, true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("notes"), true).assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(
+            "Notes will be removed from this group. The underlying personal file remains owned by its owner."
+        )
+        .assertIsDisplayed()
   }
 
   // Verifies operation progress disables dialog controls until the repository completes.
@@ -310,11 +476,13 @@ class GroupWorkSpaceScreenInstrumentedTest {
     val repository = WorkspaceFakeRepository(listOf(original), operationGate = gate)
     val viewModel = showScreen(repository, Role.PLAYER)
 
-    composeTestRule.onNodeWithTag("workspace_edit_notes", true).performClick()
-    composeTestRule.onNodeWithTag("edit_item_save", true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceEdit("notes"), true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_save, true).performClick()
     composeTestRule.waitUntil(5_000) { repository.operationStarted.get() }
-    composeTestRule.onNodeWithTag("edit_item_save", true).assertIsNotEnabled()
-    composeTestRule.onNodeWithTag("edit_item_cancel", true).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_save, true).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_cancel, true).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_progress, true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_operation_progress, true).assertIsDisplayed()
     gate.complete(Unit)
     composeTestRule.waitUntil(5_000) {
       !repository.operationStarted.get() &&
@@ -325,8 +493,60 @@ class GroupWorkSpaceScreenInstrumentedTest {
     composeTestRule.onNodeWithText("Notes").assertIsDisplayed()
   }
 
+  // Verifies visibility operations show progress feedback and disable the source action.
+  @Test
+  fun visibilityOperationShowsProgressAndDisablesVisibilityAction() {
+    val original = file("notes", "Notes", DocumentType.TEXT, ownerId = USER)
+    val gate = CompletableDeferred<Unit>()
+    val repository = WorkspaceFakeRepository(listOf(original), operationGate = gate)
+    showScreen(repository, Role.PLAYER)
+
+    composeTestRule.onNodeWithTag(C.Tag.workspaceVisibility("notes"), true).performClick()
+    composeTestRule.waitUntil(5_000) { repository.operationStarted.get() }
+
+    composeTestRule.onNodeWithTag(C.Tag.workspaceVisibility("notes"), true).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_operation_progress, true).assertIsDisplayed()
+
+    gate.complete(Unit)
+    composeTestRule.waitUntil(5_000) {
+      repository.files.getValue("notes").placements.getValue(GROUP).isHidden
+    }
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_operation_progress, true).assertCountEquals(0)
+  }
+
+  // Verifies visibility failures are shown outside dialogs without changing the item.
+  @Test
+  fun visibilityFailureShowsErrorToUser() {
+    val original = file("notes", "Notes", DocumentType.TEXT, ownerId = USER)
+    val repository =
+        WorkspaceFakeRepository(listOf(original), operationFailure = "Visibility denied")
+    showScreen(repository, Role.PLAYER)
+
+    composeTestRule.onNodeWithTag(C.Tag.workspaceVisibility("notes"), true).performClick()
+    composeTestRule.waitUntil(5_000) { repository.lastError == "Visibility denied" }
+
+    composeTestRule.onNodeWithText("Visibility denied").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("notes"), true).assertIsDisplayed()
+  }
+
+  // Verifies closing a failed dialog clears its error state.
+  @Test
+  fun closingFailedRemoveDialogClearsError() {
+    val original = file("notes", "Notes", DocumentType.TEXT, ownerId = USER)
+    val repository = WorkspaceFakeRepository(listOf(original), operationFailure = "Remove denied")
+    val viewModel = showScreen(repository, Role.PLAYER)
+
+    composeTestRule.onNodeWithTag(C.Tag.workspaceRemove("notes"), true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_remove_item_confirm, true).performClick()
+    composeTestRule.waitUntil(5_000) { repository.lastError == "Remove denied" }
+    composeTestRule.onNodeWithText("Remove denied").assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(C.Tag.workspace_remove_item_cancel, true).performClick()
+    composeTestRule.waitUntil(5_000) { viewModel.uiState.value.errorMessage.isEmpty() }
+  }
+
   private fun openActions() {
-    composeTestRule.onNodeWithTag("workspace_actions_fab", true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_actions_fab, true).performClick()
   }
 
   private fun showScreen(
@@ -334,6 +554,8 @@ class GroupWorkSpaceScreenInstrumentedTest {
       role: Role,
       personalItems: List<JDRFile> = emptyList(),
       onBack: () -> Unit = {},
+      onItemClicked: ((JDRFile, Boolean) -> Unit)? = null,
+      setContent: Boolean = true,
   ): GroupWorkspaceViewModel {
     viewModelStore?.clear()
     val group =
@@ -351,16 +573,18 @@ class GroupWorkSpaceScreenInstrumentedTest {
             FakeAuthRepository(),
         )
     viewModelStore = ViewModelStore().also { it.put("workspace", viewModel) }
-    composeTestRule.setContent {
-      SampleAppTheme {
-        GroupWorkSpaceScreen(
-            gwViewModel = viewModel,
-            groupId = GROUP,
-            groupName = "Ashen Realms",
-            onBack = onBack,
-            onItemClicked = { _, _ -> },
-            personalItems = personalItems,
-        )
+    if (setContent) {
+      composeTestRule.setContent {
+        SampleAppTheme {
+          GroupWorkSpaceScreen(
+              gwViewModel = viewModel,
+              groupId = GROUP,
+              groupName = "Ashen Realms",
+              onBack = onBack,
+              onItemClicked = onItemClicked,
+              personalItems = personalItems,
+          )
+        }
       }
     }
     return viewModel

@@ -42,6 +42,7 @@ data class GroupWorkspaceUiState(
     val canCreateFolder: Boolean = false,
     val canEditItems: Boolean = false,
     val currentFolderName: String = "",
+    val folderHistory: List<String> = emptyList(),
 )
 
 class GroupWorkspaceViewModel(
@@ -256,6 +257,7 @@ class GroupWorkspaceViewModel(
                   items = emptyList(),
                   currentFolderId = "",
                   currentFolderName = "",
+                  folderHistory = emptyList(),
                   canCreateFolder = false,
                   canEditItems = false,
                   loadState = LoadState.Error("You are no longer a member of this group."),
@@ -290,6 +292,7 @@ class GroupWorkspaceViewModel(
               items = emptyList(),
               currentFolderId = "",
               currentFolderName = "",
+              folderHistory = emptyList(),
               canCreateFolder = false,
               canEditItems = false,
               loadState = LoadState.Error(e.message ?: "Unable to verify group membership."),
@@ -299,8 +302,30 @@ class GroupWorkspaceViewModel(
     }
   }
 
+  /** Opens a child folder and records the current folder for back navigation. */
+  fun openFolder(folderId: String) {
+    val currentFolderId = _uiState.value.currentFolderId
+    if (folderId == currentFolderId) return
+
+    _uiState.update { state -> state.copy(folderHistory = state.folderHistory + currentFolderId) }
+    loadWorkspace(folderId, preserveFolderHistory = true)
+  }
+
+  /** Navigates to the previous folder, returning whether navigation occurred. */
+  fun navigateBack(): Boolean {
+    val history = _uiState.value.folderHistory
+    if (history.isEmpty()) return false
+
+    loadWorkspace(history.last(), preserveFolderHistory = true)
+    _uiState.update { it.copy(folderHistory = history.dropLast(1)) }
+    return true
+  }
+
   /** Observes the current folder, or the group root when folderId is empty. */
-  fun loadWorkspace(folderId: String = _uiState.value.currentFolderId) {
+  fun loadWorkspace(
+      folderId: String = _uiState.value.currentFolderId,
+      preserveFolderHistory: Boolean = false,
+  ) {
     if (role == null) return
     val requestGeneration = ++fetchGeneration
     fetchJob?.cancel()
@@ -308,6 +333,7 @@ class GroupWorkspaceViewModel(
     _uiState.update {
       it.copy(
           currentFolderId = folderId,
+          folderHistory = if (preserveFolderHistory) it.folderHistory else emptyList(),
           items = emptyList(),
           loadState = LoadState.Loading,
           errorMessage = "",
@@ -375,7 +401,6 @@ class GroupWorkspaceViewModel(
               it.copy(
                   items = visibleItems,
                   loadState = LoadState.Success,
-                  errorMessage = "",
               )
             }
           } catch (e: CancellationException) {
