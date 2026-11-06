@@ -1,6 +1,12 @@
+<!-- Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com> -->
+
 ## Architecture Rules
 
 - Keep the **MVVM** separation. **ViewModels never import Firebase** or a repository implementation; they depend on repository interfaces. Firebase lives only in the `model/` repositories.
+
+## UI conventions
+
+- Follow the [UI conventions](wiki/UI-conventions.md) when building or modifying UI.
 
 ## Definition of Done
 

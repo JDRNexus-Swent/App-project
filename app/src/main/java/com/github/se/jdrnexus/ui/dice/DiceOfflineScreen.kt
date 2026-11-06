@@ -18,15 +18,18 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -81,6 +84,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.repository.DiceLogic
+import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
 import com.github.se.jdrnexus.resources.MAX_LANDSCAPE_CONTENT_WIDTH
@@ -178,6 +182,8 @@ internal fun DiceOfflineContent(
       modifier =
           Modifier.fillMaxSize()
               .background(colors.backgroundColor)
+              // Keep controls clear of system navigation while the background draws edge-to-edge.
+              .windowInsetsPadding(WindowInsets.navigationBars)
               .testTag(C.Tag.dice_offline_screen),
   ) {
     val dimens = DiceDimens(screenHeight = maxHeight)
@@ -467,20 +473,24 @@ private fun DieFillingColumn(
   }
 }
 
-/** Title, decorative divider, close button and the selected die with its valid range. */
+/** Shared top bar with the back action, decorative divider, and the selected die with its range. */
 @Composable
 private fun DiceHeader(uiState: DiceUiState, colors: DiceThemeColors, onClose: () -> Unit) {
-  Box(modifier = Modifier.fillMaxWidth()) {
-    Box(modifier = Modifier.width(120.dp).align(Alignment.TopCenter).padding(top = 12.dp)) {
-      DivideWithDiamonds(color = colors.accentColor)
-    }
-    DiceCloseButton(colors = colors, onClose = onClose, modifier = Modifier.align(Alignment.TopEnd))
-  }
+  AppTopBar(
+      title = "Dice Roller",
+      onBack = onClose,
+      backTestTag = C.Tag.dice_offline_close,
+  )
 
-  DiceTitle(uiState = uiState, colors = colors)
+  DivideWithDiamonds(color = colors.accentColor)
+  Spacer(Modifier.height(12.dp))
+  SelectedDieText(uiState = uiState, colors = colors)
+
+  Spacer(Modifier.height(8.dp))
+  RangePill(uiState = uiState, colors = colors)
 }
 
-/** Button closing the dice roller. */
+/** Button closing the dice roller from the landscape layout. */
 @Composable
 private fun DiceCloseButton(
     colors: DiceThemeColors,
@@ -492,19 +502,7 @@ private fun DiceCloseButton(
   }
 }
 
-/** Screen title, then the selected die and its valid range including the modifier. */
-@Composable
-private fun DiceTitle(uiState: DiceUiState, colors: DiceThemeColors) {
-  DiceTitleText(colors = colors)
-
-  Spacer(Modifier.height(4.dp))
-  SelectedDieText(uiState = uiState, colors = colors)
-
-  Spacer(Modifier.height(8.dp))
-  RangePill(uiState = uiState, colors = colors)
-}
-
-/** The "Dice Roller" title. */
+/** The "Dice Roller" title of the landscape layout. */
 @Composable
 private fun DiceTitleText(colors: DiceThemeColors) {
   Text(
