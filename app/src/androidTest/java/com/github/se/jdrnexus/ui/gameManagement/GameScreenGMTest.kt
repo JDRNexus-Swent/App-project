@@ -37,6 +37,16 @@ import org.junit.runner.RunWith
 class GameScreenGMTest {
   @get:Rule val composeTestRule = createComposeRule()
 
+  private companion object {
+    // Dashboard item indexes when nothing is hidden: header, combat, activity, NPCs, lore.
+    const val COMBAT_ITEM = 1
+    const val ACTIVITY_ITEM = 2
+    const val NPCS_ITEM = 3
+    const val LORE_ITEM = 4
+    // The Hidden Sections card is inserted right after the header while a section is hidden.
+    const val HIDDEN_ITEM = 1
+  }
+
   // Verifies the empty combat state and dispatches the start-combat action.
   @Test
   fun emptyCombatShowsMessageAndStartsCombat() {
