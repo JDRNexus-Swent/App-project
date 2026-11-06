@@ -73,6 +73,14 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 
+/**
+ * Connects the GM view model to the stateless game-master session UI.
+ *
+ * @param viewModel Supplies session state and handles game actions.
+ * @param onTabSelected Receives selections from the shared bottom navigation.
+ * @param onDiceClick Opens the dice roller.
+ * @param groupName Name shown for the active campaign.
+ */
 @Composable
 fun GameScreenGM(
     viewModel: GameViewModelGM,
@@ -101,6 +109,22 @@ fun GameScreenGM(
   )
 }
 
+/**
+ * Renders the game-master session from supplied state and callbacks.
+ *
+ * @param uiState Current combat, activity, NPC, and lore state.
+ * @param groupName Name shown for the active campaign.
+ * @param onAddEnemy Adds a validated enemy to the encounter.
+ * @param onRemoveEnemy Removes an enemy by ID.
+ * @param onUpdateEnemyHp Changes an enemy's hit points.
+ * @param onStartCombat Starts the encounter.
+ * @param onNextRound Advances the encounter round.
+ * @param onEndCombat Ends the encounter.
+ * @param onRetry Requests the unavailable session data again.
+ * @param onSelectLore Selects a lore document.
+ * @param onTabSelected Receives shared bottom-navigation selections.
+ * @param onDiceClick Opens the dice roller.
+ */
 @Composable
 internal fun GameScreenGMContent(
     uiState: GameViewModelGMUiState,
@@ -118,9 +142,18 @@ internal fun GameScreenGMContent(
 ) {
   var showAddEnemyDialog by rememberSaveable { mutableStateOf(false) }
   var selectedNpcId by rememberSaveable { mutableStateOf<String?>(null) }
+  var combatVisible by rememberSaveable { mutableStateOf(true) }
   var activityVisible by rememberSaveable { mutableStateOf(true) }
+  var npcsVisible by rememberSaveable { mutableStateOf(true) }
+  var loreVisible by rememberSaveable { mutableStateOf(true) }
   var expandedLoreId by rememberSaveable { mutableStateOf<String?>(null) }
   val selectedNpc = uiState.npcs.firstOrNull { it.id == selectedNpcId }
+  val hiddenSections = buildList {
+    if (!combatVisible) add("Combat Live" to C.Tag.game_gm_restore_combat)
+    if (!activityVisible) add("Activity Feed" to C.Tag.game_gm_restore_activity)
+    if (!npcsVisible) add("NPCs" to C.Tag.game_gm_restore_npcs)
+    if (!loreVisible) add("Campaign Lore" to C.Tag.game_gm_restore_lore)
+  }
 
   Scaffold(
       bottomBar = {
@@ -166,66 +199,88 @@ internal fun GameScreenGMContent(
           )
         }
       }
-      item {
-        SectionCard("Combat Live", titleTrailing = "Round ${uiState.currentRound}") {
-          Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically,
+      if (hiddenSections.isNotEmpty()) {
+        item {
+          HiddenSections(
+              hiddenSections = hiddenSections,
+              onRestore = { title ->
+                when (title) {
+                  "Combat Live" -> combatVisible = true
+                  "Activity Feed" -> activityVisible = true
+                  "NPCs" -> npcsVisible = true
+                  "Campaign Lore" -> loreVisible = true
+                }
+              },
+          )
+        }
+      }
+      if (combatVisible) {
+        item {
+          SectionCard(
+              title = "Combat Live",
+              titleTrailing = "Round ${uiState.currentRound}",
+              onDismiss = { combatVisible = false },
+              dismissTestTag = C.Tag.game_gm_hide_combat,
           ) {
-            Text(
-                if (uiState.isCombatActive) "ACTIVE" else "INACTIVE",
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-            )
-          }
-          Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.End,
-              verticalAlignment = Alignment.CenterVertically,
-          ) {
-            if (!uiState.isCombatActive) {
-              Button(
-                  onClick = onStartCombat,
-                  modifier = Modifier.testTag(C.Tag.game_gm_start_combat),
-                  colors =
-                      ButtonDefaults.buttonColors(
-                          containerColor = MaterialTheme.colorScheme.primary,
-                          contentColor = MaterialTheme.colorScheme.onPrimary,
-                      ),
-              ) {
-                Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                Spacer(Modifier.width(4.dp))
-                Text("Start", color = MaterialTheme.colorScheme.background)
-              }
-            } else {
-              OutlinedButton(
-                  onClick = onNextRound,
-                  modifier = Modifier.testTag(C.Tag.game_gm_next_round),
-                  shape = CircleShape,
-                  contentPadding = PaddingValues(horizontal = 14.dp),
-              ) {
-                Icon(Icons.Filled.SkipNext, contentDescription = null)
-                Spacer(Modifier.width(4.dp))
-              }
-              OutlinedButton(
-                  onClick = onEndCombat,
-                  modifier = Modifier.testTag(C.Tag.game_gm_end_combat),
-                  shape = CircleShape,
-                  contentPadding = PaddingValues(horizontal = 14.dp),
-              ) {
-                Icon(Icons.Filled.Stop, contentDescription = null)
-                Spacer(Modifier.width(4.dp))
-              }
-            }
-            OutlinedButton(
-                onClick = { showAddEnemyDialog = true },
-                modifier = Modifier.testTag(C.Tag.game_gm_add_enemy),
-                shape = CircleShape,
-                contentPadding = PaddingValues(horizontal = 14.dp),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-              Icon(Icons.Filled.Add, contentDescription = null)
-              Spacer(Modifier.width(4.dp))
+              Text(
+                  if (uiState.isCombatActive) "ACTIVE" else "INACTIVE",
+                  color = MaterialTheme.colorScheme.primary,
+                  fontWeight = FontWeight.Bold,
+              )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+              if (!uiState.isCombatActive) {
+                Button(
+                    onClick = onStartCombat,
+                    modifier = Modifier.testTag(C.Tag.game_gm_start_combat),
+                    colors =
+                        ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                ) {
+                  Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                  Spacer(Modifier.width(4.dp))
+                  Text("Start", color = MaterialTheme.colorScheme.background)
+                }
+              } else {
+                OutlinedButton(
+                    onClick = onNextRound,
+                    modifier = Modifier.testTag(C.Tag.game_gm_next_round),
+                    shape = CircleShape,
+                    contentPadding = PaddingValues(horizontal = 14.dp),
+                ) {
+                  Icon(Icons.Filled.SkipNext, contentDescription = null)
+                  Spacer(Modifier.width(4.dp))
+                }
+                OutlinedButton(
+                    onClick = onEndCombat,
+                    modifier = Modifier.testTag(C.Tag.game_gm_end_combat),
+                    shape = CircleShape,
+                    contentPadding = PaddingValues(horizontal = 14.dp),
+                ) {
+                  Icon(Icons.Filled.Stop, contentDescription = null)
+                  Spacer(Modifier.width(4.dp))
+                }
+              }
+              OutlinedButton(
+                  onClick = { showAddEnemyDialog = true },
+                  modifier = Modifier.testTag(C.Tag.game_gm_add_enemy),
+                  shape = CircleShape,
+                  contentPadding = PaddingValues(horizontal = 14.dp),
+              ) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Spacer(Modifier.width(4.dp))
+              }
             }
           }
           if (uiState.enemies.isEmpty()) {
@@ -271,8 +326,9 @@ internal fun GameScreenGMContent(
       if (activityVisible) {
         item {
           SectionCard(
-              "Activity Feed",
+              title = "Activity Feed",
               onDismiss = { activityVisible = false },
+              dismissTestTag = C.Tag.game_gm_hide_activity,
           ) {
             if (uiState.activityFeed.isEmpty()) {
               Text("No recent player activity.", color = MaterialTheme.colorScheme.tertiary)
@@ -298,55 +354,64 @@ internal fun GameScreenGMContent(
           }
         }
       }
-      item {
-        SectionCard("NPCs") {
-          if (uiState.npcs.isEmpty()) {
-            Text(
-                "No NPCs available.",
-                modifier = Modifier.testTag(C.Tag.game_gm_empty_npcs),
-                color = MaterialTheme.colorScheme.tertiary,
-            )
-          } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-              LazyRow(
+      if (npcsVisible) {
+        item {
+          SectionCard(
+              title = "NPCs",
+              onDismiss = { npcsVisible = false },
+              dismissTestTag = C.Tag.game_gm_hide_npcs,
+          ) {
+            if (uiState.npcs.isEmpty()) {
+              Text(
+                  "No NPCs available.",
+                  modifier = Modifier.testTag(C.Tag.game_gm_empty_npcs),
+                  color = MaterialTheme.colorScheme.tertiary,
+              )
+            } else {
+              Row(
                   modifier = Modifier.fillMaxWidth(),
-                  horizontalArrangement = Arrangement.spacedBy(16.dp),
+                  verticalAlignment = Alignment.CenterVertically,
               ) {
-                items(uiState.npcs.size) { index ->
-                  val npc = uiState.npcs[index]
-                  Column(
-                      modifier = Modifier.width(84.dp).clickable { selectedNpcId = npc.id },
-                      horizontalAlignment = Alignment.CenterHorizontally,
-                      verticalArrangement = Arrangement.spacedBy(4.dp),
-                  ) {
-                    Box(
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                  items(uiState.npcs.size) { index ->
+                    val npc = uiState.npcs[index]
+                    Column(
                         modifier =
-                            Modifier.size(48.dp)
-                                .clip(CircleShape)
-                                .border(
-                                    1.dp,
-                                    MaterialTheme.colorScheme.tertiary,
-                                    CircleShape,
-                                ),
-                        contentAlignment = Alignment.Center,
+                            Modifier.width(84.dp).testTag(C.Tag.gameGmNpc(npc.id)).clickable {
+                              selectedNpcId = npc.id
+                            },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                      Icon(
-                          Icons.Filled.Person,
-                          contentDescription = null,
-                          tint = MaterialTheme.colorScheme.onSecondary,
+                      Box(
+                          modifier =
+                              Modifier.size(48.dp)
+                                  .clip(CircleShape)
+                                  .border(
+                                      1.dp,
+                                      MaterialTheme.colorScheme.tertiary,
+                                      CircleShape,
+                                  ),
+                          contentAlignment = Alignment.Center,
+                      ) {
+                        Icon(
+                            Icons.Filled.Person,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondary,
+                        )
+                      }
+
+                      Text(
+                          text = npc.name,
+                          color = MaterialTheme.colorScheme.onSecondary,
+                          style = MaterialTheme.typography.bodySmall,
+                          maxLines = 1,
+                          overflow = TextOverflow.Ellipsis,
                       )
                     }
-
-                    Text(
-                        text = npc.name,
-                        color = MaterialTheme.colorScheme.onSecondary,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                   }
                 }
               }
@@ -354,25 +419,31 @@ internal fun GameScreenGMContent(
           }
         }
       }
-      item {
-        SectionCard("Campaign Lore") {
-          if (uiState.loreDocuments.isEmpty()) {
-            Text(
-                "No lore documents available.",
-                modifier = Modifier.testTag(C.Tag.game_gm_empty_lore),
-                color = MaterialTheme.colorScheme.tertiary,
-            )
-          } else {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-              uiState.loreDocuments.forEach { document ->
-                LoreRow(
-                    document = document,
-                    expanded = expandedLoreId == document.id,
-                    onExpand = {
-                      expandedLoreId = if (expandedLoreId == document.id) null else document.id
-                    },
-                    onSelect = { onSelectLore(document.id) },
-                )
+      if (loreVisible) {
+        item {
+          SectionCard(
+              title = "Campaign Lore",
+              onDismiss = { loreVisible = false },
+              dismissTestTag = C.Tag.game_gm_hide_lore,
+          ) {
+            if (uiState.loreDocuments.isEmpty()) {
+              Text(
+                  "No lore documents available.",
+                  modifier = Modifier.testTag(C.Tag.game_gm_empty_lore),
+                  color = MaterialTheme.colorScheme.tertiary,
+              )
+            } else {
+              Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                uiState.loreDocuments.forEach { document ->
+                  LoreRow(
+                      document = document,
+                      expanded = expandedLoreId == document.id,
+                      onExpand = {
+                        expandedLoreId = if (expandedLoreId == document.id) null else document.id
+                      },
+                      onSelect = { onSelectLore(document.id) },
+                  )
+                }
               }
             }
           }
@@ -400,14 +471,52 @@ internal fun GameScreenGMContent(
   }
 }
 
+/** Displays restore actions for dashboard sections hidden by the user. */
+@Composable
+private fun HiddenSections(
+    hiddenSections: List<Pair<String, String>>,
+    onRestore: (String) -> Unit,
+) {
+  SectionCard(
+      title = "Hidden Sections",
+      modifier = Modifier.testTag(C.Tag.game_gm_hidden_sections),
+  ) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      hiddenSections.forEach { (title, restoreTag) ->
+        OutlinedButton(
+            onClick = { onRestore(title) },
+            modifier = Modifier.testTag(restoreTag),
+            contentPadding = PaddingValues(horizontal = 12.dp),
+        ) {
+          Text("+ $title")
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Displays a titled card section with optional dismissal and trailing status text.
+ *
+ * @param title Section heading.
+ * @param onDismiss Optional callback for the section's close action.
+ * @param titleTrailing Optional status text shown beside the heading.
+ * @param content Content rendered inside the card.
+ */
 @Composable
 private fun SectionCard(
     title: String,
     onDismiss: (() -> Unit)? = null,
     titleTrailing: String? = null,
+    modifier: Modifier = Modifier,
+    dismissTestTag: String? = null,
     content: @Composable () -> Unit,
 ) {
   Card(
+      modifier = modifier,
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
       border =
           BorderStroke(
@@ -453,7 +562,10 @@ private fun SectionCard(
         }
 
         onDismiss?.let {
-          IconButton(onClick = it) {
+          IconButton(
+              onClick = it,
+              modifier = dismissTestTag?.let(Modifier::testTag) ?: Modifier,
+          ) {
             Icon(
                 Icons.Filled.Close,
                 contentDescription = "Dismiss",
@@ -468,6 +580,14 @@ private fun SectionCard(
   }
 }
 
+/**
+ * Displays one enemy's combat statistics and controls for changing or removing it.
+ *
+ * @param enemy Enemy whose current combat values are shown.
+ * @param onIncrease Called when the enemy should gain one hit point.
+ * @param onDecrease Called when the enemy should lose one hit point.
+ * @param onRemove Called when the enemy is removed from the encounter.
+ */
 @Composable
 private fun EnemyRow(
     enemy: CombatNPC,
@@ -587,6 +707,14 @@ private fun EnemyRow(
   }
 }
 
+/**
+ * Renders a compact enabled or disabled control for changing an enemy's hit points.
+ *
+ * @param symbol Displayed control symbol, such as "+" or "−".
+ * @param enabled Whether the control accepts clicks.
+ * @param onClick Called when the enabled control is clicked.
+ * @param modifier Layout and test modifier for the control.
+ */
 @Composable
 private fun HpControlButton(
     symbol: String,
@@ -616,6 +744,14 @@ private fun HpControlButton(
   }
 }
 
+/**
+ * Displays a lore document summary with controls to expand it or select it.
+ *
+ * @param document Lore document being summarized.
+ * @param expanded Whether the full section text is visible.
+ * @param onExpand Toggles the document's expanded state.
+ * @param onSelect Selects the document for editing or review.
+ */
 @Composable
 private fun LoreRow(
     document: LoreDocument,
@@ -664,6 +800,12 @@ private fun LoreRow(
   }
 }
 
+/**
+ * Collects enemy details and submits a valid [CombatNPC] to the caller.
+ *
+ * @param onDismiss Closes the dialog without adding an enemy.
+ * @param onAdd Receives the constructed enemy after validation.
+ */
 @Composable
 private fun AddEnemyDialog(onDismiss: () -> Unit, onAdd: (CombatNPC) -> Unit) {
   var name by rememberSaveable { mutableStateOf("") }
@@ -689,15 +831,30 @@ private fun AddEnemyDialog(onDismiss: () -> Unit, onAdd: (CombatNPC) -> Unit) {
             singleLine = true,
             modifier = Modifier.fillMaxWidth().testTag(C.Tag.game_gm_enemy_name),
         )
-        NumberField("HP", hp, { hp = it }, Modifier.fillMaxWidth())
-        NumberField("Max HP", maxHp, { maxHp = it }, Modifier.fillMaxWidth())
-        NumberField("AC", armorClass, { armorClass = it }, Modifier.fillMaxWidth())
+        NumberField(
+            "HP",
+            hp,
+            { hp = it },
+            Modifier.fillMaxWidth().testTag(C.Tag.game_gm_enemy_hp),
+        )
+        NumberField(
+            "Max HP",
+            maxHp,
+            { maxHp = it },
+            Modifier.fillMaxWidth().testTag(C.Tag.game_gm_enemy_max_hp),
+        )
+        NumberField(
+            "AC",
+            armorClass,
+            { armorClass = it },
+            Modifier.fillMaxWidth().testTag(C.Tag.game_gm_enemy_ac),
+        )
         OutlinedTextField(
             value = condition,
             onValueChange = { condition = it },
             label = { Text("Condition") },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().testTag(C.Tag.game_gm_enemy_condition),
         )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
           TextButton(onClick = onDismiss) { Text("Cancel") }
@@ -755,6 +912,11 @@ private fun AddEnemyDialog(onDismiss: () -> Unit, onAdd: (CombatNPC) -> Unit) {
   }
 }
 
+/**
+ * Checks that an enemy name and combat numbers satisfy the encounter constraints.
+ *
+ * @return `true` when the values can safely create a [CombatNPC].
+ */
 internal fun isValidEnemyInput(
     name: String,
     currentHp: Int?,
@@ -770,6 +932,14 @@ internal fun isValidEnemyInput(
         armorClass != null &&
         armorClass >= 0
 
+/**
+ * Renders a numeric-only text field used by the enemy dialog.
+ *
+ * @param label Field label.
+ * @param value Current text value.
+ * @param onValueChange Receives edited text.
+ * @param modifier Layout and test modifier for the field.
+ */
 @Composable
 private fun NumberField(
     label: String,
