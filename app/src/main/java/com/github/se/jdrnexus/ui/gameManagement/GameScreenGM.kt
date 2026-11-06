@@ -71,6 +71,7 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
 import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.resources.ScreenBottomBar
 
 @Composable
 fun GameScreenGM(
@@ -122,7 +123,12 @@ internal fun GameScreenGMContent(
   val selectedNpc = uiState.npcs.firstOrNull { it.id == selectedNpcId }
 
   Scaffold(
-      // bottomBar = { GameGMNavigationBar(onTabSelected) },
+      bottomBar = {
+        ScreenBottomBar(
+            selectedTab = "Campaigns",
+            onTabSelected = onTabSelected,
+        )
+      },
       containerColor = MaterialTheme.colorScheme.background,
       contentColor = MaterialTheme.colorScheme.onSurface,
       floatingActionButton = {
