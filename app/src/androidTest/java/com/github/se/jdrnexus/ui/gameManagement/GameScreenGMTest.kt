@@ -209,6 +209,7 @@ class GameScreenGMTest {
   fun npcListDisplaysNamesAndInformationDialog() {
     val npc = Npc("npc-1", "Eldrin", null, "A quiet guide.")
     setContent { GameScreenGMContent(GameViewModelGMUiState(npcs = listOf(npc))) }
+    scrollToItem(NPCS_ITEM)
     composeTestRule.onNodeWithTag(C.Tag.gameGmNpc(npc.id)).performClick()
     composeTestRule.onAllNodesWithText("Eldrin").assertCountEquals(2)
     composeTestRule.onNodeWithText("A quiet guide.").assertIsDisplayed()
