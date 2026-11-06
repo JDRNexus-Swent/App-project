@@ -1,6 +1,7 @@
 package com.github.se.jdrnexus.resources
 
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 // Like R, but C
 /**
@@ -56,6 +57,7 @@ object C {
     const val dice_offline_roll = "dice_offline_roll"
     const val dice_offline_error = "dice_offline_error"
     const val dice_offline_error_dismiss = "dice_offline_error_dismiss"
+    const val dice_offline_shake_toggle = "dice_offline_shake_toggle"
 
     /** Tag of the selection button for [diceName] (e.g. "D20"). */
     fun diceOfflineSelect(diceName: String) = "dice_offline_select_$diceName"
