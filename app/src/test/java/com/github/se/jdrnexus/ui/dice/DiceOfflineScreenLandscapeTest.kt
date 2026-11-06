@@ -50,14 +50,18 @@ class DiceOfflineScreenLandscapeTest {
 
   private var screenSize by mutableStateOf(LANDSCAPE_SIZES.first())
 
-  private fun setScreen(vm: DiceViewModel = DiceViewModel(DiceLogic(), diceRepository = null)) =
-      vm.also {
-        composeTestRule.setContent {
-          SampleAppTheme(darkTheme = true) {
-            Box(Modifier.size(screenSize)) { DiceOfflineScreen(diceViewModel = it) }
-          }
-        }
+  private fun setScreen(
+      vm: DiceViewModel = DiceViewModel(DiceLogic(), diceRepository = null),
+      onClose: () -> Unit = {},
+  ) = vm.also {
+    composeTestRule.setContent {
+      SampleAppTheme(darkTheme = true) {
+        Box(Modifier.size(screenSize)) { DiceOfflineScreen(diceViewModel = it, onClose = onClose) }
       }
+    }
+  }
+
+  private fun node(tag: String) = composeTestRule.onNodeWithTag(tag, useUnmergedTree = true)
 
   private fun bounds(tag: String) =
       composeTestRule.onNodeWithTag(tag, useUnmergedTree = true).getUnclippedBoundsInRoot()
@@ -238,7 +242,61 @@ class DiceOfflineScreenLandscapeTest {
     assertEquals(1, dismissCount)
   }
 
+  /** The landscape layout has its own close button, separate from the portrait top bar. */
+  @Test
+  fun closeButtonInLandscapeClosesTheRoller() {
+    var closeCount = 0
+    setScreen(onClose = { closeCount++ })
+    assertLandscapeLayout(screenSize)
+
+    node(C.Tag.dice_offline_close).performClick()
+
+    assertEquals(1, closeCount)
+  }
+
+  /** The landscape header shows the selected die and its range next to the title. */
+  @Test
+  fun landscapeHeaderFollowsTheSelectedDieAndTheModifier() {
+    val vm = setScreen()
+
+    node(C.Tag.diceOfflineSelect("D6")).performClick()
+    node(C.Tag.dice_offline_modifier_increase).performClick()
+    node(C.Tag.dice_offline_modifier_increase).performClick()
+    node(C.Tag.dice_offline_modifier_decrease).performClick()
+
+    node(C.Tag.dice_offline_selected_type).assertTextEquals("D6")
+    node(C.Tag.dice_offline_modifier_value).assertTextEquals("+1")
+    node(C.Tag.dice_offline_range).assertTextEquals("Range: 2 – 7")
+    assertEquals(DiceType.D6, vm.uiState.value.selectedDice)
+    assertEquals(1, vm.uiState.value.modifier)
+    assertLandscapeLayout(screenSize)
+  }
+
+  /** A sync error that arrives while the landscape layout is shown appears and can be dismissed. */
+  @Test
+  fun errorArrivingInLandscapeIsShownThenDismissed() {
+    var uiState by mutableStateOf(DiceUiState())
+    val vm = DismissCountingDiceVM(onDismissError = { uiState = uiState.copy(errorMessage = null) })
+    composeTestRule.setContent {
+      SampleAppTheme(darkTheme = true) {
+        Box(Modifier.size(screenSize)) {
+          DiceOfflineContent(uiState = uiState, diceViewModel = vm, onClose = {})
+        }
+      }
+    }
+    node(C.Tag.dice_offline_error).assertDoesNotExist()
+
+    uiState = uiState.copy(errorMessage = "Failed to sync roll")
+    node(C.Tag.dice_offline_error).assertIsDisplayed()
+    node(C.Tag.dice_offline_error_dismiss).performScrollTo().performClick()
+
+    node(C.Tag.dice_offline_error).assertDoesNotExist()
+    assertLandscapeLayout(screenSize)
+  }
+
   private fun assertInside(tag: String, inner: DpRect, outer: DpRect) {
+    assertTrue("$tag goes left of the screen: $inner in $outer", inner.left >= outer.left)
+    assertTrue("$tag goes above the screen: $inner in $outer", inner.top >= outer.top)
     assertTrue("$tag goes past the screen: $inner in $outer", inner.right <= outer.right)
     assertTrue("$tag goes below the screen: $inner in $outer", inner.bottom <= outer.bottom)
   }
@@ -286,8 +344,8 @@ class DiceOfflineScreenLandscapeTest {
     /** How much the die's share of the screen width may differ between phone sizes. */
     const val MAX_DIE_SHARE_SPREAD = 0.01f
 
-    /** Just after the screen's one-second roll animation. */
-    const val ROLL_ANIMATION_END_MILLIS = 1_100L
+    /** Just after the screen's roll animation, whatever its duration. */
+    const val ROLL_ANIMATION_END_MILLIS = ROLL_ANIMATION_MILLIS + 100L
 
     val CONTROLS =
         listOf(

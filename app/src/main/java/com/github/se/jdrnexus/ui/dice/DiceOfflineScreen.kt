@@ -138,8 +138,11 @@ private fun diceThemeColors(): DiceThemeColors {
   )
 }
 
-/** How long the die shows its rolling indicator before revealing the result. */
-private const val ROLL_ANIMATION_MILLIS = 1000L
+/**
+ * How long the die shows its rolling indicator before revealing the result. Internal so tests wait
+ * for the same duration as the screen.
+ */
+internal const val ROLL_ANIMATION_MILLIS = 1000L
 
 /**
  * Offline dice roller: lets the user pick a die, adjust the modifier and roll, without saving the
@@ -333,7 +336,13 @@ private fun DiceLandscapeControlsPanel(
             modifier = Modifier.weight(1f),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-          DiceTitleText(colors = colors)
+          Text(
+              text = "Dice Roller",
+              color = colors.primaryText,
+              fontFamily = FontFamily.Serif,
+              fontWeight = FontWeight.SemiBold,
+              fontSize = 30.sp,
+          )
           Row(
               verticalAlignment = Alignment.CenterVertically,
               horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -342,7 +351,9 @@ private fun DiceLandscapeControlsPanel(
             RangePill(uiState = uiState, colors = colors)
           }
         }
-        DiceCloseButton(colors = colors, onClose = onClose)
+        IconButton(onClick = onClose, modifier = Modifier.testTag(C.Tag.dice_offline_close)) {
+          Icon(Icons.Filled.Close, contentDescription = "Close", tint = colors.secondaryText)
+        }
       }
 
       DieResultText(uiState = uiState, colors = colors)
@@ -488,30 +499,6 @@ private fun DiceHeader(uiState: DiceUiState, colors: DiceThemeColors, onClose: (
 
   Spacer(Modifier.height(8.dp))
   RangePill(uiState = uiState, colors = colors)
-}
-
-/** Button closing the dice roller from the landscape layout. */
-@Composable
-private fun DiceCloseButton(
-    colors: DiceThemeColors,
-    onClose: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-  IconButton(onClick = onClose, modifier = modifier.testTag(C.Tag.dice_offline_close)) {
-    Icon(Icons.Filled.Close, contentDescription = "Close", tint = colors.secondaryText)
-  }
-}
-
-/** The "Dice Roller" title of the landscape layout. */
-@Composable
-private fun DiceTitleText(colors: DiceThemeColors) {
-  Text(
-      text = "Dice Roller",
-      color = colors.primaryText,
-      fontFamily = FontFamily.Serif,
-      fontWeight = FontWeight.SemiBold,
-      fontSize = 30.sp,
-  )
 }
 
 /** Name of the selected die, e.g. "D20". */

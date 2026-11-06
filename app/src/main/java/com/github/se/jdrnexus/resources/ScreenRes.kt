@@ -120,7 +120,7 @@ fun darkFieldColors(
 /**
  * Narrowest screen that gets a side-by-side landscape layout: the smallest common phone in
  * landscape (640x360dp), where both panes still keep 48dp touch targets. Narrower ones, such as a
- * phone in split screen, keep the portrait layout, which scrolls.
+ * phone in split screen, keep the portrait layout.
  */
 val MIN_LANDSCAPE_LAYOUT_WIDTH = 640.dp
 
