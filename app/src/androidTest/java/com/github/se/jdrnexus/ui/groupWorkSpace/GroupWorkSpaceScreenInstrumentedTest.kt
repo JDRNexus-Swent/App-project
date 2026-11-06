@@ -72,6 +72,9 @@ class GroupWorkSpaceScreenInstrumentedTest {
     // Verify the player role and empty workspace state.
     composeTestRule.onNodeWithText("PLAYER").assertIsDisplayed()
     composeTestRule.onNodeWithText("No files yet").assertIsDisplayed()
+
+    // Verify the breadcrumb keeps the spaces around its separator.
+    composeTestRule.onNodeWithText("  ›  Ashen Realms").assertIsDisplayed()
   }
 
   // Verifies the shared bottom navigation destinations and selection behavior.
