@@ -5,9 +5,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -44,24 +43,18 @@ class HomeScreenS1Test {
   }
 
   @Test
-  fun displaysTitleProfilePlaceholderSectionsAndAdventures() {
+  fun displaysTitleProfileQuicktoolsAndSharedBottomBar() {
     composeTestRule.setContent { SampleAppTheme { HomeScreen(createViewModel()) } }
 
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.PROFILE_PIC).assertIsDisplayed()
-    composeTestRule.onNodeWithTag(TestTags.OBJECTSROW).assertExists()
-    composeTestRule.onNodeWithTag(TestTags.ADVENTURES).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.QUICKTOOLS).assertIsDisplayed()
-
-    TestTags.placeholderObjects.forEachIndexed { index, ttag ->
-      Assert.assertTrue(composeTestRule.onAllNodesWithTag(ttag).fetchSemanticsNodes().isNotEmpty())
-      Assert.assertTrue(
-          composeTestRule
-              .onAllNodesWithText("Adventure ${index + 1}")
-              .fetchSemanticsNodes()
-              .isNotEmpty()
-      )
-    }
+    composeTestRule.onNodeWithText("More features coming soon").assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(com.github.se.jdrnexus.resources.C.Tag.shared_bottom_bar)
+        .assertIsDisplayed()
+    composeTestRule.onNodeWithText("Local Adventures").assertIsNotDisplayed()
+    composeTestRule.onNodeWithText("Adventure 1").assertIsNotDisplayed()
   }
 
   @Test
@@ -81,7 +74,14 @@ class HomeScreenS1Test {
     TestTags.BUTTONS.forEachIndexed { index, tag ->
       val button = composeTestRule.onNodeWithTag(tag)
       button.assertIsDisplayed()
-      composeTestRule.onNodeWithText(listOf("Dice", "Group Management")[index]).assertIsDisplayed()
+      composeTestRule
+          .onNodeWithTag(
+              listOf(TestTags.DICE_ICON, TestTags.GROUPMANAGEMENT_ICON)[index],
+              useUnmergedTree = true,
+          )
+          .assertIsDisplayed()
+      composeTestRule.onNodeWithText("Dice").assertIsNotDisplayed()
+      composeTestRule.onNodeWithText("Group Management").assertIsNotDisplayed()
       val bounds = button.fetchSemanticsNode().boundsInRoot
       Assert.assertEquals(bounds.width, bounds.height, 1f)
       button.performClick()
@@ -133,6 +133,8 @@ class HomeScreenS1Test {
     }
 
     composeTestRule.onNodeWithTag(TestTags.PSPACEBUTTON).performClick()
+    composeTestRule.onNodeWithTag(TestTags.PSPACE_ICON, useUnmergedTree = true).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Personal Space").assertIsNotDisplayed()
 
     Assert.assertTrue(clicked)
   }

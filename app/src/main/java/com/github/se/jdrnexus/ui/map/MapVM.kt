@@ -46,7 +46,15 @@ enum class MapStatusType {
   PERMISSION_DENIED,
 }
 
-/** A typed message shown over the map, with retry support when appropriate. */
+/**
+ * A typed message shown over the map, with retry support when appropriate.
+ *
+ * @property canRetry whether the screen should offer a retry. [MapVM] has no generic retry: the
+ *   screen repeats the action of [operation]. [MapOperation.GAMES] calls [MapVM.loadNearbyGames],
+ *   [MapOperation.CITY_SEARCH] calls [MapVM.searchCity], and [MapOperation.DEVICE_LOCATION]
+ *   launches the permission request again. That request returns at once when the permission is
+ *   already granted, so [MapVM.onLocationPermissionResult] always receives the real permission.
+ */
 data class MapStatus(
     val operation: MapOperation,
     val type: MapStatusType,

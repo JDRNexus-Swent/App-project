@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.resources
 
 import androidx.compose.foundation.Canvas
@@ -6,7 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -17,6 +17,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.github.se.jdrnexus.R
+import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 
 /**
  * * Reusable JDRNexus logo used on the authentication screens. * The logo is drawn using Compose
@@ -29,7 +30,7 @@ import com.github.se.jdrnexus.R
 fun JdrNexusLogo(
     modifier: Modifier = Modifier,
 ) {
-  val isDarkTheme = MaterialTheme.colorScheme.background == Color(0xFF1C1816)
+  val isDarkTheme = LocalAppUiColors.current.isDarkTheme
 
   val logo =
       if (isDarkTheme) {

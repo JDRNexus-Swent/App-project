@@ -4,6 +4,8 @@ package com.github.se.jdrnexus
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +30,7 @@ import com.github.se.jdrnexus.model.personalSpace.GroupRepositoryFirestore
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.resources.showComingSoon
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.authentication.SignInScreen
 import com.github.se.jdrnexus.ui.authentication.SignUpScreen
@@ -44,6 +47,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    enableEdgeToEdge()
     setContent {
       SampleAppTheme {
         Surface(
@@ -74,7 +78,7 @@ enum class AllRoutes {
  */
 @Composable
 fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
-  val altAuthViewModel = authViewModel ?: viewModel(factory = AuthViewModel.Factory)
+  val activeAuthViewModel = authViewModel ?: viewModel(factory = AuthViewModel.Factory)
   val context = LocalContext.current
   val credentialManager = remember(context) { CredentialManager.create(context) }
   val navController = rememberNavController()
@@ -82,12 +86,16 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
   // Create an editFileViewModel to be able to retreive the file for the edition screens
   val editFileViewModel: EditFileViewModel = viewModel()
 
-  Scaffold { innerPadding ->
+  Scaffold(
+      containerColor = MaterialTheme.colorScheme.background,
+      // Let each destination handle its own system-bar insets.
+      contentWindowInsets = WindowInsets(0),
+  ) { innerPadding ->
     NavHost(
         navController = navController,
         // Use instead of deriving it from the current destination.
         startDestination = AllRoutes.SignIn.name,
-        modifier = Modifier.padding(innerPadding),
+        modifier = Modifier.fillMaxSize().padding(innerPadding),
     ) {
       composable(route = AllRoutes.SignIn.name) {
         val onSignUp = {
@@ -105,23 +113,12 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
             launchSingleTop = true
           }
         }
-        if (authViewModel == null) {
-          SignInScreen(
-              signInViewModel = altAuthViewModel,
-              credentialManager = credentialManager,
-              onSignUp = onSignUp,
-              onSignInSuccess = onSignInSuccess,
-              forgotPassword = {},
-          )
-        } else {
-          SignInScreen(
-              signInViewModel = authViewModel,
-              credentialManager = credentialManager,
-              onSignUp = onSignUp,
-              onSignInSuccess = onSignInSuccess,
-              forgotPassword = {},
-          )
-        }
+        SignInScreen(
+            signInViewModel = activeAuthViewModel,
+            credentialManager = credentialManager,
+            onSignUp = onSignUp,
+            onSignInSuccess = onSignInSuccess,
+        )
       }
 
       composable(route = AllRoutes.Home.name) {
@@ -135,23 +132,13 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
         val onPersonalSpaceClicked = { navController.navigate(AllRoutes.PersoSpace.name) }
         val onDiceClicked = { navController.navigate(AllRoutes.Dice.name) }
         val onGroupManagementClicked = { navController.navigate(AllRoutes.GroupManagement.name) }
-        if (authViewModel == null) {
-          HomeScreen(
-              viewModel = altAuthViewModel,
-              onLogout = onLogout,
-              onPersonalSpaceClick = onPersonalSpaceClicked,
-              onDiceClick = onDiceClicked,
-              onGroupManagementClick = onGroupManagementClicked,
-          )
-        } else {
-          HomeScreen(
-              viewModel = authViewModel,
-              onLogout = onLogout,
-              onPersonalSpaceClick = onPersonalSpaceClicked,
-              onDiceClick = onDiceClicked,
-              onGroupManagementClick = onGroupManagementClicked,
-          )
-        }
+        HomeScreen(
+            viewModel = activeAuthViewModel,
+            onLogout = onLogout,
+            onPersonalSpaceClick = onPersonalSpaceClicked,
+            onDiceClick = onDiceClicked,
+            onGroupManagementClick = onGroupManagementClicked,
+        )
       }
 
       composable(route = AllRoutes.SignUp.name) {
@@ -168,19 +155,11 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
             navController.popBackStack(AllRoutes.SignIn.name, inclusive = false)
           }
         }
-        if (authViewModel == null) {
-          SignUpScreen(
-              signUpViewModel = altAuthViewModel,
-              onRegister = onRegister,
-              onSignInScreen = onSignInScreen,
-          )
-        } else {
-          SignUpScreen(
-              signUpViewModel = authViewModel,
-              onRegister = onRegister,
-              onSignInScreen = onSignInScreen,
-          )
-        }
+        SignUpScreen(
+            signUpViewModel = activeAuthViewModel,
+            onRegister = onRegister,
+            onSignInScreen = onSignInScreen,
+        )
       }
 
       composable(route = AllRoutes.PersoSpace.name) {
@@ -200,6 +179,14 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
             onCreateFile = { fileId ->
               editFileViewModel.loadFile(fileId)
               navController.navigate(AllRoutes.EditChar.name)
+            },
+            onTabSelected = { tab ->
+              when (tab) {
+                "Home" -> navController.popBackStack(AllRoutes.Home.name, false)
+                "Campaigns" -> navController.navigate(AllRoutes.GroupManagement.name)
+                "Files" -> Unit
+                "Map" -> showComingSoon(context, "Map")
+              }
             },
         )
       }
@@ -224,11 +211,14 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
             )
         GameManagementScreen(
             gameManagementViewModel = gameManagementViewModel,
-            onEnterWorkspace = {},
+            onEnterWorkspace = { showComingSoon(context, "Workspace") },
+            onManageGroup = { showComingSoon(context, "Group management") },
             onTabSelected = { tab ->
               when (tab) {
                 "Home" -> navController.popBackStack()
+                "Campaigns" -> Unit
                 "Files" -> navController.navigate(AllRoutes.PersoSpace.name)
+                "Map" -> showComingSoon(context, "Map")
               }
             },
         )

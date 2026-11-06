@@ -3,7 +3,6 @@ package com.github.se.jdrnexus
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,13 +19,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -35,11 +32,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -58,43 +53,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.isContainer
+import com.github.se.jdrnexus.resources.AppTopBar
+import com.github.se.jdrnexus.resources.ScreenBottomBar
+import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import com.github.se.jdrnexus.viewmodel.LoadState
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
-
-private data class PersonalSpaceThemeColors(
-    val backgroundColor: Color,
-    val cardColor: Color,
-    val iconBackground: Color,
-    val primaryText: Color,
-    val secondaryText: Color,
-    val borderColor: Color,
-    val accentColor: Color,
-    val floatingActionContentColor: Color,
-)
-
-private val darkPersonalSpaceTheme =
-    PersonalSpaceThemeColors(
-        backgroundColor = Color(0xFF17100D),
-        cardColor = Color(0xFF2C211B),
-        iconBackground = Color(0xFF1C140F),
-        primaryText = Color(0xFFE9DDD2),
-        secondaryText = Color(0xFFA98E79),
-        borderColor = Color(0xFF705E50),
-        accentColor = Color(0xFFE2BC32),
-        floatingActionContentColor = Color(0xFF17100D),
-    )
-
-private val lightPersonalSpaceTheme =
-    PersonalSpaceThemeColors(
-        backgroundColor = Color(0xFFF5E9DE),
-        cardColor = Color(0xFFE4D5C8),
-        iconBackground = Color(0xFFF7EDE4),
-        primaryText = Color(0xFF33251D),
-        secondaryText = Color(0xFF96745E),
-        borderColor = Color(0xFFB9A08D),
-        accentColor = Color(0xFF704222),
-        floatingActionContentColor = Color.White,
-    )
 
 @Composable
 fun PersonalSpaceScreen(
@@ -102,34 +65,46 @@ fun PersonalSpaceScreen(
     personalSpaceViewModel: PersonalSpaceViewModel = viewModel(),
     onDocumentClicked: (JDRFile) -> Unit,
     onCreateFile: (String) -> Unit,
+    onTabSelected: (String) -> Unit,
 ) {
   val uiState by personalSpaceViewModel.uiState.collectAsState()
   val personalSpaceItems = uiState.items
 
-  val darkTheme = isSystemInDarkTheme()
-  val themeColors = if (darkTheme) darkPersonalSpaceTheme else lightPersonalSpaceTheme
-  val backgroundColor = themeColors.backgroundColor
-  val cardColor = themeColors.cardColor
+  val themeColors = LocalAppUiColors.current
+  val cardColor = themeColors.surface
   val iconBackground = themeColors.iconBackground
   val primaryText = themeColors.primaryText
   val secondaryText = themeColors.secondaryText
-  val borderColor = themeColors.borderColor
-  val accentColor = themeColors.accentColor
+  val borderColor = themeColors.outline
+  val accentColor = themeColors.accent
 
   Scaffold(
-      containerColor = backgroundColor,
+      containerColor = themeColors.background,
+      topBar = {
+        AppTopBar(
+            title = uiState.newFolderName.ifEmpty { "Personal Space" },
+            onBack = {
+              if (uiState.canNavigateUp) {
+                personalSpaceViewModel.onNavigateUp()
+              } else {
+                onBackButton()
+              }
+            },
+        )
+      },
+      bottomBar = { ScreenBottomBar(selectedTab = "Files", onTabSelected = onTabSelected) },
       floatingActionButton = {
         Box {
           FloatingActionButton(
               onClick = personalSpaceViewModel::onAddClicked,
               shape = RoundedCornerShape(50),
               containerColor = accentColor,
-              contentColor = themeColors.floatingActionContentColor,
+              contentColor = themeColors.accentContent,
           ) {
             Icon(
                 imageVector = Icons.Filled.Add,
                 contentDescription = "Add item",
-                tint = themeColors.floatingActionContentColor,
+                tint = themeColors.accentContent,
             )
           }
           DropdownMenu(
@@ -147,59 +122,9 @@ fun PersonalSpaceScreen(
           }
         }
       },
-      bottomBar = {
-        Surface(
-            modifier = Modifier.fillMaxWidth().height(80.dp),
-            color = cardColor,
-            border = BorderStroke(0.5.dp, borderColor),
-        ) {}
-      },
   ) { contentPadding ->
     Column(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
       Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-          IconButton(
-              onClick = {
-                if (uiState.canNavigateUp) {
-                  personalSpaceViewModel.onNavigateUp()
-                } else {
-                  onBackButton()
-                }
-              },
-          ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = accentColor,
-            )
-          }
-          Spacer(modifier = Modifier.width(16.dp))
-          Text(
-              text = "My Space",
-              color = secondaryText,
-              fontSize = 12.sp,
-          )
-          Spacer(modifier = Modifier.width(10.dp))
-          Text(text = "›", color = secondaryText, fontSize = 19.sp)
-          Spacer(modifier = Modifier.width(10.dp))
-          Text(
-              text = uiState.newFolderName.ifEmpty { "Personal Space" },
-              color = primaryText,
-              fontSize = 12.sp,
-              maxLines = 1,
-              overflow = TextOverflow.Ellipsis,
-          )
-          Spacer(modifier = Modifier.weight(1f))
-          Icon(
-              imageVector = Icons.Filled.Search,
-              contentDescription = "Search",
-              tint = accentColor,
-          )
-        }
-
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = uiState.newFolderName.ifEmpty { "My Space" },

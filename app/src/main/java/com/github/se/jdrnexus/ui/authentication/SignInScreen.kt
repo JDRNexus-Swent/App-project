@@ -65,6 +65,7 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
 import com.github.se.jdrnexus.resources.JdrNexusLogo
 import com.github.se.jdrnexus.resources.darkFieldColors
+import com.github.se.jdrnexus.resources.showComingSoon
 
 @Composable
 fun SignInScreen(
@@ -72,7 +73,7 @@ fun SignInScreen(
     credentialManager: CredentialManager = CredentialManager.create(LocalContext.current),
     onSignInSuccess: () -> Unit = {},
     onSignUp: () -> Unit = {},
-    forgotPassword: () -> Unit = {},
+    forgotPassword: (() -> Unit)? = null,
 ) {
   val uiState by signInViewModel.uiState.collectAsState()
   // Get the colors defined by the application's Material theme.
@@ -86,7 +87,10 @@ fun SignInScreen(
 
   val isLoading = uiState.status is AuthStatus.Loading
   val isAuthenticationLocked = isLoading || uiState.status is AuthStatus.Success
-  val errorMessage = (uiState.status as? AuthStatus.Error)?.message
+  val errorMessage =
+      (uiState.status as? AuthStatus.Error)?.message?.takeUnless {
+        it == uiState.emailError || it == uiState.passwordError
+      }
 
   // Keeps track of whether the password should be visible or masked.
   var passwordVisible by remember { mutableStateOf(false) }
@@ -187,6 +191,8 @@ fun SignInScreen(
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
+          isError = uiState.emailError != null,
+          supportingText = { uiState.emailError?.let { error -> Text(text = error) } },
       )
       Spacer(modifier = Modifier.height(20.dp))
 
@@ -243,13 +249,16 @@ fun SignInScreen(
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
-          isError = errorMessage != null,
-          supportingText = { errorMessage?.let { error -> Text(text = error) } },
+          isError = uiState.passwordError != null,
+          supportingText = { uiState.passwordError?.let { error -> Text(text = error) } },
       )
+      errorMessage?.let { error ->
+        Text(text = error, modifier = Modifier.fillMaxWidth(), color = colors.error)
+      }
 
       // button in case of forgotten password
       TextButton(
-          onClick = forgotPassword,
+          onClick = { forgotPassword?.invoke() ?: showComingSoon(context, "Password recovery") },
           enabled = !isAuthenticationLocked,
           modifier = Modifier.align(Alignment.End).testTag(C.Tag.sign_in_forgot_password),
       ) {

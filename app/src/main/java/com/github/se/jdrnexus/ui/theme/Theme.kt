@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -5,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 
 private val DarkColorScheme =
@@ -46,9 +48,13 @@ fun SampleAppTheme(
         else -> LightColorScheme
       }
 
-  MaterialTheme(
-      colorScheme = colorScheme,
-      typography = Typography,
-      content = content,
-  )
+  CompositionLocalProvider(
+      LocalAppUiColors provides if (darkTheme) AppUiColors.Dark else AppUiColors.Light
+  ) {
+    MaterialTheme(
+        colorScheme = colorScheme,
+        typography = Typography,
+        content = content,
+    )
+  }
 }
