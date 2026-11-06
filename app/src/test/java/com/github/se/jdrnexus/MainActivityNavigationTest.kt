@@ -1,28 +1,39 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.model.personalSpace.GroupRepository
+import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
+import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
+import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
+import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOf
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -168,6 +179,41 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.DICEBUTTON).assertIsDisplayed().performClick()
     composeTestRule.onNodeWithTag(C.Tag.dice_offline_screen).assertIsDisplayed()
+  }
+
+  @Test
+  fun gameManagementTabsReturnHomeAndOpenPersonalSpace() {
+    val repository = FakeAuthRepository()
+    val groupRepository =
+        mockk<GroupRepository> { every { getUserGroups(any()) } returns flowOf(emptyList()) }
+    val workspaceRepository =
+        mockk<WorkspaceRepository> {
+          every { getPersonalRootFiles(any()) } returns flowOf(emptyList())
+        }
+    val authViewModel = AuthViewModel(repository)
+    val gameManagementViewModel = GameManagementViewModel(groupRepository, repository)
+    val personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, repository)
+    composeTestRule.setContent {
+      JDRNexusApp(
+          authViewModel = authViewModel,
+          gameManagementViewModel = gameManagementViewModel,
+          personalSpaceViewModel = personalSpaceViewModel,
+      )
+    }
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    waitForTag(TestTags.TITLE)
+
+    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+    waitForTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
+    composeTestRule.onNodeWithText("Home").performClick()
+    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+    waitForTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
+    composeTestRule.onNodeWithText("Files").performClick()
+    composeTestRule.onAllNodesWithText("My Space").assertCountEquals(2)
   }
 
   private fun showApp(repository: FakeAuthRepository = FakeAuthRepository()) {

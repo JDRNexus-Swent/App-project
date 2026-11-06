@@ -39,6 +39,7 @@ import com.github.se.jdrnexus.ui.home.HomeScreen
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
+import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 import com.google.firebase.firestore.FirebaseFirestore
 
 class MainActivity : ComponentActivity() {
@@ -69,11 +70,15 @@ enum class AllRoutes {
 }
 
 /**
- * The optional ViewModel injection lets navigation tests use the production screens with a
- * deterministic fake auth repository instead of Firebase.
+ * Optional ViewModel injection lets navigation tests use the production screens with deterministic
+ * fake repositories instead of Firebase.
  */
 @Composable
-fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
+fun JDRNexusApp(
+    authViewModel: AuthViewModel? = null,
+    gameManagementViewModel: GameManagementViewModel? = null,
+    personalSpaceViewModel: PersonalSpaceViewModel? = null,
+) {
   val altAuthViewModel = authViewModel ?: viewModel(factory = AuthViewModel.Factory)
   val context = LocalContext.current
   val credentialManager = remember(context) { CredentialManager.create(context) }
@@ -188,6 +193,7 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
 
         PersonalSpaceScreen(
             onBackButton = { popBackStack() },
+            personalSpaceViewModel = personalSpaceViewModel ?: viewModel(),
             onDocumentClicked = onDocumentClicked,
             onCreateFile = { fileId ->
               editFileViewModel.loadFile(fileId)
@@ -199,21 +205,22 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
       composable(route = AllRoutes.Dice.name) { DiceOfflineScreen(onClose = { popBackStack() }) }
 
       composable(route = AllRoutes.GroupManagement.name) {
-        val gameManagementViewModel: GameManagementViewModel =
-            viewModel(
-                factory =
-                    viewModelFactory {
-                      initializer {
-                        GameManagementViewModel(
-                            groupRepository =
-                                GroupRepositoryFirestore(FirebaseFirestore.getInstance()),
-                            authRepository = AuthRepositoryFirebase(),
-                        )
-                      }
-                    }
-            )
+        val activeGameManagementViewModel =
+            gameManagementViewModel
+                ?: viewModel(
+                    factory =
+                        viewModelFactory {
+                          initializer {
+                            GameManagementViewModel(
+                                groupRepository =
+                                    GroupRepositoryFirestore(FirebaseFirestore.getInstance()),
+                                authRepository = AuthRepositoryFirebase(),
+                            )
+                          }
+                        }
+                )
         GameManagementScreen(
-            gameManagementViewModel = gameManagementViewModel,
+            gameManagementViewModel = activeGameManagementViewModel,
             onEnterWorkspace = {},
             onTabSelected = { tab ->
               when (tab) {
