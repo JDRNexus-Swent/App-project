@@ -68,19 +68,20 @@ fun HomeScreen(
 ) {
 
   val uiState by viewModel.uiState.collectAsState()
-  var logoutRequested by remember { mutableStateOf(false) }
+  val logoutRequested = remember { mutableStateOf(false) }
+  val canNavigate = { !logoutRequested.value && uiState.status !is AuthStatus.Loading }
   val context = LocalContext.current
   val colors = LocalAppUiColors.current
 
   LaunchedEffect(uiState.status) {
     when (uiState.status) {
       AuthStatus.Idle -> {
-        if (logoutRequested) {
-          logoutRequested = false
+        if (logoutRequested.value) {
+          logoutRequested.value = false
           onLogout()
         }
       }
-      is AuthStatus.Error -> logoutRequested = false
+      is AuthStatus.Error -> logoutRequested.value = false
       else -> Unit
     }
   }
@@ -104,9 +105,12 @@ fun HomeScreen(
             trailingContent = {
               TextButton(
                   onClick = {
-                    logoutRequested = true
-                    viewModel.signOut()
+                    if (!logoutRequested.value) {
+                      logoutRequested.value = true
+                      viewModel.signOut()
+                    }
                   },
+                  enabled = !logoutRequested.value && uiState.status !is AuthStatus.Loading,
                   modifier = Modifier.testTag(TestTags.LOGOUT),
               ) {
                 Text("Log out")
@@ -117,12 +121,15 @@ fun HomeScreen(
       bottomBar = {
         ScreenBottomBar(
             selectedTab = "Home",
+            enabled = canNavigate(),
             onTabSelected = { tab ->
-              when (tab) {
-                "Home" -> Unit
-                "Campaigns" -> onGroupManagementClick()
-                "Files" -> onPersonalSpaceClick()
-                "Map" -> showComingSoon(context, "Map")
+              if (canNavigate()) {
+                when (tab) {
+                  "Home" -> Unit
+                  "Campaigns" -> onGroupManagementClick()
+                  "Files" -> onPersonalSpaceClick()
+                  "Map" -> showComingSoon(context, "Map")
+                }
               }
             },
         )
@@ -151,7 +158,8 @@ fun HomeScreen(
           horizontalArrangement = Arrangement.spacedBy(12.dp),
       ) {
         Button(
-            onClick = onDiceClick,
+            onClick = { if (canNavigate()) onDiceClick() },
+            enabled = canNavigate(),
             modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.DICEBUTTON),
             shape = RoundedCornerShape(8.dp),
             colors =
@@ -167,7 +175,8 @@ fun HomeScreen(
           )
         }
         Button(
-            onClick = onGroupManagementClick,
+            onClick = { if (canNavigate()) onGroupManagementClick() },
+            enabled = canNavigate(),
             modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.GROUPMANAGEMENTBUTTON),
             shape = RoundedCornerShape(8.dp),
             colors =
@@ -183,7 +192,8 @@ fun HomeScreen(
           )
         }
         Button(
-            onClick = onPersonalSpaceClick,
+            onClick = { if (canNavigate()) onPersonalSpaceClick() },
+            enabled = canNavigate(),
             modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.PSPACEBUTTON),
             shape = RoundedCornerShape(8.dp),
             colors =
