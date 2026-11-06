@@ -7,7 +7,6 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -27,6 +26,8 @@ import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Rule
@@ -62,11 +63,13 @@ class GameScreenGMTest {
   @Test
   fun enemyDetailsAndCombatCallbacksAreHandled() {
     val enemy = testEnemy()
+    val healthy = testEnemy(id = "enemy-2", name = "Troll", hp = 30, maxHp = 30)
+    val dying = testEnemy(id = "enemy-3", name = "Bandit", hp = 0, maxHp = 11)
     val hpChanges = mutableListOf<Pair<String, Int>>()
     var removed = ""
     setContent {
       GameScreenGMContent(
-          GameViewModelGMUiState(enemies = listOf(enemy)),
+          GameViewModelGMUiState(enemies = listOf(enemy, healthy, dying)),
           onUpdateEnemyHp = { id, change -> hpChanges += id to change },
           onRemoveEnemy = { removed = it },
       )
@@ -82,6 +85,10 @@ class GameScreenGMTest {
     composeTestRule.onNodeWithTag(C.Tag.gameGmEnemyRemove(enemy.id)).performClick()
     assertEquals(listOf(enemy.id to 1, enemy.id to -1), hpChanges)
     assertEquals(enemy.id, removed)
+    // Full and empty HP disable the control that would overshoot.
+    composeTestRule.onNodeWithTag(C.Tag.gameGmEnemyIncrease(healthy.id)).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.gameGmEnemyDecrease(dying.id)).assertIsNotEnabled()
+    composeTestRule.onAllNodesWithText("Normal · AC 14").assertCountEquals(2)
   }
 
   // Verifies active combat exposes and dispatches next-round and end-combat actions.
@@ -117,10 +124,12 @@ class GameScreenGMTest {
     composeTestRule.onNodeWithTag(C.Tag.game_gm_add_enemy).performClick()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_add_enemy_dialog).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_enemy_name).performTextInput("Orc")
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_enemy_condition).performTextInput("Stunned")
     composeTestRule.onNodeWithText("Add").assertIsEnabled().performClick()
     assertEquals("Orc", added?.name)
     assertEquals(10, added?.hp)
     assertEquals(10, added?.maxHp)
+    assertEquals("condition_stunned", added?.character?.actions?.single()?.actionID)
     composeTestRule.onAllNodesWithTag(C.Tag.game_gm_add_enemy_dialog).assertCountEquals(0)
 
     composeTestRule.onNodeWithTag(C.Tag.game_gm_add_enemy).performClick()
@@ -140,6 +149,17 @@ class GameScreenGMTest {
     composeTestRule.onNodeWithTag(C.Tag.game_gm_enemy_name).performTextInput("Orc")
     composeTestRule.onNodeWithTag(C.Tag.game_gm_enemy_max_hp).performTextClearance()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_enemy_max_hp).performTextInput("0")
+    composeTestRule.onNodeWithText("Add").assertIsNotEnabled()
+    // Current HP above max HP, then a negative AC, are rejected as well.
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_enemy_max_hp).performTextClearance()
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_enemy_max_hp).performTextInput("10")
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_enemy_hp).performTextClearance()
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_enemy_hp).performTextInput("11")
+    composeTestRule.onNodeWithText("Add").assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_enemy_hp).performTextClearance()
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_enemy_hp).performTextInput("5")
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_enemy_ac).performTextClearance()
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_enemy_ac).performTextInput("-1")
     composeTestRule.onNodeWithText("Add").assertIsNotEnabled()
     assertFalse(isValidEnemyInput("Orc", 10, 0, 10))
   }
@@ -296,6 +316,54 @@ class GameScreenGMTest {
     assertEquals(1, nextRound)
   }
 
+  // Verifies the ViewModel-connected screen renders the state and forwards every action.
+  @Test
+  fun screenForwardsActionsToViewModel() {
+    val viewModel =
+        FakeGameViewModelGM(
+            GameViewModelGMUiState(enemies = listOf(testEnemy()), error = "Unable to load")
+        )
+    var selectedTab = ""
+    var diceClicks = 0
+    setContent {
+      GameScreenGM(
+          viewModel = viewModel,
+          onTabSelected = { selectedTab = it },
+          onDiceClick = { diceClicks++ },
+          groupName = "Sunken Crown",
+      )
+    }
+
+    composeTestRule.onNodeWithText("Sunken Crown").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_start_combat).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.gameGmEnemyIncrease("enemy-1")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.gameGmEnemyRemove("enemy-1")).performClick()
+    viewModel.state.value = viewModel.state.value.copy(isCombatActive = true)
+    scrollToItem(COMBAT_ITEM)
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_next_round).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_end_combat).performClick()
+    scrollToItem(ACTIVITY_ITEM) // the error item takes the slot before the activity card
+    composeTestRule.onNodeWithText("Retry").performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_dice).performClick()
+
+    assertEquals(
+        listOf(
+            "startCombat",
+            "updateEnemyHP(enemy-1, 1)",
+            "removeEnemy(enemy-1)",
+            "nextRound",
+            "endCombat",
+            "loadActivityFeed",
+            "loadNPCs",
+            "loadLoreDocuments",
+        ),
+        viewModel.calls,
+    )
+    assertEquals("Map", selectedTab)
+    assertEquals(1, diceClicks)
+  }
+
   private fun setContent(content: @Composable () -> Unit) {
     composeTestRule.setContent { SampleAppTheme { content() } }
   }
@@ -309,15 +377,25 @@ class GameScreenGMTest {
     composeTestRule.onNodeWithTag(C.Tag.game_gm_list).performScrollToIndex(index)
   }
 
-  private fun testEnemy() =
+  private fun testEnemy(
+      id: String = "enemy-1",
+      name: String = "Goblin",
+      hp: Int = 7,
+      maxHp: Int = 12,
+  ) =
       CombatNPC(
-          id = "enemy-1",
+          id = id,
           character =
               CharacterFile(
-                  name = "Goblin",
+                  name = name,
                   stats = listOf(CharacterStat("armorClass", "Armor Class", 14.0)),
-                  actions = listOf(CharacterAction("condition_poisoned", "Poisoned", "")),
-                  hp = CharacterHealthPoints(7, 12),
+                  // Only the default enemy carries a condition, so the "Normal" fallback is shown
+                  // too.
+                  actions =
+                      if (id == "enemy-1")
+                          listOf(CharacterAction("condition_poisoned", "Poisoned", ""))
+                      else emptyList(),
+                  hp = CharacterHealthPoints(hp, maxHp),
               ),
       )
 
@@ -331,4 +409,95 @@ class GameScreenGMTest {
               ),
           isShared = true,
       )
+
+  /** Records every call the screen makes; the state is set by the test, never derived. */
+  private class FakeGameViewModelGM(initial: GameViewModelGMUiState) : GameViewModelGM {
+    val state = MutableStateFlow(initial)
+    val calls = mutableListOf<String>()
+    override val uiState: StateFlow<GameViewModelGMUiState> = state
+
+    override fun addEnemy(enemy: CombatNPC) {
+      calls += "addEnemy(${enemy.id})"
+    }
+
+    override fun removeEnemy(enemyId: String) {
+      calls += "removeEnemy($enemyId)"
+    }
+
+    override fun updateEnemyHP(enemyId: String, change: Int) {
+      calls += "updateEnemyHP($enemyId, $change)"
+    }
+
+    override fun nextRound() {
+      calls += "nextRound"
+    }
+
+    override fun startCombat() {
+      calls += "startCombat"
+    }
+
+    override fun endCombat() {
+      calls += "endCombat"
+    }
+
+    override fun loadActivityFeed() {
+      calls += "loadActivityFeed"
+    }
+
+    override fun observeActivityFeed() {
+      calls += "observeActivityFeed"
+    }
+
+    override fun loadNPCs() {
+      calls += "loadNPCs"
+    }
+
+    override fun addNPC(npc: Npc) {
+      calls += "addNPC(${npc.id})"
+    }
+
+    override fun updateNPC(npcId: String, updatedNPC: Npc) {
+      calls += "updateNPC($npcId)"
+    }
+
+    override fun removeNPC(npcId: String) {
+      calls += "removeNPC($npcId)"
+    }
+
+    override fun loadLoreDocuments() {
+      calls += "loadLoreDocuments"
+    }
+
+    override fun selectLoreDocument(documentId: String) {
+      calls += "selectLoreDocument($documentId)"
+    }
+
+    override fun updateLoreTitle(title: String) {
+      calls += "updateLoreTitle($title)"
+    }
+
+    override fun addLoreSection(title: String, description: String) {
+      calls += "addLoreSection($title)"
+    }
+
+    override fun updateLoreSectionTitle(sectionID: String, title: String) {
+      calls += "updateLoreSectionTitle($sectionID)"
+    }
+
+    override fun updateLoreSectionDescription(sectionID: String, description: String) {
+      calls += "updateLoreSectionDescription($sectionID)"
+    }
+
+    override fun removeLoreSection(sectionID: String) {
+      calls += "removeLoreSection($sectionID)"
+    }
+
+    override fun saveLoreDocument(document: LoreDocument) {
+      calls += "saveLoreDocument(${document.id})"
+    }
+
+    override fun setLoreVisibility(documentId: String, isShared: Boolean) {
+      calls += "setLoreVisibility($documentId, $isShared)"
+    }
+  }
 }
