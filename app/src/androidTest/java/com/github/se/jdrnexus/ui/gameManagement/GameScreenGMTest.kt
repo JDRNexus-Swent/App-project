@@ -181,8 +181,9 @@ class GameScreenGMTest {
   fun activityFeedShowsNewestEightEntries() {
     val feed = (9 downTo 1).map { ActivityItem("a$it", "Mira", "rolled $it", null) }
     setContent { GameScreenGMContent(GameViewModelGMUiState(activityFeed = feed)) }
+    scrollToItem(ACTIVITY_ITEM)
     composeTestRule.onNodeWithTag(C.Tag.gameGmActivity("a9")).assertIsDisplayed()
-    composeTestRule.onNodeWithTag(C.Tag.gameGmActivity("a2")).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.gameGmActivity("a2")).performScrollTo().assertIsDisplayed()
     composeTestRule.onAllNodesWithTag(C.Tag.gameGmActivity("a1")).assertCountEquals(0)
   }
 
