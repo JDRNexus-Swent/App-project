@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -47,5 +48,26 @@ class ScreenBarsTest {
     composeTestRule.runOnIdle { darkTheme = true }
     composeTestRule.onNodeWithTag(C.Tag.shared_top_bar).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.shared_bottom_bar).assertIsDisplayed()
+  }
+
+  @Test
+  fun navigationRailShowsEveryTabMarksTheSelectedOneAndDispatchesTaps() {
+    val tapped = mutableListOf<String>()
+    composeTestRule.setContent {
+      SampleAppTheme {
+        ScreenNavigationRail(selectedTab = "Campaigns", onTabSelected = { tapped += it })
+      }
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.shared_navigation_rail).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.railTab("campaigns")).assertIsSelected()
+    composeTestRule.onNodeWithTag(C.Tag.railTab("home")).assertIsNotSelected()
+    TABS.forEach { composeTestRule.onNodeWithTag(C.Tag.railTab(it.lowercase())).performClick() }
+
+    assertEquals(TABS, tapped)
+  }
+
+  private companion object {
+    val TABS = listOf("Home", "Campaigns", "Files", "Map")
   }
 }

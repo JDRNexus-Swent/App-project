@@ -78,9 +78,10 @@ class DiceOfflineScreenLandscapeTest {
           .fetchSemanticsNodes()
           .any { it.config[SemanticsProperties.VerticalScrollAxisRange].maxValue() > 0f }
 
+  /** Landscape puts the controls right of the die. */
   private fun assertLandscapeLayout(size: DpSize) {
     val die = bounds(C.Tag.dice_offline_die)
-    (CONTROLS - C.Tag.dice_offline_die).forEach { tag ->
+    PANEL_CONTROLS.forEach { tag ->
       assertTrue("$tag is not right of the die at $size", bounds(tag).left >= die.right)
     }
   }
@@ -119,8 +120,8 @@ class DiceOfflineScreenLandscapeTest {
       val title =
           composeTestRule.onNodeWithText(TITLE, useUnmergedTree = true).getUnclippedBoundsInRoot()
       assertTrue(
-          "the title runs into the close button at $size",
-          title.right <= bounds(C.Tag.dice_offline_close).left,
+          "the title runs into the back button at $size",
+          title.left >= bounds(C.Tag.dice_offline_close).right,
       )
       DiceType.entries.forEach { type ->
         val tile = bounds(C.Tag.diceOfflineSelect(type.name))
@@ -150,7 +151,7 @@ class DiceOfflineScreenLandscapeTest {
         abs((die.width - MAX_LANDSCAPE_CONTENT_WIDTH / 3).value) <= 1f,
     )
     assertTrue("the die is not centered with the content: $die", die.left >= contentLeft - 1.dp)
-    CONTROLS.forEach { tag ->
+    PANEL_CONTROLS.forEach { tag ->
       assertTrue("$tag stretches past the capped content", bounds(tag).right <= contentRight + 1.dp)
     }
   }
@@ -247,9 +248,8 @@ class DiceOfflineScreenLandscapeTest {
     assertEquals(1, dismissCount)
   }
 
-  /** The landscape layout has its own close button, separate from the portrait top bar. */
   @Test
-  fun closeButtonInLandscapeClosesTheRoller() {
+  fun backArrowInLandscapeClosesTheRoller() {
     var closeCount = 0
     setScreen(onClose = { closeCount++ })
     assertLandscapeLayout(screenSize)
@@ -257,6 +257,24 @@ class DiceOfflineScreenLandscapeTest {
     node(C.Tag.dice_offline_close).performClick()
 
     assertEquals(1, closeCount)
+  }
+
+  /**
+   * The roller is a secondary screen opened from Home: it shows the shared top bar but none of the
+   * tab navigation, in either orientation.
+   */
+  @Test
+  fun showsTheTopBarButNoTabNavigationInEitherOrientation() {
+    setScreen()
+
+    listOf(LANDSCAPE_SIZES.first(), PORTRAIT_SIZE).forEach { size ->
+      screenSize = size
+      composeTestRule.waitForIdle()
+
+      node(C.Tag.shared_top_bar).assertIsDisplayed()
+      node(C.Tag.shared_bottom_bar).assertDoesNotExist()
+      node(C.Tag.shared_navigation_rail).assertDoesNotExist()
+    }
   }
 
   /** The landscape header shows the selected die and its range next to the title. */
@@ -403,5 +421,8 @@ class DiceOfflineScreenLandscapeTest {
             C.Tag.diceOfflineSelect("D20"),
             C.Tag.dice_offline_roll,
         )
+
+    /** Controls of the right-hand panel; the back button is in the top bar above the card. */
+    val PANEL_CONTROLS = CONTROLS - C.Tag.dice_offline_close - C.Tag.dice_offline_die
   }
 }

@@ -26,6 +26,7 @@ object C {
     const val shared_top_bar = "shared_top_bar"
     const val shared_back_button = "shared_back_button"
     const val shared_bottom_bar = "shared_bottom_bar"
+    const val shared_navigation_rail = "shared_navigation_rail"
 
     const val sign_in_email = "auth_sign_in_email"
     const val sign_in_password = "auth_sign_in_password"
@@ -42,6 +43,8 @@ object C {
     const val sign_up_sign_in = "auth_sign_up_sign_in"
 
     fun bottomTab(name: String) = "bottom_tab_$name"
+
+    fun railTab(name: String) = "rail_tab_$name"
 
     const val dice_offline_screen = "dice_offline_screen"
     const val dice_offline_close = "dice_offline_close"
