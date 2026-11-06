@@ -222,8 +222,11 @@ class GroupWorkSpaceScreenInstrumentedTest {
     val hidden =
         file("hidden", "Hidden", DocumentType.TEXT)
             .copy(placements = mapOf(GROUP to Placement(GROUP, true)))
-    showScreen(WorkspaceFakeRepository(listOf(hidden)), Role.PLAYER)
+    val visible = file("visible", "Visible", DocumentType.TEXT)
+    showScreen(WorkspaceFakeRepository(listOf(hidden, visible)), Role.PLAYER)
 
+    // Wait for the list to load, so the count below cannot pass while still loading.
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("visible"), true).assertIsDisplayed()
     composeTestRule.onAllNodesWithTag(C.Tag.workspaceItem("hidden"), true).assertCountEquals(0)
   }
 
