@@ -4,6 +4,7 @@ package com.github.se.jdrnexus
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -11,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -41,6 +43,34 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).performClick()
     scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotDisplayed()
+  }
+
+  @Test
+  fun rapidSignUpTapsDoNotStackScreensOrLeaveNavigationBlank() {
+    showApp()
+    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performTouchInput {
+      repeat(10) { click() }
+    }
+    waitForTag(C.Tag.sign_up_sign_in)
+    scrollToTag("sign_up_scroll_container", C.Tag.sign_up_sign_in)
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsDisplayed().performClick()
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotDisplayed()
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performTouchInput {
+      repeat(10) { click() }
+    }
+    waitForTag(C.Tag.sign_up_sign_in)
+    scrollToTag("sign_up_scroll_container", C.Tag.sign_up_sign_in)
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).performTouchInput {
+      repeat(10) { click() }
+    }
+    waitForTag(C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotDisplayed()
   }

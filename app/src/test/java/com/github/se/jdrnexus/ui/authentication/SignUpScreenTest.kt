@@ -244,6 +244,9 @@ class SignUpScreenTest {
     assertEquals(1, repository.signUpCalls)
     composeTestRule.onAllNodesWithText("Register").assertCountEquals(0)
     composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).assertIsDisplayed().assertIsNotEnabled()
+    usernameInput().assertIsNotEnabled()
+    emailInput(C.Tag.sign_up_email).assertIsNotEnabled()
+    passwordInput(C.Tag.sign_up_password).assertIsNotEnabled()
     composeTestRule
         .onAllNodes(
             SemanticsMatcher.expectValue(
@@ -292,6 +295,18 @@ class SignUpScreenTest {
 
     assertEquals(1, repository.signUpCalls)
     assertEquals(true, registered)
+  }
+
+  @Test
+  fun signUpScreen_successKeepsAuthenticationButtonsDisabledUntilNavigation() {
+    showSignUp()
+    enterSignUpCredentials()
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
+    composeTestRule.waitForIdle()
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotEnabled()
   }
 
   @Test

@@ -383,6 +383,8 @@ class SignInScreenTest {
     assertEquals(1, repository.signInCalls)
     composeTestRule.onAllNodesWithText("Sign In").assertCountEquals(0)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).assertIsDisplayed().assertIsNotEnabled()
+    emailInput(C.Tag.sign_in_email).assertIsNotEnabled()
+    passwordInput(C.Tag.sign_in_password).assertIsNotEnabled()
     composeTestRule
         .onAllNodes(
             SemanticsMatcher.expectValue(
@@ -431,6 +433,21 @@ class SignInScreenTest {
 
     assertEquals(1, repository.signInCalls)
     assertEquals(true, succeeded)
+  }
+
+  @Test
+  fun signInScreen_successKeepsAuthenticationButtonsDisabledUntilNavigation() {
+    val repository = FakeAuthRepository()
+    showSignIn(repository)
+    enterSignInCredentials()
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    composeTestRule.waitForIdle()
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_google).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_forgot_password).assertIsNotEnabled()
   }
 
   @Test

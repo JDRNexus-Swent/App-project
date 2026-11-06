@@ -134,7 +134,7 @@ Checklist:
 
 ## 7. Known gaps
 
-- Fakes (`FakeAuthRepository`, `FakeGroupRepository`, `FakeWorkspaceRepository`) and the main-dispatcher rule are duplicated as private classes in several test files. New tests should reuse a shared copy in `utils/` once one exists; moving them is a separate PR.
+- Fakes (`FakeAuthRepository`, `FakeGroupRepository`, `FakeWorkspaceRepository`) are duplicated as private classes in several test files. New tests should reuse a shared copy in `utils/` once one exists; moving them is a separate PR. The main-dispatcher rule is shared in `utils/MainDispatcherRule.kt`; `GroupWorkSpaceViewModelTest` still has its own copy.
 - Test naming is mixed (camelCase, `snake_case`, backticks). New tests use camelCase (section 3); existing ones are renamed only when touched.
 - `ExampleUnitTest`, `ExampleRobolectricTest` and `ExampleInstrumentedTest` are template leftovers that assert nothing about the app.
 
