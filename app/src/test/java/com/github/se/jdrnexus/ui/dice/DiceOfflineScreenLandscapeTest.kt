@@ -53,13 +53,10 @@ class DiceOfflineScreenLandscapeTest {
   private fun setScreen(
       vm: DiceViewModel = DiceViewModel(DiceLogic(), diceRepository = null),
       onClose: () -> Unit = {},
-      onTabSelected: (String) -> Unit = {},
   ) = vm.also {
     composeTestRule.setContent {
       SampleAppTheme(darkTheme = true) {
-        Box(Modifier.size(screenSize)) {
-          DiceOfflineScreen(diceViewModel = it, onClose = onClose, onTabSelected = onTabSelected)
-        }
+        Box(Modifier.size(screenSize)) { DiceOfflineScreen(diceViewModel = it, onClose = onClose) }
       }
     }
   }
@@ -76,10 +73,8 @@ class DiceOfflineScreenLandscapeTest {
           .fetchSemanticsNodes()
           .any { it.config[SemanticsProperties.VerticalScrollAxisRange].maxValue() > 0f }
 
-  /** Landscape: the side rail replaces the bottom bar, and the controls sit right of the die. */
+  /** Landscape puts the controls right of the die. */
   private fun assertLandscapeLayout(size: DpSize) {
-    node(C.Tag.shared_navigation_rail).assertIsDisplayed()
-    node(C.Tag.shared_bottom_bar).assertDoesNotExist()
     val die = bounds(C.Tag.dice_offline_die)
     PANEL_CONTROLS.forEach { tag ->
       assertTrue("$tag is not right of the die at $size", bounds(tag).left >= die.right)
@@ -88,8 +83,6 @@ class DiceOfflineScreenLandscapeTest {
 
   /** Portrait stacks the die above the controls: the roll button sits under it, not beside it. */
   private fun assertPortraitLayout(size: DpSize) {
-    node(C.Tag.shared_bottom_bar).assertIsDisplayed()
-    node(C.Tag.shared_navigation_rail).assertDoesNotExist()
     val die = bounds(C.Tag.dice_offline_die)
     val roll = bounds(C.Tag.dice_offline_roll)
     assertTrue(
@@ -112,11 +105,9 @@ class DiceOfflineScreenLandscapeTest {
       CONTROLS.forEach { tag -> assertInside(tag, bounds(tag), screen) }
       assertLandscapeLayout(size)
 
-      // The rail has a fixed width, so the share is measured on the space right of it.
-      val available = screen.right - bounds(C.Tag.shared_navigation_rail).right
-      val dieShare = bounds(C.Tag.dice_offline_die).width / available
+      val dieShare = bounds(C.Tag.dice_offline_die).width / size.width
       assertTrue(
-          "the die takes $dieShare of the space beside the rail at $size, not about a third",
+          "the die takes $dieShare of the $size screen, not about a third",
           dieShare in MIN_DIE_SHARE..MAX_DIE_SHARE,
       )
       dieShares += dieShare
@@ -146,10 +137,8 @@ class DiceOfflineScreenLandscapeTest {
     setScreen()
     assertLandscapeLayout(TABLET_SIZE)
 
-    // The card is centered in the space right of the rail.
-    val railRight = bounds(C.Tag.shared_navigation_rail).right
-    val available = bounds(C.Tag.dice_offline_screen).right - railRight
-    val contentLeft = railRight + (available - MAX_LANDSCAPE_CONTENT_WIDTH) / 2
+    val screen = bounds(C.Tag.dice_offline_screen)
+    val contentLeft = screen.left + (TABLET_SIZE.width - MAX_LANDSCAPE_CONTENT_WIDTH) / 2
     val contentRight = contentLeft + MAX_LANDSCAPE_CONTENT_WIDTH
     val die = bounds(C.Tag.dice_offline_die)
     assertTrue(
@@ -265,30 +254,22 @@ class DiceOfflineScreenLandscapeTest {
     assertEquals(1, closeCount)
   }
 
-  /** In landscape the rail matches Home's: Home is highlighted and every tab is forwarded. */
+  /**
+   * The roller is a secondary screen opened from Home: it shows the shared top bar but none of the
+   * tab navigation, in either orientation.
+   */
   @Test
-  fun landscapeRailHighlightsHomeAndForwardsEveryTab() {
-    val tapped = mutableListOf<String>()
-    setScreen(onTabSelected = { tapped += it })
-    assertLandscapeLayout(screenSize)
+  fun showsTheTopBarButNoTabNavigationInEitherOrientation() {
+    setScreen()
 
-    node(C.Tag.railTab("home")).assertIsSelected()
-    TABS.forEach { node(C.Tag.railTab(it.lowercase())).performClick() }
+    listOf(LANDSCAPE_SIZES.first(), PORTRAIT_SIZE).forEach { size ->
+      screenSize = size
+      composeTestRule.waitForIdle()
 
-    assertEquals(TABS, tapped)
-  }
-
-  @Test
-  fun portraitShowsTheBottomBarWithHomeHighlightedAndForwardsEveryTab() {
-    val tapped = mutableListOf<String>()
-    screenSize = PORTRAIT_SIZE
-    setScreen(onTabSelected = { tapped += it })
-    assertPortraitLayout(PORTRAIT_SIZE)
-
-    node(C.Tag.bottomTab("home")).assertIsSelected()
-    TABS.forEach { node(C.Tag.bottomTab(it.lowercase())).performClick() }
-
-    assertEquals(TABS, tapped)
+      node(C.Tag.shared_top_bar).assertIsDisplayed()
+      node(C.Tag.shared_bottom_bar).assertDoesNotExist()
+      node(C.Tag.shared_navigation_rail).assertDoesNotExist()
+    }
   }
 
   private fun assertInside(tag: String, inner: DpRect, outer: DpRect) {
@@ -341,8 +322,6 @@ class DiceOfflineScreenLandscapeTest {
 
     /** Just after the screen's one-second roll animation. */
     const val ROLL_ANIMATION_END_MILLIS = 1_100L
-
-    val TABS = listOf("Home", "Campaigns", "Files", "Map")
 
     val CONTROLS =
         listOf(

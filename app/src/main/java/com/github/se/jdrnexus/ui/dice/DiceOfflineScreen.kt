@@ -84,8 +84,6 @@ import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
 import com.github.se.jdrnexus.resources.MAX_LANDSCAPE_CONTENT_WIDTH
-import com.github.se.jdrnexus.resources.ScreenBottomBar
-import com.github.se.jdrnexus.resources.ScreenNavigationRail
 import com.github.se.jdrnexus.resources.useLandscapeLayout
 import kotlin.math.PI
 import kotlin.math.abs
@@ -147,7 +145,6 @@ private const val ROLL_ANIMATION_MILLIS = 1000L
  *
  * @param diceViewModel The ViewModel handling dice selection, modifiers and rolls.
  * @param onClose Called when the user closes the dice roller.
- * @param onTabSelected Called with the label of the shared navigation tab the user picks.
  */
 @Composable
 fun DiceOfflineScreen(
@@ -160,19 +157,10 @@ fun DiceOfflineScreen(
                 )
         ),
     onClose: () -> Unit = {},
-    onTabSelected: (String) -> Unit = {},
 ) {
   val uiState by diceViewModel.uiState.collectAsState()
-  DiceOfflineContent(
-      uiState = uiState,
-      diceViewModel = diceViewModel,
-      onClose = onClose,
-      onTabSelected = onTabSelected,
-  )
+  DiceOfflineContent(uiState = uiState, diceViewModel = diceViewModel, onClose = onClose)
 }
-
-/** Tab of the shared navigation that the dice roller highlights: it is opened from Home. */
-private const val DICE_TAB = "Home"
 
 /**
  * Stateless body of [DiceOfflineScreen], split out so previews and tests can render it with a fixed
@@ -183,7 +171,6 @@ internal fun DiceOfflineContent(
     uiState: DiceUiState,
     diceViewModel: DiceInterfaceVM,
     onClose: () -> Unit,
-    onTabSelected: (String) -> Unit = {},
 ) {
   val colors = diceThemeColors()
 
@@ -193,57 +180,46 @@ internal fun DiceOfflineContent(
               .background(colors.backgroundColor)
               .testTag(C.Tag.dice_offline_screen),
   ) {
-    // Spacing follows the whole screen's height, so the bars do not shrink it.
+    // Spacing follows the whole screen's height, so the top bar does not shrink it.
     val dimens = DiceDimens(screenHeight = maxHeight)
     val isLandscape = useLandscapeLayout(maxWidth, maxHeight)
-    // Same navigation as Home: a bottom bar, or a side rail on short, wide screens.
-    Row(modifier = Modifier.fillMaxSize()) {
-      if (isLandscape) {
-        ScreenNavigationRail(selectedTab = DICE_TAB, onTabSelected = onTabSelected)
-      }
-      Scaffold(
-          modifier = Modifier.weight(1f).fillMaxHeight(),
-          containerColor = colors.backgroundColor,
-          topBar = {
-            AppTopBar(
-                title = "Dice Roller",
-                onBack = onClose,
-                backTestTag = C.Tag.dice_offline_close,
-            )
-          },
-          bottomBar = {
-            if (!isLandscape) {
-              ScreenBottomBar(selectedTab = DICE_TAB, onTabSelected = onTabSelected)
-            }
-          },
-      ) { innerPadding ->
-        // In landscape the top bar already takes height, so the card's vertical margin matches
-        // its side margin to keep every control on a 360dp-tall screen without scrolling.
-        val cardVerticalMargin = dimens.scaled(if (isLandscape) 16.dp else 24.dp)
-        Surface(
-            modifier =
-                Modifier.fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = dimens.scaled(16.dp), vertical = cardVerticalMargin),
-            shape = RoundedCornerShape(24.dp),
-            color = colors.cardColor,
-            border = BorderStroke(1.dp, colors.cardBorder),
-        ) {
-          if (isLandscape) {
-            DiceLandscapeBody(
-                uiState = uiState,
-                diceViewModel = diceViewModel,
-                colors = colors,
-                dimens = dimens,
-            )
-          } else {
-            DicePortraitBody(
-                uiState = uiState,
-                diceViewModel = diceViewModel,
-                colors = colors,
-                dimens = dimens,
-            )
-          }
+    // A secondary screen: the shared top bar with its back arrow, and no tab navigation.
+    Scaffold(
+        containerColor = colors.backgroundColor,
+        topBar = {
+          AppTopBar(
+              title = "Dice Roller",
+              onBack = onClose,
+              backTestTag = C.Tag.dice_offline_close,
+          )
+        },
+    ) { innerPadding ->
+      // In landscape the top bar already takes height, so the card's vertical margin matches
+      // its side margin to keep every control on a 360dp-tall screen without scrolling.
+      val cardVerticalMargin = dimens.scaled(if (isLandscape) 16.dp else 24.dp)
+      Surface(
+          modifier =
+              Modifier.fillMaxSize()
+                  .padding(innerPadding)
+                  .padding(horizontal = dimens.scaled(16.dp), vertical = cardVerticalMargin),
+          shape = RoundedCornerShape(24.dp),
+          color = colors.cardColor,
+          border = BorderStroke(1.dp, colors.cardBorder),
+      ) {
+        if (isLandscape) {
+          DiceLandscapeBody(
+              uiState = uiState,
+              diceViewModel = diceViewModel,
+              colors = colors,
+              dimens = dimens,
+          )
+        } else {
+          DicePortraitBody(
+              uiState = uiState,
+              diceViewModel = diceViewModel,
+              colors = colors,
+              dimens = dimens,
+          )
         }
       }
     }
