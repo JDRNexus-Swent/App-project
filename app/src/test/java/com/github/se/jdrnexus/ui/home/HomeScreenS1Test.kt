@@ -93,6 +93,29 @@ class HomeScreenS1Test {
   }
 
   @Test
+  fun bottomNavigationRoutesCampaignsAndFiles() {
+    var campaignsClicked = false
+    var filesClicked = false
+    composeTestRule.setContent {
+      SampleAppTheme {
+        HomeScreen(
+            viewModel = createViewModel(),
+            onGroupManagementClick = { campaignsClicked = true },
+            onPersonalSpaceClick = { filesClicked = true },
+        )
+      }
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
+
+    Assert.assertTrue(campaignsClicked)
+    Assert.assertTrue(filesClicked)
+  }
+
+  @Test
   fun logoutButtonInvokesCallbackOnSuccessfulSignOut() {
     val signOutResult = CompletableDeferred<AuthResult<Unit>>()
     val viewModel = AuthViewModel(FakeAuthRepository { signOutResult.await() })

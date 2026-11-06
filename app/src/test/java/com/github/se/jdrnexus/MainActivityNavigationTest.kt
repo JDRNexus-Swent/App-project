@@ -12,7 +12,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
@@ -216,15 +215,25 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
     waitForTag(TestTags.TITLE)
 
-    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
     waitForTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
-    composeTestRule.onNodeWithText("Home").performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+    composeTestRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_BUTTON).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
 
-    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
-    waitForTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
-    composeTestRule.onNodeWithText("Files").performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
     composeTestRule.onAllNodesWithText("My Space").assertCountEquals(1)
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+    waitForTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
   }
 
   private fun showApp(repository: FakeAuthRepository = FakeAuthRepository()) {
