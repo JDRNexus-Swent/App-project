@@ -1,6 +1,8 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.gameManagement
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -24,7 +26,7 @@ import com.github.se.jdrnexus.model.filerepresentation.LoreSection
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -37,7 +39,7 @@ class GameScreenGMTest {
   @Test
   fun emptyCombatShowsMessageAndStartsCombat() {
     var started = 0
-    setContent(GameViewModelGMUiState(), onStartCombat = { started++ })
+    setContent { GameScreenGMContent(GameViewModelGMUiState(), onStartCombat = { started++ }) }
 
     composeTestRule.onNodeWithTag(C.Tag.game_gm_empty_combat).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_start_combat).assertIsDisplayed().performClick()
@@ -48,13 +50,15 @@ class GameScreenGMTest {
   @Test
   fun enemyDetailsAndCombatCallbacksAreHandled() {
     val enemy = testEnemy()
-    var hpChanges = mutableListOf<Pair<String, Int>>()
+    val hpChanges = mutableListOf<Pair<String, Int>>()
     var removed = ""
-    setContent(
-        GameViewModelGMUiState(enemies = listOf(enemy)),
-        onUpdateEnemyHp = { id, change -> hpChanges += id to change },
-        onRemoveEnemy = { removed = it },
-    )
+    setContent {
+      GameScreenGMContent(
+          GameViewModelGMUiState(enemies = listOf(enemy)),
+          onUpdateEnemyHp = { id, change -> hpChanges += id to change },
+          onRemoveEnemy = { removed = it },
+      )
+    }
 
     composeTestRule.onNodeWithTag(C.Tag.gameGmEnemy(enemy.id)).performScrollTo()
     composeTestRule.onNodeWithText("Goblin").assertIsDisplayed()
@@ -73,11 +77,13 @@ class GameScreenGMTest {
   fun activeCombatShowsRoundControls() {
     var nextRound = 0
     var ended = 0
-    setContent(
-        GameViewModelGMUiState(isCombatActive = true),
-        onNextRound = { nextRound++ },
-        onEndCombat = { ended++ },
-    )
+    setContent {
+      GameScreenGMContent(
+          GameViewModelGMUiState(isCombatActive = true),
+          onNextRound = { nextRound++ },
+          onEndCombat = { ended++ },
+      )
+    }
     composeTestRule.onNodeWithTag(C.Tag.game_gm_next_round).performClick()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_end_combat).performClick()
     assertEquals(1, nextRound)
@@ -88,7 +94,7 @@ class GameScreenGMTest {
   @Test
   fun addEnemyDialogOpensClosesAndSubmitsValidEnemy() {
     var added: CombatNPC? = null
-    setContent(GameViewModelGMUiState(), onAddEnemy = { added = it })
+    setContent { GameScreenGMContent(GameViewModelGMUiState(), onAddEnemy = { added = it }) }
 
     composeTestRule.onNodeWithTag(C.Tag.game_gm_add_enemy).performClick()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_add_enemy_dialog).assertIsDisplayed()
@@ -107,7 +113,7 @@ class GameScreenGMTest {
   // Verifies invalid enemy input disables submission.
   @Test
   fun invalidEnemyInputDisablesAddButton() {
-    setContent(GameViewModelGMUiState())
+    setContent { GameScreenGMContent(GameViewModelGMUiState()) }
 
     composeTestRule.onNodeWithTag(C.Tag.game_gm_add_enemy).performClick()
     composeTestRule.onNodeWithText("Add").assertIsNotEnabled()
@@ -115,13 +121,13 @@ class GameScreenGMTest {
     composeTestRule.onNodeWithTag(C.Tag.game_gm_enemy_max_hp).performTextClearance()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_enemy_max_hp).performTextInput("0")
     composeTestRule.onNodeWithText("Add").assertIsNotEnabled()
-    assertTrue(!isValidEnemyInput("Orc", 10, 0, 10))
+    assertFalse(isValidEnemyInput("Orc", 10, 0, 10))
   }
 
   // Verifies the loading state displays its progress indicator.
   @Test
   fun loadingStateShowsProgress() {
-    setContent(GameViewModelGMUiState(isLoading = true))
+    setContent { GameScreenGMContent(GameViewModelGMUiState(isLoading = true)) }
     composeTestRule.onNodeWithTag(C.Tag.game_gm_loading).assertIsDisplayed()
   }
 
@@ -129,46 +135,45 @@ class GameScreenGMTest {
   @Test
   fun errorStateShowsMessageAndRetries() {
     var retries = 0
-    setContent(GameViewModelGMUiState(error = "Unable to load"), onRetry = { retries++ })
+    setContent {
+      GameScreenGMContent(GameViewModelGMUiState(error = "Unable to load"), onRetry = { retries++ })
+    }
     composeTestRule.onNodeWithTag(C.Tag.game_gm_error).assertIsDisplayed()
     composeTestRule.onNodeWithText("Unable to load").assertIsDisplayed()
     composeTestRule.onNodeWithText("Retry").performClick()
     assertEquals(1, retries)
   }
 
-  // Verifies an empty activity feed displays its empty-state message.
+  // Verifies an empty session shows the activity, NPC, and lore empty-state messages.
   @Test
-  fun emptyActivityFeedShowsMessage() {
-    setContent(GameViewModelGMUiState())
+  fun emptySessionShowsSectionMessages() {
+    setContent { GameScreenGMContent(GameViewModelGMUiState()) }
     composeTestRule.onNodeWithText("No recent player activity.").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_empty_npcs).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_empty_lore).assertIsDisplayed()
   }
 
   // Verifies activity rendering, dice results, and dismiss behavior.
   @Test
   fun activityFeedDisplaysEntriesAndCanBeDismissed() {
-    setContent(
-        GameViewModelGMUiState(
-            activityFeed = listOf(ActivityItem("a1", "Mira", "rolled", "1d20 = 18"))
-        )
-    )
+    setContent {
+      GameScreenGMContent(
+          GameViewModelGMUiState(
+              activityFeed = listOf(ActivityItem("a1", "Mira", "rolled", "1d20 = 18"))
+          )
+      )
+    }
 
     composeTestRule.onNodeWithText("Mira · rolled (1d20 = 18)").assertIsDisplayed()
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_hide_activity).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.gameGmHide("activity")).performClick()
     composeTestRule.onAllNodesWithText("Activity Feed").assertCountEquals(0)
-  }
-
-  // Verifies that an empty NPC list displays its empty-state message.
-  @Test
-  fun emptyNpcListShowsMessage() {
-    setContent(GameViewModelGMUiState())
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_empty_npcs).assertIsDisplayed()
   }
 
   // Verifies NPC names and the information dialog lifecycle.
   @Test
   fun npcListDisplaysNamesAndInformationDialog() {
     val npc = Npc("npc-1", "Eldrin", null, "A quiet guide.")
-    setContent(GameViewModelGMUiState(npcs = listOf(npc)))
+    setContent { GameScreenGMContent(GameViewModelGMUiState(npcs = listOf(npc))) }
     composeTestRule.onNodeWithTag(C.Tag.gameGmNpc(npc.id)).performClick()
     composeTestRule.onAllNodesWithText("Eldrin").assertCountEquals(2)
     composeTestRule.onNodeWithText("A quiet guide.").assertIsDisplayed()
@@ -176,24 +181,17 @@ class GameScreenGMTest {
     composeTestRule.onAllNodesWithText("A quiet guide.").assertCountEquals(0)
   }
 
-  // Verifies that an empty lore list displays its empty-state message.
-  @Test
-  fun emptyLoreListShowsMessage() {
-    setContent(GameViewModelGMUiState())
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_lore_section).performScrollTo()
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_empty_lore).assertIsDisplayed()
-  }
-
   // Verifies lore expansion, collapse, and selection callback.
   @Test
   fun loreDocumentsExpandCollapseAndSelect() {
     val lore = testLore()
     var selected = ""
-    setContent(
-        GameViewModelGMUiState(loreDocuments = listOf(lore)),
-        onSelectLore = { selected = it },
-    )
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_lore_section).performScrollTo()
+    setContent {
+      GameScreenGMContent(
+          GameViewModelGMUiState(loreDocuments = listOf(lore)),
+          onSelectLore = { selected = it },
+      )
+    }
     composeTestRule.onNodeWithText("Ancient Ruins").assertIsDisplayed()
     composeTestRule.onNodeWithText("Read").performClick()
     composeTestRule.onNodeWithText("History: Fallen kingdom").assertIsDisplayed()
@@ -208,11 +206,13 @@ class GameScreenGMTest {
   fun navigationBarAndDiceFabDispatchCallbacks() {
     var selectedTab = ""
     var diceClicks = 0
-    setContent(
-        GameViewModelGMUiState(),
-        onTabSelected = { selectedTab = it },
-        onDiceClick = { diceClicks++ },
-    )
+    setContent {
+      GameScreenGMContent(
+          GameViewModelGMUiState(),
+          onTabSelected = { selectedTab = it },
+          onDiceClick = { diceClicks++ },
+      )
+    }
 
     composeTestRule.onNodeWithTag(C.Tag.shared_bottom_bar).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
@@ -224,21 +224,17 @@ class GameScreenGMTest {
   // Verifies every dashboard section can be hidden and restored through the shared area.
   @Test
   fun dashboardSectionsCanBeDismissedAndRestored() {
-    setContent(GameViewModelGMUiState())
+    setContent { GameScreenGMContent(GameViewModelGMUiState()) }
 
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_hide_combat).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_hidden_sections).performScrollTo()
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_restore_combat).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_hide_activity).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_hidden_sections).performScrollTo()
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_restore_activity).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_hide_npcs).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_hidden_sections).performScrollTo()
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_restore_npcs).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_hide_lore).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_hidden_sections).performScrollTo()
+    composeTestRule.onNodeWithTag(C.Tag.gameGmHide("combat")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.gameGmRestore("combat")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.gameGmHide("activity")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.gameGmRestore("activity")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.gameGmHide("npcs")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.gameGmRestore("npcs")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.gameGmHide("lore")).performClick()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_hidden_sections).assertIsDisplayed()
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_restore_lore).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.gameGmRestore("lore")).performClick()
     composeTestRule.onAllNodesWithTag(C.Tag.game_gm_hidden_sections).assertCountEquals(0)
   }
 
@@ -246,49 +242,23 @@ class GameScreenGMTest {
   @Test
   fun hidingCombatDoesNotStopCombat() {
     var nextRound = 0
-    setContent(
-        GameViewModelGMUiState(isCombatActive = true, currentRound = 3),
-        onNextRound = { nextRound++ },
-    )
+    setContent {
+      GameScreenGMContent(
+          GameViewModelGMUiState(isCombatActive = true, currentRound = 3),
+          onNextRound = { nextRound++ },
+      )
+    }
 
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_hide_combat).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_restore_combat).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.gameGmHide("combat")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.gameGmRestore("combat")).performClick()
     composeTestRule.onNodeWithText("ACTIVE").assertIsDisplayed()
     composeTestRule.onNodeWithText("Round 3").assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.game_gm_next_round).performClick()
     assertEquals(1, nextRound)
   }
 
-  private fun setContent(
-      uiState: GameViewModelGMUiState,
-      onAddEnemy: (CombatNPC) -> Unit = {},
-      onRemoveEnemy: (String) -> Unit = {},
-      onUpdateEnemyHp: (String, Int) -> Unit = { _, _ -> },
-      onStartCombat: () -> Unit = {},
-      onNextRound: () -> Unit = {},
-      onEndCombat: () -> Unit = {},
-      onRetry: () -> Unit = {},
-      onSelectLore: (String) -> Unit = {},
-      onTabSelected: (String) -> Unit = {},
-      onDiceClick: () -> Unit = {},
-  ) {
-    composeTestRule.setContent {
-      SampleAppTheme {
-        GameScreenGMContent(
-            uiState = uiState,
-            onAddEnemy = onAddEnemy,
-            onRemoveEnemy = onRemoveEnemy,
-            onUpdateEnemyHp = onUpdateEnemyHp,
-            onStartCombat = onStartCombat,
-            onNextRound = onNextRound,
-            onEndCombat = onEndCombat,
-            onRetry = onRetry,
-            onSelectLore = onSelectLore,
-            onTabSelected = onTabSelected,
-            onDiceClick = onDiceClick,
-        )
-      }
-    }
+  private fun setContent(content: @Composable () -> Unit) {
+    composeTestRule.setContent { SampleAppTheme { content() } }
   }
 
   private fun testEnemy() =

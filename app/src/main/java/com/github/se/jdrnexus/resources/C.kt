@@ -75,18 +75,8 @@ object C {
     const val game_gm_start_combat = "game_gm_start_combat"
     const val game_gm_next_round = "game_gm_next_round"
     const val game_gm_end_combat = "game_gm_end_combat"
-    const val game_gm_dismiss_activity = "game_gm_dismiss_activity"
     const val game_gm_dice = "game_gm_dice"
     const val game_gm_hidden_sections = "game_gm_hidden_sections"
-    const val game_gm_lore_section = "game_gm_lore_section"
-    const val game_gm_hide_combat = "game_gm_hide_combat"
-    const val game_gm_hide_activity = "game_gm_hide_activity"
-    const val game_gm_hide_npcs = "game_gm_hide_npcs"
-    const val game_gm_hide_lore = "game_gm_hide_lore"
-    const val game_gm_restore_combat = "game_gm_restore_combat"
-    const val game_gm_restore_activity = "game_gm_restore_activity"
-    const val game_gm_restore_npcs = "game_gm_restore_npcs"
-    const val game_gm_restore_lore = "game_gm_restore_lore"
 
     fun gameGmEnemy(id: String) = "game_gm_enemy_$id"
 
@@ -106,6 +96,10 @@ object C {
 
     fun gameGmLoreExpand(id: String) = "game_gm_lore_expand_$id"
 
-    fun gameGmNavigation(label: String) = "game_gm_navigation_$label"
+    /** Tag of the button hiding the GM dashboard section [key] (e.g. "combat"). */
+    fun gameGmHide(key: String) = "game_gm_hide_$key"
+
+    /** Tag of the button restoring the hidden GM dashboard section [key]. */
+    fun gameGmRestore(key: String) = "game_gm_restore_$key"
   }
 }

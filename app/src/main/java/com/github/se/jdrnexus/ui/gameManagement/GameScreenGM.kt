@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.gameManagement
 
 import androidx.compose.foundation.BorderStroke
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -34,7 +36,6 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -72,6 +74,19 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
+
+/**
+ * Dashboard sections the GM can hide, in the order they are listed when hidden.
+ *
+ * @property title Heading shown on the section card and its restore button.
+ * @property key Suffix of the section's hide/restore test tags.
+ */
+private enum class GmSection(val title: String, val key: String) {
+  COMBAT("Combat Live", "combat"),
+  ACTIVITY("Activity Feed", "activity"),
+  NPCS("NPCs", "npcs"),
+  LORE("Campaign Lore", "lore"),
+}
 
 /**
  * Connects the GM view model to the stateless game-master session UI.
@@ -142,27 +157,13 @@ internal fun GameScreenGMContent(
 ) {
   var showAddEnemyDialog by rememberSaveable { mutableStateOf(false) }
   var selectedNpcId by rememberSaveable { mutableStateOf<String?>(null) }
-  var combatVisible by rememberSaveable { mutableStateOf(true) }
-  var activityVisible by rememberSaveable { mutableStateOf(true) }
-  var npcsVisible by rememberSaveable { mutableStateOf(true) }
-  var loreVisible by rememberSaveable { mutableStateOf(true) }
+  // A set of enum values is Serializable, so the hidden sections survive rotation.
+  var hidden by rememberSaveable { mutableStateOf(emptySet<GmSection>()) }
   var expandedLoreId by rememberSaveable { mutableStateOf<String?>(null) }
   val selectedNpc = uiState.npcs.firstOrNull { it.id == selectedNpcId }
-  val hiddenSections = buildList {
-    if (!combatVisible) add("Combat Live" to C.Tag.game_gm_restore_combat)
-    if (!activityVisible) add("Activity Feed" to C.Tag.game_gm_restore_activity)
-    if (!npcsVisible) add("NPCs" to C.Tag.game_gm_restore_npcs)
-    if (!loreVisible) add("Campaign Lore" to C.Tag.game_gm_restore_lore)
-  }
 
   Scaffold(
-      bottomBar = {
-        ScreenBottomBar(
-            selectedTab = "Campaigns",
-            onTabSelected = onTabSelected,
-        )
-      },
-      containerColor = MaterialTheme.colorScheme.background,
+      bottomBar = { ScreenBottomBar(selectedTab = "Campaigns", onTabSelected = onTabSelected) },
       contentColor = MaterialTheme.colorScheme.onSurface,
       floatingActionButton = {
         FloatingActionButton(
@@ -171,10 +172,7 @@ internal fun GameScreenGMContent(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
         ) {
-          Icon(
-              imageVector = Icons.Default.Casino,
-              contentDescription = "Roll dice",
-          )
+          Icon(imageVector = Icons.Default.Casino, contentDescription = "Roll dice")
         }
       },
   ) { padding ->
@@ -199,40 +197,21 @@ internal fun GameScreenGMContent(
           )
         }
       }
-      if (hiddenSections.isNotEmpty()) {
-        item {
-          HiddenSections(
-              hiddenSections = hiddenSections,
-              onRestore = { title ->
-                when (title) {
-                  "Combat Live" -> combatVisible = true
-                  "Activity Feed" -> activityVisible = true
-                  "NPCs" -> npcsVisible = true
-                  "Campaign Lore" -> loreVisible = true
-                }
-              },
-          )
-        }
+      if (hidden.isNotEmpty()) {
+        item { HiddenSections(GmSection.entries.filter { it in hidden }) { hidden -= it } }
       }
-      if (combatVisible) {
+      if (GmSection.COMBAT !in hidden) {
         item {
           SectionCard(
-              title = "Combat Live",
+              GmSection.COMBAT,
+              onDismiss = { hidden += GmSection.COMBAT },
               titleTrailing = "Round ${uiState.currentRound}",
-              onDismiss = { combatVisible = false },
-              dismissTestTag = C.Tag.game_gm_hide_combat,
           ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-              Text(
-                  if (uiState.isCombatActive) "ACTIVE" else "INACTIVE",
-                  color = MaterialTheme.colorScheme.primary,
-                  fontWeight = FontWeight.Bold,
-              )
-            }
+            Text(
+                if (uiState.isCombatActive) "ACTIVE" else "INACTIVE",
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
@@ -242,44 +221,17 @@ internal fun GameScreenGMContent(
                 Button(
                     onClick = onStartCombat,
                     modifier = Modifier.testTag(C.Tag.game_gm_start_combat),
-                    colors =
-                        ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
                 ) {
                   Icon(Icons.Filled.PlayArrow, contentDescription = null)
                   Spacer(Modifier.width(4.dp))
                   Text("Start", color = MaterialTheme.colorScheme.background)
                 }
               } else {
-                OutlinedButton(
-                    onClick = onNextRound,
-                    modifier = Modifier.testTag(C.Tag.game_gm_next_round),
-                    shape = CircleShape,
-                    contentPadding = PaddingValues(horizontal = 14.dp),
-                ) {
-                  Icon(Icons.Filled.SkipNext, contentDescription = null)
-                  Spacer(Modifier.width(4.dp))
-                }
-                OutlinedButton(
-                    onClick = onEndCombat,
-                    modifier = Modifier.testTag(C.Tag.game_gm_end_combat),
-                    shape = CircleShape,
-                    contentPadding = PaddingValues(horizontal = 14.dp),
-                ) {
-                  Icon(Icons.Filled.Stop, contentDescription = null)
-                  Spacer(Modifier.width(4.dp))
-                }
+                CombatIconButton(Icons.Filled.SkipNext, C.Tag.game_gm_next_round, onNextRound)
+                CombatIconButton(Icons.Filled.Stop, C.Tag.game_gm_end_combat, onEndCombat)
               }
-              OutlinedButton(
-                  onClick = { showAddEnemyDialog = true },
-                  modifier = Modifier.testTag(C.Tag.game_gm_add_enemy),
-                  shape = CircleShape,
-                  contentPadding = PaddingValues(horizontal = 14.dp),
-              ) {
-                Icon(Icons.Filled.Add, contentDescription = null)
-                Spacer(Modifier.width(4.dp))
+              CombatIconButton(Icons.Filled.Add, C.Tag.game_gm_add_enemy) {
+                showAddEnemyDialog = true
               }
             }
           }
@@ -323,44 +275,35 @@ internal fun GameScreenGMContent(
           }
         }
       }
-      if (activityVisible) {
+      if (GmSection.ACTIVITY !in hidden) {
         item {
-          SectionCard(
-              title = "Activity Feed",
-              onDismiss = { activityVisible = false },
-              dismissTestTag = C.Tag.game_gm_hide_activity,
-          ) {
+          SectionCard(GmSection.ACTIVITY, onDismiss = { hidden += GmSection.ACTIVITY }) {
             if (uiState.activityFeed.isEmpty()) {
               Text("No recent player activity.", color = MaterialTheme.colorScheme.tertiary)
-            } else {
-              uiState.activityFeed.takeLast(8).reversed().forEach { activity ->
-                Row(
-                    modifier = Modifier.testTag(C.Tag.gameGmActivity(activity.id)),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                  Text("•", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                  Text(
-                      buildString {
-                        append(activity.playerName)
-                        append(" · ")
-                        append(activity.action)
-                        activity.diceResult?.let { append(" ($it)") }
-                      },
-                      color = MaterialTheme.colorScheme.onSecondary,
-                  )
-                }
+            }
+            uiState.activityFeed.takeLast(8).reversed().forEach { activity ->
+              Row(
+                  modifier = Modifier.testTag(C.Tag.gameGmActivity(activity.id)),
+                  horizontalArrangement = Arrangement.spacedBy(8.dp),
+              ) {
+                Text(
+                    "•",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    "${activity.playerName} · ${activity.action}" +
+                        activity.diceResult?.let { " ($it)" }.orEmpty(),
+                    color = MaterialTheme.colorScheme.onSecondary,
+                )
               }
             }
           }
         }
       }
-      if (npcsVisible) {
+      if (GmSection.NPCS !in hidden) {
         item {
-          SectionCard(
-              title = "NPCs",
-              onDismiss = { npcsVisible = false },
-              dismissTestTag = C.Tag.game_gm_hide_npcs,
-          ) {
+          SectionCard(GmSection.NPCS, onDismiss = { hidden += GmSection.NPCS }) {
             if (uiState.npcs.isEmpty()) {
               Text(
                   "No NPCs available.",
@@ -368,65 +311,19 @@ internal fun GameScreenGMContent(
                   color = MaterialTheme.colorScheme.tertiary,
               )
             } else {
-              Row(
+              LazyRow(
                   modifier = Modifier.fillMaxWidth(),
-                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(16.dp),
               ) {
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                  items(uiState.npcs.size) { index ->
-                    val npc = uiState.npcs[index]
-                    Column(
-                        modifier =
-                            Modifier.width(84.dp).testTag(C.Tag.gameGmNpc(npc.id)).clickable {
-                              selectedNpcId = npc.id
-                            },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                      Box(
-                          modifier =
-                              Modifier.size(48.dp)
-                                  .clip(CircleShape)
-                                  .border(
-                                      1.dp,
-                                      MaterialTheme.colorScheme.tertiary,
-                                      CircleShape,
-                                  ),
-                          contentAlignment = Alignment.Center,
-                      ) {
-                        Icon(
-                            Icons.Filled.Person,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSecondary,
-                        )
-                      }
-
-                      Text(
-                          text = npc.name,
-                          color = MaterialTheme.colorScheme.onSecondary,
-                          style = MaterialTheme.typography.bodySmall,
-                          maxLines = 1,
-                          overflow = TextOverflow.Ellipsis,
-                      )
-                    }
-                  }
-                }
+                items(uiState.npcs) { npc -> NpcItem(npc) { selectedNpcId = npc.id } }
               }
             }
           }
         }
       }
-      if (loreVisible) {
+      if (GmSection.LORE !in hidden) {
         item {
-          SectionCard(
-              title = "Campaign Lore",
-              modifier = Modifier.testTag(C.Tag.game_gm_lore_section),
-              onDismiss = { loreVisible = false },
-              dismissTestTag = C.Tag.game_gm_hide_lore,
-          ) {
+          SectionCard(GmSection.LORE, onDismiss = { hidden += GmSection.LORE }) {
             if (uiState.loreDocuments.isEmpty()) {
               Text(
                   "No lore documents available.",
@@ -472,32 +369,40 @@ internal fun GameScreenGMContent(
   }
 }
 
-/** Displays restore actions for dashboard sections hidden by the user. */
+/** Displays restore actions for dashboard [sections] hidden by the user. */
 @Composable
-private fun HiddenSections(
-    hiddenSections: List<Pair<String, String>>,
-    onRestore: (String) -> Unit,
-) {
-  SectionCard(
-      title = "Hidden Sections",
-      modifier = Modifier.testTag(C.Tag.game_gm_hidden_sections),
-  ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      hiddenSections.forEach { (title, restoreTag) ->
+private fun HiddenSections(sections: List<GmSection>, onRestore: (GmSection) -> Unit) {
+  SectionCard("Hidden Sections", modifier = Modifier.testTag(C.Tag.game_gm_hidden_sections)) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      sections.forEach { section ->
         OutlinedButton(
-            onClick = { onRestore(title) },
-            modifier = Modifier.testTag(restoreTag),
+            onClick = { onRestore(section) },
+            modifier = Modifier.testTag(C.Tag.gameGmRestore(section.key)),
             contentPadding = PaddingValues(horizontal = 12.dp),
         ) {
-          Text("+ $title")
+          Text("+ ${section.title}")
         }
       }
     }
   }
 }
+
+/** Displays the card of a hideable dashboard [section]; [onDismiss] hides it. */
+@Composable
+private fun SectionCard(
+    section: GmSection,
+    onDismiss: () -> Unit,
+    titleTrailing: String? = null,
+    content: @Composable () -> Unit,
+) =
+    SectionCard(
+        section.title,
+        onDismiss,
+        titleTrailing,
+        Modifier,
+        C.Tag.gameGmHide(section.key),
+        content,
+    )
 
 /**
  * Displays a titled card section with optional dismissal and trailing status text.
@@ -519,49 +424,26 @@ private fun SectionCard(
   Card(
       modifier = modifier,
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-      border =
-          BorderStroke(
-              1.dp,
-              MaterialTheme.colorScheme.tertiary,
-          ),
+      border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary),
       shape = RoundedCornerShape(22.dp),
   ) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      Row(
-          modifier = Modifier.fillMaxWidth(),
-          verticalAlignment = Alignment.CenterVertically,
-      ) {
+      Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = title,
+            color = MaterialTheme.colorScheme.onSecondary,
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.headlineSmall,
             fontFamily = FontFamily.Serif,
-            color = MaterialTheme.colorScheme.onSecondary,
         )
-
         titleTrailing?.let {
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(8.dp)
-                    .background(
-                        MaterialTheme.colorScheme.primary,
-                        CircleShape,
-                    )
-            )
-
-            Spacer(Modifier.width(6.dp))
-
-            Text(
-                it,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Medium,
-            )
-          }
+          Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
+          Spacer(Modifier.width(6.dp))
+          Text(it, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
         }
-
         onDismiss?.let {
           IconButton(
               onClick = it,
@@ -575,9 +457,54 @@ private fun SectionCard(
           }
         }
       }
-
       content()
     }
+  }
+}
+
+/** Round outlined encounter control showing only [icon]. */
+@Composable
+private fun CombatIconButton(icon: ImageVector, testTag: String, onClick: () -> Unit) {
+  OutlinedButton(
+      onClick = onClick,
+      modifier = Modifier.testTag(testTag),
+      shape = CircleShape,
+      contentPadding = PaddingValues(horizontal = 14.dp),
+  ) {
+    Icon(icon, contentDescription = null)
+    Spacer(Modifier.width(4.dp))
+  }
+}
+
+/** Displays one campaign [npc] as a portrait and name; [onClick] opens its information. */
+@Composable
+private fun NpcItem(npc: Npc, onClick: () -> Unit) {
+  Column(
+      modifier =
+          Modifier.width(84.dp).testTag(C.Tag.gameGmNpc(npc.id)).clickable(onClick = onClick),
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.spacedBy(4.dp),
+  ) {
+    Box(
+        modifier =
+            Modifier.size(48.dp)
+                .clip(CircleShape)
+                .border(1.dp, MaterialTheme.colorScheme.tertiary, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+      Icon(
+          Icons.Filled.Person,
+          contentDescription = null,
+          tint = MaterialTheme.colorScheme.onSecondary,
+      )
+    }
+    Text(
+        text = npc.name,
+        color = MaterialTheme.colorScheme.onSecondary,
+        style = MaterialTheme.typography.bodySmall,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
   }
 }
 
@@ -597,13 +524,10 @@ private fun EnemyRow(
     onRemove: () -> Unit,
 ) {
   val hpRatio = (enemy.hp.toFloat() / enemy.maxHp.coerceAtLeast(1)).coerceIn(0f, 1f)
-
   val armorClass =
       enemy.character.stats.firstOrNull { it.statID == "armorClass" }?.value?.toInt() ?: 0
-
   val condition =
       enemy.character.actions.firstOrNull { it.actionID.startsWith("condition_") }?.name ?: "Normal"
-
   val hpColor =
       when {
         hpRatio >= 0.65f -> MaterialTheme.colorScheme.onSecondary
@@ -615,24 +539,16 @@ private fun EnemyRow(
       modifier = Modifier.fillMaxWidth().testTag(C.Tag.gameGmEnemy(enemy.id)),
       verticalArrangement = Arrangement.spacedBy(6.dp),
   ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-      // Enemy name and condition.
-      Column(
-          modifier = Modifier.weight(1f),
-          verticalArrangement = Arrangement.spacedBy(2.dp),
-      ) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+      Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             text = enemy.name,
-            fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSecondary,
+            fontWeight = FontWeight.SemiBold,
             style = MaterialTheme.typography.titleMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-
         Text(
             text = "$condition · AC $armorClass",
             color = MaterialTheme.colorScheme.tertiary,
@@ -641,27 +557,15 @@ private fun EnemyRow(
             overflow = TextOverflow.Ellipsis,
         )
       }
-
-      // HP controls: minus, current HP, maximum HP, plus.
       Row(
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(5.dp),
       ) {
-        HpControlButton(
-            symbol = "−",
-            enabled = enemy.hp > 0,
-            onClick = onDecrease,
-            modifier = Modifier.testTag(C.Tag.gameGmEnemyDecrease(enemy.id)),
-        )
-
+        HpControlButton("−", enemy.hp > 0, onDecrease, C.Tag.gameGmEnemyDecrease(enemy.id))
         Box(
             modifier =
                 Modifier.width(42.dp)
-                    .border(
-                        width = 1.5.dp,
-                        color = MaterialTheme.colorScheme.primary,
-                        shape = RoundedCornerShape(8.dp),
-                    )
+                    .border(1.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp))
                     .padding(vertical = 8.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -671,21 +575,18 @@ private fun EnemyRow(
               fontWeight = FontWeight.SemiBold,
           )
         }
-
         Text(
             text = "/ ${enemy.maxHp} HP",
             color = MaterialTheme.colorScheme.tertiary,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
         )
-
         HpControlButton(
-            symbol = "+",
-            enabled = enemy.hp < enemy.maxHp,
-            onClick = onIncrease,
-            modifier = Modifier.testTag(C.Tag.gameGmEnemyIncrease(enemy.id)),
+            "+",
+            enemy.hp < enemy.maxHp,
+            onIncrease,
+            C.Tag.gameGmEnemyIncrease(enemy.id),
         )
-
         IconButton(
             onClick = onRemove,
             modifier = Modifier.testTag(C.Tag.gameGmEnemyRemove(enemy.id)),
@@ -698,7 +599,6 @@ private fun EnemyRow(
         }
       }
     }
-
     LinearProgressIndicator(
         progress = { hpRatio },
         modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)),
@@ -714,18 +614,18 @@ private fun EnemyRow(
  * @param symbol Displayed control symbol, such as "+" or "−".
  * @param enabled Whether the control accepts clicks.
  * @param onClick Called when the enabled control is clicked.
- * @param modifier Layout and test modifier for the control.
+ * @param testTag Test tag of the control.
  */
 @Composable
 private fun HpControlButton(
     symbol: String,
     enabled: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
+    testTag: String,
 ) {
   Box(
       modifier =
-          modifier
+          Modifier.testTag(testTag)
               .size(42.dp)
               .clip(RoundedCornerShape(8.dp))
               .clickable(enabled = enabled, onClick = onClick),
@@ -734,11 +634,8 @@ private fun HpControlButton(
     Text(
         text = symbol,
         color =
-            if (enabled) {
-              MaterialTheme.colorScheme.onSecondary
-            } else {
-              MaterialTheme.colorScheme.tertiary
-            },
+            if (enabled) MaterialTheme.colorScheme.onSecondary
+            else MaterialTheme.colorScheme.tertiary,
         fontWeight = FontWeight.Bold,
         fontSize = 20.sp,
     )
@@ -765,15 +662,14 @@ private fun LoreRow(
       Column(modifier = Modifier.weight(1f)) {
         Text(
             document.title,
-            fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSecondary,
+            fontWeight = FontWeight.Bold,
         )
-        val content = document.lore.sections.joinToString("\n") { "${it.title}: ${it.description}" }
         Text(
-            content,
+            document.lore.sections.joinToString("\n") { "${it.title}: ${it.description}" },
+            color = MaterialTheme.colorScheme.onSecondary,
             maxLines = if (expanded) Int.MAX_VALUE else 2,
             overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSecondary,
         )
       }
       TextButton(
@@ -814,94 +710,30 @@ private fun AddEnemyDialog(onDismiss: () -> Unit, onAdd: (CombatNPC) -> Unit) {
   var maxHp by rememberSaveable { mutableStateOf("10") }
   var armorClass by rememberSaveable { mutableStateOf("10") }
   var condition by rememberSaveable { mutableStateOf("") }
-  val currentHp = hp.toIntOrNull()
-  val maximumHp = maxHp.toIntOrNull()
-  val ac = armorClass.toIntOrNull()
-  val isValid = isValidEnemyInput(name, currentHp, maximumHp, ac)
+  val isValid =
+      isValidEnemyInput(name, hp.toIntOrNull(), maxHp.toIntOrNull(), armorClass.toIntOrNull())
   Dialog(onDismissRequest = onDismiss) {
     Card(
         modifier = Modifier.testTag(C.Tag.game_gm_add_enemy_dialog),
         shape = RoundedCornerShape(20.dp),
     ) {
-      Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Column(
+          modifier = Modifier.padding(20.dp),
+          verticalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
         Text("Add enemy", style = MaterialTheme.typography.titleLarge)
-        OutlinedTextField(
-            value = name,
-            onValueChange = { name = it },
-            label = { Text("Name") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().testTag(C.Tag.game_gm_enemy_name),
-        )
-        NumberField(
-            "HP",
-            hp,
-            { hp = it },
-            Modifier.fillMaxWidth().testTag(C.Tag.game_gm_enemy_hp),
-        )
-        NumberField(
-            "Max HP",
-            maxHp,
-            { maxHp = it },
-            Modifier.fillMaxWidth().testTag(C.Tag.game_gm_enemy_max_hp),
-        )
-        NumberField(
-            "AC",
-            armorClass,
-            { armorClass = it },
-            Modifier.fillMaxWidth().testTag(C.Tag.game_gm_enemy_ac),
-        )
-        OutlinedTextField(
-            value = condition,
-            onValueChange = { condition = it },
-            label = { Text("Condition") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().testTag(C.Tag.game_gm_enemy_condition),
-        )
+        EnemyField("Name", name, C.Tag.game_gm_enemy_name) { name = it }
+        EnemyField("HP", hp, C.Tag.game_gm_enemy_hp, numeric = true) { hp = it }
+        EnemyField("Max HP", maxHp, C.Tag.game_gm_enemy_max_hp, numeric = true) { maxHp = it }
+        EnemyField("AC", armorClass, C.Tag.game_gm_enemy_ac, numeric = true) { armorClass = it }
+        EnemyField("Condition", condition, C.Tag.game_gm_enemy_condition) { condition = it }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
           TextButton(onClick = onDismiss) { Text("Cancel") }
+          // isValid guarantees the three numbers parse, so toInt() cannot throw here.
           Button(
               onClick = {
-                if (isValid) {
-                  val submittedCurrentHp = requireNotNull(currentHp)
-                  val submittedMaximumHp = requireNotNull(maximumHp)
-                  val submittedAc = requireNotNull(ac)
-                  onAdd(
-                      CombatNPC(
-                          id = "enemy-${System.currentTimeMillis()}",
-                          character =
-                              CharacterFile(
-                                  name = name.trim(),
-                                  stats =
-                                      listOf(
-                                          CharacterStat(
-                                              "armorClass",
-                                              "Armor Class",
-                                              submittedAc.toDouble(),
-                                          )
-                                      ),
-                                  actions =
-                                      condition
-                                          .trim()
-                                          .takeIf { it.isNotEmpty() }
-                                          ?.let {
-                                            listOf(
-                                                CharacterAction(
-                                                    "condition_${it.lowercase()}",
-                                                    it,
-                                                    "",
-                                                )
-                                            )
-                                          } ?: emptyList(),
-                                  hp =
-                                      CharacterHealthPoints(
-                                          submittedCurrentHp,
-                                          submittedMaximumHp,
-                                      ),
-                              ),
-                          initiative = 0,
-                      )
-                  )
-                }
+                if (isValid)
+                    onAdd(newEnemy(name, hp.toInt(), maxHp.toInt(), armorClass.toInt(), condition))
               },
               enabled = isValid,
           ) {
@@ -911,6 +743,29 @@ private fun AddEnemyDialog(onDismiss: () -> Unit, onAdd: (CombatNPC) -> Unit) {
       }
     }
   }
+}
+
+/** Builds the enemy for validated dialog input; a blank [condition] adds no condition action. */
+private fun newEnemy(
+    name: String,
+    hp: Int,
+    maxHp: Int,
+    armorClass: Int,
+    condition: String,
+): CombatNPC {
+  val trimmed = condition.trim()
+  return CombatNPC(
+      id = "enemy-${System.currentTimeMillis()}",
+      character =
+          CharacterFile(
+              name = name.trim(),
+              stats = listOf(CharacterStat("armorClass", "Armor Class", armorClass.toDouble())),
+              actions =
+                  if (trimmed.isEmpty()) emptyList()
+                  else listOf(CharacterAction("condition_${trimmed.lowercase()}", trimmed, "")),
+              hp = CharacterHealthPoints(hp, maxHp),
+          ),
+  )
 }
 
 /**
@@ -933,27 +788,23 @@ internal fun isValidEnemyInput(
         armorClass != null &&
         armorClass >= 0
 
-/**
- * Renders a numeric-only text field used by the enemy dialog.
- *
- * @param label Field label.
- * @param value Current text value.
- * @param onValueChange Receives edited text.
- * @param modifier Layout and test modifier for the field.
- */
+/** Single-line field of the enemy dialog; [numeric] fields open the number keyboard. */
 @Composable
-private fun NumberField(
+private fun EnemyField(
     label: String,
     value: String,
+    testTag: String,
+    numeric: Boolean = false,
     onValueChange: (String) -> Unit,
-    modifier: Modifier,
 ) {
   OutlinedTextField(
       value = value,
       onValueChange = onValueChange,
       label = { Text(label) },
       singleLine = true,
-      keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-      modifier = modifier,
+      keyboardOptions =
+          if (numeric) KeyboardOptions(keyboardType = KeyboardType.Number)
+          else KeyboardOptions.Default,
+      modifier = Modifier.fillMaxWidth().testTag(testTag),
   )
 }
