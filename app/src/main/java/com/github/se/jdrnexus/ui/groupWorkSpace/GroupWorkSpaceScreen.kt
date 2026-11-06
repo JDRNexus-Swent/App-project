@@ -88,6 +88,7 @@ import kotlinx.coroutines.launch
  * @param groupId Group identifier; must match the group ID used by the ViewModel.
  * @param groupName Name displayed for the group.
  * @param onBack Called when the user navigates back from the workspace root.
+ * @param onTabSelected Called when a shared bottom-navigation tab is selected.
  * @param onItemClicked Called when the user opens an item; the Boolean indicates whether the user
  *   can edit the clicked item.
  * @param personalItems Personal files available to add to the group.
@@ -99,6 +100,7 @@ fun GroupWorkSpaceScreen(
     groupId: String,
     groupName: String,
     onBack: () -> Unit = {},
+    onTabSelected: (String) -> Unit = {},
     onItemClicked: ((JDRFile, Boolean) -> Unit)? = null,
     personalItems: List<JDRFile> = emptyList(),
 ) {
@@ -115,7 +117,6 @@ fun GroupWorkSpaceScreen(
   var folderName by rememberSaveable { mutableStateOf("") }
   var editedName by rememberSaveable { mutableStateOf("") }
   var editedContent by rememberSaveable { mutableStateOf("") }
-  var selectedTab by rememberSaveable { mutableStateOf("Campaigns") }
   val isDialogOpen =
       showCreateFolderDialog ||
           showAddFilesDialog ||
@@ -172,8 +173,8 @@ fun GroupWorkSpaceScreen(
         },
         bottomBar = {
           ScreenBottomBar(
-              selectedTab = selectedTab,
-              onTabSelected = { selectedTab = it },
+              selectedTab = "Campaigns",
+              onTabSelected = onTabSelected,
           )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -802,7 +803,11 @@ fun WorkspaceHeader(
       )
 
       Text(
-          stringResource(R.string.workspace_breadcrumb, "  ›  $groupName"),
+          stringResource(
+              R.string.workspace_breadcrumb,
+              stringResource(R.string.workspace_breadcrumb_separator),
+              groupName,
+          ),
           color = color().onSecondary,
           style = MaterialTheme.typography.bodyMedium,
           maxLines = 1,
@@ -863,7 +868,7 @@ private fun WorkspaceContent(
     LoadState.Loading -> {
 
       Box(
-          Modifier.fillMaxSize(),
+          Modifier.fillMaxSize().testTag(C.Tag.workspace_loading),
           contentAlignment = Alignment.Center,
       ) {
         CircularProgressIndicator()

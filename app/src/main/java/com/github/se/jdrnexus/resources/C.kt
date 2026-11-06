@@ -79,6 +79,7 @@ object C {
     const val workspace_remove_item_progress = "remove_item_progress"
     const val workspace_remove_item_cancel = "remove_item_cancel"
     const val workspace_operation_progress = "workspace_operation_progress"
+    const val workspace_loading = "workspace_loading"
 
     fun workspaceItem(fileId: String) = "workspace_item_$fileId"
 

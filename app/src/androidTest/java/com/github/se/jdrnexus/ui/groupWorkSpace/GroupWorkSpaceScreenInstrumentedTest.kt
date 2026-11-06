@@ -77,7 +77,12 @@ class GroupWorkSpaceScreenInstrumentedTest {
   // Verifies the shared bottom navigation destinations and selection behavior.
   @Test
   fun bottomNavigationShowsSharedTabsAndUpdatesSelection() {
-    showScreen(WorkspaceFakeRepository(), Role.PLAYER)
+    val selectedTabs = mutableListOf<String>()
+    showScreen(
+        WorkspaceFakeRepository(),
+        Role.PLAYER,
+        onTabSelected = { selectedTabs += it },
+    )
 
     composeTestRule.onNodeWithTag(C.Tag.shared_bottom_bar).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).assertIsSelected()
@@ -86,7 +91,8 @@ class GroupWorkSpaceScreenInstrumentedTest {
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).assertIsDisplayed()
 
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).assertIsSelected()
+    assertEquals(listOf("Files"), selectedTabs)
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).assertIsSelected()
   }
 
   // Verifies root back navigation invokes the parent navigation callback.
@@ -190,9 +196,32 @@ class GroupWorkSpaceScreenInstrumentedTest {
     val gate = CompletableDeferred<Unit>()
     val loading = showScreen(WorkspaceFakeRepository(rootGate = gate), Role.PLAYER)
     composeTestRule.onNodeWithText("No files yet").assertDoesNotExist()
-    assertEquals(LoadState.Loading, loading.uiState.value.loadState)
+    composeTestRule.onNodeWithTag(C.Tag.workspace_loading).assertIsDisplayed()
     gate.complete(Unit)
     composeTestRule.waitUntil(5_000) { loading.uiState.value.loadState == LoadState.Success }
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_loading).assertCountEquals(0)
+  }
+
+  @Test
+  fun gameMasterSeesHiddenItemAndCanShowIt() {
+    val hidden =
+        file("hidden", "Hidden", DocumentType.TEXT)
+            .copy(placements = mapOf(GROUP to Placement(GROUP, true)))
+    showScreen(WorkspaceFakeRepository(listOf(hidden)), Role.GAME_MASTER)
+
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("hidden"), true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceVisibility("hidden"), true).assertIsDisplayed()
+    composeTestRule.onNodeWithContentDescription("Show Hidden").assertIsDisplayed()
+  }
+
+  @Test
+  fun playerDoesNotSeeAnotherMembersHiddenItem() {
+    val hidden =
+        file("hidden", "Hidden", DocumentType.TEXT)
+            .copy(placements = mapOf(GROUP to Placement(GROUP, true)))
+    showScreen(WorkspaceFakeRepository(listOf(hidden)), Role.PLAYER)
+
+    composeTestRule.onAllNodesWithTag(C.Tag.workspaceItem("hidden"), true).assertCountEquals(0)
   }
 
   // Verifies a repository failure is shown instead of an empty state.
@@ -564,6 +593,7 @@ class GroupWorkSpaceScreenInstrumentedTest {
       role: Role,
       personalItems: List<JDRFile> = emptyList(),
       onBack: () -> Unit = {},
+      onTabSelected: (String) -> Unit = {},
       onItemClicked: ((JDRFile, Boolean) -> Unit)? = null,
       setContent: Boolean = true,
   ): GroupWorkspaceViewModel {
@@ -591,6 +621,7 @@ class GroupWorkSpaceScreenInstrumentedTest {
               groupId = GROUP,
               groupName = "Ashen Realms",
               onBack = onBack,
+              onTabSelected = onTabSelected,
               onItemClicked = onItemClicked,
               personalItems = personalItems,
           )
@@ -726,9 +757,7 @@ class GroupWorkSpaceScreenInstrumentedTest {
         state
             .map { files ->
               files.values.filter {
-                groupId in it.sharedGroupsIds &&
-                    it.placements[groupId]?.folderId == folderId &&
-                    !it.placements.getValue(groupId).isHidden
+                groupId in it.sharedGroupsIds && it.placements[groupId]?.folderId == folderId
               }
             }
             .onStart {

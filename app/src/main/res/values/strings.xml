@@ -64,8 +64,8 @@
     <string name="workspace_open_description">Open %1$s</string>
     <string name="workspace_back_description">Go back</string>
     <string name="workspace_groups">Groups</string>
-    <string name="workspace_breadcrumb">%1$s</string>
-    <string name="workspace_search_description">Search</string>
+    <string name="workspace_breadcrumb">%1$s%2$s</string>
+    <string name="workspace_breadcrumb_separator">  ›  </string>
     <string name="workspace_item_count">%1$d items · Shared group workspace</string>
     <string name="workspace_load_error">Unable to load workspace</string>
     <string name="workspace_operation_in_progress">Saving workspace changes…</string>
@@ -73,8 +73,4 @@
     <string name="workspace_empty_message">Add files to share them with the group.</string>
     <string name="workspace_folder_action">Folder</string>
     <string name="workspace_file_action">File</string>
-    <string name="workspace_tab_home">Home</string>
-    <string name="workspace_tab_campaigns">Campaigns</string>
-    <string name="workspace_tab_files">Files</string>
-    <string name="workspace_tab_map">Map</string>
 </resources>

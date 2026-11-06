@@ -316,8 +316,8 @@ class GroupWorkspaceViewModel(
     val history = _uiState.value.folderHistory
     if (history.isEmpty()) return false
 
-    loadWorkspace(history.last(), preserveFolderHistory = true)
     _uiState.update { it.copy(folderHistory = history.dropLast(1)) }
+    loadWorkspace(history.last(), preserveFolderHistory = true)
     return true
   }
 
@@ -423,6 +423,11 @@ class GroupWorkspaceViewModel(
         throw e
       } catch (e: Exception) {
         if (requestGeneration == fetchGeneration) {
+          if (folderId.isNotEmpty() && repository.getFile(folderId).getOrNull() == null) {
+            loadWorkspace("")
+            showError("This folder is no longer available.")
+            return@launch
+          }
           _uiState.update {
             it.copy(
                 loadState = LoadState.Error(e.message ?: "Unable to load the group workspace."),

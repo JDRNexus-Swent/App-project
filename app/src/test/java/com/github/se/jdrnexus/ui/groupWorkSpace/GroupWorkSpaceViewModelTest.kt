@@ -110,6 +110,95 @@ class GroupWorkSpaceViewModelTest {
     assertFalse(player.uiState.value.canEditItems)
   }
 
+  @Test
+  fun openFolderSuccessfullyOpensSelectedFolder() = runTest {
+    val folder = groupFolder("folder")
+    val child = groupFile("child", parentId = folder.id)
+    val viewModel =
+        viewModel(
+            FakeWorkspaceRepository(listOf(folder, child)),
+            GroupWorkspaceRole.GAME_MASTER,
+        )
+    runCurrent()
+
+    viewModel.openFolder(folder.id)
+    runCurrent()
+
+    assertEquals(folder.id, viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(""), viewModel.uiState.value.folderHistory)
+    assertEquals(listOf(child), viewModel.uiState.value.items)
+  }
+
+  @Test
+  fun navigateBackReturnsToPreviousFolder() = runTest {
+    val parent = groupFolder("parent")
+    val childFolder = groupFolder("child-folder", parentId = parent.id)
+    val child = groupFile("child", parentId = childFolder.id)
+    val viewModel =
+        viewModel(
+            FakeWorkspaceRepository(listOf(parent, childFolder, child)),
+            GroupWorkspaceRole.GAME_MASTER,
+        )
+    runCurrent()
+
+    viewModel.openFolder(parent.id)
+    runCurrent()
+    viewModel.openFolder(childFolder.id)
+    runCurrent()
+
+    assertTrue(viewModel.navigateBack())
+    runCurrent()
+
+    assertEquals(parent.id, viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(""), viewModel.uiState.value.folderHistory)
+    assertEquals(listOf(childFolder), viewModel.uiState.value.items)
+  }
+
+  @Test
+  fun navigateBackRecoversWhenHistoryFolderNoLongerExists() = runTest {
+    val parent = groupFolder("parent")
+    val childFolder = groupFolder("child-folder", parentId = parent.id)
+    val repository = FakeWorkspaceRepository(listOf(parent, childFolder))
+    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    viewModel.openFolder(parent.id)
+    runCurrent()
+    viewModel.openFolder(childFolder.id)
+    runCurrent()
+    repository.deleteFile(parent.id)
+
+    assertTrue(viewModel.navigateBack())
+    runCurrent()
+
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertTrue(viewModel.uiState.value.folderHistory.isEmpty())
+    assertEquals("This folder is no longer available.", viewModel.uiState.value.errorMessage)
+  }
+
+  @Test
+  fun disappearingFolderResetsHistoryAndAllowsRecoveryAtRoot() = runTest {
+    val folder = groupFolder("folder")
+    val replacement = groupFolder("replacement")
+    val repository = FakeWorkspaceRepository(listOf(folder, replacement))
+    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    viewModel.openFolder(folder.id)
+    runCurrent()
+    repository.deleteFile(folder.id)
+    runCurrent()
+
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertTrue(viewModel.uiState.value.folderHistory.isEmpty())
+    assertEquals(listOf(replacement), viewModel.uiState.value.items)
+
+    viewModel.openFolder(replacement.id)
+    runCurrent()
+    assertEquals(replacement.id, viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(""), viewModel.uiState.value.folderHistory)
+  }
+
   // A user outside the participant list and a deleted group both deny workspace access.
   @Test
   fun nonMemberAndDeletedGroupCannotAccessWorkspace() = runTest {
