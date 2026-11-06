@@ -65,9 +65,9 @@ class GroupWorkSpaceScreenInstrumentedTest {
     // Verify the default Campaigns tab is displayed and selected.
     composeTestRule.onNodeWithText("Campaigns").assertIsDisplayed()
     composeTestRule
-      .onNodeWithTag(C.Tag.bottomTab("campaigns"))
-      .assertIsDisplayed()
-      .assertIsSelected()
+        .onNodeWithTag(C.Tag.bottomTab("campaigns"))
+        .assertIsDisplayed()
+        .assertIsSelected()
 
     // Verify the player role and empty workspace state.
     composeTestRule.onNodeWithText("PLAYER").assertIsDisplayed()
