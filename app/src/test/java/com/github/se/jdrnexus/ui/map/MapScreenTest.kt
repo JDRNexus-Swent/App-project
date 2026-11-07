@@ -4,8 +4,10 @@ package com.github.se.jdrnexus.ui.map
 
 import android.Manifest
 import android.app.Application
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -104,24 +106,7 @@ class MapScreenTest {
 
   @Test
   fun selectedGameDetailsUseViewModelData() {
-    val game =
-        MapGameUiModel(
-            id = "session-1",
-            coordinates = MapCoordinates(46.5197, 6.6323),
-            title = "The Sunken Crown",
-            gameMasterName = "Alex",
-            gameSystem = "Pathfinder",
-            dateTime = LocalDateTime.of(2026, 11, 5, 19, 0),
-            availableSeats = 2,
-            distanceKm = 3.5,
-        )
-    val mapVM =
-        FakeMapVM(
-            MapUiState(
-                games = listOf(game),
-                selectedGame = game,
-            )
-        )
+    val mapVM = FakeMapVM(MapUiState(games = listOf(SUNKEN_CROWN), selectedGame = SUNKEN_CROWN))
     var viewedGameId: String? = null
     composeTestRule.setContent {
       SampleAppTheme { MapScreen(mapVM, onViewGameDetails = { viewedGameId = it }) }
@@ -131,8 +116,25 @@ class MapScreenTest {
     composeTestRule.onNodeWithText("The Sunken Crown").assertIsDisplayed()
     composeTestRule.onNodeWithText("GM Alex").assertIsDisplayed()
     composeTestRule.onNodeWithText("2 seats open").assertIsDisplayed()
+    composeTestRule.onNodeWithText("3.5 km from you").assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.map_view_game_details).performClick()
     assertEquals("session-1", viewedGameId)
+  }
+
+  @Test
+  fun distanceIsMeasuredFromSearchedCity() {
+    val mapVM =
+        FakeMapVM(
+            MapUiState(
+                games = listOf(SUNKEN_CROWN),
+                selectedGame = SUNKEN_CROWN,
+                searchedCity = MapCoordinates(46.2044, 6.1432, label = "Geneva"),
+            )
+        )
+    composeTestRule.setContent { SampleAppTheme { MapScreen(mapVM) } }
+
+    composeTestRule.onNodeWithText("3.5 km from Geneva").assertIsDisplayed()
+    composeTestRule.onAllNodesWithText("3.5 km from you").assertCountEquals(0)
   }
 
   @Test
@@ -146,6 +148,20 @@ class MapScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
 
     assertEquals("Files", selectedTab)
+  }
+
+  private companion object {
+    val SUNKEN_CROWN =
+        MapGameUiModel(
+            id = "session-1",
+            coordinates = MapCoordinates(46.5197, 6.6323),
+            title = "The Sunken Crown",
+            gameMasterName = "Alex",
+            gameSystem = "Pathfinder",
+            dateTime = LocalDateTime.of(2026, 11, 5, 19, 0),
+            availableSeats = 2,
+            distanceKm = 3.5,
+        )
   }
 
   private fun retryableError(operation: MapOperation) =

@@ -478,7 +478,13 @@ private fun MapBottomOverlay(
       MapStatusBanner(isLoading = uiState.isLoading, status = uiState.status, onRetry = onRetry)
     }
     uiState.selectedGame?.let { game ->
-      SelectedGameCard(game = game, onViewDetails = { onViewGameDetails(game.id) })
+      // The ViewModel measures distances from the searched city when there is one.
+      val distanceOrigin = uiState.searchedCity?.let { it.label ?: "searched city" } ?: "you"
+      SelectedGameCard(
+          game = game,
+          distanceOrigin = distanceOrigin,
+          onViewDetails = { onViewGameDetails(game.id) },
+      )
     }
   }
 }
@@ -527,9 +533,15 @@ private fun MapStatusBanner(
 /**
  * Card of the selected [game], laid out as in the mockup: seats, title, game master, game system,
  * distance, date, and a button opening the game's details.
+ *
+ * @param distanceOrigin what the distance is measured from: "you" or the searched city.
  */
 @Composable
-private fun SelectedGameCard(game: MapGameUiModel, onViewDetails: () -> Unit) {
+private fun SelectedGameCard(
+    game: MapGameUiModel,
+    distanceOrigin: String,
+    onViewDetails: () -> Unit,
+) {
   val colors = LocalAppUiColors.current
   MapPanel(modifier = Modifier.fillMaxWidth(), borderColor = colors.accent.copy(alpha = 0.4f)) {
     Column(modifier = Modifier.padding(16.dp)) {
@@ -581,7 +593,7 @@ private fun SelectedGameCard(game: MapGameUiModel, onViewDetails: () -> Unit) {
         game.distanceKm?.let {
           GameInfo(
               Icons.Default.LocationOn,
-              "${"%.1f".format(it)} km from you",
+              "${"%.1f".format(it)} km from $distanceOrigin",
               modifier = Modifier.testTag(C.Tag.map_selected_game_distance),
           )
         }
