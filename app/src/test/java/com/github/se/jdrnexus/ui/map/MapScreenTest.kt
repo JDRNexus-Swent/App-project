@@ -2,12 +2,15 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.map
 
+import android.Manifest
+import android.app.Application
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
@@ -18,6 +21,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 
 @RunWith(AndroidJUnit4::class)
 class MapScreenTest {
@@ -66,6 +70,39 @@ class MapScreenTest {
   }
 
   @Test
+  fun retryAfterCitySearchErrorSearchesCityAgain() {
+    val mapVM =
+        FakeMapVM(
+            MapUiState(cityQuery = "Geneva", status = retryableError(MapOperation.CITY_SEARCH))
+        )
+    composeTestRule.setContent { SampleAppTheme { MapScreen(mapVM) } }
+
+    composeTestRule.onNodeWithTag(C.Tag.map_retry).performClick()
+
+    assertEquals("Geneva", mapVM.searchedCity)
+    assertEquals(1, mapVM.loadRequests)
+  }
+
+  @Test
+  fun retryAfterLocationErrorRequestsLocationAgain() {
+    // A granted permission makes the request return at once instead of showing a dialog.
+    shadowOf(ApplicationProvider.getApplicationContext<Application>())
+        .grantPermissions(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+        )
+    val mapVM = FakeMapVM(MapUiState(status = retryableError(MapOperation.DEVICE_LOCATION)))
+    composeTestRule.setContent { SampleAppTheme { MapScreen(mapVM) } }
+
+    composeTestRule.onNodeWithTag(C.Tag.map_retry).performClick()
+    // The granted result is posted to the main thread rather than delivered during the click.
+    composeTestRule.waitForIdle()
+
+    assertEquals(listOf(true), mapVM.permissionResults)
+    assertEquals(1, mapVM.loadRequests)
+  }
+
+  @Test
   fun selectedGameDetailsUseViewModelData() {
     val game =
         MapGameUiModel(
@@ -111,6 +148,9 @@ class MapScreenTest {
     assertEquals("Files", selectedTab)
   }
 
+  private fun retryableError(operation: MapOperation) =
+      MapStatus(operation, MapStatusType.ERROR, "Something went wrong.", canRetry = true)
+
   private class FakeMapVM(initialState: MapUiState = MapUiState()) : MapVM {
     private val state = MutableStateFlow(initialState)
     override val uiState: StateFlow<MapUiState> = state
@@ -118,6 +158,7 @@ class MapScreenTest {
     var loadRequests = 0
     var searchedCity: String? = null
     var applyRequests = 0
+    val permissionResults = mutableListOf<Boolean>()
 
     override fun loadNearbyGames() {
       loadRequests++
@@ -133,7 +174,9 @@ class MapScreenTest {
 
     override fun selectGame(gameId: String?) = Unit
 
-    override fun onLocationPermissionResult(granted: Boolean) = Unit
+    override fun onLocationPermissionResult(granted: Boolean) {
+      permissionResults += granted
+    }
 
     override fun onFiltersChange(filters: MapFilters) {
       state.value = state.value.copy(filters = filters)

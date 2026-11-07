@@ -86,7 +86,6 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-
 // ============ Screen ============
 
 /** Label of this screen's tab in the shared [ScreenBottomBar]. */
@@ -124,6 +123,7 @@ fun MapScreen(
           results ->
         mapVM.onLocationPermissionResult(results.values.any { it })
       }
+  val requestLocation = { locationPermissionLauncher.launch(LOCATION_PERMISSIONS) }
 
   LaunchedEffect(mapVM) { mapVM.loadNearbyGames() }
 
@@ -144,8 +144,15 @@ fun MapScreen(
       )
       MapBottomOverlay(
           uiState = uiState,
-          onRequestLocation = { locationPermissionLauncher.launch(LOCATION_PERMISSIONS) },
-          onRetry = mapVM::loadNearbyGames,
+          onRequestLocation = requestLocation,
+          // Repeats the operation that failed, as described on MapStatus.canRetry.
+          onRetry = { operation ->
+            when (operation) {
+              MapOperation.GAMES -> mapVM.loadNearbyGames()
+              MapOperation.CITY_SEARCH -> mapVM.searchCity()
+              MapOperation.DEVICE_LOCATION -> requestLocation()
+            }
+          },
           onViewGameDetails = onViewGameDetails,
           modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(OverlayInset),
       )
@@ -442,12 +449,14 @@ private fun MapFiltersPanel(
 /**
  * Bottom of the map, from top to bottom: the device-location button, the loading/status banner when
  * there is one, and the card of the selected game when one is selected.
+ *
+ * @param onRetry receives the operation of the failed [MapStatus], so that it can be repeated.
  */
 @Composable
 private fun MapBottomOverlay(
     uiState: MapUiState,
     onRequestLocation: () -> Unit,
-    onRetry: () -> Unit,
+    onRetry: (MapOperation) -> Unit,
     onViewGameDetails: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -479,7 +488,11 @@ private fun MapBottomOverlay(
  * empty result does not; a retry action is shown when [MapStatus.canRetry].
  */
 @Composable
-private fun MapStatusBanner(isLoading: Boolean, status: MapStatus?, onRetry: () -> Unit) {
+private fun MapStatusBanner(
+    isLoading: Boolean,
+    status: MapStatus?,
+    onRetry: (MapOperation) -> Unit,
+) {
   val colors = LocalAppUiColors.current
   MapPanel(modifier = Modifier.fillMaxWidth()) {
     Row(
@@ -499,7 +512,10 @@ private fun MapStatusBanner(isLoading: Boolean, status: MapStatus?, onRetry: () 
                 else MaterialTheme.colorScheme.error,
         )
         if (it.canRetry) {
-          TextButton(onClick = onRetry, modifier = Modifier.testTag(C.Tag.map_retry)) {
+          TextButton(
+              onClick = { onRetry(it.operation) },
+              modifier = Modifier.testTag(C.Tag.map_retry),
+          ) {
             Text("Retry", color = colors.accent)
           }
         }
