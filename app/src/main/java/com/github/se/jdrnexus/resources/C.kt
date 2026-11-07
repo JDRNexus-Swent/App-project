@@ -89,5 +89,46 @@ object C {
 
     /** Tag of the selection button for [diceName] (e.g. "D20"). */
     fun diceOfflineSelect(diceName: String) = "dice_offline_select_$diceName"
+
+    const val game_gm_list = "game_gm_list"
+    const val game_gm_loading = "game_gm_loading"
+    const val game_gm_error = "game_gm_error"
+    const val game_gm_empty_combat = "game_gm_empty_combat"
+    const val game_gm_empty_npcs = "game_gm_empty_npcs"
+    const val game_gm_empty_lore = "game_gm_empty_lore"
+    const val game_gm_add_enemy = "game_gm_add_enemy"
+    const val game_gm_add_enemy_dialog = "game_gm_add_enemy_dialog"
+    const val game_gm_enemy_name = "game_gm_enemy_name"
+    const val game_gm_enemy_hp = "game_gm_enemy_hp"
+    const val game_gm_enemy_max_hp = "game_gm_enemy_max_hp"
+    const val game_gm_enemy_ac = "game_gm_enemy_ac"
+    const val game_gm_enemy_condition = "game_gm_enemy_condition"
+    const val game_gm_start_combat = "game_gm_start_combat"
+    const val game_gm_next_round = "game_gm_next_round"
+    const val game_gm_end_combat = "game_gm_end_combat"
+    const val game_gm_dice = "game_gm_dice"
+    const val game_gm_hidden_sections = "game_gm_hidden_sections"
+
+    fun gameGmEnemy(id: String) = "game_gm_enemy_$id"
+
+    fun gameGmEnemyIncrease(id: String) = "game_gm_enemy_increase_$id"
+
+    fun gameGmEnemyDecrease(id: String) = "game_gm_enemy_decrease_$id"
+
+    fun gameGmEnemyRemove(id: String) = "game_gm_enemy_remove_$id"
+
+    fun gameGmActivity(id: String) = "game_gm_activity_$id"
+
+    fun gameGmNpc(id: String) = "game_gm_npc_$id"
+
+    fun gameGmLore(id: String) = "game_gm_lore_$id"
+
+    fun gameGmLoreExpand(id: String) = "game_gm_lore_expand_$id"
+
+    /** Tag of the button hiding the GM dashboard section [key] (e.g. "combat"). */
+    fun gameGmHide(key: String) = "game_gm_hide_$key"
+
+    /** Tag of the button restoring the hidden GM dashboard section [key]. */
+    fun gameGmRestore(key: String) = "game_gm_restore_$key"
   }
 }
