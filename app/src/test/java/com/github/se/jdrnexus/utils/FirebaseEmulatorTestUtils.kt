@@ -3,6 +3,7 @@ package com.github.se.jdrnexus.utils
 
 import android.content.Context
 import android.os.Looper
+import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.FirebaseFirestore
@@ -32,6 +33,8 @@ object FirebaseEmulatorTestUtils {
 
   /** Firestore refuses batches of more than 500 writes. */
   private const val MAX_BATCH_SIZE = 500
+
+  private const val TAG = "FirebaseEmulatorTestUtils"
 
   /**
    * Returns a Firestore instance that is guaranteed to point to the emulator. Safe to call from
@@ -72,13 +75,11 @@ object FirebaseEmulatorTestUtils {
   /**
    * To call from @After. Re-enables the network (a test may have disabled it), then empties the
    * given collections. Paths can be nested, e.g. "campaign_groups/<id>/dice_rolls".
+   * Throws if the network cannot be re-enabled, so that the failure is visible here and not in the
+   * next tests of the suite.
    */
   suspend fun tearDown(firestore: FirebaseFirestore, vararg collectionPaths: String) {
-    try {
       firestore.enableNetwork().await()
-    } catch (_: Exception) {
-      // ignore
-    }
     collectionPaths.forEach { clearCollection(firestore, it) }
   }
 
@@ -92,7 +93,7 @@ object FirebaseEmulatorTestUtils {
         batch.commit().await()
       }
     } catch (e: Exception) {
-      println("Cleanup of '$collectionPath' failed: $e")
+      Log.w(TAG, "Cleanup of '$collectionPath' failed", e)
     }
   }
 
@@ -129,22 +130,26 @@ suspend fun <T> Flow<T>.waitFor(
     condition: (T) -> Boolean,
 ): T {
   val latestValue = AtomicReference<T?>(null)
+  val matchedValue = AtomicReference<T?>(null)
   val hasValue = AtomicBoolean(false)
   val isReady = AtomicBoolean(false)
   val errorRef = AtomicReference<Throwable?>(null)
 
   val job =
-      CoroutineScope(Dispatchers.Default).launch {
-        try {
-          this@waitFor.collect {
-            latestValue.set(it)
-            hasValue.set(true)
-            if (condition(it)) isReady.set(true)
+    CoroutineScope(Dispatchers.Default).launch {
+      try {
+        this@waitFor.collect {
+          latestValue.set(it)
+          hasValue.set(true)
+          if (!isReady.get() && condition(it)) {
+            matchedValue.set(it)
+            isReady.set(true)
           }
-        } catch (e: Throwable) {
-          errorRef.set(e)
         }
+      } catch (e: Throwable) {
+        errorRef.set(e)
       }
+    }
   try {
     FirebaseEmulatorTestUtils.pumpMainLooperUntil(
         timeoutMs = timeoutMs,
@@ -157,7 +162,7 @@ suspend fun <T> Flow<T>.waitFor(
       isReady.get()
     }
     @Suppress("UNCHECKED_CAST")
-    return latestValue.get() as T
+    return matchedValue.get() as T
   } finally {
     job.cancel()
   }
