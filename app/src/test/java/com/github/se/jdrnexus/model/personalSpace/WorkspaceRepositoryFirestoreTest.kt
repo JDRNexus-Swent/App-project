@@ -1057,14 +1057,19 @@ class WorkspaceRepositoryFirestoreTest {
   fun setItemHidden_refusesToHideMoreItemsThanOneBatchCanWrite() = runBlocking {
     val folder = inGroup("folder", "group", "group", DocumentType.FOLDER)
     persistFiles(groupRootOf("group"), folder)
-    val repositorySpy = spyk(WorkspaceRepositoryFirestore(firestore))
     val children = (1..500).map { inGroup("child-$it", "group", "folder") }
-    every { repositorySpy.getGroupFolderFiles("folder", "group") } returns flowOf(children)
+    // Write the children to the emulator so the direct query in setItemHidden finds them.
+    val batch = firestore.batch()
+    children.forEach {
+      batch.set(
+          firestore.collection(WorkspaceRepositoryFirestore.COLLECTION_PATH).document(it.id),
+          it,
+      )
+    }
+    batch.commit().await()
 
     val result =
-        runAndPumpMainLooper("setItemHidden") {
-          repositorySpy.setItemHidden("folder", "group", true)
-        }
+        runAndPumpMainLooper("setItemHidden") { repository.setItemHidden("folder", "group", true) }
 
     assertFailureWith(
         result,
