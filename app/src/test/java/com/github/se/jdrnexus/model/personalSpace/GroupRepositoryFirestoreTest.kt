@@ -302,6 +302,29 @@ class GroupRepositoryFirestoreTest {
     assertEquals("Old Name", repository.getGroup(group.id).getOrNull()?.name)
   }
 
+  private class BatchMocks(
+      val firestore: FirebaseFirestore,
+      val groupDoc: DocumentReference,
+      val rootDoc: DocumentReference,
+      val batch: WriteBatch,
+  )
+
+  private fun buildBatchMocks(groupId: String): BatchMocks {
+    val firestoreMock = mockk<FirebaseFirestore>()
+    val groupsMock = mockk<CollectionReference>()
+    val documentsMock = mockk<CollectionReference>()
+    val groupDocMock = mockk<DocumentReference>()
+    val rootDocMock = mockk<DocumentReference>()
+    val batchMock = mockk<WriteBatch>()
+    every { firestoreMock.collection("campaign_groups") } returns groupsMock
+    every { firestoreMock.collection("documents") } returns documentsMock
+    every { groupsMock.document(groupId) } returns groupDocMock
+    every { documentsMock.document(groupId) } returns rootDocMock
+    every { firestoreMock.batch() } returns batchMock
+    every { batchMock.commit() } returns Tasks.forResult(null)
+    return BatchMocks(firestoreMock, groupDocMock, rootDocMock, batchMock)
+  }
+
   /** The group and its root folder go into one batch with a single commit. */
   @Test
   fun testCreateGroup_writesGroupAndRootInOneBatch() = runBlocking {
@@ -312,27 +335,16 @@ class GroupRepositoryFirestoreTest {
             gameMasterId = "gm1",
             participantIds = listOf("gm1"),
         )
-    val firestoreMock = mockk<FirebaseFirestore>()
-    val groupsMock = mockk<CollectionReference>()
-    val documentsMock = mockk<CollectionReference>()
-    val groupDocMock = mockk<DocumentReference>()
-    val rootDocMock = mockk<DocumentReference>()
-    val batchMock = mockk<WriteBatch>()
-    every { firestoreMock.collection("campaign_groups") } returns groupsMock
-    every { firestoreMock.collection("documents") } returns documentsMock
-    every { groupsMock.document("g1") } returns groupDocMock
-    every { documentsMock.document("g1") } returns rootDocMock
-    every { firestoreMock.batch() } returns batchMock
-    every { batchMock.set(any(), any()) } returns batchMock
-    every { batchMock.commit() } returns Tasks.forResult(null)
+    val mocks = buildBatchMocks(group.id)
+    every { mocks.batch.set(any(), any()) } returns mocks.batch
 
-    val result = GroupRepositoryFirestore(firestoreMock).createGroup(group)
+    val result = GroupRepositoryFirestore(mocks.firestore).createGroup(group)
 
     assertTrue(result.isSuccess)
-    verify(exactly = 1) { batchMock.set(groupDocMock, group) }
+    verify(exactly = 1) { mocks.batch.set(mocks.groupDoc, group) }
     verify(exactly = 1) {
-      batchMock.set(
-          rootDocMock,
+      mocks.batch.set(
+          mocks.rootDoc,
           JDRFile(
               id = "g1",
               name = "Campaign",
@@ -342,35 +354,24 @@ class GroupRepositoryFirestoreTest {
           ),
       )
     }
-    verify(exactly = 1) { batchMock.commit() }
-    confirmVerified(batchMock)
+    verify(exactly = 1) { mocks.batch.commit() }
+    confirmVerified(mocks.batch)
   }
 
   /** The group update and the root rename go into one batch with a single commit. */
   @Test
   fun testUpdateGroup_updatesGroupAndRootInOneBatch() = runBlocking {
     val group = CampaignGroup(id = "g1", name = "New Name", gameMasterId = "gm1")
-    val firestoreMock = mockk<FirebaseFirestore>()
-    val groupsMock = mockk<CollectionReference>()
-    val documentsMock = mockk<CollectionReference>()
-    val groupDocMock = mockk<DocumentReference>()
-    val rootDocMock = mockk<DocumentReference>()
-    val batchMock = mockk<WriteBatch>()
-    every { firestoreMock.collection("campaign_groups") } returns groupsMock
-    every { firestoreMock.collection("documents") } returns documentsMock
-    every { groupsMock.document("g1") } returns groupDocMock
-    every { documentsMock.document("g1") } returns rootDocMock
-    every { firestoreMock.batch() } returns batchMock
-    every { batchMock.update(any(), any()) } returns batchMock
-    every { batchMock.commit() } returns Tasks.forResult(null)
+    val mocks = buildBatchMocks(group.id)
+    every { mocks.batch.update(any(), any()) } returns mocks.batch
 
-    val result = GroupRepositoryFirestore(firestoreMock).updateGroup(group)
+    val result = GroupRepositoryFirestore(mocks.firestore).updateGroup(group)
 
     assertTrue(result.isSuccess)
-    verify(exactly = 1) { batchMock.update(groupDocMock, group.toMap()) }
-    verify(exactly = 1) { batchMock.update(rootDocMock, mapOf("name" to "New Name")) }
-    verify(exactly = 1) { batchMock.commit() }
-    confirmVerified(batchMock)
+    verify(exactly = 1) { mocks.batch.update(mocks.groupDoc, group.toMap()) }
+    verify(exactly = 1) { mocks.batch.update(mocks.rootDoc, mapOf("name" to "New Name")) }
+    verify(exactly = 1) { mocks.batch.commit() }
+    confirmVerified(mocks.batch)
   }
 
   /** Tests deleting an existing campaign group. */

@@ -305,6 +305,7 @@ class GameManagementViewModelTest {
         viewModel.uiState.value.createState,
     )
     assertTrue(repository.createdGroups.isEmpty())
+    assertEquals(0, repository.newGroupIdRequests)
   }
 
   @Test
