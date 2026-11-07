@@ -52,10 +52,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -141,6 +138,8 @@ fun MapScreen(
           onSearch = mapVM::searchCity,
           onFiltersChange = mapVM::onFiltersChange,
           onApplyFilters = mapVM::applyFilters,
+          filtersExpanded = uiState.filtersExpanded,
+          onToggleFilters = { mapVM.onFiltersExpandedChange(!uiState.filtersExpanded) },
           modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(OverlayInset),
       )
       MapBottomOverlay(
@@ -326,6 +325,9 @@ private fun UserLocationPin() {
  *
  * Searching is only possible with a non-blank query, from the search icon or the keyboard action.
  * Filter edits go to [onFiltersChange] and change the visible games only once applied.
+ *
+ * @param filtersExpanded whether the filter controls are shown, from [MapUiState.filtersExpanded].
+ * @param onToggleFilters shows or hides the filter controls.
  */
 @Composable
 private fun MapSearchBar(
@@ -335,11 +337,12 @@ private fun MapSearchBar(
     onSearch: () -> Unit,
     onFiltersChange: (MapFilters) -> Unit,
     onApplyFilters: () -> Unit,
+    filtersExpanded: Boolean,
+    onToggleFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
   val colors = LocalAppUiColors.current
   val canSearch = query.isNotBlank()
-  var filtersExpanded by rememberSaveable { mutableStateOf(false) }
 
   MapPanel(modifier = modifier) {
     Column(
@@ -377,7 +380,7 @@ private fun MapSearchBar(
         )
         VerticalDivider(modifier = Modifier.height(32.dp), color = colors.outline)
         IconButton(
-            onClick = { filtersExpanded = !filtersExpanded },
+            onClick = onToggleFilters,
             modifier = Modifier.testTag(C.Tag.map_filters_toggle),
         ) {
           Icon(Icons.Default.Tune, contentDescription = "Show filters", tint = colors.accent)

@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.map
 
 import java.time.LocalDateTime
@@ -74,6 +75,8 @@ data class MapUiState(
     val filters: MapFilters = MapFilters(),
     /** Filters applied to [games]; [filters] can be edited before applying them. */
     val appliedFilters: MapFilters = MapFilters(),
+    /** Whether the filter controls are shown below the city search. */
+    val filtersExpanded: Boolean = false,
     val loadingOperations: Set<MapOperation> = emptySet(),
     val status: MapStatus? = null,
 ) {
@@ -97,6 +100,9 @@ interface MapVM {
 
   /** Fetches the device location when granted, otherwise reports permission denial. */
   fun onLocationPermissionResult(granted: Boolean)
+
+  /** Shows or hides the filter controls; does not change the filters themselves. */
+  fun onFiltersExpandedChange(expanded: Boolean)
 
   /** Updates filter controls without changing the visible games until [applyFilters] is called. */
   fun onFiltersChange(filters: MapFilters)

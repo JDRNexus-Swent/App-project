@@ -7,6 +7,7 @@ import android.app.Application
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -47,6 +48,18 @@ class MapScreenTest {
     assertEquals(1, mapVM.applyRequests)
     assertEquals("Dungeons & Dragons", mapVM.uiState.value.filters.gameSystem)
     assertEquals(true, mapVM.uiState.value.filters.onlyGamesWithAvailableSeats)
+  }
+
+  @Test
+  fun filterPanelFollowsViewModelState() {
+    val mapVM = FakeMapVM(MapUiState(filtersExpanded = true))
+    composeTestRule.setContent { SampleAppTheme { MapScreen(mapVM) } }
+    composeTestRule.onNodeWithTag(C.Tag.map_game_system_filter).assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(C.Tag.map_filters_toggle).performClick()
+
+    assertEquals(false, mapVM.uiState.value.filtersExpanded)
+    composeTestRule.onAllNodesWithTag(C.Tag.map_game_system_filter).assertCountEquals(0)
   }
 
   @Test
@@ -192,6 +205,10 @@ class MapScreenTest {
 
     override fun onLocationPermissionResult(granted: Boolean) {
       permissionResults += granted
+    }
+
+    override fun onFiltersExpandedChange(expanded: Boolean) {
+      state.value = state.value.copy(filtersExpanded = expanded)
     }
 
     override fun onFiltersChange(filters: MapFilters) {
