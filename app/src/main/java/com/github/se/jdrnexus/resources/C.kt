@@ -39,6 +39,21 @@ object C {
 
     fun bottomTab(name: String) = "bottom_tab_$name"
 
+    const val map_screen = "map_screen"
+    const val map_google_map = "map_google_map"
+    const val map_city_search_field = "map_city_search_field"
+    const val map_city_search_button = "map_city_search_button"
+    const val map_filters_toggle = "map_filters_toggle"
+    const val map_game_system_filter = "map_game_system_filter"
+    const val map_available_seats_filter = "map_available_seats_filter"
+    const val map_apply_filters = "map_apply_filters"
+    const val map_location_button = "map_location_button"
+    const val map_status_message = "map_status_message"
+    const val map_retry = "map_retry"
+    const val map_selected_game_title = "map_selected_game_title"
+    const val map_selected_game_distance = "map_selected_game_distance"
+    const val map_view_game_details = "map_view_game_details"
+
     const val dice_offline_screen = "dice_offline_screen"
     const val dice_offline_close = "dice_offline_close"
     const val dice_offline_selected_type = "dice_offline_selected_type"
