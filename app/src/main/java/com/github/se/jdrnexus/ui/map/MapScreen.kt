@@ -51,6 +51,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -214,20 +215,23 @@ private fun MapLayer(uiState: MapUiState, onSelectGame: (String) -> Unit) {
       properties = mapProperties,
   ) {
     uiState.games.forEach { game ->
-      val selected = game.id == uiState.selectedGame?.id
-      MarkerComposable(
-          game.id,
-          selected,
-          state = rememberMarkerStateAt(game.coordinates),
-          title = game.title,
-          snippet = "${game.gameSystem} · ${game.gameMasterName}",
-          onClick = {
-            onSelectGame(game.id)
-            true
-          },
-          tag = C.Tag.mapGameMarker(game.id),
-      ) {
-        GamePin(selected = selected)
+      // One stable marker and marker state per game, even when filters or a reload change the list.
+      key(game.id) {
+        val selected = game.id == uiState.selectedGame?.id
+        // The pin is drawn once into a bitmap and redrawn only when these keys change.
+        MarkerComposable(
+            selected,
+            colors.isDarkTheme,
+            state = rememberMarkerStateAt(game.coordinates),
+            onClick = {
+              onSelectGame(game.id)
+              // Handled: the ViewModel moves the camera and the card shows the game, so the SDK's
+              // default camera move and info window are skipped.
+              true
+            },
+        ) {
+          GamePin(selected = selected)
+        }
       }
     }
     uiState.searchedCity?.let { city ->

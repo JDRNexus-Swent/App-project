@@ -58,8 +58,6 @@ object C {
     const val map_selected_game_distance = "map_selected_game_distance"
     const val map_view_game_details = "map_view_game_details"
 
-    fun mapGameMarker(gameId: String) = "map_game_marker_$gameId"
-
     const val dice_offline_screen = "dice_offline_screen"
     const val dice_offline_close = "dice_offline_close"
     const val dice_offline_selected_type = "dice_offline_selected_type"
