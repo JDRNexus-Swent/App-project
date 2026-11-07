@@ -3,11 +3,11 @@ package com.github.se.jdrnexus.model.gameManagement
 
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
+import com.github.se.jdrnexus.model.personalSpace.safeFirestoreRequest
 import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -21,49 +21,44 @@ class GameSessionRepositoryFirestore(
     private val diceRepository: DiceRepositoryFirestore,
 ) : GameSessionRepository {
 
-  override suspend fun loadActivities(groupId: String): Result<List<GameActivityEntry>> =
-      try {
-        require(groupId.isNotBlank()) { "Group ID cannot be empty." }
-        val diceRolls =
-            diceRepository.getDiceRollsHistory(groupId).getOrThrow().map { roll ->
-              GameActivityEntry(
-                  id = roll.documentId,
-                  userId = roll.userId,
-                  playerName = roll.username,
-                  action = "Rolled ${roll.diceType} with modifier ${roll.modifier}",
-                  diceResult = roll.totalValue.toString(),
-                  timestamp = roll.timestamp?.time ?: System.currentTimeMillis(),
-              )
+  override suspend fun loadActivities(groupId: String): Result<List<GameActivityEntry>> = safeFirestoreRequest {
+    require(groupId.isNotBlank()) { "Group ID cannot be empty." }
+    val diceRolls =
+        diceRepository.getDiceRollsHistory(groupId).getOrThrow().map { roll ->
+          GameActivityEntry(
+              id = roll.documentId,
+              userId = roll.userId,
+              playerName = roll.username,
+              action = "Rolled ${roll.diceType} with modifier ${roll.modifier}",
+              diceResult = roll.totalValue.toString(),
+              timestamp = roll.timestamp?.time ?: System.currentTimeMillis(),
+          )
+        }
+    val actions =
+        firestore
+            .collection(GROUPS_COLLECTION)
+            .document(groupId)
+            .collection(ACTIVITIES_COLLECTION)
+            .get()
+            .await()
+            .documents
+            .mapNotNull { document ->
+              val data = document.data ?: return@mapNotNull null
+              runCatching {
+                GameActivityEntry(
+                    id = document.id,
+                    userId = data.string("userId"),
+                    playerName = data.string("playerName"),
+                    action = data.string("action"),
+                    diceResult = data["diceResult"] as? String,
+                    timestamp =
+                        document.getDate("timestamp")?.time ?: System.currentTimeMillis(),
+                )
+              }
+                  .getOrNull()
             }
-        val actions =
-            firestore
-                .collection(GROUPS_COLLECTION)
-                .document(groupId)
-                .collection(ACTIVITIES_COLLECTION)
-                .get()
-                .await()
-                .documents
-                .mapNotNull { document ->
-                  val data = document.data ?: return@mapNotNull null
-                  runCatching {
-                    GameActivityEntry(
-                        id = document.id,
-                        userId = data.string("userId"),
-                        playerName = data.string("playerName"),
-                        action = data.string("action"),
-                        diceResult = data["diceResult"] as? String,
-                        timestamp =
-                            document.getDate("timestamp")?.time ?: System.currentTimeMillis(),
-                    )
-                  }
-                      .getOrNull()
-                }
-        Result.success((diceRolls + actions).sortedByDescending(GameActivityEntry::timestamp))
-      } catch (cancellation: CancellationException) {
-        throw cancellation
-      } catch (failure: Exception) {
-        Result.failure(failure)
-      }
+    (diceRolls + actions).sortedByDescending(GameActivityEntry::timestamp)
+  }
 
   override fun observeActivities(groupId: String): Flow<List<GameActivityEntry>> =
       combine(
@@ -90,7 +85,7 @@ class GameSessionRepositoryFirestore(
       playerName: String,
       action: String,
       diceResult: String?,
-  ): Result<Unit> = writeResult {
+  ): Result<Unit> = safeFirestoreRequest {
     require(groupId.isNotBlank()) { "Group ID cannot be empty." }
     require(userId.isNotBlank()) { "User ID cannot be empty." }
     require(playerName.isNotBlank()) { "Player name cannot be empty." }
@@ -184,7 +179,7 @@ class GameSessionRepositoryFirestore(
   override suspend fun saveSession(
       groupId: String,
       session: GameSessionSnapshot,
-  ): Result<Unit> = writeResult {
+  ): Result<Unit> = safeFirestoreRequest {
     require(groupId.isNotBlank()) { "Group ID cannot be empty." }
     session.validate()
     firestore
@@ -228,7 +223,7 @@ class GameSessionRepositoryFirestore(
     awaitClose { registration.remove() }
   }
 
-  override suspend fun saveLore(groupId: String, lore: GameLoreEntry): Result<Unit> = writeResult {
+  override suspend fun saveLore(groupId: String, lore: GameLoreEntry): Result<Unit> = safeFirestoreRequest {
     require(groupId.isNotBlank()) { "Group ID cannot be empty." }
     require(lore.id.isNotBlank()) { "Lore document ID cannot be empty." }
     require(lore.lore.title.isNotBlank()) { "Lore document title cannot be empty." }
@@ -245,7 +240,7 @@ class GameSessionRepositoryFirestore(
       groupId: String,
       documentId: String,
       isShared: Boolean,
-  ): Result<Unit> = writeResult {
+  ): Result<Unit> = safeFirestoreRequest {
     require(groupId.isNotBlank()) { "Group ID cannot be empty." }
     require(documentId.isNotBlank()) { "Lore document ID cannot be empty." }
     firestore
@@ -348,16 +343,6 @@ class GameSessionRepositoryFirestore(
   private fun Map<*, *>.stringList(key: String): List<String> =
       ((this[key] as? List<*>) ?: emptyList<Any>()).map {
         it as? String ?: error("Invalid $key value.")
-      }
-
-  private suspend fun writeResult(block: suspend () -> Unit): Result<Unit> =
-      try {
-        block()
-        Result.success(Unit)
-      } catch (cancellation: CancellationException) {
-        throw cancellation
-      } catch (failure: Exception) {
-        Result.failure(failure)
       }
 
   private companion object {

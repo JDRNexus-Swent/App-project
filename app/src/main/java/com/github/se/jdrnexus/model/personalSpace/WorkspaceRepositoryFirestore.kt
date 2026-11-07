@@ -26,147 +26,112 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     return collection.document().id
   }
 
-  override suspend fun createFile(file: JDRFile): Result<Unit> {
-    return try {
-      collection.document(file.id).set(file).await()
-      Result.success(Unit)
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      Result.failure(e)
-    }
+  override suspend fun createFile(file: JDRFile): Result<Unit> = safeFirestoreRequest {
+    collection.document(file.id).set(file).await()
   }
 
-  override suspend fun updateFile(file: JDRFile): Result<Unit> {
-    return try {
-      // `file` is usually a snapshot read earlier (e.g. by the editor).
-      // Writing every field would overwrite the document with that possibly stale copy,
-      // so a share or unshare made in the meantime would be silently undone.
-      // Group sharing is therefore excluded here: `placements`
-      // and `sharedGroupsIds` only change through dedicated repository operations (e.g.
-      // removeItemFromGroup), which update both fields together and leave the other fields
-      // untouched.
-      val fields = file.toMap() - "placements" - "sharedGroupsIds"
-      collection.document(file.id).update(fields).await()
-      Result.success(Unit)
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      Result.failure(e)
-    }
+  override suspend fun updateFile(file: JDRFile): Result<Unit> = safeFirestoreRequest {
+    // `file` is usually a snapshot read earlier (e.g. by the editor).
+    // Writing every field would overwrite the document with that possibly stale copy,
+    // so a share or unshare made in the meantime would be silently undone.
+    // Group sharing is therefore excluded here: `placements`
+    // and `sharedGroupsIds` only change through dedicated repository operations (e.g.
+    // removeItemFromGroup), which update both fields together and leave the other fields
+    // untouched.
+    val fields = file.toMap() - "placements" - "sharedGroupsIds"
+    collection.document(file.id).update(fields).await()
   }
 
-  override suspend fun deleteFile(fileId: String): Result<Unit> {
-    return try {
-      val file = getFile(fileId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
-      check(file.type != DocumentType.GROUP_ROOT) { "A group root cannot be deleted." }
+  override suspend fun deleteFile(fileId: String): Result<Unit> = safeFirestoreRequest {
+    val file = getFile(fileId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
+    check(file.type != DocumentType.GROUP_ROOT) { "A group root cannot be deleted." }
 
-      // A file has no content below it: nothing to unshare or reattach.
-      if (!file.isContainer()) {
-        collection.document(fileId).delete().await()
-        return Result.success(Unit)
-      }
-
-      // The folder and its personal content are deleted, and leave every group they are in.
-      val deleted = collectPersonalSubtree(file)
-      val deletedIds = deleted.map { it.id }.toSet()
-      val removals =
-          planDeletion(
-              deleted,
-              isParentHidden = { folderId, groupId -> isHiddenIn(folderId, groupId) },
-              childrenOf = { folder, groupId -> getGroupFolderFiles(folder.id, groupId).first() },
-          )
-
-      // Files that are deleted anyway do not need an update.
-      val writes =
-          deleted.size +
-              removals.values.sumOf { removal ->
-                removal.leaving.count { it.id !in deletedIds } + removal.reattached.size
-              }
-      check(writes <= MAX_BATCH_WRITES) {
-        "Too many items to delete at once (maximum $MAX_BATCH_WRITES)."
-      }
-
-      val batch = firestore.batch()
-      deleted.forEach { batch.delete(collection.document(it.id)) }
-      removals.forEach { (groupId, removal) ->
-        removal.leaving
-            .filter { it.id !in deletedIds }
-            .forEach { batch.update(collection.document(it.id), removePlacementUpdate(groupId)) }
-        removal.reattached.forEach {
-          batch.update(
-              collection.document(it.id),
-              addPlacementUpdate(groupId, it.folderId, it.isHidden),
-          )
-        }
-      }
-      batch.commit().await()
-      Result.success(Unit)
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      Result.failure(e)
+    // A file has no content below it: nothing to unshare or reattach.
+    if (!file.isContainer()) {
+      collection.document(fileId).delete().await()
+      return@safeFirestoreRequest
     }
-  }
 
-  override suspend fun getFile(fileId: String): Result<JDRFile?> {
-    return try {
-      val documentSnapshot = collection.document(fileId).get().await()
+    // The folder and its personal content are deleted, and leave every group they are in.
+    val deleted = collectPersonalSubtree(file)
+    val deletedIds = deleted.map { it.id }.toSet()
+    val removals =
+        planDeletion(
+            deleted,
+            isParentHidden = { folderId, groupId -> isHiddenIn(folderId, groupId) },
+            childrenOf = { folder, groupId -> getGroupFolderFiles(folder.id, groupId).first() },
+        )
 
-      if (!documentSnapshot.exists()) {
-        return Result.failure(Exception("Document not found in Firestore"))
-      }
-
-      val file = documentSnapshot.toObject(JDRFile::class.java)
-      Result.success(file)
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      Result.failure(e)
+    // Files that are deleted anyway do not need an update.
+    val writes =
+        deleted.size +
+            removals.values.sumOf { removal ->
+              removal.leaving.count { it.id !in deletedIds } + removal.reattached.size
+            }
+    check(writes <= MAX_BATCH_WRITES) {
+      "Too many items to delete at once (maximum $MAX_BATCH_WRITES)."
     }
-  }
 
-  override suspend fun removeItemFromGroup(
-      itemId: String,
-      groupId: String,
-      parentFolderId: String,
-  ): Result<Unit> {
-    return try {
-      require(itemId.isNotBlank()) { "Item ID cannot be empty." }
-      require(groupId.isNotBlank()) { "Group ID cannot be empty." }
-
-      val root = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
-      check(root.type != DocumentType.GROUP_ROOT) {
-        "A group root cannot be removed from its group."
-      }
-      val placement =
-          checkNotNull(root.placements[groupId]) { "This item does not belong to the group." }
-
-      val parentHidden = isHiddenIn(placement.folderId, groupId)
-
-      val removal =
-          planRemoval(root, groupId, parentHidden) { getGroupFolderFiles(it.id, groupId).first() }
-      check(removal.leaving.size + removal.reattached.size <= MAX_BATCH_WRITES) {
-        "Too many items to update at once (maximum $MAX_BATCH_WRITES)."
-      }
-
-      val batch = firestore.batch()
-      removal.leaving.forEach {
-        batch.update(collection.document(it.id), removePlacementUpdate(groupId))
-      }
+    val batch = firestore.batch()
+    deleted.forEach { batch.delete(collection.document(it.id)) }
+    removals.forEach { (groupId, removal) ->
+      removal.leaving
+          .filter { it.id !in deletedIds }
+          .forEach { batch.update(collection.document(it.id), removePlacementUpdate(groupId)) }
       removal.reattached.forEach {
         batch.update(
             collection.document(it.id),
             addPlacementUpdate(groupId, it.folderId, it.isHidden),
         )
       }
-      batch.commit().await()
-      Result.success(Unit)
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      Result.failure(e)
     }
+    batch.commit().await()
+  }
+
+  override suspend fun getFile(fileId: String): Result<JDRFile?> = safeFirestoreRequest {
+    val documentSnapshot = collection.document(fileId).get().await()
+
+    if (!documentSnapshot.exists()) {
+      throw Exception("Document not found in Firestore")
+    }
+
+    documentSnapshot.toObject(JDRFile::class.java)
+  }
+
+  override suspend fun removeItemFromGroup(
+      itemId: String,
+      groupId: String,
+      parentFolderId: String,
+  ): Result<Unit> = safeFirestoreRequest {
+    require(itemId.isNotBlank()) { "Item ID cannot be empty." }
+    require(groupId.isNotBlank()) { "Group ID cannot be empty." }
+
+    val root = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
+    check(root.type != DocumentType.GROUP_ROOT) {
+      "A group root cannot be removed from its group."
+    }
+    val placement =
+        checkNotNull(root.placements[groupId]) { "This item does not belong to the group." }
+
+    val parentHidden = isHiddenIn(placement.folderId, groupId)
+
+    val removal =
+        planRemoval(root, groupId, parentHidden) { getGroupFolderFiles(it.id, groupId).first() }
+    check(removal.leaving.size + removal.reattached.size <= MAX_BATCH_WRITES) {
+      "Too many items to update at once (maximum $MAX_BATCH_WRITES)."
+    }
+
+    val batch = firestore.batch()
+    removal.leaving.forEach {
+      batch.update(collection.document(it.id), removePlacementUpdate(groupId))
+    }
+    removal.reattached.forEach {
+      batch.update(
+          collection.document(it.id),
+          addPlacementUpdate(groupId, it.folderId, it.isHidden),
+      )
+    }
+    batch.commit().await()
   }
 
   override suspend fun addItemToGroup(
@@ -175,108 +140,94 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       folderId: String,
       isHidden: Boolean,
       includeContent: Boolean,
-  ): Result<Unit> {
-    return try {
-      require(itemId.isNotBlank()) { "Item ID cannot be empty." }
-      require(groupId.isNotBlank()) { "Group ID cannot be empty." }
-      require(folderId.isNotBlank()) { "Folder ID cannot be empty." }
+  ): Result<Unit> = safeFirestoreRequest {
+    require(itemId.isNotBlank()) { "Item ID cannot be empty." }
+    require(groupId.isNotBlank()) { "Group ID cannot be empty." }
+    require(folderId.isNotBlank()) { "Folder ID cannot be empty." }
 
-      val item = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
-      check(item.type != DocumentType.GROUP_ROOT) { "A group root cannot be added to a group." }
-      check(groupId !in item.sharedGroupsIds) { "This item is already in the group." }
+    val item = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
+    check(item.type != DocumentType.GROUP_ROOT) { "A group root cannot be added to a group." }
+    check(groupId !in item.sharedGroupsIds) { "This item is already in the group." }
 
-      val destination =
-          getFile(folderId).getOrThrow()
-              ?: throw IllegalArgumentException("Destination folder not found.")
-      check(destination.isContainer()) { "The destination is not a folder." }
-      check(groupId in destination.sharedGroupsIds) {
-        "The destination folder does not belong to the group."
-      }
-
-      // Something added inside a hidden folder is hidden too. The group root has no placement.
-      val destinationHidden = destination.placements[groupId]?.isHidden == true
-
-      val additions =
-          if (includeContent && item.isContainer()) {
-            planAddition(
-                subtree = collectPersonalSubtree(item),
-                groupId = groupId,
-                destinationFolderId = folderId,
-                hideNew = isHidden,
-                destinationHidden = destinationHidden,
-            )
-          } else {
-            listOf(GroupPlacement(itemId, folderId, isHidden || destinationHidden))
-          }
-      check(additions.size <= MAX_BATCH_WRITES) {
-        "Too many items to add at once (maximum $MAX_BATCH_WRITES)."
-      }
-
-      val batch = firestore.batch()
-      additions.forEach {
-        batch.update(
-            collection.document(it.id),
-            addPlacementUpdate(groupId, it.folderId, it.isHidden),
-        )
-      }
-      batch.commit().await()
-      Result.success(Unit)
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      Result.failure(e)
+    val destination =
+        getFile(folderId).getOrThrow()
+            ?: throw IllegalArgumentException("Destination folder not found.")
+    check(destination.isContainer()) { "The destination is not a folder." }
+    check(groupId in destination.sharedGroupsIds) {
+      "The destination folder does not belong to the group."
     }
+
+    // Something added inside a hidden folder is hidden too. The group root has no placement.
+    val destinationHidden = destination.placements[groupId]?.isHidden == true
+
+    val additions =
+        if (includeContent && item.isContainer()) {
+          planAddition(
+              subtree = collectPersonalSubtree(item),
+              groupId = groupId,
+              destinationFolderId = folderId,
+              hideNew = isHidden,
+              destinationHidden = destinationHidden,
+          )
+        } else {
+          listOf(GroupPlacement(itemId, folderId, isHidden || destinationHidden))
+        }
+    check(additions.size <= MAX_BATCH_WRITES) {
+      "Too many items to add at once (maximum $MAX_BATCH_WRITES)."
+    }
+
+    val batch = firestore.batch()
+    additions.forEach {
+      batch.update(
+          collection.document(it.id),
+          addPlacementUpdate(groupId, it.folderId, it.isHidden),
+      )
+    }
+    batch.commit().await()
   }
 
   override suspend fun setItemHidden(
       itemId: String,
       groupId: String,
       isHidden: Boolean,
-  ): Result<Unit> {
-    return try {
-      require(itemId.isNotBlank()) { "Item ID cannot be empty." }
-      require(groupId.isNotBlank()) { "Group ID cannot be empty." }
+  ): Result<Unit> = safeFirestoreRequest {
+    require(itemId.isNotBlank()) { "Item ID cannot be empty." }
+    require(groupId.isNotBlank()) { "Group ID cannot be empty." }
 
-      val item = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
-      check(item.type != DocumentType.GROUP_ROOT) { "A group root cannot be hidden." }
-      val placement =
-          checkNotNull(item.placements[groupId]) { "This item does not belong to the group." }
+    val item = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
+    check(item.type != DocumentType.GROUP_ROOT) { "A group root cannot be hidden." }
+    val placement =
+        checkNotNull(item.placements[groupId]) { "This item does not belong to the group." }
 
-      if (placement.isHidden == isHidden) return Result.success(Unit)
+    if (placement.isHidden == isHidden) return@safeFirestoreRequest
 
-      val itemsToUpdate =
-          if (isHidden) {
-            // Hiding a folder hides everything inside it, otherwise a player could see files
-            // whose folder is hidden.
-            collectGroupSubtree(item, groupId).filter { it.placements[groupId]?.isHidden != true }
-          } else {
-            // Revealing only reveals this item, and only if the folder holding it is visible.
-            if (placement.folderId != groupId) {
-              val parent =
-                  getFile(placement.folderId).getOrThrow()
-                      ?: throw IllegalArgumentException("Placement not found.")
-              check(parent.placements.get(groupId)?.isHidden != true) {
-                "Reveal the parent folder first."
-              }
+    val itemsToUpdate =
+        if (isHidden) {
+          // Hiding a folder hides everything inside it, otherwise a player could see files
+          // whose folder is hidden.
+          collectGroupSubtree(item, groupId).filter { it.placements[groupId]?.isHidden != true }
+        } else {
+          // Revealing only reveals this item, and only if the folder holding it is visible.
+          if (placement.folderId != groupId) {
+            val parent =
+                getFile(placement.folderId).getOrThrow()
+                    ?: throw IllegalArgumentException("Placement not found.")
+            check(parent.placements.get(groupId)?.isHidden != true) {
+              "Reveal the parent folder first."
             }
-            listOf(item)
           }
+          listOf(item)
+        }
 
-      check(itemsToUpdate.size <= MAX_BATCH_WRITES) {
-        "Too many items to update at once (maximum $MAX_BATCH_WRITES)."
-      }
-
-      val batch = firestore.batch()
-      itemsToUpdate.forEach {
-        batch.update(collection.document(it.id), hiddenUpdate(groupId, isHidden))
-      }
-      batch.commit().await()
-      Result.success(Unit)
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      Result.failure(e)
+    check(itemsToUpdate.size <= MAX_BATCH_WRITES) {
+      "Too many items to update at once (maximum $MAX_BATCH_WRITES)."
     }
+
+    val batch = firestore.batch()
+    itemsToUpdate.forEach {
+      batch.update(collection.document(it.id), hiddenUpdate(groupId, isHidden))
+    }
+    batch.commit().await()
   }
 
   /**
