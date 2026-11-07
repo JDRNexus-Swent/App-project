@@ -3,7 +3,6 @@ package com.github.se.jdrnexus.model.personalSpace
 
 import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
-import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -30,97 +29,54 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
     return groupsCollection.document().id
   }
 
-  override suspend fun createGroup(group: CampaignGroup): Result<Unit> {
-    return try {
-      // The group and its root folder are written together: both exist or neither does.
-      val batch = firestore.batch()
-      batch.set(groupsCollection.document(group.id), group)
-      batch.set(documentsCollection.document(group.id), rootFileOf(group))
-      batch.commit().await()
-      Result.success(Unit)
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      Result.failure(e)
-    }
+  override suspend fun createGroup(group: CampaignGroup): Result<Unit> = safeFirestoreRequest {
+    // The group and its root folder are written together: both exist or neither does.
+    val batch = firestore.batch()
+    batch.set(groupsCollection.document(group.id), group)
+    batch.set(documentsCollection.document(group.id), rootFileOf(group))
+    batch.commit().await()
   }
 
-  override suspend fun updateGroup(group: CampaignGroup): Result<Unit> {
-    return try {
-      // The root folder shows the group's name, so both are updated in the same batch.
-      val batch = firestore.batch()
-      batch.update(groupsCollection.document(group.id), group.toMap())
-      batch.update(documentsCollection.document(group.id), mapOf("name" to group.name))
-      batch.commit().await()
-      Result.success(Unit)
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      Result.failure(e)
-    }
+  override suspend fun updateGroup(group: CampaignGroup): Result<Unit> = safeFirestoreRequest {
+    // The root folder shows the group's name, so both are updated in the same batch.
+    val batch = firestore.batch()
+    batch.update(groupsCollection.document(group.id), group.toMap())
+    batch.update(documentsCollection.document(group.id), mapOf("name" to group.name))
+    batch.commit().await()
   }
 
-  override suspend fun deleteGroup(groupId: String): Result<Unit> {
-    return try {
-      groupsCollection.document(groupId).delete().await()
-      Result.success(Unit)
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      Result.failure(e)
-    }
+  override suspend fun deleteGroup(groupId: String): Result<Unit> = safeFirestoreRequest {
+    groupsCollection.document(groupId).delete().await()
   }
 
-  override suspend fun getGroup(groupId: String): Result<CampaignGroup> {
-    return try {
-      val documentSnapshot = groupsCollection.document(groupId).get().await()
+  override suspend fun getGroup(groupId: String): Result<CampaignGroup> = safeFirestoreRequest {
+    val documentSnapshot = groupsCollection.document(groupId).get().await()
 
-      if (!documentSnapshot.exists()) {
-        return Result.failure(Exception("CampaignGroup not found in Firestore"))
+    if (!documentSnapshot.exists()) {
+      throw Exception("CampaignGroup not found in Firestore")
+    }
+
+    val group = documentSnapshot.toObject(CampaignGroup::class.java)
+    group ?: throw Exception("Failed to parse CampaignGroup")
+  }
+
+  override suspend fun addUserToGroup(groupId: String, userId: String): Result<Unit> =
+      safeFirestoreRequest {
+        // Use FieldValue.arrayUnion to safely add an item to an array without duplicates
+        groupsCollection
+            .document(groupId)
+            .update("participantIds", com.google.firebase.firestore.FieldValue.arrayUnion(userId))
+            .await()
       }
 
-      val group = documentSnapshot.toObject(CampaignGroup::class.java)
-      if (group != null) {
-        Result.success(group)
-      } else {
-        Result.failure(Exception("Failed to parse CampaignGroup"))
+  override suspend fun removeUserFromGroup(groupId: String, userId: String): Result<Unit> =
+      safeFirestoreRequest {
+        // Use FieldValue.arrayRemove to safely remove an item from an array
+        groupsCollection
+            .document(groupId)
+            .update("participantIds", com.google.firebase.firestore.FieldValue.arrayRemove(userId))
+            .await()
       }
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      Result.failure(e)
-    }
-  }
-
-  override suspend fun addUserToGroup(groupId: String, userId: String): Result<Unit> {
-    return try {
-      // Use FieldValue.arrayUnion to safely add an item to an array without duplicates
-      groupsCollection
-          .document(groupId)
-          .update("participantIds", com.google.firebase.firestore.FieldValue.arrayUnion(userId))
-          .await()
-      Result.success(Unit)
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      Result.failure(e)
-    }
-  }
-
-  override suspend fun removeUserFromGroup(groupId: String, userId: String): Result<Unit> {
-    return try {
-      // Use FieldValue.arrayRemove to safely remove an item from an array
-      groupsCollection
-          .document(groupId)
-          .update("participantIds", com.google.firebase.firestore.FieldValue.arrayRemove(userId))
-          .await()
-      Result.success(Unit)
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      Result.failure(e)
-    }
-  }
 
   /** Create the hidden root folder of [group]: same id, same name, shared with the group itself. */
   private fun rootFileOf(group: CampaignGroup): JDRFile =

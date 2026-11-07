@@ -1,7 +1,5 @@
 <resources>
     <string name="app_name">JDRNexus</string>
-    <string name="title_activity_main">MainActivity</string>
-    <string name="title_activity_second">SecondActivity</string>
     <string name="edit_lore_title">LORE NOTE</string>
     <string name="edit_lore_loading">Loading lore…</string>
     <string name="edit_lore_empty">No lore is loaded.</string>

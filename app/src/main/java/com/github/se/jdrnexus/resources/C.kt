@@ -17,11 +17,7 @@ package com.github.se.jdrnexus.resources
  */
 object C {
   object Tag {
-    const val greeting = "main_screen_greeting"
-    const val greeting_robo = "second_screen_greeting"
-
     const val main_screen_container = "main_screen_container"
-    const val second_screen_container = "second_screen_container"
 
     const val shared_top_bar = "shared_top_bar"
     const val shared_back_button = "shared_back_button"
