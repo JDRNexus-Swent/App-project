@@ -1,11 +1,17 @@
+<!-- Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com> -->
+
 ## Architecture Rules
 
 - Keep the **MVVM** separation. **ViewModels never import Firebase** or a repository implementation; they depend on repository interfaces. Firebase lives only in the `model/` repositories.
 
+## UI conventions
+
+- Follow the [UI conventions](wiki/UI-conventions.md) when building or modifying UI.
+
 ## Definition of Done
 
 - The feature works and matches its acceptance criteria (the milestone's tests).
-- **All new code comes with unit tests.**
+- **All new code comes with unit tests**, written as described in `TESTING.md`.
 - `./gradlew check` is green (unit tests + lint) and `./gradlew ktfmtCheck` passes (formatting) before you submit.
 
 ## How to work

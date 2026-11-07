@@ -256,7 +256,6 @@ class GameManagementScreenTest {
             onManageGroup = {},
             onInvite = {},
             onTabSelected = {},
-            darkTheme = false,
             renderCreateDialogAsWindow = false,
         )
       }

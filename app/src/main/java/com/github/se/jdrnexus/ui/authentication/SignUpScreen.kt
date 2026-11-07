@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.authentication
 
 import androidx.compose.foundation.layout.Box
@@ -67,7 +68,11 @@ fun SignUpScreen(
 
   // Authentication state.
   val isLoading = uiState.status is AuthStatus.Loading
-  val errorMessage = (uiState.status as? AuthStatus.Error)?.message
+  val isAuthenticationLocked = isLoading || uiState.status is AuthStatus.Success
+  val errorMessage =
+      (uiState.status as? AuthStatus.Error)?.message?.takeUnless {
+        it == uiState.usernameError || it == uiState.emailError || it == uiState.passwordError
+      }
 
   // Keeps track of whether the password should be visible or masked.
   var passwordVisible by remember { mutableStateOf(false) }
@@ -145,6 +150,7 @@ fun SignUpScreen(
       OutlinedTextField(
           value = uiState.username,
           onValueChange = { signUpViewModel.onUsernameChange(it) },
+          enabled = !isAuthenticationLocked,
           shape = RoundedCornerShape(45.dp),
           placeholder = { Text(text = "Username", color = colors.tertiary) },
           singleLine = true,
@@ -156,7 +162,8 @@ fun SignUpScreen(
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
-          isError = errorMessage != null,
+          isError = uiState.usernameError != null,
+          supportingText = { uiState.usernameError?.let { error -> Text(text = error) } },
       )
       Spacer(Modifier.height(20.dp))
 
@@ -172,6 +179,7 @@ fun SignUpScreen(
       OutlinedTextField(
           value = uiState.email,
           onValueChange = { signUpViewModel.onEmailChange(it) },
+          enabled = !isAuthenticationLocked,
           shape = RoundedCornerShape(45.dp),
           leadingIcon = {
             Icon(
@@ -190,7 +198,8 @@ fun SignUpScreen(
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
-          isError = errorMessage != null,
+          isError = uiState.emailError != null,
+          supportingText = { uiState.emailError?.let { error -> Text(text = error) } },
       )
       Spacer(modifier = Modifier.height(20.dp))
 
@@ -206,6 +215,7 @@ fun SignUpScreen(
       OutlinedTextField(
           value = uiState.password,
           onValueChange = { signUpViewModel.onPasswordChange(it) },
+          enabled = !isAuthenticationLocked,
           shape = RoundedCornerShape(45.dp),
           leadingIcon = {
             Icon(
@@ -218,6 +228,7 @@ fun SignUpScreen(
             // Toggle between visible and masked password.
             IconButton(
                 onClick = { passwordVisible = !passwordVisible },
+                enabled = !isAuthenticationLocked,
                 modifier = Modifier.testTag(C.Tag.sign_up_password_visibility),
             ) {
               Icon(
@@ -239,9 +250,12 @@ fun SignUpScreen(
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
-          isError = errorMessage != null,
-          supportingText = { errorMessage?.let { error -> Text(text = error) } },
+          isError = uiState.passwordError != null,
+          supportingText = { uiState.passwordError?.let { error -> Text(text = error) } },
       )
+      errorMessage?.let { error ->
+        Text(text = error, modifier = Modifier.fillMaxWidth(), color = colors.error)
+      }
       Spacer(modifier = Modifier.height(8.dp))
       DivideWithDiamonds(colors.primary)
       Spacer(Modifier.height(8.dp))
@@ -249,7 +263,7 @@ fun SignUpScreen(
       // Register button.
       Button(
           onClick = { signUpViewModel.signUp() },
-          enabled = !isLoading,
+          enabled = !isAuthenticationLocked,
           modifier = Modifier.fillMaxWidth().height(54.dp).testTag(C.Tag.sign_up_submit),
           shape = RoundedCornerShape(18.dp),
           colors = ButtonDefaults.buttonColors(colors.primary, colors.onPrimary),
@@ -285,6 +299,7 @@ fun SignUpScreen(
 
         TextButton(
             onClick = onSignInScreen,
+            enabled = !isAuthenticationLocked,
             modifier = Modifier.testTag(C.Tag.sign_up_sign_in),
             contentPadding = PaddingValues(2.dp),
         ) {

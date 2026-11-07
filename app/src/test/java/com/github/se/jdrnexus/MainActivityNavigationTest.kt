@@ -1,14 +1,20 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus
 
+import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
@@ -16,6 +22,7 @@ import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.home.TestTags
+import com.google.firebase.FirebaseApp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Rule
@@ -30,9 +37,40 @@ class MainActivityNavigationTest {
   fun startsAtSignInAndReturnsFromSignUp() {
     showApp()
 
+    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed().performClick()
+    scrollToTag("sign_up_scroll_container", C.Tag.sign_up_sign_in)
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).performClick()
+    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotDisplayed()
+  }
+
+  @Test
+  fun rapidSignUpTapsDoNotStackScreensOrLeaveNavigationBlank() {
+    showApp()
+    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performTouchInput {
+      repeat(10) { click() }
+    }
+    waitForTag(C.Tag.sign_up_sign_in)
+    scrollToTag("sign_up_scroll_container", C.Tag.sign_up_sign_in)
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsDisplayed().performClick()
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotDisplayed()
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performTouchInput {
+      repeat(10) { click() }
+    }
+    waitForTag(C.Tag.sign_up_sign_in)
+    scrollToTag("sign_up_scroll_container", C.Tag.sign_up_sign_in)
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).performTouchInput {
+      repeat(10) { click() }
+    }
+    waitForTag(C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotDisplayed()
   }
@@ -55,6 +93,7 @@ class MainActivityNavigationTest {
 
     composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
     waitForTag(C.Tag.sign_in_sign_up)
+    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsNotDisplayed()
     assert(repository.authState.value == null)
@@ -66,6 +105,7 @@ class MainActivityNavigationTest {
     showApp(repository)
 
     assert(repository.authState.value == null)
+    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performClick()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_username).performTextInput("Ranger")
     composeTestRule.onNodeWithTag(C.Tag.sign_up_email).performTextInput("hero@example.com")
@@ -99,6 +139,10 @@ class MainActivityNavigationTest {
   }
 
   private fun showApp(repository: FakeAuthRepository = FakeAuthRepository()) {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    if (FirebaseApp.getApps(context).isEmpty()) {
+      checkNotNull(FirebaseApp.initializeApp(context))
+    }
     val viewModel = AuthViewModel(repository)
     composeTestRule.setContent { JDRNexusApp(authViewModel = viewModel) }
   }
@@ -107,6 +151,10 @@ class MainActivityNavigationTest {
     composeTestRule.waitUntil(5_000) {
       composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
     }
+  }
+
+  private fun scrollToTag(containerTag: String, targetTag: String) {
+    composeTestRule.onNodeWithTag(containerTag).performScrollToNode(hasTestTag(targetTag))
   }
 
   private class FakeAuthRepository : AuthRepository {

@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.authentication
 
 import androidx.compose.foundation.BorderStroke
@@ -64,6 +65,7 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
 import com.github.se.jdrnexus.resources.JdrNexusLogo
 import com.github.se.jdrnexus.resources.darkFieldColors
+import com.github.se.jdrnexus.resources.showComingSoon
 
 @Composable
 fun SignInScreen(
@@ -71,7 +73,7 @@ fun SignInScreen(
     credentialManager: CredentialManager = CredentialManager.create(LocalContext.current),
     onSignInSuccess: () -> Unit = {},
     onSignUp: () -> Unit = {},
-    forgotPassword: () -> Unit = {},
+    forgotPassword: (() -> Unit)? = null,
 ) {
   val uiState by signInViewModel.uiState.collectAsState()
   // Get the colors defined by the application's Material theme.
@@ -84,7 +86,11 @@ fun SignInScreen(
   var googleErrorMessage by remember { mutableStateOf<String?>(null) }
 
   val isLoading = uiState.status is AuthStatus.Loading
-  val errorMessage = (uiState.status as? AuthStatus.Error)?.message
+  val isAuthenticationLocked = isLoading || uiState.status is AuthStatus.Success
+  val errorMessage =
+      (uiState.status as? AuthStatus.Error)?.message?.takeUnless {
+        it == uiState.emailError || it == uiState.passwordError
+      }
 
   // Keeps track of whether the password should be visible or masked.
   var passwordVisible by remember { mutableStateOf(false) }
@@ -166,6 +172,7 @@ fun SignInScreen(
       OutlinedTextField(
           value = email,
           onValueChange = { signInViewModel.onEmailChange(it) },
+          enabled = !isAuthenticationLocked,
           shape = RoundedCornerShape(45.dp),
           leadingIcon = {
             Icon(
@@ -184,6 +191,8 @@ fun SignInScreen(
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
+          isError = uiState.emailError != null,
+          supportingText = { uiState.emailError?.let { error -> Text(text = error) } },
       )
       Spacer(modifier = Modifier.height(20.dp))
 
@@ -200,6 +209,7 @@ fun SignInScreen(
       OutlinedTextField(
           value = password,
           onValueChange = { signInViewModel.onPasswordChange(it) },
+          enabled = !isAuthenticationLocked,
           keyboardOptions =
               KeyboardOptions(
                   keyboardType = KeyboardType.Password,
@@ -217,6 +227,7 @@ fun SignInScreen(
             // Toggle between visible and masked password.
             IconButton(
                 onClick = { passwordVisible = !passwordVisible },
+                enabled = !isAuthenticationLocked,
                 modifier = Modifier.testTag(C.Tag.sign_in_password_visibility),
             ) {
               Icon(
@@ -238,13 +249,17 @@ fun SignInScreen(
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
-          isError = errorMessage != null,
-          supportingText = { errorMessage?.let { error -> Text(text = error) } },
+          isError = uiState.passwordError != null,
+          supportingText = { uiState.passwordError?.let { error -> Text(text = error) } },
       )
+      errorMessage?.let { error ->
+        Text(text = error, modifier = Modifier.fillMaxWidth(), color = colors.error)
+      }
 
       // button in case of forgotten password
       TextButton(
-          onClick = forgotPassword,
+          onClick = { forgotPassword?.invoke() ?: showComingSoon(context, "Password recovery") },
+          enabled = !isAuthenticationLocked,
           modifier = Modifier.align(Alignment.End).testTag(C.Tag.sign_in_forgot_password),
       ) {
         Text(
@@ -259,7 +274,7 @@ fun SignInScreen(
             googleErrorMessage = null
             signInViewModel.signIn()
           },
-          enabled = !isLoading,
+          enabled = !isAuthenticationLocked,
           modifier = Modifier.fillMaxWidth().height(54.dp).testTag(C.Tag.sign_in_submit),
           shape = RoundedCornerShape(18.dp),
           colors = ButtonDefaults.buttonColors(colors.primary, colors.onPrimary),
@@ -312,7 +327,7 @@ fun SignInScreen(
           logo = colors.primary,
           textColor = colors.onSecondary,
           container = colors.onBackground,
-          enabled = !isLoading,
+          enabled = !isAuthenticationLocked,
       )
       Spacer(modifier = Modifier.height(2.dp))
 
@@ -325,6 +340,7 @@ fun SignInScreen(
 
         TextButton(
             onClick = onSignUp,
+            enabled = !isAuthenticationLocked,
             modifier = Modifier.testTag(C.Tag.sign_in_sign_up),
             contentPadding = PaddingValues(2.dp),
         ) {

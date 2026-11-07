@@ -5,25 +5,20 @@ import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
+import com.github.se.jdrnexus.utils.MainDispatcherRule
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TestWatcher
-import org.junit.runner.Description
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AuthViewModelTest {
@@ -69,7 +64,9 @@ class AuthViewModelTest {
     viewModel.signUp()
 
     assertEquals(
-        AuthStatus.Error("Password must be at least 6 characters."),
+        AuthStatus.Error(
+            "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters."
+        ),
         viewModel.uiState.value.status,
     )
     assertEquals(0, repository.signUpCalls)
@@ -88,6 +85,110 @@ class AuthViewModelTest {
         viewModel.uiState.value.status,
     )
     assertEquals(0, repository.signUpCalls)
+  }
+
+  @Test
+  fun signUpExposesValidationErrorsOnTheirFieldsAndClearsThemWhenValid() {
+    val viewModel = AuthViewModel(FakeAuthRepository())
+
+    viewModel.signUp()
+
+    assertEquals(AuthError.INVALID_EMAIL.message, viewModel.uiState.value.emailError)
+    assertEquals(
+        "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters.",
+        viewModel.uiState.value.passwordError,
+    )
+    assertEquals(AuthError.INVALID_USERNAME.message, viewModel.uiState.value.usernameError)
+
+    viewModel.onEmailChange("player@example.com")
+    assertEquals(null, viewModel.uiState.value.emailError)
+    assertEquals(
+        "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters.",
+        viewModel.uiState.value.passwordError,
+    )
+    assertEquals(AuthError.INVALID_USERNAME.message, viewModel.uiState.value.usernameError)
+
+    viewModel.onPasswordChange("password")
+    assertEquals(null, viewModel.uiState.value.passwordError)
+    assertEquals(AuthError.INVALID_USERNAME.message, viewModel.uiState.value.usernameError)
+
+    viewModel.onUsernameChange("Player")
+    assertEquals(null, viewModel.uiState.value.usernameError)
+  }
+
+  @Test
+  fun validationErrorsRemainWhileInputsAreInvalid() {
+    val viewModel = AuthViewModel(FakeAuthRepository())
+
+    viewModel.signUp()
+    viewModel.onEmailChange("still-invalid")
+    viewModel.onPasswordChange("short")
+    viewModel.onUsernameChange("  ")
+
+    assertEquals(AuthError.INVALID_EMAIL.message, viewModel.uiState.value.emailError)
+    assertEquals(
+        "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters.",
+        viewModel.uiState.value.passwordError,
+    )
+    assertEquals(AuthError.INVALID_USERNAME.message, viewModel.uiState.value.usernameError)
+  }
+
+  @Test
+  fun editingInputsWhileLoadingKeepsLoadingStatus() = runTest {
+    val repository = FakeAuthRepository().apply { signInGate = CompletableDeferred() }
+    val viewModel = AuthViewModel(repository)
+    fillForm(viewModel)
+
+    viewModel.signIn()
+    runCurrent()
+    assertEquals(AuthStatus.Loading, viewModel.uiState.value.status)
+
+    viewModel.onEmailChange("updated@example.com")
+    viewModel.onPasswordChange("updated-password")
+    viewModel.onUsernameChange("Updated")
+
+    assertEquals(AuthStatus.Loading, viewModel.uiState.value.status)
+    assertEquals("updated@example.com", viewModel.uiState.value.email)
+    assertEquals("updated-password", viewModel.uiState.value.password)
+    assertEquals("Updated", viewModel.uiState.value.username)
+
+    repository.signInGate?.complete(Unit)
+    runCurrent()
+    assertEquals(AuthStatus.Success(USER), viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun rapidAuthenticationRequestsAreIgnoredWhileOneIsRunning() = runTest {
+    val signUpRepository = FakeAuthRepository().apply { signUpResponse = CompletableDeferred() }
+    val signUpViewModel = AuthViewModel(signUpRepository)
+    fillForm(signUpViewModel)
+
+    signUpViewModel.signUp()
+    signUpViewModel.signUp()
+    runCurrent()
+
+    assertEquals(1, signUpRepository.signUpCalls)
+    assertEquals(AuthStatus.Loading, signUpViewModel.uiState.value.status)
+
+    val signInRepository = FakeAuthRepository().apply { signInGate = CompletableDeferred() }
+    val signInViewModel = AuthViewModel(signInRepository)
+    fillForm(signInViewModel)
+
+    signInViewModel.signIn()
+    signInViewModel.signIn()
+    runCurrent()
+
+    assertEquals(1, signInRepository.signInCalls)
+    assertEquals(AuthStatus.Loading, signInViewModel.uiState.value.status)
+
+    val googleRepository = FakeAuthRepository()
+    val googleViewModel = AuthViewModel(googleRepository)
+
+    googleViewModel.signInWithGoogle("id-token")
+    googleViewModel.signInWithGoogle("id-token")
+    runCurrent()
+
+    assertEquals(1, googleRepository.googleSignInCalls)
   }
 
   @Test
@@ -180,10 +281,27 @@ class AuthViewModelTest {
     viewModel.signIn()
 
     assertEquals(
-        AuthStatus.Error("Password must be at least 6 characters."),
+        AuthStatus.Error(
+            "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters."
+        ),
         viewModel.uiState.value.status,
     )
     assertEquals(0, repository.signInCalls)
+  }
+
+  @Test
+  fun signInDoesNotRequireUsername() = runTest {
+    val repository = FakeAuthRepository()
+    val viewModel = AuthViewModel(repository)
+    fillForm(viewModel, username = "")
+
+    viewModel.signIn()
+    runCurrent()
+
+    assertEquals(1, repository.signInCalls)
+    assertEquals("player@example.com" to "password", repository.lastSignInArguments)
+    assertEquals(AuthStatus.Success(USER), viewModel.uiState.value.status)
+    assertEquals(null, viewModel.uiState.value.usernameError)
   }
 
   @Test
@@ -242,6 +360,33 @@ class AuthViewModelTest {
     response.complete(AuthResult.Success(Unit))
     runCurrent()
 
+    assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun signOutIsIgnoredWhileAuthenticationIsInProgressAndAllowedAfterSuccess() = runTest {
+    val repository = FakeAuthRepository().apply { signInGate = CompletableDeferred() }
+    val viewModel = AuthViewModel(repository)
+    fillForm(viewModel)
+
+    viewModel.signIn()
+    runCurrent()
+    viewModel.signOut()
+    runCurrent()
+
+    assertEquals(1, repository.signInCalls)
+    assertEquals(0, repository.signOutCalls)
+    assertEquals(AuthStatus.Loading, viewModel.uiState.value.status)
+
+    repository.signInGate?.complete(Unit)
+    runCurrent()
+
+    assertEquals(AuthStatus.Success(USER), viewModel.uiState.value.status)
+
+    viewModel.signOut()
+    runCurrent()
+
+    assertEquals(1, repository.signOutCalls)
     assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
   }
 
@@ -319,6 +464,7 @@ class AuthViewModelTest {
     var googleSignInCalls = 0
     var signOutCalls = 0
     var signInJob: Job? = null
+    var signInGate: CompletableDeferred<Unit>? = null
     var signOutFailure: Exception? = null
     var lastSignUpArguments: Triple<String, String, String>? = null
     var lastSignInArguments: Pair<String, String>? = null
@@ -345,6 +491,7 @@ class AuthViewModelTest {
       signInCalls++
       lastSignInArguments = email to password
       signInJob = currentCoroutineContext()[Job]
+      signInGate?.await()
       signInFailure?.let { throw it }
       return signInResponse
     }
@@ -364,18 +511,5 @@ class AuthViewModelTest {
 
   private companion object {
     val USER = AuthUser(uid = "user-1", email = "player@example.com", username = "Player")
-  }
-}
-
-@OptIn(ExperimentalCoroutinesApi::class)
-class MainDispatcherRule : TestWatcher() {
-  private val dispatcher = StandardTestDispatcher()
-
-  override fun starting(description: Description) {
-    Dispatchers.setMain(dispatcher)
-  }
-
-  override fun finished(description: Description) {
-    Dispatchers.resetMain()
   }
 }

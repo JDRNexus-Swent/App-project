@@ -47,6 +47,12 @@ service cloud.firestore {
       allow delete: if isGroupMaster(resource.data);
     }
 
+    // Public session listings shown on the map. Publishing listings is not implemented yet, so
+    // clients cannot write them; add write rules when that feature lands.
+    match /map_sessions/{sessionId} {
+      allow read: if isSignedIn();
+    }
+
     // Preserve the existing workspace behavior; document-level access rules are outside this
     // group-management change and need to account for both personal and shared-group documents.
     match /documents/{documentId} {

@@ -1,16 +1,25 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.gameManagement
 
+import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
+import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import kotlinx.coroutines.flow.StateFlow
 
 /** Represents an enemy participating in the live combat encounter. */
-data class Enemy(
+data class CombatNPC(
     val id: String,
-    val name: String,
-    val hp: Int,
-    val maxHp: Int,
+    val character: CharacterFile,
     val initiative: Int = 0,
-)
+) {
+  val name: String
+    get() = character.name
+
+  val hp: Int
+    get() = character.hp.current
+
+  val maxHp: Int
+    get() = character.hp.max
+}
 
 /** Represents a Non-Player Character (NPC) in the campaign. */
 data class Npc(
@@ -32,22 +41,25 @@ data class ActivityItem(
 /** Represents a campaign lore document accessible to the GM and optionally shared with players. */
 data class LoreDocument(
     val id: String,
-    val title: String,
-    val content: String,
+    val lore: LoreFile,
     val isShared: Boolean = false,
-)
+) {
+  val title: String
+    get() = lore.title
+}
 
 /** UI state holding the live game master session data for GameScreenGM. */
 data class GameViewModelGMUiState(
-    val enemies: List<Enemy> = emptyList(),
+    val enemies: List<CombatNPC> = emptyList(),
     val isCombatActive: Boolean = false,
     val currentRound: Int = 1,
     val activityFeed: List<ActivityItem> = emptyList(),
     val npcs: List<Npc> = emptyList(),
     val loreDocuments: List<LoreDocument> = emptyList(),
     val selectedLoreDocument: LoreDocument? = null,
+    val hasUnsavedLoreChanges: Boolean = false,
     val isLoading: Boolean = false,
-    val error: String? = null,
+    val error: String = "",
 )
 
 /**
@@ -66,7 +78,7 @@ interface GameViewModelGM {
    *
    * @param enemy The enemy to add.
    */
-  fun addEnemy(enemy: Enemy)
+  fun addEnemy(enemy: CombatNPC)
 
   /**
    * Removes an enemy from the current combat encounter by its ID.
@@ -139,6 +151,21 @@ interface GameViewModelGM {
    * @param documentId The unique identifier of the lore document to select.
    */
   fun selectLoreDocument(documentId: String)
+
+  /** Replaces the selected lore document's title in the local draft. */
+  fun updateLoreTitle(title: String)
+
+  /** Adds a section to the selected lore document using a generated stable ID. */
+  fun addLoreSection(title: String, description: String)
+
+  /** Updates the selected lore document section's title by its ID. */
+  fun updateLoreSectionTitle(sectionID: String, title: String)
+
+  /** Updates the selected lore document section's description by its ID. */
+  fun updateLoreSectionDescription(sectionID: String, description: String)
+
+  /** Removes the selected lore document section by its ID. */
+  fun removeLoreSection(sectionID: String)
 
   /**
    * Persists modifications to a lore document.

@@ -23,9 +23,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-class EditFileViewModel(
-    private val repository: WorkspaceRepository = WorkspaceRepositoryProvider.repository
-) : ViewModel(), EditFileInterfaceVM {
+class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
+    ViewModel(), EditFileInterfaceVM {
+  private val repository by lazy { workspaceRepository ?: WorkspaceRepositoryProvider.repository }
+
   private val _uiState = MutableStateFlow(EditFileUiState())
   override val uiState: StateFlow<EditFileUiState> = _uiState.asStateFlow()
 
