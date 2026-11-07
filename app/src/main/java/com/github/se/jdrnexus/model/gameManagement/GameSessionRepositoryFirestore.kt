@@ -21,44 +21,45 @@ class GameSessionRepositoryFirestore(
     private val diceRepository: DiceRepositoryFirestore,
 ) : GameSessionRepository {
 
-  override suspend fun loadActivities(groupId: String): Result<List<GameActivityEntry>> = safeFirestoreRequest {
-    require(groupId.isNotBlank()) { "Group ID cannot be empty." }
-    val diceRolls =
-        diceRepository.getDiceRollsHistory(groupId).getOrThrow().map { roll ->
-          GameActivityEntry(
-              id = roll.documentId,
-              userId = roll.userId,
-              playerName = roll.username,
-              action = "Rolled ${roll.diceType} with modifier ${roll.modifier}",
-              diceResult = roll.totalValue.toString(),
-              timestamp = roll.timestamp?.time ?: System.currentTimeMillis(),
-          )
-        }
-    val actions =
-        firestore
-            .collection(GROUPS_COLLECTION)
-            .document(groupId)
-            .collection(ACTIVITIES_COLLECTION)
-            .get()
-            .await()
-            .documents
-            .mapNotNull { document ->
-              val data = document.data ?: return@mapNotNull null
-              runCatching {
-                GameActivityEntry(
-                    id = document.id,
-                    userId = data.string("userId"),
-                    playerName = data.string("playerName"),
-                    action = data.string("action"),
-                    diceResult = data["diceResult"] as? String,
-                    timestamp =
-                        document.getDate("timestamp")?.time ?: System.currentTimeMillis(),
-                )
-              }
-                  .getOrNull()
+  override suspend fun loadActivities(groupId: String): Result<List<GameActivityEntry>> =
+      safeFirestoreRequest {
+        require(groupId.isNotBlank()) { "Group ID cannot be empty." }
+        val diceRolls =
+            diceRepository.getDiceRollsHistory(groupId).getOrThrow().map { roll ->
+              GameActivityEntry(
+                  id = roll.documentId,
+                  userId = roll.userId,
+                  playerName = roll.username,
+                  action = "Rolled ${roll.diceType} with modifier ${roll.modifier}",
+                  diceResult = roll.totalValue.toString(),
+                  timestamp = roll.timestamp?.time ?: System.currentTimeMillis(),
+              )
             }
-    (diceRolls + actions).sortedByDescending(GameActivityEntry::timestamp)
-  }
+        val actions =
+            firestore
+                .collection(GROUPS_COLLECTION)
+                .document(groupId)
+                .collection(ACTIVITIES_COLLECTION)
+                .get()
+                .await()
+                .documents
+                .mapNotNull { document ->
+                  val data = document.data ?: return@mapNotNull null
+                  runCatching {
+                    GameActivityEntry(
+                        id = document.id,
+                        userId = data.string("userId"),
+                        playerName = data.string("playerName"),
+                        action = data.string("action"),
+                        diceResult = data["diceResult"] as? String,
+                        timestamp =
+                            document.getDate("timestamp")?.time ?: System.currentTimeMillis(),
+                    )
+                  }
+                      .getOrNull()
+                }
+        (diceRolls + actions).sortedByDescending(GameActivityEntry::timestamp)
+      }
 
   override fun observeActivities(groupId: String): Flow<List<GameActivityEntry>> =
       combine(
@@ -223,18 +224,19 @@ class GameSessionRepositoryFirestore(
     awaitClose { registration.remove() }
   }
 
-  override suspend fun saveLore(groupId: String, lore: GameLoreEntry): Result<Unit> = safeFirestoreRequest {
-    require(groupId.isNotBlank()) { "Group ID cannot be empty." }
-    require(lore.id.isNotBlank()) { "Lore document ID cannot be empty." }
-    require(lore.lore.title.isNotBlank()) { "Lore document title cannot be empty." }
-    firestore
-        .collection(GROUPS_COLLECTION)
-        .document(groupId)
-        .collection(LORE_COLLECTION)
-        .document(lore.id)
-        .set(encodeLore(lore))
-        .await()
-  }
+  override suspend fun saveLore(groupId: String, lore: GameLoreEntry): Result<Unit> =
+      safeFirestoreRequest {
+        require(groupId.isNotBlank()) { "Group ID cannot be empty." }
+        require(lore.id.isNotBlank()) { "Lore document ID cannot be empty." }
+        require(lore.lore.title.isNotBlank()) { "Lore document title cannot be empty." }
+        firestore
+            .collection(GROUPS_COLLECTION)
+            .document(groupId)
+            .collection(LORE_COLLECTION)
+            .document(lore.id)
+            .set(encodeLore(lore))
+            .await()
+      }
 
   override suspend fun setLoreVisibility(
       groupId: String,

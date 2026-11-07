@@ -5,7 +5,6 @@ import android.util.Log
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
-import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -107,9 +106,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     require(groupId.isNotBlank()) { "Group ID cannot be empty." }
 
     val root = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
-    check(root.type != DocumentType.GROUP_ROOT) {
-      "A group root cannot be removed from its group."
-    }
+    check(root.type != DocumentType.GROUP_ROOT) { "A group root cannot be removed from its group." }
     val placement =
         checkNotNull(root.placements[groupId]) { "This item does not belong to the group." }
 

@@ -3,7 +3,6 @@ package com.github.se.jdrnexus.model.personalSpace
 
 import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
-import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -61,21 +60,23 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
     group ?: throw Exception("Failed to parse CampaignGroup")
   }
 
-  override suspend fun addUserToGroup(groupId: String, userId: String): Result<Unit> = safeFirestoreRequest {
-    // Use FieldValue.arrayUnion to safely add an item to an array without duplicates
-    groupsCollection
-        .document(groupId)
-        .update("participantIds", com.google.firebase.firestore.FieldValue.arrayUnion(userId))
-        .await()
-  }
+  override suspend fun addUserToGroup(groupId: String, userId: String): Result<Unit> =
+      safeFirestoreRequest {
+        // Use FieldValue.arrayUnion to safely add an item to an array without duplicates
+        groupsCollection
+            .document(groupId)
+            .update("participantIds", com.google.firebase.firestore.FieldValue.arrayUnion(userId))
+            .await()
+      }
 
-  override suspend fun removeUserFromGroup(groupId: String, userId: String): Result<Unit> = safeFirestoreRequest {
-    // Use FieldValue.arrayRemove to safely remove an item from an array
-    groupsCollection
-        .document(groupId)
-        .update("participantIds", com.google.firebase.firestore.FieldValue.arrayRemove(userId))
-        .await()
-  }
+  override suspend fun removeUserFromGroup(groupId: String, userId: String): Result<Unit> =
+      safeFirestoreRequest {
+        // Use FieldValue.arrayRemove to safely remove an item from an array
+        groupsCollection
+            .document(groupId)
+            .update("participantIds", com.google.firebase.firestore.FieldValue.arrayRemove(userId))
+            .await()
+      }
 
   /** Create the hidden root folder of [group]: same id, same name, shared with the group itself. */
   private fun rootFileOf(group: CampaignGroup): JDRFile =

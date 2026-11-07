@@ -74,12 +74,12 @@ object FirebaseEmulatorTestUtils {
 
   /**
    * To call from @After. Re-enables the network (a test may have disabled it), then empties the
-   * given collections. Paths can be nested, e.g. "campaign_groups/<id>/dice_rolls".
-   * Throws if the network cannot be re-enabled, so that the failure is visible here and not in the
-   * next tests of the suite.
+   * given collections. Paths can be nested, e.g. "campaign_groups/<id>/dice_rolls". Throws if the
+   * network cannot be re-enabled, so that the failure is visible here and not in the next tests of
+   * the suite.
    */
   suspend fun tearDown(firestore: FirebaseFirestore, vararg collectionPaths: String) {
-      firestore.enableNetwork().await()
+    firestore.enableNetwork().await()
     collectionPaths.forEach { clearCollection(firestore, it) }
   }
 
@@ -136,20 +136,20 @@ suspend fun <T> Flow<T>.waitFor(
   val errorRef = AtomicReference<Throwable?>(null)
 
   val job =
-    CoroutineScope(Dispatchers.Default).launch {
-      try {
-        this@waitFor.collect {
-          latestValue.set(it)
-          hasValue.set(true)
-          if (!isReady.get() && condition(it)) {
-            matchedValue.set(it)
-            isReady.set(true)
+      CoroutineScope(Dispatchers.Default).launch {
+        try {
+          this@waitFor.collect {
+            latestValue.set(it)
+            hasValue.set(true)
+            if (!isReady.get() && condition(it)) {
+              matchedValue.set(it)
+              isReady.set(true)
+            }
           }
+        } catch (e: Throwable) {
+          errorRef.set(e)
         }
-      } catch (e: Throwable) {
-        errorRef.set(e)
       }
-    }
   try {
     FirebaseEmulatorTestUtils.pumpMainLooperUntil(
         timeoutMs = timeoutMs,
