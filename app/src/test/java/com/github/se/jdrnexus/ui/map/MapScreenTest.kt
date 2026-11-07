@@ -9,13 +9,12 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import java.time.LocalDateTime
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -25,30 +24,18 @@ class MapScreenTest {
   @get:Rule val composeTestRule = createComposeRule()
 
   @Test
-  fun mapStyleMatchesLightAndDarkThemes() {
-    val lightStyle = mapStyleJson(isDarkTheme = false)
-    val darkStyle = mapStyleJson(isDarkTheme = true)
-
-    assertNotEquals(lightStyle, darkStyle)
-    assertTrue(lightStyle.contains("#efe6da"))
-    assertTrue(darkStyle.contains("#211d19"))
-    assertEquals(25f, mapMarkerHue(isDarkTheme = false))
-    assertEquals(45f, mapMarkerHue(isDarkTheme = true))
-  }
-
-  @Test
   fun citySearchAndFiltersAreForwardedToViewModel() {
     val mapVM = FakeMapVM()
     composeTestRule.setContent { SampleAppTheme { MapScreen(mapVM) } }
 
-    composeTestRule.onNodeWithTag(MapScreenTestTags.CITY_SEARCH_FIELD).performTextInput("Lausanne")
-    composeTestRule.onNodeWithTag(MapScreenTestTags.CITY_SEARCH_BUTTON).performClick()
-    composeTestRule.onNodeWithTag(MapScreenTestTags.FILTERS_TOGGLE).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.map_city_search_field).performTextInput("Lausanne")
+    composeTestRule.onNodeWithTag(C.Tag.map_city_search_button).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.map_filters_toggle).performClick()
     composeTestRule
-        .onNodeWithTag(MapScreenTestTags.GAME_SYSTEM_FILTER)
+        .onNodeWithTag(C.Tag.map_game_system_filter)
         .performTextInput("Dungeons & Dragons")
-    composeTestRule.onNodeWithTag(MapScreenTestTags.AVAILABLE_SEATS_FILTER).performClick()
-    composeTestRule.onNodeWithTag(MapScreenTestTags.APPLY_FILTERS_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.map_available_seats_filter).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.map_apply_filters).performClick()
 
     assertEquals("Lausanne", mapVM.searchedCity)
     assertEquals(1, mapVM.applyRequests)
@@ -61,13 +48,19 @@ class MapScreenTest {
     val mapVM =
         FakeMapVM(
             MapUiState(
-                status = MapStatus(MapOperation.GAMES, MapStatusType.ERROR, "Network unavailable", canRetry = true),
+                status =
+                    MapStatus(
+                        MapOperation.GAMES,
+                        MapStatusType.ERROR,
+                        "Network unavailable",
+                        canRetry = true,
+                    ),
             )
         )
     composeTestRule.setContent { SampleAppTheme { MapScreen(mapVM) } }
 
     composeTestRule.onNodeWithText("Network unavailable").assertIsDisplayed()
-    composeTestRule.onNodeWithTag(MapScreenTestTags.RETRY_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.map_retry).performClick()
 
     assertEquals(2, mapVM.loadRequests)
   }
@@ -97,11 +90,11 @@ class MapScreenTest {
       SampleAppTheme { MapScreen(mapVM, onViewGameDetails = { viewedGameId = it }) }
     }
 
-    composeTestRule.onNodeWithTag(MapScreenTestTags.SELECTED_GAME).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.map_selected_game_title).assertIsDisplayed()
     composeTestRule.onNodeWithText("The Sunken Crown").assertIsDisplayed()
     composeTestRule.onNodeWithText("GM Alex").assertIsDisplayed()
     composeTestRule.onNodeWithText("2 seats open").assertIsDisplayed()
-    composeTestRule.onNodeWithTag(MapScreenTestTags.VIEW_GAME_DETAILS_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.map_view_game_details).performClick()
     assertEquals("session-1", viewedGameId)
   }
 
@@ -113,7 +106,7 @@ class MapScreenTest {
       SampleAppTheme { MapScreen(mapVM, onTabSelected = { selectedTab = it }) }
     }
 
-    composeTestRule.onNodeWithTag("map_tab_Files").performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
 
     assertEquals("Files", selectedTab)
   }

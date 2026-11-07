@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.map
 
 import android.Manifest
@@ -24,17 +25,13 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Casino
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,6 +43,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
@@ -61,18 +59,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.github.se.jdrnexus.R
+import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.resources.ScreenBottomBar
+import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MapStyleOptions
-import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.Marker
@@ -83,59 +86,29 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-// ============ Internal functions and test tags ============
-object MapScreenTestTags {
-  const val MAP_SCREEN = "map_screen"
-  const val GOOGLE_MAP = "google_map"
-  const val CITY_SEARCH_FIELD = "map_city_search_field"
-  const val CITY_SEARCH_BUTTON = "map_city_search_button"
-  const val GAME_SYSTEM_FILTER = "map_game_system_filter"
-  const val AVAILABLE_SEATS_FILTER = "map_available_seats_filter"
-  const val APPLY_FILTERS_BUTTON = "map_apply_filters_button"
-  const val FILTERS_TOGGLE = "map_filters_toggle"
-  const val LOCATION_BUTTON = "map_location_button"
-  const val RETRY_BUTTON = "map_retry_button"
-  const val SELECTED_GAME = "map_selected_game"
-  const val BOTTOM_NAVIGATION = "map_bottom_navigation"
-  const val VIEW_GAME_DETAILS_BUTTON = "map_view_game_details_button"
-  const val GAME_PIN = "map_game_pin"
-  const val SELECTED_GAME_PIN = "map_selected_game_pin"
-  const val USER_LOCATION_PIN = "map_user_location_pin"
-
-  fun getTestTagForGameMarker(gameId: String): String = "gameMarker_$gameId"
-}
-
-internal fun mapStyleJson(isDarkTheme: Boolean): String =
-    if (isDarkTheme) {
-      """[{"elementType":"geometry","stylers":[{"color":"#211d19"}]},
-        {"elementType":"labels.text.fill","stylers":[{"color":"#c9b99d"}]},
-        {"featureType":"road","elementType":"geometry","stylers":[{"color":"#51483c"}]},
-        {"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#171411"}]},
-        {"featureType":"water","elementType":"geometry","stylers":[{"color":"#183a3b"}]},
-        {"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#293a30"}]}]"""
-    } else {
-      """[{"elementType":"geometry","stylers":[{"color":"#efe6da"}]},
-        {"elementType":"labels.text.fill","stylers":[{"color":"#705d4b"}]},
-        {"featureType":"road","elementType":"geometry","stylers":[{"color":"#c9b6a4"}]},
-        {"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#f8f2ea"}]},
-        {"featureType":"water","elementType":"geometry","stylers":[{"color":"#c5dcd5"}]},
-        {"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#d6e1d4"}]}]"""
-    }
-
-/** Shared look of the floating panels (search bar, status banner, game card). */
-private val OverlayShape = RoundedCornerShape(16.dp)
-private val OverlayElevation = 4.dp
-private val HairlineBorderWidth = 0.5.dp
-
-internal fun mapMarkerHue(isDarkTheme: Boolean): Float = if (isDarkTheme) 45f else 25f
-
-/** Formats a session date like "Saturday, Oct 10 · 7:00 PM". */
-internal fun formatGameDate(dateTime: LocalDateTime, locale: Locale = Locale.getDefault()): String =
-    dateTime.format(DateTimeFormatter.ofPattern("EEEE, MMM d · h:mm a", locale))
 
 // ============ Screen ============
 
-/** Shows nearby campaign sessions and forwards map interactions to [mapVM]. */
+/** Label of this screen's tab in the shared [ScreenBottomBar]. */
+private const val MAP_TAB = "Map"
+
+/** Space between the screen edges and the panels floating over the map. */
+private val OverlayInset = 12.dp
+
+/** Fine and coarse location, so that the user may grant either precision. */
+private val LOCATION_PERMISSIONS =
+    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+
+/**
+ * Shows nearby campaign sessions and forwards every map interaction to [mapVM].
+ *
+ * Loads the games once when first shown. The location-permission request lives here because it
+ * needs an Activity result launcher, which a ViewModel cannot hold; its outcome is reported to
+ * [MapVM.onLocationPermissionResult].
+ *
+ * @param onTabSelected receives the label of the bottom-bar tab the user pressed.
+ * @param onViewGameDetails receives the id of the selected game when the user opens it.
+ */
 @Composable
 fun MapScreen(
     mapVM: MapVM,
@@ -144,34 +117,22 @@ fun MapScreen(
     onViewGameDetails: (String) -> Unit = {},
 ) {
   val uiState by mapVM.uiState.collectAsState()
-  // Returns immediately, without a dialog, when the permission is already granted.
+  // Returns at once, without a dialog, when the permission is already granted. A dismissed dialog
+  // returns no result, which counts as a denial.
   val locationPermissionLauncher =
       rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
           results ->
         mapVM.onLocationPermissionResult(results.values.any { it })
       }
-  val cameraPositionState = rememberCameraPositionState {
-    position = CameraPosition.fromLatLngZoom(LatLng(0.0, 0.0), 2f)
-  }
 
   LaunchedEffect(mapVM) { mapVM.loadNearbyGames() }
-  LaunchedEffect(uiState.camera) {
-    uiState.camera?.let { camera ->
-      cameraPositionState.position =
-          CameraPosition.fromLatLngZoom(camera.target.toLatLng(), camera.zoom)
-    }
-  }
 
   Scaffold(
-      modifier = modifier.testTag(MapScreenTestTags.MAP_SCREEN),
-      bottomBar = { MapBottomNavigation(onTabSelected) },
-  ) { contentPadding ->
-    Box(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
-      MapView(
-          uiState = uiState,
-          cameraPositionState = cameraPositionState,
-          onSelectGame = mapVM::selectGame,
-      )
+      modifier = modifier.testTag(C.Tag.map_screen),
+      bottomBar = { ScreenBottomBar(selectedTab = MAP_TAB, onTabSelected = onTabSelected) },
+  ) { innerPadding ->
+    Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+      MapLayer(uiState = uiState, onSelectGame = mapVM::selectGame)
       MapSearchBar(
           query = uiState.cityQuery,
           filters = uiState.filters,
@@ -179,56 +140,71 @@ fun MapScreen(
           onSearch = mapVM::searchCity,
           onFiltersChange = mapVM::onFiltersChange,
           onApplyFilters = mapVM::applyFilters,
-          modifier = Modifier.fillMaxWidth().padding(12.dp),
+          modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(OverlayInset),
       )
-      Column(
-          modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp),
-          verticalArrangement = Arrangement.spacedBy(8.dp),
-      ) {
-        LocationButton(
-            onClick = { locationPermissionLauncher.launch(LOCATION_PERMISSIONS) },
-            modifier = Modifier.align(Alignment.End),
-        )
-        if (uiState.isLoading || uiState.status != null) {
-          MapStatusBanner(
-              isLoading = uiState.isLoading,
-              status = uiState.status,
-              onRetry = mapVM::loadNearbyGames,
-          )
-        }
-        uiState.selectedGame?.let { game ->
-          SelectedGameCard(game = game, onViewDetails = { onViewGameDetails(game.id) })
-        }
-      }
+      MapBottomOverlay(
+          uiState = uiState,
+          onRequestLocation = { locationPermissionLauncher.launch(LOCATION_PERMISSIONS) },
+          onRetry = mapVM::loadNearbyGames,
+          onViewGameDetails = onViewGameDetails,
+          modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(OverlayInset),
+      )
     }
   }
 }
 
-/** Fine and coarse location, so the user may grant either precision. */
-private val LOCATION_PERMISSIONS =
-    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-
-private fun MapCoordinates.toLatLng() = LatLng(latitude, longitude)
+/** Common look of the panels floating over the map: search bar, status banner and game card. */
+@Composable
+private fun MapPanel(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(16.dp),
+    borderColor: Color = LocalAppUiColors.current.outline,
+    content: @Composable () -> Unit,
+) {
+  Surface(
+      modifier = modifier,
+      shape = shape,
+      color = LocalAppUiColors.current.raisedSurface,
+      border = BorderStroke(1.dp, borderColor),
+      shadowElevation = 4.dp,
+      content = content,
+  )
+}
 
 // ============ Map layer ============
 
-/** Marker state recreated only when [coordinates] change. */
-@Composable
-private fun rememberMarkerStateAt(coordinates: MapCoordinates): MarkerState =
-    remember(coordinates) { MarkerState(position = coordinates.toLatLng()) }
+/** Camera shown before the ViewModel picks a target: the whole world. */
+private val INITIAL_CAMERA = CameraPosition.fromLatLngZoom(LatLng(0.0, 0.0), 2f)
 
-/** Themed Google map with a pin per game, the searched city and the user's position. */
+/**
+ * Google map styled for the current theme, with a pin per game, the searched city and the user's
+ * position. Tapping a game pin selects that game.
+ *
+ * The camera follows [MapUiState.camera], which the ViewModel moves after a city search, a device
+ * location or a game selection.
+ */
 @Composable
-private fun MapView(
-    uiState: MapUiState,
-    cameraPositionState: CameraPositionState,
-    onSelectGame: (String) -> Unit,
-) {
-  val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+private fun MapLayer(uiState: MapUiState, onSelectGame: (String) -> Unit) {
+  val colors = LocalAppUiColors.current
+  val context = LocalContext.current
+  val cameraPositionState = rememberCameraPositionState { position = INITIAL_CAMERA }
+  val mapProperties =
+      remember(colors.isDarkTheme) {
+        val style = if (colors.isDarkTheme) R.raw.map_style_dark else R.raw.map_style_light
+        MapProperties(mapStyleOptions = MapStyleOptions.loadRawResourceStyle(context, style))
+      }
+
+  LaunchedEffect(uiState.camera) {
+    uiState.camera?.let { camera ->
+      cameraPositionState.position =
+          CameraPosition.fromLatLngZoom(camera.target.toLatLng(), camera.zoom)
+    }
+  }
+
   GoogleMap(
-      modifier = Modifier.fillMaxSize().testTag(MapScreenTestTags.GOOGLE_MAP),
+      modifier = Modifier.fillMaxSize().testTag(C.Tag.map_google_map),
       cameraPositionState = cameraPositionState,
-      properties = MapProperties(mapStyleOptions = MapStyleOptions(mapStyleJson(isDarkTheme))),
+      properties = mapProperties,
   ) {
     uiState.games.forEach { game ->
       val selected = game.id == uiState.selectedGame?.id
@@ -242,7 +218,7 @@ private fun MapView(
             onSelectGame(game.id)
             true
           },
-          tag = MapScreenTestTags.getTestTagForGameMarker(game.id),
+          tag = C.Tag.mapGameMarker(game.id),
       ) {
         GamePin(selected = selected)
       }
@@ -251,35 +227,38 @@ private fun MapView(
       Marker(
           state = rememberMarkerStateAt(city),
           title = city.label ?: "Searched city",
-          icon = BitmapDescriptorFactory.defaultMarker(mapMarkerHue(isDarkTheme)),
-          tag = "searchedCityMarker",
+          icon = BitmapDescriptorFactory.defaultMarker(colors.accent.hue()),
       )
     }
     uiState.userLocation?.let { location ->
-      MarkerComposable(
-          state = rememberMarkerStateAt(location),
-          anchor = Offset(0.5f, 0.3f),
-          tag = "userLocationMarker",
-      ) {
+      // Anchored on the dot rather than on the "You" label below it.
+      MarkerComposable(state = rememberMarkerStateAt(location), anchor = Offset(0.5f, 0.3f)) {
         UserLocationPin()
       }
     }
   }
 }
 
-/** Gold map pin for a campaign session; larger and filled, with a halo, when [selected]. */
+/** Marker state recreated only when [coordinates] change. */
 @Composable
-internal fun GamePin(selected: Boolean, modifier: Modifier = Modifier) {
-  val gold = MaterialTheme.colorScheme.primary
+private fun rememberMarkerStateAt(coordinates: MapCoordinates): MarkerState =
+    remember(coordinates) { MarkerState(position = coordinates.toLatLng()) }
+
+private fun MapCoordinates.toLatLng() = LatLng(latitude, longitude)
+
+/** Hue (0–360) of this color, as expected by Google's default marker. */
+private fun Color.hue(): Float =
+    FloatArray(3).also { android.graphics.Color.colorToHSV(toArgb(), it) }[0]
+
+/** Accent-colored pin for a campaign session: larger and filled, with a halo, when [selected]. */
+@Composable
+private fun GamePin(selected: Boolean) {
+  val colors = LocalAppUiColors.current
   Box(
       modifier =
-          modifier
-              .testTag(
-                  if (selected) MapScreenTestTags.SELECTED_GAME_PIN else MapScreenTestTags.GAME_PIN
-              )
-              .size(if (selected) 56.dp else 36.dp)
+          Modifier.size(if (selected) 56.dp else 36.dp)
               .background(
-                  if (selected) gold.copy(alpha = 0.2f) else Color.Transparent,
+                  if (selected) colors.accent.copy(alpha = 0.2f) else Color.Transparent,
                   CircleShape,
               ),
       contentAlignment = Alignment.Center,
@@ -287,17 +266,14 @@ internal fun GamePin(selected: Boolean, modifier: Modifier = Modifier) {
     Box(
         modifier =
             Modifier.size(if (selected) 40.dp else 32.dp)
-                .background(
-                    if (selected) gold else MaterialTheme.colorScheme.surface,
-                    CircleShape,
-                )
-                .border(2.dp, gold, CircleShape),
+                .background(if (selected) colors.accent else colors.raisedSurface, CircleShape)
+                .border(2.dp, colors.accent, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
       Icon(
           Icons.Default.LocationOn,
           contentDescription = null,
-          tint = if (selected) MaterialTheme.colorScheme.onPrimary else gold,
+          tint = if (selected) colors.accentContent else colors.accent,
           modifier = Modifier.size(if (selected) 22.dp else 18.dp),
       )
     }
@@ -306,33 +282,26 @@ internal fun GamePin(selected: Boolean, modifier: Modifier = Modifier) {
 
 /** Device-location dot with a translucent halo and a "You" label. */
 @Composable
-internal fun UserLocationPin(modifier: Modifier = Modifier) {
-  Column(
-      modifier = modifier.testTag(MapScreenTestTags.USER_LOCATION_PIN),
-      horizontalAlignment = Alignment.CenterHorizontally,
-  ) {
+private fun UserLocationPin() {
+  val colors = LocalAppUiColors.current
+  Column(horizontalAlignment = Alignment.CenterHorizontally) {
     Box(
         modifier =
-            Modifier.size(48.dp)
-                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f), CircleShape),
+            Modifier.size(48.dp).background(colors.primaryText.copy(alpha = 0.15f), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
       Box(
           modifier =
               Modifier.size(16.dp)
-                  .background(MaterialTheme.colorScheme.onSurface, CircleShape)
-                  .border(3.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                  .background(colors.primaryText, CircleShape)
+                  .border(3.dp, colors.raisedSurface, CircleShape)
       )
     }
-    Surface(
-        shape = RoundedCornerShape(6.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(HairlineBorderWidth, MaterialTheme.colorScheme.outlineVariant),
-    ) {
+    MapPanel(shape = RoundedCornerShape(8.dp)) {
       Text(
           "You",
-          modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-          color = MaterialTheme.colorScheme.onSurface,
+          modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+          color = colors.primaryText,
           style = MaterialTheme.typography.labelSmall,
       )
     }
@@ -341,7 +310,12 @@ internal fun UserLocationPin(modifier: Modifier = Modifier) {
 
 // ============ Top overlay: search and filters ============
 
-/** Floating city search field with a filter toggle revealing the game filters. */
+/**
+ * Floating city search field, with a toggle revealing the game filters.
+ *
+ * Searching is only possible with a non-blank query, from the search icon or the keyboard action.
+ * Filter edits go to [onFiltersChange] and change the visible games only once applied.
+ */
 @Composable
 private fun MapSearchBar(
     query: String,
@@ -352,15 +326,11 @@ private fun MapSearchBar(
     onApplyFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-  // Purely visual toggle: nothing outside this bar needs to know about it.
+  val colors = LocalAppUiColors.current
+  val canSearch = query.isNotBlank()
   var filtersExpanded by rememberSaveable { mutableStateOf(false) }
-  Surface(
-      modifier = modifier,
-      shape = OverlayShape,
-      color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-      border = BorderStroke(HairlineBorderWidth, MaterialTheme.colorScheme.outlineVariant),
-      shadowElevation = OverlayElevation,
-  ) {
+
+  MapPanel(modifier = modifier) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -369,40 +339,37 @@ private fun MapSearchBar(
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
-            modifier = Modifier.weight(1f).testTag(MapScreenTestTags.CITY_SEARCH_FIELD),
+            modifier = Modifier.weight(1f).testTag(C.Tag.map_city_search_field),
             label = { Text("Search a city") },
             leadingIcon = {
               IconButton(
                   onClick = onSearch,
-                  modifier = Modifier.testTag(MapScreenTestTags.CITY_SEARCH_BUTTON),
-                  enabled = query.isNotBlank(),
+                  enabled = canSearch,
+                  modifier = Modifier.testTag(C.Tag.map_city_search_button),
               ) {
-                Icon(
-                    Icons.Default.Search,
-                    contentDescription = "Search city",
-                    tint = MaterialTheme.colorScheme.primary,
-                )
+                Icon(Icons.Default.Search, contentDescription = "Search city", tint = colors.accent)
               }
             },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { if (query.isNotBlank()) onSearch() }),
+            keyboardActions = KeyboardActions(onSearch = { if (canSearch) onSearch() }),
             colors =
                 OutlinedTextFieldDefaults.colors(
-                    unfocusedBorderColor = Color.Transparent,
+                    focusedTextColor = colors.primaryText,
+                    unfocusedTextColor = colors.primaryText,
+                    focusedLabelColor = colors.secondaryText,
+                    unfocusedLabelColor = colors.secondaryText,
+                    cursorColor = colors.accent,
                     focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
                 ),
         )
-        VerticalDivider(modifier = Modifier.height(32.dp))
+        VerticalDivider(modifier = Modifier.height(32.dp), color = colors.outline)
         IconButton(
             onClick = { filtersExpanded = !filtersExpanded },
-            modifier = Modifier.testTag(MapScreenTestTags.FILTERS_TOGGLE),
+            modifier = Modifier.testTag(C.Tag.map_filters_toggle),
         ) {
-          Icon(
-              Icons.Default.Tune,
-              contentDescription = "Show filters",
-              tint = MaterialTheme.colorScheme.primary,
-          )
+          Icon(Icons.Default.Tune, contentDescription = "Show filters", tint = colors.accent)
         }
       }
       if (filtersExpanded) {
@@ -416,13 +383,14 @@ private fun MapSearchBar(
   }
 }
 
-/** Game-system field, open-seats switch and the button applying them. */
+/** Game-system field, open-seats switch, and the button applying them to the visible games. */
 @Composable
 private fun MapFiltersPanel(
     filters: MapFilters,
     onFiltersChange: (MapFilters) -> Unit,
     onApply: () -> Unit,
 ) {
+  val colors = LocalAppUiColors.current
   Row(
       modifier = Modifier.fillMaxWidth(),
       horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -431,16 +399,23 @@ private fun MapFiltersPanel(
     OutlinedTextField(
         value = filters.gameSystem.orEmpty(),
         onValueChange = { onFiltersChange(filters.copy(gameSystem = it.ifBlank { null })) },
-        modifier = Modifier.weight(1f).testTag(MapScreenTestTags.GAME_SYSTEM_FILTER),
+        modifier = Modifier.weight(1f).testTag(C.Tag.map_game_system_filter),
         label = { Text("Game system") },
         placeholder = { Text("Any") },
         singleLine = true,
+        colors =
+            OutlinedTextFieldDefaults.colors(
+                focusedTextColor = colors.primaryText,
+                unfocusedTextColor = colors.primaryText,
+                focusedBorderColor = colors.accent,
+                unfocusedBorderColor = colors.outline,
+                focusedLabelColor = colors.accent,
+                unfocusedLabelColor = colors.secondaryText,
+                cursorColor = colors.accent,
+            ),
     )
-    TextButton(
-        onClick = onApply,
-        modifier = Modifier.testTag(MapScreenTestTags.APPLY_FILTERS_BUTTON),
-    ) {
-      Text("Apply")
+    TextButton(onClick = onApply, modifier = Modifier.testTag(C.Tag.map_apply_filters)) {
+      Text("Apply", color = colors.accent)
     }
   }
   Row(
@@ -448,66 +423,84 @@ private fun MapFiltersPanel(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.SpaceBetween,
   ) {
-    Text("Only games with open seats")
+    Text("Only games with open seats", color = colors.primaryText)
     Switch(
         checked = filters.onlyGamesWithAvailableSeats,
         onCheckedChange = { onFiltersChange(filters.copy(onlyGamesWithAvailableSeats = it)) },
-        modifier = Modifier.testTag(MapScreenTestTags.AVAILABLE_SEATS_FILTER),
+        modifier = Modifier.testTag(C.Tag.map_available_seats_filter),
+        colors =
+            SwitchDefaults.colors(
+                checkedThumbColor = colors.accentContent,
+                checkedTrackColor = colors.accent,
+            ),
     )
   }
 }
 
 // ============ Bottom overlay: location, status and selected game ============
 
-/** Round button asking for the device location. */
+/**
+ * Bottom of the map, from top to bottom: the device-location button, the loading/status banner when
+ * there is one, and the card of the selected game when one is selected.
+ */
 @Composable
-private fun LocationButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-  Surface(
-      modifier = modifier,
-      shape = CircleShape,
-      color = MaterialTheme.colorScheme.surface,
-      border = BorderStroke(HairlineBorderWidth, MaterialTheme.colorScheme.outlineVariant),
-      shadowElevation = OverlayElevation,
-  ) {
-    IconButton(onClick = onClick, modifier = Modifier.testTag(MapScreenTestTags.LOCATION_BUTTON)) {
-      Icon(
-          Icons.Default.MyLocation,
-          contentDescription = "Use device location",
-          tint = MaterialTheme.colorScheme.primary,
-      )
+private fun MapBottomOverlay(
+    uiState: MapUiState,
+    onRequestLocation: () -> Unit,
+    onRetry: () -> Unit,
+    onViewGameDetails: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+  val colors = LocalAppUiColors.current
+  Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    MapPanel(modifier = Modifier.align(Alignment.End), shape = CircleShape) {
+      IconButton(
+          onClick = onRequestLocation,
+          modifier = Modifier.testTag(C.Tag.map_location_button),
+      ) {
+        Icon(
+            Icons.Default.MyLocation,
+            contentDescription = "Use device location",
+            tint = colors.accent,
+        )
+      }
+    }
+    if (uiState.isLoading || uiState.status != null) {
+      MapStatusBanner(isLoading = uiState.isLoading, status = uiState.status, onRetry = onRetry)
+    }
+    uiState.selectedGame?.let { game ->
+      SelectedGameCard(game = game, onViewDetails = { onViewGameDetails(game.id) })
     }
   }
 }
 
-/** Loading indicator and/or status message, with a retry action when [MapStatus.canRetry]. */
+/**
+ * Loading indicator and/or status message. Errors and permission denials use the error color, an
+ * empty result does not; a retry action is shown when [MapStatus.canRetry].
+ */
 @Composable
 private fun MapStatusBanner(isLoading: Boolean, status: MapStatus?, onRetry: () -> Unit) {
-  Surface(
-      modifier = Modifier.fillMaxWidth(),
-      shape = OverlayShape,
-      color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-      border = BorderStroke(HairlineBorderWidth, MaterialTheme.colorScheme.outlineVariant),
-      shadowElevation = OverlayElevation,
-  ) {
+  val colors = LocalAppUiColors.current
+  MapPanel(modifier = Modifier.fillMaxWidth()) {
     Row(
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
       if (isLoading) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(24.dp),
-            color = MaterialTheme.colorScheme.primary,
-        )
+        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = colors.accent)
       }
       status?.let {
-        Text(it.message, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.error)
+        Text(
+            it.message,
+            modifier = Modifier.weight(1f).testTag(C.Tag.map_status_message),
+            color =
+                if (it.type == MapStatusType.EMPTY) colors.secondaryText
+                else MaterialTheme.colorScheme.error,
+        )
         if (it.canRetry) {
-          TextButton(
-              onClick = onRetry,
-              modifier = Modifier.testTag(MapScreenTestTags.RETRY_BUTTON),
-          ) {
-            Text("Retry")
+          TextButton(onClick = onRetry, modifier = Modifier.testTag(C.Tag.map_retry)) {
+            Text("Retry", color = colors.accent)
           }
         }
       }
@@ -515,22 +508,22 @@ private fun MapStatusBanner(isLoading: Boolean, status: MapStatus?, onRetry: () 
   }
 }
 
-/** Bottom sheet-like card describing the selected [game]. */
+/**
+ * Card of the selected [game], laid out as in the mockup: seats, title, game master, game system,
+ * distance, date, and a button opening the game's details.
+ */
 @Composable
 private fun SelectedGameCard(game: MapGameUiModel, onViewDetails: () -> Unit) {
-  Surface(
-      modifier = Modifier.fillMaxWidth(),
-      shape = OverlayShape,
-      color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-      border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
-      shadowElevation = OverlayElevation,
-  ) {
+  val colors = LocalAppUiColors.current
+  MapPanel(modifier = Modifier.fillMaxWidth(), borderColor = colors.accent.copy(alpha = 0.4f)) {
     Column(modifier = Modifier.padding(16.dp)) {
-      Surface(
-          shape = RoundedCornerShape(4.dp),
-          color = MaterialTheme.colorScheme.outlineVariant,
-          modifier = Modifier.align(Alignment.CenterHorizontally).width(32.dp).height(4.dp),
-      ) {}
+      // Drag handle, as on a bottom sheet.
+      Box(
+          modifier =
+              Modifier.align(Alignment.CenterHorizontally)
+                  .size(width = 32.dp, height = 4.dp)
+                  .background(colors.outline, RoundedCornerShape(4.dp))
+      )
       Spacer(Modifier.height(12.dp))
       Row(
           modifier = Modifier.fillMaxWidth(),
@@ -539,24 +532,22 @@ private fun SelectedGameCard(game: MapGameUiModel, onViewDetails: () -> Unit) {
       ) {
         Text(
             "NEARBY ADVENTURE",
-            color = MaterialTheme.colorScheme.primary,
+            color = colors.accent,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
             "${game.availableSeats} seats open",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.secondaryText,
             style = MaterialTheme.typography.labelSmall,
         )
       }
+      // Serif title: intentional branding from the mockup.
       Text(
           text = game.title,
-          style =
-              MaterialTheme.typography.titleLarge.copy(
-                  fontFamily = FontFamily.Serif,
-                  fontWeight = FontWeight.Medium,
-              ),
-          modifier = Modifier.testTag(MapScreenTestTags.SELECTED_GAME).padding(top = 2.dp),
+          color = colors.primaryText,
+          style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Serif),
+          modifier = Modifier.testTag(C.Tag.map_selected_game_title),
       )
       GameInfo(Icons.Default.Person, "GM ${game.gameMasterName}")
       Row(
@@ -564,10 +555,7 @@ private fun SelectedGameCard(game: MapGameUiModel, onViewDetails: () -> Unit) {
           horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically,
       ) {
-        Surface(
-            shape = RoundedCornerShape(6.dp),
-            color = MaterialTheme.colorScheme.secondaryContainer,
-        ) {
+        Surface(shape = RoundedCornerShape(8.dp), color = colors.surface) {
           GameInfo(
               Icons.Default.Casino,
               game.gameSystem,
@@ -575,7 +563,11 @@ private fun SelectedGameCard(game: MapGameUiModel, onViewDetails: () -> Unit) {
           )
         }
         game.distanceKm?.let {
-          GameInfo(Icons.Default.LocationOn, "${"%.1f".format(it)} km from you")
+          GameInfo(
+              Icons.Default.LocationOn,
+              "${"%.1f".format(it)} km from you",
+              modifier = Modifier.testTag(C.Tag.map_selected_game_distance),
+          )
         }
       }
       GameInfo(
@@ -586,15 +578,13 @@ private fun SelectedGameCard(game: MapGameUiModel, onViewDetails: () -> Unit) {
       Button(
           onClick = onViewDetails,
           modifier =
-              Modifier.fillMaxWidth()
-                  .padding(top = 12.dp)
-                  .testTag(MapScreenTestTags.VIEW_GAME_DETAILS_BUTTON),
+              Modifier.fillMaxWidth().padding(top = 12.dp).testTag(C.Tag.map_view_game_details),
           colors =
               ButtonDefaults.buttonColors(
-                  containerColor = MaterialTheme.colorScheme.primary,
-                  contentColor = MaterialTheme.colorScheme.onPrimary,
+                  containerColor = colors.accent,
+                  contentColor = colors.accentContent,
               ),
-          shape = RoundedCornerShape(10.dp),
+          shape = RoundedCornerShape(12.dp),
       ) {
         Text("View game details")
         Spacer(Modifier.width(8.dp))
@@ -604,71 +594,20 @@ private fun SelectedGameCard(game: MapGameUiModel, onViewDetails: () -> Unit) {
   }
 }
 
-/** Small gold icon followed by a line of game information. */
+/** One line of game information: a small accent icon followed by [text]. */
 @Composable
 private fun GameInfo(icon: ImageVector, text: String, modifier: Modifier = Modifier) {
+  val colors = LocalAppUiColors.current
   Row(
       modifier = modifier,
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
-    Icon(
-        icon,
-        contentDescription = null,
-        tint = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.size(14.dp),
-    )
-    Text(text, style = MaterialTheme.typography.bodySmall)
+    Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.size(16.dp))
+    Text(text, color = colors.primaryText, style = MaterialTheme.typography.bodySmall)
   }
 }
 
-// ============ Bottom navigation ============
-
-/** App bottom bar with the Map tab highlighted. */
-@Composable
-private fun MapBottomNavigation(onTabSelected: (String) -> Unit) {
-  Surface(
-      modifier = Modifier.fillMaxWidth().testTag(MapScreenTestTags.BOTTOM_NAVIGATION),
-      color = MaterialTheme.colorScheme.surface,
-      border = BorderStroke(HairlineBorderWidth, MaterialTheme.colorScheme.outlineVariant),
-      shadowElevation = OverlayElevation,
-  ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().height(64.dp),
-        horizontalArrangement = Arrangement.SpaceAround,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-      MapBottomTab("Home", Icons.Default.Home, onTabSelected)
-      MapBottomTab("Campaigns", Icons.AutoMirrored.Outlined.MenuBook, onTabSelected)
-      MapBottomTab("Files", Icons.Outlined.Folder, onTabSelected)
-      MapBottomTab("Map", Icons.Outlined.Map, onTabSelected, selected = true)
-    }
-  }
-}
-
-/** One bottom bar tab, gold and bold when [selected]. */
-@Composable
-private fun MapBottomTab(
-    label: String,
-    icon: ImageVector,
-    onTabSelected: (String) -> Unit,
-    selected: Boolean = false,
-) {
-  val tint =
-      if (selected) MaterialTheme.colorScheme.primary
-      else MaterialTheme.colorScheme.onSurfaceVariant
-  TextButton(
-      onClick = { onTabSelected(label) },
-      modifier = Modifier.testTag("map_tab_$label"),
-  ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-      Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(19.dp))
-      Text(
-          label,
-          color = tint,
-          style = MaterialTheme.typography.labelSmall,
-          fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-      )
-    }
-  }
-}
+/** Formats a session date like "Saturday, Oct 10 · 7:00 PM". */
+internal fun formatGameDate(dateTime: LocalDateTime, locale: Locale = Locale.getDefault()): String =
+    dateTime.format(DateTimeFormatter.ofPattern("EEEE, MMM d · h:mm a", locale))

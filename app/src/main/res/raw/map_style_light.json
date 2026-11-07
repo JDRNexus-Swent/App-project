@@ -1,0 +1,8 @@
+[
+  { "elementType": "geometry", "stylers": [{ "color": "#efe6da" }] },
+  { "elementType": "labels.text.fill", "stylers": [{ "color": "#705d4b" }] },
+  { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#c9b6a4" }] },
+  { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#f8f2ea" }] },
+  { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#c5dcd5" }] },
+  { "featureType": "poi.park", "elementType": "geometry", "stylers": [{ "color": "#d6e1d4" }] }
+]
