@@ -61,7 +61,7 @@ class MapScreenTest {
     val mapVM =
         FakeMapVM(
             MapUiState(
-                status = MapStatus("Network unavailable", canRetry = true),
+                status = MapStatus(MapOperation.GAMES, MapStatusType.ERROR, "Network unavailable", canRetry = true),
             )
         )
     composeTestRule.setContent { SampleAppTheme { MapScreen(mapVM) } }
