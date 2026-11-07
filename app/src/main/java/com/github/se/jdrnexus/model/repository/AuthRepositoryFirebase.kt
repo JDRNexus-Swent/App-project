@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.repository
 
 import com.google.firebase.FirebaseNetworkException
@@ -10,6 +11,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.callbackFlow
@@ -52,7 +55,9 @@ class AuthRepositoryFirebase internal constructor(private val client: FirebaseAu
       cleanup.firstFailure()?.let { cancellation.addSuppressed(AuthOperationException(it)) }
       throw cancellation
     } catch (usernameFailure: Exception) {
-      val cleanup = cleanupCreatedAccount(createdUser.uid)
+      val cleanup = withContext(NonCancellable) { cleanupCreatedAccount(createdUser.uid) }
+      // Cleanup finished; if the caller was cancelled meanwhile, propagate it instead of a result.
+      currentCoroutineContext().ensureActive()
       if (cleanup.isSuccessful) {
         AuthResult.Failure(authErrorFor(usernameFailure))
       } else {
