@@ -14,3 +14,5 @@
 
 <!-- Anything else to point out? -->
 
+<!-- If it is a screen, place a screen shot below -->
+
