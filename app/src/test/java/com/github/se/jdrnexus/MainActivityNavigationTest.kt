@@ -67,6 +67,34 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun rapidSignUpTapsDoNotStackScreensOrLeaveNavigationBlank() {
+    showApp()
+    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performTouchInput {
+      repeat(10) { click() }
+    }
+    waitForTag(C.Tag.sign_up_sign_in)
+    scrollToTag("sign_up_scroll_container", C.Tag.sign_up_sign_in)
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsDisplayed().performClick()
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotDisplayed()
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performTouchInput {
+      repeat(10) { click() }
+    }
+    waitForTag(C.Tag.sign_up_sign_in)
+    scrollToTag("sign_up_scroll_container", C.Tag.sign_up_sign_in)
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).performTouchInput {
+      repeat(10) { click() }
+    }
+    waitForTag(C.Tag.sign_in_sign_up)
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotDisplayed()
+  }
+
+  @Test
   fun successfulSignInAndLogoutReturnToSignIn() {
     val repository = FakeAuthRepository()
     showApp(repository)

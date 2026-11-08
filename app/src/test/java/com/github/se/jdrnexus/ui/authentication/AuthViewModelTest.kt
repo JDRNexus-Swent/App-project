@@ -5,25 +5,20 @@ import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
+import com.github.se.jdrnexus.utils.MainDispatcherRule
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TestWatcher
-import org.junit.runner.Description
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AuthViewModelTest {
@@ -160,6 +155,40 @@ class AuthViewModelTest {
     repository.signInGate?.complete(Unit)
     runCurrent()
     assertEquals(AuthStatus.Success(USER), viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun rapidAuthenticationRequestsAreIgnoredWhileOneIsRunning() = runTest {
+    val signUpRepository = FakeAuthRepository().apply { signUpResponse = CompletableDeferred() }
+    val signUpViewModel = AuthViewModel(signUpRepository)
+    fillForm(signUpViewModel)
+
+    signUpViewModel.signUp()
+    signUpViewModel.signUp()
+    runCurrent()
+
+    assertEquals(1, signUpRepository.signUpCalls)
+    assertEquals(AuthStatus.Loading, signUpViewModel.uiState.value.status)
+
+    val signInRepository = FakeAuthRepository().apply { signInGate = CompletableDeferred() }
+    val signInViewModel = AuthViewModel(signInRepository)
+    fillForm(signInViewModel)
+
+    signInViewModel.signIn()
+    signInViewModel.signIn()
+    runCurrent()
+
+    assertEquals(1, signInRepository.signInCalls)
+    assertEquals(AuthStatus.Loading, signInViewModel.uiState.value.status)
+
+    val googleRepository = FakeAuthRepository()
+    val googleViewModel = AuthViewModel(googleRepository)
+
+    googleViewModel.signInWithGoogle("id-token")
+    googleViewModel.signInWithGoogle("id-token")
+    runCurrent()
+
+    assertEquals(1, googleRepository.googleSignInCalls)
   }
 
   @Test
@@ -335,6 +364,33 @@ class AuthViewModelTest {
   }
 
   @Test
+  fun signOutIsIgnoredWhileAuthenticationIsInProgressAndAllowedAfterSuccess() = runTest {
+    val repository = FakeAuthRepository().apply { signInGate = CompletableDeferred() }
+    val viewModel = AuthViewModel(repository)
+    fillForm(viewModel)
+
+    viewModel.signIn()
+    runCurrent()
+    viewModel.signOut()
+    runCurrent()
+
+    assertEquals(1, repository.signInCalls)
+    assertEquals(0, repository.signOutCalls)
+    assertEquals(AuthStatus.Loading, viewModel.uiState.value.status)
+
+    repository.signInGate?.complete(Unit)
+    runCurrent()
+
+    assertEquals(AuthStatus.Success(USER), viewModel.uiState.value.status)
+
+    viewModel.signOut()
+    runCurrent()
+
+    assertEquals(1, repository.signOutCalls)
+    assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
+  }
+
+  @Test
   fun signOutExposesRepositoryFailure() = runTest {
     val repository =
         FakeAuthRepository().apply {
@@ -455,18 +511,5 @@ class AuthViewModelTest {
 
   private companion object {
     val USER = AuthUser(uid = "user-1", email = "player@example.com", username = "Player")
-  }
-}
-
-@OptIn(ExperimentalCoroutinesApi::class)
-class MainDispatcherRule : TestWatcher() {
-  private val dispatcher = StandardTestDispatcher()
-
-  override fun starting(description: Description) {
-    Dispatchers.setMain(dispatcher)
-  }
-
-  override fun finished(description: Description) {
-    Dispatchers.resetMain()
   }
 }
