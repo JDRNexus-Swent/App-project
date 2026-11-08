@@ -48,6 +48,9 @@ sealed interface GroupLoadState {
   /** The group repository subscription has started and has not emitted a result yet. */
   data object Loading : GroupLoadState
 
+  /** There is no authenticated user for whom campaign groups can be loaded. */
+  data object SignedOut : GroupLoadState
+
   /** The subscription emitted one or more groups. */
   data object Success : GroupLoadState
 
@@ -140,7 +143,7 @@ class GameManagementViewModel(
             if (userId == null) {
               groupsJob?.cancel()
               groupsJob = null
-              _uiState.value = GameManagementUiState(loadState = GroupLoadState.Empty)
+              _uiState.value = GameManagementUiState(loadState = GroupLoadState.SignedOut)
             } else {
               observeGroups(userId)
             }

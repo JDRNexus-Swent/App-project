@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -103,6 +104,17 @@ class GameManagementScreenTest {
 
     composeTestRule.onNodeWithText("Loading your groups...").assertIsDisplayed()
     composeTestRule.onAllNodesWithText("Your party awaits").assertCountEquals(0)
+  }
+
+  @Test
+  fun signedOutStateHidesGroupCreation() {
+    setContent(uiState = GameManagementUiState(loadState = GroupLoadState.SignedOut))
+
+    composeTestRule.onNodeWithText("Sign in to manage campaigns.").assertIsDisplayed()
+    composeTestRule
+        .onAllNodesWithTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
+        .assertCountEquals(0)
+    composeTestRule.onAllNodesWithText("Create your first group").assertCountEquals(0)
   }
 
   @Test

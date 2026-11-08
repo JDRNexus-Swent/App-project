@@ -127,7 +127,8 @@ class PersonalSpaceViewModelTest {
   private class FakeAuthRepository(
       private val user: AuthUser = AuthUser("authenticated-user-42", "player@example.com", "Player")
   ) : AuthRepository {
-    override val authState: StateFlow<AuthUser?> = MutableStateFlow(user)
+    val currentUser = MutableStateFlow<AuthUser?>(user)
+    override val authState: StateFlow<AuthUser?> = currentUser
 
     override suspend fun signUpWithEmail(
         email: String,
@@ -181,6 +182,31 @@ class PersonalSpaceViewModelTest {
     repository.rootItemsFlow.value = listOf(rootFile)
     idleMainLooper()
     assertEquals(listOf(rootFile), viewModel.uiState.value.items)
+  }
+
+  @Test
+  fun signingOutClearsLoadedFilesAndFolderNavigation() {
+    val repository =
+        FakePersonalSpaceRepository(
+            rootItems = listOf(rootFolder, rootFile),
+            itemsByFolder = mapOf(rootFolder.id to listOf(nestedFile)),
+        )
+    val auth = FakeAuthRepository()
+    val viewModel = PersonalSpaceViewModel(repository, auth)
+    idleMainLooper()
+
+    viewModel.onItemClicked(rootFolder) {}
+    idleMainLooper()
+    assertEquals(listOf(nestedFile), viewModel.uiState.value.items)
+    assertTrue(viewModel.uiState.value.canNavigateUp)
+
+    auth.currentUser.value = null
+    idleMainLooper()
+
+    assertEquals(LoadState.SignedOut, viewModel.uiState.value.loadState)
+    assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertFalse(viewModel.uiState.value.canNavigateUp)
   }
 
   /** Verifies folder entry, nested back navigation, and the exact repository fetch sequence. */

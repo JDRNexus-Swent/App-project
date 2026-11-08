@@ -176,23 +176,25 @@ internal fun GameManagementScreenContent(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
       item { GroupHeading(uiState = uiState, colors = colors) }
-      item {
-        Button(
-            onClick = onCreateGroupClick,
-            modifier =
-                Modifier.fillMaxWidth()
-                    .height(48.dp)
-                    .testTag(GameManagementTestTags.CREATE_GROUP_BUTTON),
-            shape = RoundedCornerShape(50),
-            colors =
-                ButtonDefaults.buttonColors(
-                    containerColor = colors.accent,
-                    contentColor = colors.accentContent,
-                ),
-        ) {
-          Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-          Spacer(Modifier.width(8.dp))
-          Text("Create a new group", fontWeight = FontWeight.Medium)
+      if (uiState.loadState != GroupLoadState.SignedOut) {
+        item {
+          Button(
+              onClick = onCreateGroupClick,
+              modifier =
+                  Modifier.fillMaxWidth()
+                      .height(48.dp)
+                      .testTag(GameManagementTestTags.CREATE_GROUP_BUTTON),
+              shape = RoundedCornerShape(50),
+              colors =
+                  ButtonDefaults.buttonColors(
+                      containerColor = colors.accent,
+                      contentColor = colors.accentContent,
+                  ),
+          ) {
+            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Create a new group", fontWeight = FontWeight.Medium)
+          }
         }
       }
       if (uiState.successMessage.isNotEmpty()) {
@@ -206,6 +208,14 @@ internal fun GameManagementScreenContent(
       }
       when (val loadState = uiState.loadState) {
         GroupLoadState.Loading -> item { GroupLoadingCard(colors) }
+        GroupLoadState.SignedOut ->
+            item {
+              Text(
+                  text = "Sign in to manage campaigns.",
+                  color = colors.secondaryText,
+                  modifier = Modifier.padding(vertical = 16.dp),
+              )
+            }
         is GroupLoadState.Error ->
             item {
               GroupLoadError(
