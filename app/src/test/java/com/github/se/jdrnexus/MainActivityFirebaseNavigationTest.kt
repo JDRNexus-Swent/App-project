@@ -14,8 +14,15 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.model.personalSpace.GroupRepositoryFirestore
+import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.ui.authentication.AuthViewModel
+import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
+import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
+import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
+import com.github.se.jdrnexus.viewmodel.GroupLoadState
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import java.util.UUID
@@ -95,6 +102,53 @@ class MainActivityFirebaseNavigationTest {
     waitForTag(TestTags.TITLE)
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
     assertEquals(email, firebaseAuth.currentUser?.email)
+  }
+
+  @Test
+  fun emulatorRegistrationNavigatesToGameManagementAndLogsOut() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val firebaseApp =
+        FirebaseApp.getApps(context).firstOrNull()
+            ?: FirebaseApp.initializeApp(context)
+            ?: error("FirebaseApp could not be initialized for the Auth emulator test.")
+    val firebaseAuth = FirebaseAuth.getInstance(firebaseApp)
+    firebaseAuth.useEmulator("127.0.0.1", 9099)
+    firebaseAuth.signOut()
+
+    val authRepository = AuthRepositoryFirebase(firebaseAuth)
+    val authViewModel = AuthViewModel(authRepository)
+    val gameManagementViewModel =
+        GameManagementViewModel(
+            GroupRepositoryFirestore(FirebaseEmulatorTestUtils.getFirestore()),
+            authRepository,
+        )
+    val email = "campaign-${UUID.randomUUID()}@example.com"
+    composeTestRule.setContent {
+      JDRNexusApp(
+          authViewModel = authViewModel,
+          gameManagementViewModel = gameManagementViewModel,
+      )
+    }
+
+    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_username).performTextInput("Ranger")
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_email).performTextInput(email)
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_password).performTextInput("secret1")
+    scrollToTag("sign_up_scroll_container", C.Tag.sign_up_submit)
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+    waitForTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
+    composeTestRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_BUTTON).assertIsDisplayed()
+    composeTestRule.waitUntil(5_000) {
+      gameManagementViewModel.uiState.value.loadState != GroupLoadState.Loading
+    }
+    assertEquals(GroupLoadState.Empty, gameManagementViewModel.uiState.value.loadState)
+
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    waitForTag(C.Tag.sign_in_sign_up)
+    assertNull(firebaseAuth.currentUser)
   }
 
   private fun waitForTag(tag: String) {

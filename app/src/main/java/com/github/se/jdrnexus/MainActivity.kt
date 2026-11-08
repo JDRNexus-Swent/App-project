@@ -82,17 +82,16 @@ fun JDRNexusApp(
     authViewModel: AuthViewModel? = null,
     gameManagementViewModel: GameManagementViewModel? = null,
     personalSpaceViewModel: PersonalSpaceViewModel? = null,
+    editFileViewModel: EditFileViewModel? = null,
 ) {
   val activeAuthViewModel = authViewModel ?: viewModel(factory = AuthViewModel.Factory)
   val context = LocalContext.current
   val credentialManager = remember(context) { CredentialManager.create(context) }
   val navController = rememberNavController()
-  val popBackStack = {
-    if (navController.previousBackStackEntry != null) navController.popBackStack()
-  }
+  val navigation = rememberNavigationHelper(navController)
 
   // Create an editFileViewModel to be able to retreive the file for the edition screens
-  val editFileViewModel: EditFileViewModel = viewModel()
+  val activeEditFileViewModel = editFileViewModel ?: viewModel()
 
   Scaffold(
       containerColor = MaterialTheme.colorScheme.background,
@@ -106,9 +105,9 @@ fun JDRNexusApp(
         modifier = Modifier.fillMaxSize().padding(innerPadding),
     ) {
       composable(route = AllRoutes.SignIn.name) {
-        val onSignUp = { navController.navigate(AllRoutes.SignUp.name) }
+        val onSignUp = { navigation.navigate(AllRoutes.SignUp.name) }
         val onSignInSuccess = {
-          navController.navigate(AllRoutes.Home.name) {
+          navigation.navigate(AllRoutes.Home.name) {
             // Authenticated users should not return to either auth screen with Back.
             popUpTo(AllRoutes.SignIn.name) { inclusive = true }
             launchSingleTop = true
@@ -124,15 +123,15 @@ fun JDRNexusApp(
 
       composable(route = AllRoutes.Home.name) {
         val onLogout = {
-          navController.navigate(AllRoutes.SignIn.name) {
+          navigation.navigate(AllRoutes.SignIn.name) {
             // Sign-in may no longer be on the stack after authentication succeeds.
             popUpTo(AllRoutes.Home.name) { inclusive = true }
             launchSingleTop = true
           }
         }
-        val onPersonalSpaceClicked = { navController.navigate(AllRoutes.PersoSpace.name) }
-        val onDiceClicked = { navController.navigate(AllRoutes.Dice.name) }
-        val onGroupManagementClicked = { navController.navigate(AllRoutes.GroupManagement.name) }
+        val onPersonalSpaceClicked = { navigation.navigate(AllRoutes.PersoSpace.name) }
+        val onDiceClicked = { navigation.navigate(AllRoutes.Dice.name) }
+        val onGroupManagementClicked = { navigation.navigate(AllRoutes.GroupManagement.name) }
         HomeScreen(
             viewModel = activeAuthViewModel,
             onLogout = onLogout,
@@ -144,14 +143,14 @@ fun JDRNexusApp(
 
       composable(route = AllRoutes.SignUp.name) {
         val onRegister = {
-          navController.navigate(AllRoutes.Home.name) {
+          navigation.navigate(AllRoutes.Home.name) {
             // The signed-in back stack starts at Home, not the registration flow.
             popUpTo(AllRoutes.SignIn.name) { inclusive = true }
             launchSingleTop = true
           }
         }
         // Return to the existing SignIn entry rather than pushing a duplicate.
-        val onSignInScreen: () -> Unit = { popBackStack() }
+        val onSignInScreen: () -> Unit = { navigation.popBackStack() }
         SignUpScreen(
             signUpViewModel = activeAuthViewModel,
             onRegister = onRegister,
@@ -161,27 +160,27 @@ fun JDRNexusApp(
 
       composable(route = AllRoutes.PersoSpace.name) {
         val onDocumentClicked: (JDRFile) -> Unit = { document ->
-          editFileViewModel.loadFile(document.id)
+          activeEditFileViewModel.loadFile(document.id)
           when (document.type) {
-            DocumentType.CHARACTER -> navController.navigate(AllRoutes.EditChar.name)
-            DocumentType.TEXT -> navController.navigate(AllRoutes.EditLore.name)
+            DocumentType.CHARACTER -> navigation.navigate(AllRoutes.EditChar.name)
+            DocumentType.TEXT -> navigation.navigate(AllRoutes.EditLore.name)
             DocumentType.FOLDER -> Unit
             DocumentType.GROUP_ROOT -> Unit
           }
         }
 
         PersonalSpaceScreen(
-            onBackButton = { popBackStack() },
+            onBackButton = { navigation.popBackStack() },
             personalSpaceViewModel = personalSpaceViewModel ?: viewModel(),
             onDocumentClicked = onDocumentClicked,
             onCreateFile = { fileId ->
-              editFileViewModel.loadFile(fileId)
-              navController.navigate(AllRoutes.EditChar.name)
+              activeEditFileViewModel.loadFile(fileId)
+              navigation.navigate(AllRoutes.EditChar.name)
             },
             onTabSelected = { tab ->
               when (tab) {
-                "Home" -> navController.popBackStack(AllRoutes.Home.name, false)
-                "Campaigns" -> navController.navigate(AllRoutes.GroupManagement.name)
+                "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
+                "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
                 "Files" -> Unit
                 "Map" -> showComingSoon(context, "Map")
               }
@@ -189,7 +188,9 @@ fun JDRNexusApp(
         )
       }
 
-      composable(route = AllRoutes.Dice.name) { DiceOfflineScreen(onClose = { popBackStack() }) }
+      composable(route = AllRoutes.Dice.name) {
+        DiceOfflineScreen(onClose = { navigation.popBackStack() })
+      }
 
       composable(route = AllRoutes.GroupManagement.name) {
         val activeGameManagementViewModel =
@@ -212,9 +213,9 @@ fun JDRNexusApp(
             onManageGroup = { showComingSoon(context, "Group management") },
             onTabSelected = { tab ->
               when (tab) {
-                "Home" -> popBackStack()
+                "Home" -> navigation.popBackStack()
                 "Campaigns" -> Unit
-                "Files" -> navController.navigate(AllRoutes.PersoSpace.name)
+                "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
                 "Map" -> showComingSoon(context, "Map")
               }
             },
@@ -223,17 +224,17 @@ fun JDRNexusApp(
 
       composable(route = AllRoutes.EditChar.name) {
         EditFileCharacter(
-            viewModel = editFileViewModel,
-            onBack = { popBackStack() },
-            onSaved = { popBackStack() },
+            viewModel = activeEditFileViewModel,
+            onBack = { navigation.popBackStack() },
+            onSaved = { navigation.popBackStack() },
         )
       }
 
       composable(route = AllRoutes.EditLore.name) {
         EditFileLore(
-            viewModel = editFileViewModel,
-            onBack = { popBackStack() },
-            onSaved = { popBackStack() },
+            viewModel = activeEditFileViewModel,
+            onBack = { navigation.popBackStack() },
+            onSaved = { navigation.popBackStack() },
         )
       }
     }

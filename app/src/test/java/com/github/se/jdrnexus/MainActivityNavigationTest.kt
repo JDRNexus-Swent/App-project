@@ -12,6 +12,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
@@ -19,7 +20,9 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
+import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
@@ -27,11 +30,14 @@ import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
+import com.github.se.jdrnexus.ui.edition.EditFileLoreTestTags
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
+import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 import com.google.firebase.FirebaseApp
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
@@ -192,28 +198,40 @@ class MainActivityNavigationTest {
   }
 
   @Test
-  fun gameManagementTabsReturnHomeAndOpenPersonalSpace() {
+  fun gameManagementTabsAndEditFileLoreReturnHomeAndOpenPersonalSpace() {
     val repository = FakeAuthRepository()
     val groupRepository =
         mockk<GroupRepository> { every { getUserGroups(any()) } returns flowOf(emptyList()) }
+    val loreFile =
+        JDRFile(
+            id = "lore-1",
+            name = "The Kingdom",
+            type = DocumentType.TEXT,
+            content =
+                """{"version":1,"type":"lore","title":"The Kingdom","sections":[{"sectionID":"history","title":"History","content":"Founded long ago."}]}""",
+        )
     val workspaceRepository =
         mockk<WorkspaceRepository> {
-          every { getPersonalRootFiles(any()) } returns flowOf(emptyList())
+          every { getPersonalRootFiles(any()) } returns flowOf(listOf(loreFile))
+          coEvery { getFile(loreFile.id) } returns Result.success(loreFile)
         }
     val authViewModel = AuthViewModel(repository)
     val gameManagementViewModel = GameManagementViewModel(groupRepository, repository)
     val personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, repository)
+    val editFileViewModel = EditFileViewModel(workspaceRepository)
     composeTestRule.setContent {
       JDRNexusApp(
           authViewModel = authViewModel,
           gameManagementViewModel = gameManagementViewModel,
           personalSpaceViewModel = personalSpaceViewModel,
+          editFileViewModel = editFileViewModel,
       )
     }
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
     waitForTag(TestTags.TITLE)
+    personalSpaceViewModel.fetchItems("")
 
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
@@ -226,6 +244,14 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
 
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    composeTestRule.onAllNodesWithText("My Space").assertCountEquals(1)
+    composeTestRule.waitUntil(5_000) {
+      composeTestRule.onAllNodesWithText(loreFile.name).fetchSemanticsNodes().isNotEmpty()
+    }
+    composeTestRule.onNodeWithText(loreFile.name).performClick()
+    waitForTag(EditFileLoreTestTags.LIST)
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.BACK).performClick()
     composeTestRule.onAllNodesWithText("My Space").assertCountEquals(1)
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
