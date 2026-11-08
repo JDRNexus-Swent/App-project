@@ -21,3 +21,8 @@
 - Stage only the files you changed; never `git add .` or `git add -A` (it can pull in local config like `local.properties`).
 - Commit with an imperative subject of at most 50 characters, capitalized (e.g. `Add user authentication`). Add a body wrapped at 72 characters when the subject is not enough.
 - **Acknowledge your contributors** at the top of the file: credit the AI that wrote it with a `Co-authored-by` line. An AI agent is a contributor, so credit it.
+
+## Opening a PR
+
+- If a PR has to be open, refer yourself to the [PR template](.github/PULL_REQUEST_TEMPLATE.md)
+- Add the person who opened the PR as the PR owner
