@@ -1,6 +1,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.search
 
+import android.os.Looper
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
@@ -10,31 +11,32 @@ import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
-import com.github.se.jdrnexus.ui.authentication.MainDispatcherRule
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Rule
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 
-@OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(RobolectricTestRunner::class)
 class DocumentSearchViewModelTest {
-  @get:Rule val mainDispatcherRule = MainDispatcherRule()
-
   private val debounceMillis = 250L
   private val personalFolder = JDRFile("folder", "Campaign", type = DocumentType.FOLDER)
   private val personalFile = JDRFile("personal-file", "Dragon Lore")
   private val nestedCharacter = JDRFile("character", "Dragon Slayer", type = DocumentType.CHARACTER)
 
+  private fun idleMainLooperForSearch() {
+    shadowOf(Looper.getMainLooper()).idleFor(debounceMillis, TimeUnit.MILLISECONDS)
+    shadowOf(Looper.getMainLooper()).idle()
+  }
+
   @Test
-  fun searchesNamesRecursivelyAndClearsQueryAndResults() = runTest {
+  fun searchesNamesRecursivelyAndClearsQueryAndResults() {
     val viewModel =
         DocumentSearchViewModel(
             repository =
@@ -47,8 +49,7 @@ class DocumentSearchViewModelTest {
 
     viewModel.onQueryChanged("dRaGoN")
     assertEquals(DocumentSearchStatus.Loading, viewModel.uiState.value.status)
-    advanceTimeBy(debounceMillis)
-    runCurrent()
+    idleMainLooperForSearch()
 
     assertEquals(listOf(personalFile, nestedCharacter), viewModel.uiState.value.results)
     assertEquals(DocumentSearchStatus.Results, viewModel.uiState.value.status)
@@ -60,7 +61,7 @@ class DocumentSearchViewModelTest {
   }
 
   @Test
-  fun reportsNoResultsAndSearchFailure() = runTest {
+  fun reportsNoResultsAndSearchFailure() {
     val viewModel =
         DocumentSearchViewModel(
             repository = FakeWorkspaceRepository(rootItems = listOf(personalFile)),
@@ -68,8 +69,7 @@ class DocumentSearchViewModelTest {
         )
 
     viewModel.onQueryChanged("missing")
-    advanceTimeBy(debounceMillis)
-    runCurrent()
+    idleMainLooperForSearch()
     assertEquals(DocumentSearchStatus.NoResults, viewModel.uiState.value.status)
 
     val failingViewModel =
@@ -78,8 +78,7 @@ class DocumentSearchViewModelTest {
             authRepository = FakeAuthRepository(),
         )
     failingViewModel.onQueryChanged("Dragon")
-    advanceTimeBy(debounceMillis)
-    runCurrent()
+    idleMainLooperForSearch()
 
     assertEquals(
         DocumentSearchStatus.Error(SearchError.SEARCH_FAILED),
@@ -88,7 +87,7 @@ class DocumentSearchViewModelTest {
   }
 
   @Test
-  fun groupSearchExcludesHiddenDocumentsButRetainsPlayersOwnDocuments() = runTest {
+  fun groupSearchExcludesHiddenDocumentsButRetainsPlayersOwnDocuments() {
     val groupId = "group"
     val hiddenFolder =
         groupFile("hidden-folder", groupId, "gm", groupId, DocumentType.FOLDER, hidden = true)
@@ -121,14 +120,13 @@ class DocumentSearchViewModelTest {
         )
 
     viewModel.onQueryChanged("hidden")
-    advanceTimeBy(debounceMillis)
-    runCurrent()
+    idleMainLooperForSearch()
 
     assertEquals(listOf(ownHiddenFile), viewModel.uiState.value.results)
   }
 
   @Test
-  fun groupSearchDeniesNonMembers() = runTest {
+  fun groupSearchDeniesNonMembers() {
     val viewModel =
         DocumentSearchViewModel(
             scope = DocumentSearchScope.Group("group"),
@@ -138,8 +136,7 @@ class DocumentSearchViewModelTest {
         )
 
     viewModel.onQueryChanged("file")
-    advanceTimeBy(debounceMillis)
-    runCurrent()
+    idleMainLooperForSearch()
 
     assertEquals(
         DocumentSearchStatus.Error(SearchError.GROUP_ACCESS_DENIED),
