@@ -273,13 +273,13 @@ class GroupWorkspaceViewModel(
                         currentFolderId = "",
                         currentFolderName = "",
                         folderHistory = emptyList(),
-                  canCreateFolder = false,
-                  canEditItems = false,
-                  loadState = LoadState.Error("You are no longer a member of this group."),
-              )
-            }
-            return@collect
-          }
+                        canCreateFolder = false,
+                        canEditItems = false,
+                        loadState = LoadState.Error("You are no longer a member of this group."),
+                    )
+                  }
+                  return@collect
+                }
 
                 val roleChanged = role != newRole
                 role = newRole
@@ -308,17 +308,15 @@ class GroupWorkspaceViewModel(
                     currentFolderId = "",
                     currentFolderName = "",
                     folderHistory = emptyList(),
-              canCreateFolder = false,
-              canEditItems = false,
-              loadState = LoadState.Error(e.message ?: "Unable to verify group membership."),
-          )
-        }
-      }}
+                    canCreateFolder = false,
+                    canEditItems = false,
+                    loadState = LoadState.Error(e.message ?: "Unable to verify group membership."),
+                )
+              }
+            }
+          }
     }
   }
-
-
-    
 
   /** Opens a child folder and records the current folder for back navigation. */
   fun openFolder(folderId: String) {
