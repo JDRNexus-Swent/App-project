@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
@@ -32,6 +33,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -106,6 +108,95 @@ class GroupWorkSpaceViewModelTest {
     assertTrue(gm.uiState.value.canEditItems)
     assertFalse(player.uiState.value.canCreateFolder)
     assertFalse(player.uiState.value.canEditItems)
+  }
+
+  @Test
+  fun openFolderSuccessfullyOpensSelectedFolder() = runTest {
+    val folder = groupFolder("folder")
+    val child = groupFile("child", parentId = folder.id)
+    val viewModel =
+        viewModel(
+            FakeWorkspaceRepository(listOf(folder, child)),
+            GroupWorkspaceRole.GAME_MASTER,
+        )
+    runCurrent()
+
+    viewModel.openFolder(folder.id)
+    runCurrent()
+
+    assertEquals(folder.id, viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(""), viewModel.uiState.value.folderHistory)
+    assertEquals(listOf(child), viewModel.uiState.value.items)
+  }
+
+  @Test
+  fun navigateBackReturnsToPreviousFolder() = runTest {
+    val parent = groupFolder("parent")
+    val childFolder = groupFolder("child-folder", parentId = parent.id)
+    val child = groupFile("child", parentId = childFolder.id)
+    val viewModel =
+        viewModel(
+            FakeWorkspaceRepository(listOf(parent, childFolder, child)),
+            GroupWorkspaceRole.GAME_MASTER,
+        )
+    runCurrent()
+
+    viewModel.openFolder(parent.id)
+    runCurrent()
+    viewModel.openFolder(childFolder.id)
+    runCurrent()
+
+    assertTrue(viewModel.navigateBack())
+    runCurrent()
+
+    assertEquals(parent.id, viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(""), viewModel.uiState.value.folderHistory)
+    assertEquals(listOf(childFolder), viewModel.uiState.value.items)
+  }
+
+  @Test
+  fun navigateBackRecoversWhenHistoryFolderNoLongerExists() = runTest {
+    val parent = groupFolder("parent")
+    val childFolder = groupFolder("child-folder", parentId = parent.id)
+    val repository = FakeWorkspaceRepository(listOf(parent, childFolder))
+    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    viewModel.openFolder(parent.id)
+    runCurrent()
+    viewModel.openFolder(childFolder.id)
+    runCurrent()
+    repository.deleteFile(parent.id)
+
+    assertTrue(viewModel.navigateBack())
+    runCurrent()
+
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertTrue(viewModel.uiState.value.folderHistory.isEmpty())
+    assertEquals("This folder is no longer available.", viewModel.uiState.value.errorMessage)
+  }
+
+  @Test
+  fun disappearingFolderResetsHistoryAndAllowsRecoveryAtRoot() = runTest {
+    val folder = groupFolder("folder")
+    val replacement = groupFolder("replacement")
+    val repository = FakeWorkspaceRepository(listOf(folder, replacement))
+    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    viewModel.openFolder(folder.id)
+    runCurrent()
+    repository.deleteFile(folder.id)
+    runCurrent()
+
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertTrue(viewModel.uiState.value.folderHistory.isEmpty())
+    assertEquals(listOf(replacement), viewModel.uiState.value.items)
+
+    viewModel.openFolder(replacement.id)
+    runCurrent()
+    assertEquals(replacement.id, viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(""), viewModel.uiState.value.folderHistory)
   }
 
   // A user outside the participant list and a deleted group both deny workspace access.
@@ -744,6 +835,41 @@ class GroupWorkSpaceViewModelTest {
     assertEquals(listOf(item.id to true, item.id to false), repository.hiddenRequests)
   }
 
+  // A visibility repository failure is exposed through the shared workspace error state.
+  @Test
+  fun visibilityChangeFailureSetsError() = runTest {
+    val item = groupFile("owned", ownerId = OWNER_ID)
+    val repository = FakeWorkspaceRepository(listOf(item))
+    repository.hiddenFailure = IllegalStateException("visibility update failed")
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    player.setItemHidden(item, true)
+    runCurrent()
+
+    assertEquals("visibility update failed", player.uiState.value.errorMessage)
+    assertFalse(player.uiState.value.isOperationInProgress)
+    assertFalse(repository.files.getValue(item.id).placements.getValue(GROUP_ID).isHidden)
+  }
+
+  // A missing selected folder redirects to the root while preserving its transient error.
+  @Test
+  fun missingFolderErrorSurvivesRedirectToRoot() = runTest {
+    val folder = groupFolder("folder")
+    val repository = FakeWorkspaceRepository(listOf(folder))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    gm.loadWorkspace(folder.id)
+    runCurrent()
+    repository.deleteFile(folder.id)
+    runCurrent()
+
+    assertEquals("", gm.uiState.value.currentFolderId)
+    assertEquals("This folder is no longer available.", gm.uiState.value.errorMessage)
+    assertEquals(LoadState.Success, gm.uiState.value.loadState)
+  }
+
   // Revealing an owned item is rejected while its parent folder remains hidden.
   @Test
   fun cannotRevealOwnedItemInsideHiddenParent() = runTest {
@@ -883,6 +1009,187 @@ class GroupWorkSpaceViewModelTest {
     assertFalse(gm.uiState.value.isOperationInProgress)
   }
 
+  // Blank inputs are rejected up front, before any repository call.
+  @Test
+  fun blankInputsAreRejectedWithoutRepositoryCalls() = runTest {
+    val file = groupFile("file", ownerId = OWNER_ID)
+    val repository = FakeWorkspaceRepository(listOf(file))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    assertEquals(null, gm.createFolder("   "))
+    assertEquals("Folder name cannot be empty.", gm.uiState.value.errorMessage)
+    assertEquals(null, gm.addFile(" "))
+    assertEquals("File ID cannot be empty.", gm.uiState.value.errorMessage)
+    assertEquals(null, gm.editItem(file.copy(name = " ")))
+    assertEquals("The item name cannot be blank.", gm.uiState.value.errorMessage)
+    assertEquals(listOf(file), repository.files.values.toList())
+    assertThrows(IllegalArgumentException::class.java) {
+      GroupWorkspaceViewModel(" ", FakeGroupRepository(null), repository, FakeAuthRepository())
+    }
+  }
+
+  // A signed-out user gets an error state and later loads are ignored.
+  @Test
+  fun signedOutUserCannotLoadWorkspace() = runTest {
+    val folder = groupFolder("folder")
+    val viewModel =
+        viewModel(
+            FakeWorkspaceRepository(listOf(folder)),
+            GroupWorkspaceRole.PLAYER,
+            authRepository = FakeAuthRepository(user = null),
+        )
+    runCurrent()
+
+    assertEquals(LoadState.Error("You must be signed in."), viewModel.uiState.value.loadState)
+
+    viewModel.loadWorkspace(folder.id)
+    runCurrent()
+
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertEquals(LoadState.Error("You must be signed in."), viewModel.uiState.value.loadState)
+  }
+
+  // Root folders are placed under the group, and folders inherit a hidden parent's visibility.
+  @Test
+  fun createdFoldersUseRootOrInheritHiddenParent() = runTest {
+    val hiddenParent = groupFolder("hidden-parent", hidden = true)
+    val repository = FakeWorkspaceRepository(listOf(hiddenParent))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    gm.createFolder("Root folder")
+    runCurrent()
+    assertEquals(
+        Placement(GROUP_ID, false),
+        repository.files.getValue("new-folder-1").placements[GROUP_ID],
+    )
+
+    gm.loadWorkspace(hiddenParent.id)
+    runCurrent()
+    gm.createFolder("Nested folder")
+    runCurrent()
+    assertEquals(
+        Placement(hiddenParent.id, true),
+        repository.files.getValue("new-folder-2").placements[GROUP_ID],
+    )
+  }
+
+  // Group roots, folders and missing files cannot be added to the workspace.
+  @Test
+  fun addFileRejectsGroupRootsFoldersAndMissingFiles() = runTest {
+    val root = JDRFile(id = "root", ownerId = OWNER_ID, type = DocumentType.GROUP_ROOT)
+    val folder = JDRFile(id = "folder", ownerId = OWNER_ID, type = DocumentType.FOLDER)
+    val repository = FakeWorkspaceRepository(listOf(root, folder))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    gm.addFile(root.id)
+    runCurrent()
+    assertEquals("Only files can be added here.", gm.uiState.value.errorMessage)
+    gm.addFile(folder.id)
+    runCurrent()
+    assertEquals("Adding folders is not supported yet.", gm.uiState.value.errorMessage)
+    gm.addFile("missing")
+    runCurrent()
+    assertEquals("Document not found in Firestore", gm.uiState.value.errorMessage)
+    assertTrue(repository.addRequests.isEmpty())
+  }
+
+  // Deleting the selected folder sends the user back to the group root.
+  @Test
+  fun deletedSelectedFolderReturnsToRootWithError() = runTest {
+    val folder = groupFolder("folder")
+    val rootFile = groupFile("root-file")
+    val repository = FakeWorkspaceRepository(listOf(folder, rootFile))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+    gm.loadWorkspace(folder.id)
+    runCurrent()
+
+    repository.deleteFile(folder.id)
+    runCurrent()
+
+    assertEquals("", gm.uiState.value.currentFolderId)
+    assertEquals(listOf(rootFile), gm.uiState.value.items)
+    assertEquals(LoadState.Success, gm.uiState.value.loadState)
+  }
+
+  // Opening a file as a folder, or a folder with a broken ancestor path, is refused.
+  @Test
+  fun invalidFolderPathsCannotBeOpened() = runTest {
+    val file = groupFile("file")
+    val blankParent = groupFolder("blank-parent", parentId = "")
+    val cycleA = groupFolder("cycle-a", parentId = "cycle-b")
+    val cycleB = groupFolder("cycle-b", parentId = "cycle-a")
+    val underFile = groupFolder("under-file", parentId = file.id)
+    val unplacedParent = groupFolder("unplaced").copy(placements = emptyMap())
+    val underUnplaced = groupFolder("under-unplaced", parentId = unplacedParent.id)
+    val repository =
+        FakeWorkspaceRepository(
+            listOf(file, blankParent, cycleA, cycleB, underFile, unplacedParent, underUnplaced)
+        )
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    gm.loadWorkspace(file.id)
+    runCurrent()
+    assertEquals(
+        LoadState.Error("The requested item is not a folder."),
+        gm.uiState.value.loadState,
+    )
+
+    for (folder in listOf(blankParent, cycleA, underFile, underUnplaced)) {
+      player.loadWorkspace(folder.id)
+      runCurrent()
+      assertEquals(
+          LoadState.Error("You cannot access this folder."),
+          player.uiState.value.loadState,
+      )
+    }
+  }
+
+  // Items outside the current folder or outside the group cannot be modified.
+  @Test
+  fun itemsOutsideCurrentWorkspaceCannotBeModified() = runTest {
+    val folder = groupFolder("folder")
+    val nested = groupFile("nested", parentId = folder.id)
+    val unshared = JDRFile(id = "unshared", ownerId = OWNER_ID)
+    val repository = FakeWorkspaceRepository(listOf(folder, nested, unshared))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    gm.removeItem(nested)
+    runCurrent()
+    assertEquals(
+        "This item is not in the current workspace folder.",
+        gm.uiState.value.errorMessage,
+    )
+
+    gm.editItem(unshared.copy(name = "renamed"))
+    runCurrent()
+    assertEquals("This item does not belong to the current group.", gm.uiState.value.errorMessage)
+    assertTrue(repository.removeRequests.isEmpty())
+    assertEquals(unshared, repository.files.getValue(unshared.id))
+  }
+
+  // A failure without a message falls back to a generic operation error.
+  @Test
+  fun operationFailureWithoutMessageUsesFallbackError() = runTest {
+    val file = groupFile("file")
+    val repository = FakeWorkspaceRepository(listOf(file))
+    repository.updateFailure = IllegalStateException()
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    gm.editItem(file.copy(name = "Changed"))
+    runCurrent()
+
+    assertEquals("The workspace operation failed", gm.uiState.value.errorMessage)
+    assertFalse(gm.uiState.value.isOperationInProgress)
+  }
+
   private fun viewModel(
       repository: FakeWorkspaceRepository,
       role: GroupWorkspaceRole,
@@ -938,6 +1245,7 @@ class GroupWorkSpaceViewModelTest {
         mutableMapOf<Pair<String, String>, MutableStateFlow<List<JDRFile>>>()
     private var nextId = 0
     var updateFailure: Exception? = null
+    var hiddenFailure: Exception? = null
     val addRequests = mutableListOf<AddRequest>()
     val removeRequests = mutableListOf<RemovalRequest>()
     val hiddenRequests = mutableListOf<Pair<String, Boolean>>()
@@ -1016,6 +1324,7 @@ class GroupWorkSpaceViewModelTest {
         groupId: String,
         isHidden: Boolean,
     ): Result<Unit> = runCatching {
+      hiddenFailure?.let { throw it }
       hiddenRequests += itemId to isHidden
       val item = requireNotNull(files[itemId])
       val parentId = item.placements[groupId]?.folderId

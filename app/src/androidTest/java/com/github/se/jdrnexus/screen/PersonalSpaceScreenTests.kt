@@ -39,6 +39,7 @@ import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
+import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
@@ -129,14 +130,18 @@ class PersonalSpaceScreenTests {
       onBackButton: () -> Unit = {},
       onDocumentClicked: (JDRFile) -> Unit = {},
       onCreateFile: (String) -> Unit = {},
+      onTabSelected: (String) -> Unit = {},
   ) {
     composeTestRule.setContent {
-      PersonalSpaceScreen(
-          onBackButton = onBackButton,
-          personalSpaceViewModel = viewModel,
-          onDocumentClicked = onDocumentClicked,
-          onCreateFile = onCreateFile,
-      )
+      SampleAppTheme {
+        PersonalSpaceScreen(
+            onBackButton = onBackButton,
+            personalSpaceViewModel = viewModel,
+            onDocumentClicked = onDocumentClicked,
+            onCreateFile = onCreateFile,
+            onTabSelected = onTabSelected,
+        )
+      }
     }
   }
 
@@ -292,12 +297,15 @@ class PersonalSpaceScreenTests {
     var night by mutableStateOf(true)
     composeTestRule.setContent {
       WithNightMode(night) {
-        PersonalSpaceScreen(
-            onBackButton = {},
-            personalSpaceViewModel = viewModel,
-            onDocumentClicked = {},
-            onCreateFile = {},
-        )
+        SampleAppTheme {
+          PersonalSpaceScreen(
+              onBackButton = {},
+              personalSpaceViewModel = viewModel,
+              onDocumentClicked = {},
+              onCreateFile = {},
+              onTabSelected = {},
+          )
+        }
       }
     }
 
@@ -369,6 +377,7 @@ class PersonalSpaceScreenTests {
             personalSpaceViewModel = viewModel,
             onDocumentClicked = {},
             onCreateFile = {},
+            onTabSelected = {},
         )
       }
     }

@@ -18,13 +18,20 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -36,12 +43,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -57,6 +70,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -75,11 +89,19 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.repository.DiceLogic
+import com.github.se.jdrnexus.model.sensor.AccelerometerShakeDetector
+import com.github.se.jdrnexus.model.sensor.ShakeDetector
+import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
+import com.github.se.jdrnexus.resources.MAX_LANDSCAPE_CONTENT_WIDTH
+import com.github.se.jdrnexus.resources.useLandscapeLayout
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -129,8 +151,11 @@ private fun diceThemeColors(): DiceThemeColors {
   )
 }
 
-/** How long the die shows its rolling indicator before revealing the result. */
-private const val ROLL_ANIMATION_MILLIS = 1000L
+/**
+ * How long the die shows its rolling indicator before revealing the result. Internal so tests wait
+ * for the same duration as the screen.
+ */
+internal const val ROLL_ANIMATION_MILLIS = 1000L
 
 /**
  * Offline dice roller: lets the user pick a die, adjust the modifier and roll, without saving the
@@ -138,7 +163,11 @@ private const val ROLL_ANIMATION_MILLIS = 1000L
  * roll local and never touches the repository. This screen only renders its state and forwards user
  * intents.
  *
+ * Shaking the phone rolls too, through [shakeDetector], unless the user turns "Shake to roll" off.
+ * The toggle is hidden on devices without an accelerometer, where only the Roll button remains.
+ *
  * @param diceViewModel The ViewModel handling dice selection, modifiers and rolls.
+ * @param shakeDetector Source of shakes; the real accelerometer by default, a fake in tests.
  * @param onClose Called when the user closes the dice roller.
  */
 @Composable
@@ -151,32 +180,82 @@ fun DiceOfflineScreen(
                     diceRepository = null,
                 )
         ),
+    shakeDetector: ShakeDetector = rememberAccelerometerShakeDetector(),
     onClose: () -> Unit = {},
 ) {
   val uiState by diceViewModel.uiState.collectAsState()
-  DiceOfflineContent(uiState = uiState, diceViewModel = diceViewModel, onClose = onClose)
+  var shakeEnabled by rememberSaveable { mutableStateOf(true) }
+  if (shakeDetector.isAvailable && shakeEnabled) {
+    RollOnShake(shakeDetector = shakeDetector, diceViewModel = diceViewModel)
+  }
+  DiceOfflineContent(
+      uiState = uiState,
+      diceViewModel = diceViewModel,
+      onClose = onClose,
+      shakeToggle =
+          if (shakeDetector.isAvailable) {
+            ShakeToggleState(
+                shakeEnabled = shakeEnabled,
+                onShakeEnabledChange = { shakeEnabled = it },
+            )
+          } else {
+            null
+          },
+  )
+}
+
+/** The real accelerometer detector, kept across recompositions. */
+@Composable
+private fun rememberAccelerometerShakeDetector(): ShakeDetector {
+  val context = LocalContext.current.applicationContext
+  return remember(context) { AccelerometerShakeDetector(context) }
 }
 
 /**
- * Stateless body of [DiceOfflineScreen], split out so previews can render it with a fixed [uiState]
- * and no Firebase.
+ * Forwards every shake from [shakeDetector] to [DiceInterfaceVM.rollDice], exactly as the Roll
+ * button does; the ViewModel ignores it while a roll is animating. It only listens while the screen
+ * is resumed: pausing the app or leaving the screen stops the collection, which unregisters the
+ * sensor.
  */
 @Composable
-private fun DiceOfflineContent(
+private fun RollOnShake(shakeDetector: ShakeDetector, diceViewModel: DiceInterfaceVM) {
+  val lifecycleOwner = LocalLifecycleOwner.current
+  LaunchedEffect(shakeDetector, diceViewModel, lifecycleOwner) {
+    lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+      shakeDetector.shakes.collect { diceViewModel.rollDice() }
+    }
+  }
+}
+
+/** State of the "Shake to roll" toggle; a null one in [DiceOfflineContent] hides it. */
+internal class ShakeToggleState(
+    val shakeEnabled: Boolean,
+    val onShakeEnabledChange: (Boolean) -> Unit,
+)
+
+/**
+ * Stateless body of [DiceOfflineScreen], split out so previews and tests can render it with a fixed
+ * [uiState] and no Firebase.
+ */
+@Composable
+internal fun DiceOfflineContent(
     uiState: DiceUiState,
     diceViewModel: DiceInterfaceVM,
     onClose: () -> Unit,
+    shakeToggle: ShakeToggleState? = null,
 ) {
   val colors = diceThemeColors()
-  val controlsEnabled = !uiState.isRolling
 
   BoxWithConstraints(
       modifier =
           Modifier.fillMaxSize()
               .background(colors.backgroundColor)
+              // Keep controls clear of system navigation while the background draws edge-to-edge.
+              .windowInsetsPadding(WindowInsets.navigationBars)
               .testTag(C.Tag.dice_offline_screen),
   ) {
     val dimens = DiceDimens(screenHeight = maxHeight)
+    val isLandscape = useLandscapeLayout(maxWidth, maxHeight)
     Surface(
         modifier =
             Modifier.fillMaxSize()
@@ -185,61 +264,232 @@ private fun DiceOfflineContent(
         color = colors.cardColor,
         border = BorderStroke(1.dp, colors.cardBorder),
     ) {
-      BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val contentPadding = dimens.scaled(16.dp)
-        DieFillingColumn(
-            viewportHeight = maxHeight - contentPadding * 2,
-            modifier =
-                Modifier.fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(contentPadding),
-            top = {
-              DiceHeader(uiState = uiState, colors = colors, onClose = onClose)
-              Spacer(Modifier.height(dimens.scaled(16.dp)))
-            },
-            die = {
-              DieImage(
-                  uiState = uiState,
-                  colors = colors,
-                  onRollAnimationFinished = diceViewModel::onRollAnimationFinished,
-              )
-            },
-        ) {
-          DieResultText(uiState = uiState, colors = colors)
+      if (isLandscape) {
+        DiceLandscapeBody(
+            uiState = uiState,
+            diceViewModel = diceViewModel,
+            colors = colors,
+            dimens = dimens,
+            onClose = onClose,
+            shakeToggle = shakeToggle,
+        )
+      } else {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+          val contentPadding = dimens.scaled(16.dp)
+          DieFillingColumn(
+              viewportHeight = maxHeight - contentPadding * 2,
+              modifier =
+                  Modifier.fillMaxSize()
+                      .verticalScroll(rememberScrollState())
+                      .padding(contentPadding),
+              top = {
+                DiceHeader(uiState = uiState, colors = colors, onClose = onClose)
+                Spacer(Modifier.height(dimens.scaled(16.dp)))
+              },
+              die = {
+                DieImage(
+                    uiState = uiState,
+                    colors = colors,
+                    onRollAnimationFinished = diceViewModel::onRollAnimationFinished,
+                )
+              },
+          ) {
+            DieResultText(uiState = uiState, colors = colors)
 
-          Spacer(Modifier.height(dimens.scaled(24.dp)))
-          ModifierControls(
-              modifier = uiState.modifier,
-              enabled = controlsEnabled,
-              colors = colors,
-              onChange = diceViewModel::increaseModifier,
-          )
-
-          Spacer(Modifier.height(dimens.scaled(20.dp)))
-          DiceSelector(
-              selected = uiState.selectedDice,
-              enabled = controlsEnabled,
-              colors = colors,
-              dimens = dimens,
-              onSelect = diceViewModel::selectDice,
-          )
-
-          uiState.errorMessage?.let { message ->
-            Spacer(Modifier.height(dimens.scaled(16.dp)))
-            ErrorBanner(message = message, colors = colors, onDismiss = diceViewModel::dismissError)
+            Spacer(Modifier.height(dimens.scaled(24.dp)))
+            DiceControls(
+                uiState = uiState,
+                diceViewModel = diceViewModel,
+                colors = colors,
+                dimens = dimens,
+                shakeToggle = shakeToggle,
+            )
           }
-
-          Spacer(Modifier.height(dimens.scaled(20.dp)))
-          RollButton(
-              enabled = controlsEnabled,
-              colors = colors,
-              dimens = dimens,
-              onClick = diceViewModel::rollDice,
-          )
         }
       }
     }
   }
+}
+
+/** Share of the landscape card's content width given to the die panel. */
+private const val LANDSCAPE_DIE_WIDTH_FRACTION = 1f / 3f
+
+/** Space between the die panel and the controls panel, as a share of the card's content width. */
+private const val LANDSCAPE_PANEL_GAP_FRACTION = 0.03f
+
+/**
+ * Landscape body of the dice card: the die alone in the left third, and on the right the title,
+ * close button, result, modifier, dice selector and roll button, so a short, wide screen keeps a
+ * big die and every control without scrolling.
+ */
+@Composable
+private fun DiceLandscapeBody(
+    uiState: DiceUiState,
+    diceViewModel: DiceInterfaceVM,
+    colors: DiceThemeColors,
+    dimens: DiceDimens,
+    onClose: () -> Unit,
+    shakeToggle: ShakeToggleState?,
+) {
+  // Panel widths and the gap are fractions of the card rather than fixed dp, so the die keeps the
+  // same share of the screen on every phone. The gap comes out of the controls panel, so the die
+  // panel is exactly a third. Past MAX_LANDSCAPE_CONTENT_WIDTH (tablets) the panels stop growing
+  // and are centered, so the controls are not stretched.
+  Box(
+      modifier = Modifier.fillMaxSize().padding(dimens.scaled(16.dp)),
+      contentAlignment = Alignment.Center,
+  ) {
+    BoxWithConstraints(
+        modifier = Modifier.widthIn(max = MAX_LANDSCAPE_CONTENT_WIDTH).fillMaxSize()
+    ) {
+      val diePanelWidth = maxWidth * LANDSCAPE_DIE_WIDTH_FRACTION
+      // Square, so the die is as big as its panel allows in both directions.
+      val dieSize = minOf(diePanelWidth, maxHeight)
+      Row(
+          modifier = Modifier.fillMaxSize(),
+          horizontalArrangement = Arrangement.spacedBy(maxWidth * LANDSCAPE_PANEL_GAP_FRACTION),
+      ) {
+        Box(
+            modifier = Modifier.width(diePanelWidth).fillMaxHeight(),
+            contentAlignment = Alignment.Center,
+        ) {
+          Box(Modifier.size(dieSize)) {
+            DieImage(
+                uiState = uiState,
+                colors = colors,
+                onRollAnimationFinished = diceViewModel::onRollAnimationFinished,
+            )
+          }
+        }
+
+        DiceLandscapeControlsPanel(
+            uiState = uiState,
+            diceViewModel = diceViewModel,
+            colors = colors,
+            dimens = dimens,
+            onClose = onClose,
+            shakeToggle = shakeToggle,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+        )
+      }
+    }
+  }
+}
+
+/**
+ * Right panel of [DiceLandscapeBody]: title, close button, result and [DiceControls], centered
+ * vertically.
+ */
+@Composable
+private fun DiceLandscapeControlsPanel(
+    uiState: DiceUiState,
+    diceViewModel: DiceInterfaceVM,
+    colors: DiceThemeColors,
+    dimens: DiceDimens,
+    onClose: () -> Unit,
+    shakeToggle: ShakeToggleState?,
+    modifier: Modifier,
+) {
+  BoxWithConstraints(modifier = modifier) {
+    // At least as tall as the panel so the content is centered in it; it only scrolls when it
+    // cannot fit, e.g. with a very large system font.
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier =
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight),
+    ) {
+      Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        // Same width as the close button, so the title stays centered over the controls.
+        Spacer(Modifier.width(MIN_TOUCH_TARGET))
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+          Text(
+              text = "Dice Roller",
+              color = colors.primaryText,
+              fontFamily = FontFamily.Serif,
+              fontWeight = FontWeight.SemiBold,
+              fontSize = 30.sp,
+          )
+          Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(12.dp),
+          ) {
+            SelectedDieText(uiState = uiState, colors = colors)
+            RangePill(uiState = uiState, colors = colors)
+          }
+        }
+        IconButton(onClick = onClose, modifier = Modifier.testTag(C.Tag.dice_offline_close)) {
+          Icon(Icons.Filled.Close, contentDescription = "Close", tint = colors.secondaryText)
+        }
+      }
+
+      DieResultText(uiState = uiState, colors = colors)
+
+      Spacer(Modifier.height(dimens.scaled(20.dp)))
+      DiceControls(
+          uiState = uiState,
+          diceViewModel = diceViewModel,
+          colors = colors,
+          dimens = dimens,
+          shakeToggle = shakeToggle,
+          oneRowSelector = true,
+      )
+    }
+  }
+}
+
+/**
+ * Modifier, dice selector, error banner, "Shake to roll" toggle and roll button, shared by both
+ * orientations. They are disabled while a roll is in progress. A null [shakeToggle] hides the
+ * toggle. [oneRowSelector] keeps the six dice on one row, to save height in landscape.
+ */
+@Composable
+private fun DiceControls(
+    uiState: DiceUiState,
+    diceViewModel: DiceInterfaceVM,
+    colors: DiceThemeColors,
+    dimens: DiceDimens,
+    shakeToggle: ShakeToggleState?,
+    oneRowSelector: Boolean = false,
+) {
+  val controlsEnabled = !uiState.isRolling
+  ModifierControls(
+      modifier = uiState.modifier,
+      enabled = controlsEnabled,
+      colors = colors,
+      onChange = diceViewModel::increaseModifier,
+  )
+
+  Spacer(Modifier.height(dimens.scaled(20.dp)))
+  DiceSelector(
+      selected = uiState.selectedDice,
+      enabled = controlsEnabled,
+      colors = colors,
+      dimens = dimens,
+      oneRow = oneRowSelector,
+      onSelect = diceViewModel::selectDice,
+  )
+
+  uiState.errorMessage?.let { message ->
+    Spacer(Modifier.height(dimens.scaled(16.dp)))
+    ErrorBanner(message = message, colors = colors, onDismiss = diceViewModel::dismissError)
+  }
+
+  shakeToggle?.let {
+    Spacer(Modifier.height(dimens.scaled(12.dp)))
+    ShakeToRollToggle(state = it, colors = colors)
+  }
+
+  Spacer(Modifier.height(dimens.scaled(20.dp)))
+  RollButton(
+      enabled = controlsEnabled,
+      colors = colors,
+      dimens = dimens,
+      onClick = diceViewModel::rollDice,
+  )
 }
 
 /** Height of the phone the screen was designed on; its spacing is defined for this height. */
@@ -311,30 +561,26 @@ private fun DieFillingColumn(
   }
 }
 
-/** Title, decorative divider, close button and the selected die with its valid range. */
+/** Shared top bar with the back action, decorative divider, and the selected die with its range. */
 @Composable
 private fun DiceHeader(uiState: DiceUiState, colors: DiceThemeColors, onClose: () -> Unit) {
-  Box(modifier = Modifier.fillMaxWidth()) {
-    Box(modifier = Modifier.width(120.dp).align(Alignment.TopCenter).padding(top = 12.dp)) {
-      DivideWithDiamonds(color = colors.accentColor)
-    }
-    IconButton(
-        onClick = onClose,
-        modifier = Modifier.align(Alignment.TopEnd).testTag(C.Tag.dice_offline_close),
-    ) {
-      Icon(Icons.Filled.Close, contentDescription = "Close", tint = colors.secondaryText)
-    }
-  }
-
-  Text(
-      text = "Dice Roller",
-      color = colors.primaryText,
-      fontFamily = FontFamily.Serif,
-      fontWeight = FontWeight.SemiBold,
-      fontSize = 30.sp,
+  AppTopBar(
+      title = "Dice Roller",
+      onBack = onClose,
+      backTestTag = C.Tag.dice_offline_close,
   )
 
-  Spacer(Modifier.height(4.dp))
+  DivideWithDiamonds(color = colors.accentColor)
+  Spacer(Modifier.height(12.dp))
+  SelectedDieText(uiState = uiState, colors = colors)
+
+  Spacer(Modifier.height(8.dp))
+  RangePill(uiState = uiState, colors = colors)
+}
+
+/** Name of the selected die, e.g. "D20". */
+@Composable
+private fun SelectedDieText(uiState: DiceUiState, colors: DiceThemeColors) {
   Text(
       text = uiState.selectedDice.name,
       color = colors.accentColor,
@@ -342,8 +588,11 @@ private fun DiceHeader(uiState: DiceUiState, colors: DiceThemeColors, onClose: (
       fontSize = 18.sp,
       modifier = Modifier.testTag(C.Tag.dice_offline_selected_type),
   )
+}
 
-  Spacer(Modifier.height(8.dp))
+/** Lowest and highest possible totals of the selected die with the current modifier. */
+@Composable
+private fun RangePill(uiState: DiceUiState, colors: DiceThemeColors) {
   val min = 1 + uiState.modifier
   val max = uiState.selectedDice.maxValue + uiState.modifier
   Surface(
@@ -560,7 +809,8 @@ private fun SquareIconButton(
 }
 
 /**
- * Below this width, the six dice buttons no longer fit on one row and wrap into two rows of three.
+ * Below this width, the six dice buttons wrap into two rows of three, unless the caller asks for
+ * one row to save height (landscape); even then they wrap below [MIN_TOUCH_TARGET].
  */
 private val MIN_ONE_ROW_TILE_WIDTH = 64.dp
 
@@ -572,7 +822,8 @@ private val MAX_DICE_ICON_SIZE = 32.dp
 
 /**
  * One selection button per [DiceType]; the selected one is highlighted. The buttons share the
- * available width evenly, on one row when it is wide enough and on two rows of three otherwise.
+ * available width evenly, on one row when it is wide enough (or when [oneRow] asks for it and each
+ * button stays a usable touch target) and on two rows of three otherwise.
  */
 @Composable
 private fun DiceSelector(
@@ -580,6 +831,7 @@ private fun DiceSelector(
     enabled: Boolean,
     colors: DiceThemeColors,
     dimens: DiceDimens,
+    oneRow: Boolean = false,
     onSelect: (DiceType) -> Unit,
 ) {
   val padding = dimens.scaled(8.dp)
@@ -588,7 +840,9 @@ private fun DiceSelector(
     val rowWidth = maxWidth - padding * 2
     val diceCount = DiceType.entries.size
     val oneRowTileWidth = (rowWidth - gap * (diceCount - 1)) / diceCount
-    val perRow = if (oneRowTileWidth >= MIN_ONE_ROW_TILE_WIDTH) diceCount else diceCount / 2
+    val fitsOneRow =
+        oneRowTileWidth >= MIN_ONE_ROW_TILE_WIDTH || (oneRow && oneRowTileWidth >= MIN_TOUCH_TARGET)
+    val perRow = if (fitsOneRow) diceCount else diceCount / 2
     val tileWidth = (rowWidth - gap * (perRow - 1)) / perRow
     val iconSize = (tileWidth * DICE_ICON_WIDTH_FRACTION).coerceAtMost(MAX_DICE_ICON_SIZE)
 
@@ -658,6 +912,47 @@ private fun ErrorBanner(message: String, colors: DiceThemeColors, onDismiss: () 
     TextButton(onClick = onDismiss, modifier = Modifier.testTag(C.Tag.dice_offline_error_dismiss)) {
       Text("Dismiss", color = colors.errorText, fontWeight = FontWeight.Bold)
     }
+  }
+}
+
+/** "Shake to roll" switch; the whole row is one toggleable target, for accessibility. */
+@Composable
+private fun ShakeToRollToggle(state: ShakeToggleState, colors: DiceThemeColors) {
+  Row(
+      verticalAlignment = Alignment.CenterVertically,
+      modifier =
+          Modifier.fillMaxWidth()
+              .heightIn(min = MIN_TOUCH_TARGET)
+              .clip(RoundedCornerShape(10.dp))
+              .background(colors.panelColor)
+              .border(1.dp, colors.panelBorder, RoundedCornerShape(10.dp))
+              .toggleable(
+                  value = state.shakeEnabled,
+                  role = Role.Switch,
+                  onValueChange = state.onShakeEnabledChange,
+              )
+              .padding(horizontal = 12.dp, vertical = 4.dp)
+              .testTag(C.Tag.dice_offline_shake_toggle),
+  ) {
+    Text(
+        text = "Shake to roll",
+        color = colors.primaryText,
+        fontSize = 15.sp,
+        modifier = Modifier.weight(1f),
+    )
+    Switch(
+        checked = state.shakeEnabled,
+        onCheckedChange = null, // Handled by the row, so the label is tappable too.
+        colors =
+            SwitchDefaults.colors(
+                checkedThumbColor = colors.rollText,
+                checkedTrackColor = colors.accentColor,
+                checkedBorderColor = colors.accentColor,
+                uncheckedThumbColor = colors.secondaryText,
+                uncheckedTrackColor = colors.panelColor,
+                uncheckedBorderColor = colors.panelBorder,
+            ),
+    )
   }
 }
 

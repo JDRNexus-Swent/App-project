@@ -90,7 +90,6 @@ class WorkspaceRepositoryFirestoreTest {
         CoroutineScope(Dispatchers.Default).async {
           targetRepository.removeItemFromGroup(itemId, groupId, parentFolderId)
         }
-    val startTime = System.currentTimeMillis()
     try {
       FirebaseEmulatorTestUtils.pumpMainLooperUntil(
           timeoutMessage = { "removeItemFromGroup did not complete within $DEFAULT_TIMEOUT_MS ms" }

@@ -16,7 +16,6 @@ import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
-import com.github.se.jdrnexus.ui.authentication.MainDispatcherRule
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.CHARACTER_REQUIRED_ERROR
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.CURRENT_HP_ERROR
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.CURRENT_HP_EXCEEDS_MAX_ERROR
@@ -24,6 +23,7 @@ import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.GROUP_NOT_FO
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.LOAD_ERROR
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.SAVE_ERROR
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.SIGNED_OUT_ERROR
+import com.github.se.jdrnexus.utils.MainDispatcherRule
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
