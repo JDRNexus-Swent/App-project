@@ -11,7 +11,7 @@ import com.github.se.jdrnexus.model.repository.AuthUser
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onStart
 import org.junit.Assert.assertEquals
@@ -125,10 +125,12 @@ class PersonalSpaceViewModelTest {
   }
 
   private class FakeAuthRepository(
-      private val user: AuthUser = AuthUser("authenticated-user-42", "player@example.com", "Player")
+      private val authStateFlow: Flow<AuthUser?>? = null,
+      initialUser: AuthUser? = AuthUser("authenticated-user-42", "player@example.com", "Player"),
   ) : AuthRepository {
-    val currentUser = MutableStateFlow<AuthUser?>(user)
-    override val authState: StateFlow<AuthUser?> = currentUser
+    private val user = AuthUser("authenticated-user-42", "player@example.com", "Player")
+    val currentUser = MutableStateFlow(initialUser)
+    override val authState: Flow<AuthUser?> = authStateFlow ?: currentUser
 
     override suspend fun signUpWithEmail(
         email: String,
@@ -207,6 +209,46 @@ class PersonalSpaceViewModelTest {
     assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
     assertEquals("", viewModel.uiState.value.currentFolderId)
     assertFalse(viewModel.uiState.value.canNavigateUp)
+  }
+
+  @Test
+  fun authStateFailureCancelsFetchAndClearsFolderNavigation() {
+    val authFailureGate = CompletableDeferred<Unit>()
+    val folderFetchGate = CompletableDeferred<Unit>()
+    val repository =
+        FakePersonalSpaceRepository(
+            rootItems = listOf(rootFolder),
+            folderFetchGate = folderFetchGate,
+        )
+    val failingAuthState = flow {
+      emit(AuthUser(ownerId, "player@example.com", "Player"))
+      authFailureGate.await()
+      throw IllegalStateException("")
+    }
+    val viewModel =
+        PersonalSpaceViewModel(repository, FakeAuthRepository(authStateFlow = failingAuthState))
+    idleMainLooper()
+
+    viewModel.onItemClicked(rootFolder) {}
+    idleMainLooper()
+    assertEquals(rootFolder.id, viewModel.uiState.value.currentFolderId)
+    assertTrue(viewModel.uiState.value.canNavigateUp)
+
+    authFailureGate.complete(Unit)
+    idleMainLooper()
+
+    assertEquals(LoadState.Error("Unable to load items."), viewModel.uiState.value.loadState)
+    assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertFalse(viewModel.uiState.value.canNavigateUp)
+
+    folderFetchGate.complete(Unit)
+    idleMainLooper()
+    viewModel.onNavigateUp()
+    idleMainLooper()
+
+    assertEquals(LoadState.Error("Unable to load items."), viewModel.uiState.value.loadState)
+    assertEquals(listOf(ownerId), repository.requestedRootOwners)
   }
 
   /** Verifies folder entry, nested back navigation, and the exact repository fetch sequence. */
@@ -429,5 +471,23 @@ class PersonalSpaceViewModelTest {
     assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
     assertEquals("", viewModel.uiState.value.currentFolderId)
     assertFalse(viewModel.uiState.value.canNavigateUp)
+  }
+
+  @Test
+  fun newFileCreationFailureSetsErrorAndDoesNotNavigate() {
+    val repository = FakePersonalSpaceRepository(createFailure = IllegalStateException(""))
+    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
+    idleMainLooper()
+    var navigatedFileId: String? = null
+
+    viewModel.onNewFileSelected { navigatedFileId = it }
+    idleMainLooper()
+
+    assertEquals(
+        LoadState.Error("Unable to create the character file."),
+        viewModel.uiState.value.loadState,
+    )
+    assertEquals(null, navigatedFileId)
+    assertEquals(1, repository.createdFiles.size)
   }
 }
