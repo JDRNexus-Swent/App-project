@@ -32,6 +32,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -392,6 +393,30 @@ class GroupRepositoryFirestoreTest {
 
     val getResult = repository.getGroup(groupId)
     assertTrue("getGroup should fail after deletion", getResult.isFailure)
+  }
+
+  /** Deleting a group removes it from the groupIds of every member, and deletes its root. */
+  @Test
+  fun testDeleteGroup_removesItFromEveryMembersGroupIds() = runBlocking {
+    val groupId = UUID.randomUUID().toString()
+    repository.createGroup(
+        CampaignGroup(
+            id = groupId,
+            name = "Party",
+            gameMasterId = "gm1",
+            participantIds = listOf("gm1"),
+        )
+    )
+    repository.addUserToGroup(groupId, "player1")
+
+    val result = repository.deleteGroup(groupId)
+
+    assertTrue("deleteGroup should succeed", result.isSuccess)
+    for (userId in listOf("gm1", "player1")) {
+      val groupIds = firestore.collection("users").document(userId).get().await().get("groupIds")
+      assertEquals(emptyList<String>(), groupIds)
+    }
+    assertFalse(firestore.collection("documents").document(groupId).get().await().exists())
   }
 
   /** Tests adding and removing users from a campaign group using the specific methods. */

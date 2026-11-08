@@ -55,7 +55,21 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
   }
 
   override suspend fun deleteGroup(groupId: String): Result<Unit> = safeFirestoreRequest {
-    groupsCollection.document(groupId).delete().await()
+    val group =
+        groupsCollection.document(groupId).get().await().toObject(CampaignGroup::class.java)
+            ?: return@safeFirestoreRequest
+    val batch = firestore.batch()
+    batch.delete(groupsCollection.document(groupId))
+    batch.delete(documentsCollection.document(groupId)) // the group's root folder
+
+    group.participantIds.forEach { userId ->
+      batch.update(
+          usersCollection.document(userId),
+          "groupIds",
+          com.google.firebase.firestore.FieldValue.arrayRemove(groupId),
+      )
+    }
+    batch.commit().await()
   }
 
   override suspend fun getGroup(groupId: String): Result<CampaignGroup> = safeFirestoreRequest {
