@@ -2,7 +2,9 @@
 package com.github.se.jdrnexus.model.personalSpace
 
 import android.util.Log
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -13,6 +15,8 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
 
   companion object {
     private const val GROUPS_COLLECTION_PATH = "campaign_groups"
+    private const val USERS_COLLECTION_PATH = "users"
+    private const val GROUP_IDS_FIELD = "groupIds"
   }
 
   private val groupsCollection = firestore.collection(GROUPS_COLLECTION_PATH)
@@ -21,6 +25,9 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
   private val documentsCollection by lazy {
     firestore.collection(WorkspaceRepositoryFirestore.COLLECTION_PATH)
   }
+
+  // Created on first use, like documentsCollection.
+  private val usersCollection by lazy { firestore.collection(USERS_COLLECTION_PATH) }
 
   // ==========================================
   // GROUP MANAGEMENT
@@ -32,10 +39,16 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
 
   override suspend fun createGroup(group: CampaignGroup): Result<Unit> {
     return try {
-      // The group and its root folder are written together: both exist or neither does.
+      // The group, its root folder and the creator's membership are written together: they all
+      // exist or none does.
       val batch = firestore.batch()
       batch.set(groupsCollection.document(group.id), group)
       batch.set(documentsCollection.document(group.id), rootFileOf(group))
+      batch.set(
+          usersCollection.document(group.gameMasterId),
+          mapOf(GROUP_IDS_FIELD to FieldValue.arrayUnion(group.id)),
+          SetOptions.merge(),
+      )
       batch.commit().await()
       Result.success(Unit)
     } catch (e: CancellationException) {
@@ -94,11 +107,21 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
 
   override suspend fun addUserToGroup(groupId: String, userId: String): Result<Unit> {
     return try {
+      // The group and the user's own list of groups change together: the security rules refuse
+      // one without the other.
+      val batch = firestore.batch()
       // Use FieldValue.arrayUnion to safely add an item to an array without duplicates
-      groupsCollection
-          .document(groupId)
-          .update("participantIds", com.google.firebase.firestore.FieldValue.arrayUnion(userId))
-          .await()
+      batch.update(
+          groupsCollection.document(groupId),
+          "participantIds",
+          FieldValue.arrayUnion(userId),
+      )
+      batch.set(
+          usersCollection.document(userId),
+          mapOf(GROUP_IDS_FIELD to FieldValue.arrayUnion(groupId)),
+          SetOptions.merge(),
+      )
+      batch.commit().await()
       Result.success(Unit)
     } catch (e: CancellationException) {
       throw e
@@ -109,11 +132,20 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
 
   override suspend fun removeUserFromGroup(groupId: String, userId: String): Result<Unit> {
     return try {
+      // Same as addUserToGroup: the group and the user's list of groups change together.
+      val batch = firestore.batch()
       // Use FieldValue.arrayRemove to safely remove an item from an array
-      groupsCollection
-          .document(groupId)
-          .update("participantIds", com.google.firebase.firestore.FieldValue.arrayRemove(userId))
-          .await()
+      batch.update(
+          groupsCollection.document(groupId),
+          "participantIds",
+          FieldValue.arrayRemove(userId),
+      )
+      batch.set(
+          usersCollection.document(userId),
+          mapOf(GROUP_IDS_FIELD to FieldValue.arrayRemove(groupId)),
+          SetOptions.merge(),
+      )
+      batch.commit().await()
       Result.success(Unit)
     } catch (e: CancellationException) {
       throw e
