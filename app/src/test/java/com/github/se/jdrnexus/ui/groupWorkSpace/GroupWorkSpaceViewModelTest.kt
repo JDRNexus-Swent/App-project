@@ -1029,7 +1029,7 @@ class GroupWorkSpaceViewModelTest {
     }
   }
 
-  // A signed-out user gets an error state and later loads are ignored.
+  // A signed-out user gets a signed-out state and later loads are ignored.
   @Test
   fun signedOutUserCannotLoadWorkspace() = runTest {
     val folder = groupFolder("folder")
@@ -1041,13 +1041,37 @@ class GroupWorkSpaceViewModelTest {
         )
     runCurrent()
 
-    assertEquals(LoadState.Error("You must be signed in."), viewModel.uiState.value.loadState)
+    assertEquals(LoadState.SignedOut, viewModel.uiState.value.loadState)
 
     viewModel.loadWorkspace(folder.id)
     runCurrent()
 
     assertEquals("", viewModel.uiState.value.currentFolderId)
-    assertEquals(LoadState.Error("You must be signed in."), viewModel.uiState.value.loadState)
+    assertEquals(LoadState.SignedOut, viewModel.uiState.value.loadState)
+  }
+
+  @Test
+  fun signingOutClearsLoadedWorkspaceAndPermissions() = runTest {
+    val authRepository = FakeAuthRepository()
+    val viewModel =
+        viewModel(
+            FakeWorkspaceRepository(listOf(groupFile("notes"))),
+            GroupWorkspaceRole.GAME_MASTER,
+            authRepository = authRepository,
+        )
+    runCurrent()
+
+    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
+    assertTrue(viewModel.uiState.value.items.isNotEmpty())
+    assertTrue(viewModel.uiState.value.canCreateFolder)
+
+    authRepository.setUser(null)
+    runCurrent()
+
+    assertEquals(LoadState.SignedOut, viewModel.uiState.value.loadState)
+    assertTrue(viewModel.uiState.value.items.isEmpty())
+    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.canEditItems)
   }
 
   // Root folders are placed under the group, and folders inherit a hidden parent's visibility.
@@ -1413,7 +1437,12 @@ class GroupWorkSpaceViewModelTest {
   private class FakeAuthRepository(
       user: AuthUser? = AuthUser(OWNER_ID, "owner@example.com", "Owner"),
   ) : AuthRepository {
-    override val authState: StateFlow<AuthUser?> = MutableStateFlow(user).asStateFlow()
+    private val mutableAuthState = MutableStateFlow(user)
+    override val authState: StateFlow<AuthUser?> = mutableAuthState.asStateFlow()
+
+    fun setUser(user: AuthUser?) {
+      mutableAuthState.value = user
+    }
 
     override suspend fun signUpWithEmail(
         email: String,
