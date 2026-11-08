@@ -37,15 +37,22 @@ class DocumentSearchViewModelTest {
 
   @Test
   fun searchesNamesRecursivelyAndClearsQueryAndResults() {
+    val repository =
+        FakeWorkspaceRepository(
+            rootItems = listOf(personalFolder, personalFile),
+            itemsByFolder = mapOf(personalFolder.id to listOf(nestedCharacter)),
+        )
     val viewModel =
         DocumentSearchViewModel(
-            repository =
-                FakeWorkspaceRepository(
-                    rootItems = listOf(personalFolder, personalFile),
-                    itemsByFolder = mapOf(personalFolder.id to listOf(nestedCharacter)),
-                ),
+            repository = repository,
             authRepository = FakeAuthRepository(),
         )
+
+    viewModel.retry()
+    assertEquals(0, repository.personalRootRequests)
+    viewModel.onQueryChanged(" ")
+    assertEquals(DocumentSearchStatus.Blank, viewModel.uiState.value.status)
+    assertEquals(0, repository.personalRootRequests)
 
     viewModel.onQueryChanged("dRaGoN")
     assertEquals(DocumentSearchStatus.Loading, viewModel.uiState.value.status)
@@ -57,6 +64,78 @@ class DocumentSearchViewModelTest {
     viewModel.clearQuery()
     assertEquals("", viewModel.uiState.value.query)
     assertTrue(viewModel.uiState.value.results.isEmpty())
+    assertEquals(DocumentSearchStatus.Blank, viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun retryRepeatsTheCurrentSearchAndBlankQueryDoesNotSearch() {
+    val repository = FakeWorkspaceRepository(rootItems = listOf(personalFile))
+    val viewModel =
+        DocumentSearchViewModel(repository = repository, authRepository = FakeAuthRepository())
+
+    viewModel.onQueryChanged("Dragon")
+    idleMainLooperForSearch()
+    assertEquals(1, repository.personalRootRequests)
+
+    viewModel.retry()
+    idleMainLooperForSearch()
+    assertEquals(2, repository.personalRootRequests)
+    assertEquals(DocumentSearchStatus.Results, viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun reportsNotSignedInAndMissingGroupRepositoryErrors() {
+    val signedOutViewModel =
+        DocumentSearchViewModel(
+            repository = FakeWorkspaceRepository(),
+            authRepository = FakeAuthRepository(null),
+        )
+    signedOutViewModel.onQueryChanged("Dragon")
+    idleMainLooperForSearch()
+    assertEquals(
+        DocumentSearchStatus.Error(SearchError.NOT_SIGNED_IN),
+        signedOutViewModel.uiState.value.status,
+    )
+
+    val missingGroupRepositoryViewModel =
+        DocumentSearchViewModel(
+            scope = DocumentSearchScope.Group("group"),
+            repository = FakeWorkspaceRepository(),
+            authRepository = FakeAuthRepository(),
+        )
+    missingGroupRepositoryViewModel.onQueryChanged("Dragon")
+    idleMainLooperForSearch()
+    assertEquals(
+        DocumentSearchStatus.Error(SearchError.SEARCH_FAILED),
+        missingGroupRepositoryViewModel.uiState.value.status,
+    )
+  }
+
+  @Test
+  fun rejectsBlankGroupId() {
+    val error =
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+          DocumentSearchViewModel(
+              scope = DocumentSearchScope.Group(" "),
+              repository = FakeWorkspaceRepository(),
+              authRepository = FakeAuthRepository(),
+          )
+        }
+
+    assertEquals("Group ID cannot be empty.", error.message)
+  }
+
+  @Test
+  fun clearingQueryCancelsThePendingSearch() {
+    val repository = FakeWorkspaceRepository(rootItems = listOf(personalFile))
+    val viewModel =
+        DocumentSearchViewModel(repository = repository, authRepository = FakeAuthRepository())
+
+    viewModel.onQueryChanged("Dragon")
+    viewModel.clearQuery()
+    idleMainLooperForSearch()
+
+    assertEquals(0, repository.personalRootRequests)
     assertEquals(DocumentSearchStatus.Blank, viewModel.uiState.value.status)
   }
 
@@ -144,6 +223,90 @@ class DocumentSearchViewModelTest {
     )
   }
 
+  @Test
+  fun gameMasterSearchIncludesHiddenDocumentsAndSkipsInvalidPlacements() {
+    val groupId = "group"
+    val visible = groupFile("Needle visible", groupId, "player", groupId, DocumentType.TEXT)
+    val hidden =
+        groupFile("Needle hidden", groupId, "player", groupId, DocumentType.TEXT, hidden = true)
+    val unshared =
+        groupFile("Needle unshared", groupId, "player", groupId, DocumentType.TEXT)
+            .copy(sharedGroupsIds = emptyList())
+    val missingPlacement =
+        groupFile("Needle no placement", groupId, "player", groupId, DocumentType.TEXT)
+            .copy(placements = emptyMap())
+    val mismatchedPlacement =
+        groupFile("Needle mismatch", groupId, "player", "other-folder", DocumentType.TEXT)
+    val viewModel =
+        DocumentSearchViewModel(
+            scope = DocumentSearchScope.Group(groupId),
+            repository =
+                FakeWorkspaceRepository(
+                    groupItems =
+                        mapOf(
+                            groupId to
+                                listOf(
+                                    visible,
+                                    hidden,
+                                    unshared,
+                                    missingPlacement,
+                                    mismatchedPlacement,
+                                )
+                        )
+                ),
+            authRepository = FakeAuthRepository(AuthUser("gm", null, null)),
+            groupRepository = FakeGroupRepository(CampaignGroup(id = groupId, gameMasterId = "gm")),
+        )
+
+    viewModel.onQueryChanged("Needle")
+    idleMainLooperForSearch()
+
+    assertEquals(listOf(hidden, visible), viewModel.uiState.value.results)
+  }
+
+  @Test
+  fun playerSearchRecursesThroughVisibleFoldersAndHidesUnownedHiddenSubtrees() {
+    val groupId = "group"
+    val firstFolder = groupFile("First folder", groupId, "gm", groupId, DocumentType.FOLDER)
+    val nestedFolder =
+        groupFile("Nested folder", groupId, "gm", firstFolder.id, DocumentType.FOLDER)
+    val ownDocument = groupFile("Needle own", groupId, "player", nestedFolder.id, DocumentType.TEXT)
+    val visibleDocument =
+        groupFile("Needle visible", groupId, "gm", nestedFolder.id, DocumentType.TEXT)
+    val hiddenFolder =
+        groupFile("Hidden folder", groupId, "gm", groupId, DocumentType.FOLDER, hidden = true)
+    val hiddenDocument =
+        groupFile("Needle hidden", groupId, "gm", hiddenFolder.id, DocumentType.TEXT)
+    val viewModel =
+        DocumentSearchViewModel(
+            scope = DocumentSearchScope.Group(groupId),
+            repository =
+                FakeWorkspaceRepository(
+                    groupItems =
+                        mapOf(
+                            groupId to listOf(firstFolder, hiddenFolder),
+                            firstFolder.id to listOf(nestedFolder),
+                            nestedFolder.id to listOf(ownDocument, visibleDocument),
+                            hiddenFolder.id to listOf(hiddenDocument),
+                        )
+                ),
+            authRepository = FakeAuthRepository(AuthUser("player", null, null)),
+            groupRepository =
+                FakeGroupRepository(
+                    CampaignGroup(
+                        id = groupId,
+                        gameMasterId = "gm",
+                        participantIds = listOf("player"),
+                    )
+                ),
+        )
+
+    viewModel.onQueryChanged("Needle")
+    idleMainLooperForSearch()
+
+    assertEquals(listOf(ownDocument, visibleDocument), viewModel.uiState.value.results)
+  }
+
   private fun groupFile(
       id: String,
       groupId: String,
@@ -167,6 +330,9 @@ class DocumentSearchViewModelTest {
       private val groupItems: Map<String, List<JDRFile>> = emptyMap(),
       private val rootFailure: Exception? = null,
   ) : WorkspaceRepository {
+    var personalRootRequests = 0
+      private set
+
     override fun getNewUid(): String = "new-id"
 
     override suspend fun createFile(file: JDRFile): Result<Unit> = Result.success(Unit)
@@ -199,8 +365,10 @@ class DocumentSearchViewModelTest {
 
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = flowOf(null)
 
-    override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> =
-        rootFailure?.let { failure -> flow { throw failure } } ?: flowOf(rootItems)
+    override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> {
+      personalRootRequests++
+      return rootFailure?.let { failure -> flow { throw failure } } ?: flowOf(rootItems)
+    }
 
     override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
         flowOf(itemsByFolder[folderId].orEmpty())
