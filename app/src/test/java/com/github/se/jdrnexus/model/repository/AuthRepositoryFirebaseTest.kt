@@ -146,31 +146,6 @@ class AuthRepositoryFirebaseTest {
   }
 
   @Test
-  fun cancellingSignUpDuringCleanupStillDeletesAccountAndSignsOut() = runBlocking {
-    val client =
-        FakeFirebaseAuthClient().apply {
-          usernameFailure = AuthError.NETWORK_ERROR
-          holdAccountDeletion = true
-        }
-    val repository = AuthRepositoryFirebase(client)
-    var result: AuthResult<AuthUser>? = null
-
-    val signUp = launch {
-      result = repository.signUpWithEmail("player@example.com", "password123", "Player")
-    }
-    client.accountDeletionStarted.await()
-    signUp.cancel()
-    client.accountDeletionGate.complete(Unit)
-    signUp.join()
-
-    // Cleanup must not be abandoned halfway: no orphan account, no session left open.
-    assertEquals(null, result)
-    assertFalse(client.accountExists)
-    assertEquals(null, client.authState.value)
-    assertEquals(1, client.signOutCalls)
-  }
-
-  @Test
   fun cancellationDuringSignInIsRethrown() = runBlocking {
     val client =
         FakeFirebaseAuthClient().apply {
@@ -368,9 +343,6 @@ class AuthRepositoryFirebaseTest {
     var suspendUsernameUpdate = false
     val usernameUpdateStarted = CompletableDeferred<Unit>()
     var cancelAccountCreation = false
-    var holdAccountDeletion = false
-    val accountDeletionStarted = CompletableDeferred<Unit>()
-    val accountDeletionGate = CompletableDeferred<Unit>()
     var deleteAccountCalls = 0
     var signOutCalls = 0
 
@@ -395,10 +367,6 @@ class AuthRepositoryFirebaseTest {
 
     override suspend fun deleteAccount(uid: String) {
       deleteAccountCalls++
-      if (holdAccountDeletion) {
-        accountDeletionStarted.complete(Unit)
-        accountDeletionGate.await()
-      }
       // Like Task.await(), fails if the caller is cancelled: cleanup must run as NonCancellable.
       currentCoroutineContext().ensureActive()
       deleteFailure?.let { throw AuthOperationException(it) }

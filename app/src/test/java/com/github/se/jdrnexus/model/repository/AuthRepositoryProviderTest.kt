@@ -5,8 +5,8 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.google.firebase.FirebaseApp
 import io.mockk.mockk
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -22,7 +22,7 @@ class AuthRepositoryProviderTest {
     val fake = mockk<AuthRepository>()
 
     try {
-      assertTrue(original is AuthRepositoryFirebase)
+      assertEquals(AuthRepositoryFirebase::class, original::class)
       AuthRepositoryProvider.repository = fake
       assertSame(fake, AuthRepositoryProvider.repository)
     } finally {

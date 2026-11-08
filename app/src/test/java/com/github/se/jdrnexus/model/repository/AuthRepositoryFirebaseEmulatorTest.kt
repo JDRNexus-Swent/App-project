@@ -1,11 +1,9 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.repository
 
-import android.content.Context
-import androidx.test.core.app.ApplicationProvider
+import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils.pumpMainLooperUntil
 import com.github.se.jdrnexus.utils.waitFor
-import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -30,14 +28,7 @@ class AuthRepositoryFirebaseEmulatorTest {
 
   @Before
   fun setUp() {
-    val context = ApplicationProvider.getApplicationContext<Context>()
-    val firebaseApp =
-        FirebaseApp.getApps(context).firstOrNull()
-            ?: FirebaseApp.initializeApp(context)
-            ?: error("FirebaseApp could not be initialized for the Auth emulator test.")
-    firebaseAuth = FirebaseAuth.getInstance(firebaseApp)
-    firebaseAuth.useEmulator("127.0.0.1", 9099)
-    firebaseAuth.signOut()
+    firebaseAuth = FirebaseEmulatorTestUtils.getAuth()
     repository = AuthRepositoryFirebase(firebaseAuth)
   }
 
@@ -104,6 +95,7 @@ class AuthRepositoryFirebaseEmulatorTest {
         AuthResult.Failure(AuthError.INVALID_EMAIL),
         call { repository.signUpWithEmail("not-an-email", "secret1", "Ranger") },
     )
+    assertEquals(null, firebaseAuth.currentUser)
   }
 
   @Test
@@ -112,6 +104,7 @@ class AuthRepositoryFirebaseEmulatorTest {
         AuthResult.Failure(AuthError.WEAK_PASSWORD),
         call { repository.signUpWithEmail(randomEmail(), "123", "Ranger") },
     )
+    assertEquals(null, firebaseAuth.currentUser)
   }
 
   @Test
