@@ -14,6 +14,7 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.WriteBatch
 import io.mockk.confirmVerified
 import io.mockk.every
@@ -102,7 +103,7 @@ class GroupRepositoryFirestoreTest {
       }
 
       // Clean up the database for the next test to ensure a clean state
-      for (collectionName in listOf("campaign_groups", "documents")) {
+      for (collectionName in listOf("campaign_groups", "documents", "users")) {
         try {
           val snapshot = firestore.collection(collectionName).get().await()
           for (doc in snapshot.documents) {
@@ -302,7 +303,7 @@ class GroupRepositoryFirestoreTest {
     assertEquals("Old Name", repository.getGroup(group.id).getOrNull()?.name)
   }
 
-  /** The group and its root folder go into one batch with a single commit. */
+  /** The group, its root folder and the GM's user document go into one batch, one commit. */
   @Test
   fun testCreateGroup_writesGroupAndRootInOneBatch() = runBlocking {
     val group =
@@ -315,15 +316,20 @@ class GroupRepositoryFirestoreTest {
     val firestoreMock = mockk<FirebaseFirestore>()
     val groupsMock = mockk<CollectionReference>()
     val documentsMock = mockk<CollectionReference>()
+    val usersMock = mockk<CollectionReference>()
     val groupDocMock = mockk<DocumentReference>()
     val rootDocMock = mockk<DocumentReference>()
+    val userDocMock = mockk<DocumentReference>()
     val batchMock = mockk<WriteBatch>()
     every { firestoreMock.collection("campaign_groups") } returns groupsMock
     every { firestoreMock.collection("documents") } returns documentsMock
+    every { firestoreMock.collection("users") } returns usersMock
     every { groupsMock.document("g1") } returns groupDocMock
     every { documentsMock.document("g1") } returns rootDocMock
+    every { usersMock.document("gm1") } returns userDocMock
     every { firestoreMock.batch() } returns batchMock
     every { batchMock.set(any(), any()) } returns batchMock
+    every { batchMock.set(any(), any(), any<SetOptions>()) } returns batchMock
     every { batchMock.commit() } returns Tasks.forResult(null)
 
     val result = GroupRepositoryFirestore(firestoreMock).createGroup(group)
@@ -342,6 +348,7 @@ class GroupRepositoryFirestoreTest {
           ),
       )
     }
+    verify(exactly = 1) { batchMock.set(userDocMock, any(), any<SetOptions>()) }
     verify(exactly = 1) { batchMock.commit() }
     confirmVerified(batchMock)
   }
@@ -377,7 +384,7 @@ class GroupRepositoryFirestoreTest {
   @Test
   fun testDeleteGroup() = runBlocking {
     val groupId = UUID.randomUUID().toString()
-    val group = CampaignGroup(id = groupId, name = "To Delete")
+    val group = CampaignGroup(id = groupId, name = "To Delete", gameMasterId = "gm1")
     repository.createGroup(group)
 
     val deleteResult = repository.deleteGroup(groupId)
@@ -391,7 +398,13 @@ class GroupRepositoryFirestoreTest {
   @Test
   fun testAddAndRemoveUserFromGroup() = runBlocking {
     val groupId = UUID.randomUUID().toString()
-    val group = CampaignGroup(id = groupId, name = "Party", participantIds = listOf("player1"))
+    val group =
+        CampaignGroup(
+            id = groupId,
+            name = "Party",
+            gameMasterId = "gm1",
+            participantIds = listOf("player1"),
+        )
     repository.createGroup(group)
 
     // Add user
@@ -426,7 +439,7 @@ class GroupRepositoryFirestoreTest {
   @Test
   fun testGetGroupFlow() = runBlocking {
     val groupId = UUID.randomUUID().toString()
-    val group = CampaignGroup(id = groupId, name = "Flow Group")
+    val group = CampaignGroup(id = groupId, name = "Flow Group", gameMasterId = "gm1")
     repository.createGroup(group)
 
     val emittedGroup = repository.getGroupFlow(groupId).waitFor { it != null }
@@ -442,18 +455,21 @@ class GroupRepositoryFirestoreTest {
         CampaignGroup(
             id = UUID.randomUUID().toString(),
             name = "Group 1",
+            gameMasterId = "gm1",
             participantIds = listOf(userId, "other"),
         )
     val group2 =
         CampaignGroup(
             id = UUID.randomUUID().toString(),
             name = "Group 2",
+            gameMasterId = "gm1",
             participantIds = listOf(userId),
         )
     val groupOther =
         CampaignGroup(
             id = UUID.randomUUID().toString(),
             name = "Group 3",
+            gameMasterId = "gm1",
             participantIds = listOf("other"),
         )
 
@@ -473,7 +489,7 @@ class GroupRepositoryFirestoreTest {
   fun testGetUserGroups_Empty() = runBlocking {
     // Insert a dummy to avoid Null value error in Firestore Emulator rules on completely empty
     // collections
-    repository.createGroup(CampaignGroup(id = "dummy", name = "dummy"))
+    repository.createGroup(CampaignGroup(id = "dummy", name = "dummy", gameMasterId = "gm1"))
 
     val emptyUserId = "empty_user_id"
     val userGroups = repository.getUserGroups(emptyUserId).waitFor { it.isEmpty() }
@@ -655,6 +671,7 @@ class GroupRepositoryFirestoreTest {
         CampaignGroup(
             id = UUID.randomUUID().toString(),
             name = "Initial Campaign",
+            gameMasterId = "gm1",
             participantIds = listOf(userId),
         )
     repository.createGroup(group1)
@@ -664,6 +681,7 @@ class GroupRepositoryFirestoreTest {
         CampaignGroup(
             id = group2Id,
             name = "Secret Campaign",
+            gameMasterId = "gm1",
             participantIds = listOf("game_master_only"),
         )
     repository.createGroup(group2)
