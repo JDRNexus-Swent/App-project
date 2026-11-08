@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,31 +53,34 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
-import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
@@ -123,6 +127,10 @@ fun MapScreen(
       }
   val requestLocation = { locationPermissionLauncher.launch(LOCATION_PERMISSIONS) }
 
+  // Height of the bottom overlay, kept clear on the map so Google's logo stays visible above it.
+  val density = LocalDensity.current
+  var bottomOverlayHeight by remember { mutableStateOf(0.dp) }
+
   LaunchedEffect(mapVM) { mapVM.loadNearbyGames() }
 
   Scaffold(
@@ -130,7 +138,11 @@ fun MapScreen(
       bottomBar = { ScreenBottomBar(selectedTab = MAP_TAB, onTabSelected = onTabSelected) },
   ) { innerPadding ->
     Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-      MapLayer(uiState = uiState, onSelectGame = mapVM::selectGame)
+      MapLayer(
+          uiState = uiState,
+          onSelectGame = mapVM::selectGame,
+          bottomPadding = bottomOverlayHeight,
+      )
       MapSearchBar(
           query = uiState.cityQuery,
           filters = uiState.filters,
@@ -154,7 +166,11 @@ fun MapScreen(
             }
           },
           onViewGameDetails = onViewGameDetails,
-          modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(OverlayInset),
+          modifier =
+              Modifier.align(Alignment.BottomCenter)
+                  .fillMaxWidth()
+                  .onSizeChanged { bottomOverlayHeight = with(density) { it.height.toDp() } }
+                  .padding(OverlayInset),
       )
     }
   }
@@ -184,14 +200,17 @@ private fun MapPanel(
 private val INITIAL_CAMERA = CameraPosition.fromLatLngZoom(LatLng(0.0, 0.0), 2f)
 
 /**
- * Google map styled for the current theme, with a pin per game, the searched city and the user's
- * position. Tapping a game pin selects that game.
+ * Google map styled for the current theme, with a pin per game and the user's position, as in the
+ * mockups (a searched city only moves the camera). Tapping a game pin selects that game.
  *
  * The camera follows [MapUiState.camera], which the ViewModel moves after a city search, a device
  * location or a game selection.
+ *
+ * @param bottomPadding height covered by the bottom overlay: the map keeps Google's logo above it
+ *   and centers the camera in the part left visible.
  */
 @Composable
-private fun MapLayer(uiState: MapUiState, onSelectGame: (String) -> Unit) {
+private fun MapLayer(uiState: MapUiState, onSelectGame: (String) -> Unit, bottomPadding: Dp) {
   val colors = LocalAppUiColors.current
   val context = LocalContext.current
   val cameraPositionState = rememberCameraPositionState { position = INITIAL_CAMERA }
@@ -212,6 +231,9 @@ private fun MapLayer(uiState: MapUiState, onSelectGame: (String) -> Unit) {
       modifier = Modifier.fillMaxSize().testTag(C.Tag.map_google_map),
       cameraPositionState = cameraPositionState,
       properties = mapProperties,
+      // The mockups have no zoom buttons; pinch-to-zoom still works.
+      uiSettings = MapUiSettings(zoomControlsEnabled = false),
+      contentPadding = PaddingValues(bottom = bottomPadding),
   ) {
     uiState.games.forEach { game ->
       // One stable marker and marker state per game, even when filters or a reload change the list.
@@ -233,13 +255,6 @@ private fun MapLayer(uiState: MapUiState, onSelectGame: (String) -> Unit) {
         }
       }
     }
-    uiState.searchedCity?.let { city ->
-      Marker(
-          state = rememberMarkerStateAt(city),
-          title = city.label ?: "Searched city",
-          icon = BitmapDescriptorFactory.defaultMarker(colors.accent.hue()),
-      )
-    }
     uiState.userLocation?.let { location ->
       // Anchored on the dot rather than on the "You" label below it.
       MarkerComposable(state = rememberMarkerStateAt(location), anchor = Offset(0.5f, 0.3f)) {
@@ -255,10 +270,6 @@ private fun rememberMarkerStateAt(coordinates: MapCoordinates): MarkerState =
     remember(coordinates) { MarkerState(position = coordinates.toLatLng()) }
 
 private fun MapCoordinates.toLatLng() = LatLng(latitude, longitude)
-
-/** Hue (0–360) of this color, as expected by Google's default marker. */
-private fun Color.hue(): Float =
-    FloatArray(3).also { android.graphics.Color.colorToHSV(toArgb(), it) }[0]
 
 /** Accent-colored pin for a campaign session: larger and filled, with a halo, when [selected]. */
 @Composable
