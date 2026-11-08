@@ -110,6 +110,95 @@ class GroupWorkSpaceViewModelTest {
     assertFalse(player.uiState.value.canEditItems)
   }
 
+  @Test
+  fun openFolderSuccessfullyOpensSelectedFolder() = runTest {
+    val folder = groupFolder("folder")
+    val child = groupFile("child", parentId = folder.id)
+    val viewModel =
+        viewModel(
+            FakeWorkspaceRepository(listOf(folder, child)),
+            GroupWorkspaceRole.GAME_MASTER,
+        )
+    runCurrent()
+
+    viewModel.openFolder(folder.id)
+    runCurrent()
+
+    assertEquals(folder.id, viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(""), viewModel.uiState.value.folderHistory)
+    assertEquals(listOf(child), viewModel.uiState.value.items)
+  }
+
+  @Test
+  fun navigateBackReturnsToPreviousFolder() = runTest {
+    val parent = groupFolder("parent")
+    val childFolder = groupFolder("child-folder", parentId = parent.id)
+    val child = groupFile("child", parentId = childFolder.id)
+    val viewModel =
+        viewModel(
+            FakeWorkspaceRepository(listOf(parent, childFolder, child)),
+            GroupWorkspaceRole.GAME_MASTER,
+        )
+    runCurrent()
+
+    viewModel.openFolder(parent.id)
+    runCurrent()
+    viewModel.openFolder(childFolder.id)
+    runCurrent()
+
+    assertTrue(viewModel.navigateBack())
+    runCurrent()
+
+    assertEquals(parent.id, viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(""), viewModel.uiState.value.folderHistory)
+    assertEquals(listOf(childFolder), viewModel.uiState.value.items)
+  }
+
+  @Test
+  fun navigateBackRecoversWhenHistoryFolderNoLongerExists() = runTest {
+    val parent = groupFolder("parent")
+    val childFolder = groupFolder("child-folder", parentId = parent.id)
+    val repository = FakeWorkspaceRepository(listOf(parent, childFolder))
+    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    viewModel.openFolder(parent.id)
+    runCurrent()
+    viewModel.openFolder(childFolder.id)
+    runCurrent()
+    repository.deleteFile(parent.id)
+
+    assertTrue(viewModel.navigateBack())
+    runCurrent()
+
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertTrue(viewModel.uiState.value.folderHistory.isEmpty())
+    assertEquals("This folder is no longer available.", viewModel.uiState.value.errorMessage)
+  }
+
+  @Test
+  fun disappearingFolderResetsHistoryAndAllowsRecoveryAtRoot() = runTest {
+    val folder = groupFolder("folder")
+    val replacement = groupFolder("replacement")
+    val repository = FakeWorkspaceRepository(listOf(folder, replacement))
+    val viewModel = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    viewModel.openFolder(folder.id)
+    runCurrent()
+    repository.deleteFile(folder.id)
+    runCurrent()
+
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertTrue(viewModel.uiState.value.folderHistory.isEmpty())
+    assertEquals(listOf(replacement), viewModel.uiState.value.items)
+
+    viewModel.openFolder(replacement.id)
+    runCurrent()
+    assertEquals(replacement.id, viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(""), viewModel.uiState.value.folderHistory)
+  }
+
   // A user outside the participant list and a deleted group both deny workspace access.
   @Test
   fun nonMemberAndDeletedGroupCannotAccessWorkspace() = runTest {
@@ -746,6 +835,41 @@ class GroupWorkSpaceViewModelTest {
     assertEquals(listOf(item.id to true, item.id to false), repository.hiddenRequests)
   }
 
+  // A visibility repository failure is exposed through the shared workspace error state.
+  @Test
+  fun visibilityChangeFailureSetsError() = runTest {
+    val item = groupFile("owned", ownerId = OWNER_ID)
+    val repository = FakeWorkspaceRepository(listOf(item))
+    repository.hiddenFailure = IllegalStateException("visibility update failed")
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    player.setItemHidden(item, true)
+    runCurrent()
+
+    assertEquals("visibility update failed", player.uiState.value.errorMessage)
+    assertFalse(player.uiState.value.isOperationInProgress)
+    assertFalse(repository.files.getValue(item.id).placements.getValue(GROUP_ID).isHidden)
+  }
+
+  // A missing selected folder redirects to the root while preserving its transient error.
+  @Test
+  fun missingFolderErrorSurvivesRedirectToRoot() = runTest {
+    val folder = groupFolder("folder")
+    val repository = FakeWorkspaceRepository(listOf(folder))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    gm.loadWorkspace(folder.id)
+    runCurrent()
+    repository.deleteFile(folder.id)
+    runCurrent()
+
+    assertEquals("", gm.uiState.value.currentFolderId)
+    assertEquals("This folder is no longer available.", gm.uiState.value.errorMessage)
+    assertEquals(LoadState.Success, gm.uiState.value.loadState)
+  }
+
   // Revealing an owned item is rejected while its parent folder remains hidden.
   @Test
   fun cannotRevealOwnedItemInsideHiddenParent() = runTest {
@@ -905,7 +1029,7 @@ class GroupWorkSpaceViewModelTest {
     }
   }
 
-  // A signed-out user gets an error state and later loads are ignored.
+  // A signed-out user gets a signed-out state and later loads are ignored.
   @Test
   fun signedOutUserCannotLoadWorkspace() = runTest {
     val folder = groupFolder("folder")
@@ -917,13 +1041,37 @@ class GroupWorkSpaceViewModelTest {
         )
     runCurrent()
 
-    assertEquals(LoadState.Error("You must be signed in."), viewModel.uiState.value.loadState)
+    assertEquals(LoadState.SignedOut, viewModel.uiState.value.loadState)
 
     viewModel.loadWorkspace(folder.id)
     runCurrent()
 
     assertEquals("", viewModel.uiState.value.currentFolderId)
-    assertEquals(LoadState.Error("You must be signed in."), viewModel.uiState.value.loadState)
+    assertEquals(LoadState.SignedOut, viewModel.uiState.value.loadState)
+  }
+
+  @Test
+  fun signingOutClearsLoadedWorkspaceAndPermissions() = runTest {
+    val authRepository = FakeAuthRepository()
+    val viewModel =
+        viewModel(
+            FakeWorkspaceRepository(listOf(groupFile("notes"))),
+            GroupWorkspaceRole.GAME_MASTER,
+            authRepository = authRepository,
+        )
+    runCurrent()
+
+    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
+    assertTrue(viewModel.uiState.value.items.isNotEmpty())
+    assertTrue(viewModel.uiState.value.canCreateFolder)
+
+    authRepository.setUser(null)
+    runCurrent()
+
+    assertEquals(LoadState.SignedOut, viewModel.uiState.value.loadState)
+    assertTrue(viewModel.uiState.value.items.isEmpty())
+    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.canEditItems)
   }
 
   // Root folders are placed under the group, and folders inherit a hidden parent's visibility.
@@ -1121,6 +1269,7 @@ class GroupWorkSpaceViewModelTest {
         mutableMapOf<Pair<String, String>, MutableStateFlow<List<JDRFile>>>()
     private var nextId = 0
     var updateFailure: Exception? = null
+    var hiddenFailure: Exception? = null
     val addRequests = mutableListOf<AddRequest>()
     val removeRequests = mutableListOf<RemovalRequest>()
     val hiddenRequests = mutableListOf<Pair<String, Boolean>>()
@@ -1199,6 +1348,7 @@ class GroupWorkSpaceViewModelTest {
         groupId: String,
         isHidden: Boolean,
     ): Result<Unit> = runCatching {
+      hiddenFailure?.let { throw it }
       hiddenRequests += itemId to isHidden
       val item = requireNotNull(files[itemId])
       val parentId = item.placements[groupId]?.folderId
@@ -1287,7 +1437,12 @@ class GroupWorkSpaceViewModelTest {
   private class FakeAuthRepository(
       user: AuthUser? = AuthUser(OWNER_ID, "owner@example.com", "Owner"),
   ) : AuthRepository {
-    override val authState: StateFlow<AuthUser?> = MutableStateFlow(user).asStateFlow()
+    private val mutableAuthState = MutableStateFlow(user)
+    override val authState: StateFlow<AuthUser?> = mutableAuthState.asStateFlow()
+
+    fun setUser(user: AuthUser?) {
+      mutableAuthState.value = user
+    }
 
     override suspend fun signUpWithEmail(
         email: String,

@@ -19,7 +19,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
@@ -42,6 +44,7 @@ data class GroupWorkspaceUiState(
     val canCreateFolder: Boolean = false,
     val canEditItems: Boolean = false,
     val currentFolderName: String = "",
+    val folderHistory: List<String> = emptyList(),
 )
 
 class GroupWorkspaceViewModel(
@@ -233,74 +236,112 @@ class GroupWorkspaceViewModel(
     require(groupId.isNotBlank()) { "Group ID cannot be empty." }
 
     viewModelScope.launch {
-      try {
-        val uid = requireUid()
-
-        groupRepository.getGroupFlow(groupId).collect { group ->
-          val newRole =
-              when {
-                group?.gameMasterId == uid -> GroupWorkspaceRole.GAME_MASTER
-
-                group?.participantIds?.contains(uid) == true -> GroupWorkspaceRole.PLAYER
-
-                else -> null
-              }
-
-          if (newRole == null) {
-            role = null
+      authRepository.authState
+          .map { it?.uid }
+          .distinctUntilChanged()
+          .collectLatest { uid ->
             fetchJob?.cancel()
+            fetchJob = null
             fetchGeneration++
+            role = null
 
-            _uiState.update {
-              it.copy(
-                  items = emptyList(),
-                  currentFolderId = "",
-                  currentFolderName = "",
-                  canCreateFolder = false,
-                  canEditItems = false,
-                  loadState = LoadState.Error("You are no longer a member of this group."),
-              )
+            if (uid == null) {
+              _uiState.value = GroupWorkspaceUiState(loadState = LoadState.SignedOut)
+              return@collectLatest
             }
-            return@collect
-          }
 
-          val roleChanged = role != newRole
-          role = newRole
+            _uiState.value = GroupWorkspaceUiState(loadState = LoadState.Loading)
+            try {
+              groupRepository.getGroupFlow(groupId).collect { group ->
+                val newRole =
+                    when {
+                      group?.gameMasterId == uid -> GroupWorkspaceRole.GAME_MASTER
 
-          _uiState.update {
-            it.copy(
-                canCreateFolder = newRole == GroupWorkspaceRole.GAME_MASTER,
-                canEditItems = newRole == GroupWorkspaceRole.GAME_MASTER,
-            )
-          }
+                      group?.participantIds?.contains(uid) == true -> GroupWorkspaceRole.PLAYER
 
-          if (roleChanged || fetchJob == null) {
-            loadWorkspace()
+                      else -> null
+                    }
+
+                if (newRole == null) {
+                  role = null
+                  fetchJob?.cancel()
+                  fetchGeneration++
+
+                  _uiState.update {
+                    it.copy(
+                        items = emptyList(),
+                        currentFolderId = "",
+                        currentFolderName = "",
+                        folderHistory = emptyList(),
+                        canCreateFolder = false,
+                        canEditItems = false,
+                        loadState = LoadState.Error("You are no longer a member of this group."),
+                    )
+                  }
+                  return@collect
+                }
+
+                val roleChanged = role != newRole
+                role = newRole
+
+                _uiState.update {
+                  it.copy(
+                      canCreateFolder = newRole == GroupWorkspaceRole.GAME_MASTER,
+                      canEditItems = newRole == GroupWorkspaceRole.GAME_MASTER,
+                  )
+                }
+
+                if (roleChanged || fetchJob == null) {
+                  loadWorkspace()
+                }
+              }
+            } catch (e: CancellationException) {
+              throw e
+            } catch (e: Exception) {
+              role = null
+              fetchJob?.cancel()
+              fetchGeneration++
+              _uiState.update {
+                it.copy(
+                    currentUserId = "",
+                    items = emptyList(),
+                    currentFolderId = "",
+                    currentFolderName = "",
+                    folderHistory = emptyList(),
+                    canCreateFolder = false,
+                    canEditItems = false,
+                    loadState = LoadState.Error(e.message ?: "Unable to verify group membership."),
+                )
+              }
+            }
           }
-        }
-      } catch (e: CancellationException) {
-        throw e
-      } catch (e: Exception) {
-        role = null
-        fetchJob?.cancel()
-        fetchGeneration++
-        _uiState.update {
-          it.copy(
-              currentUserId = "",
-              items = emptyList(),
-              currentFolderId = "",
-              currentFolderName = "",
-              canCreateFolder = false,
-              canEditItems = false,
-              loadState = LoadState.Error(e.message ?: "Unable to verify group membership."),
-          )
-        }
-      }
     }
   }
 
+  /** Opens a child folder and records the current folder for back navigation. */
+  fun openFolder(folderId: String) {
+    val currentFolderId = _uiState.value.currentFolderId
+    if (folderId == currentFolderId) return
+
+    _uiState.update { state -> state.copy(folderHistory = state.folderHistory + currentFolderId) }
+    loadWorkspace(folderId, preserveFolderHistory = true)
+  }
+
+  /** Navigates to the previous folder, returning whether navigation occurred. */
+  fun navigateBack(): Boolean {
+    val history = _uiState.value.folderHistory
+    if (history.isEmpty()) return false
+
+    _uiState.update { it.copy(folderHistory = history.dropLast(1)) }
+    loadWorkspace(history.last(), preserveFolderHistory = true)
+    return true
+  }
+
   /** Observes the current folder, or the group root when folderId is empty. */
-  fun loadWorkspace(folderId: String = _uiState.value.currentFolderId) {
+  fun loadWorkspace(
+      folderId: String = _uiState.value.currentFolderId,
+      preserveFolderHistory: Boolean = false,
+  ) {
     if (role == null) return
     val requestGeneration = ++fetchGeneration
     fetchJob?.cancel()
@@ -308,6 +349,7 @@ class GroupWorkspaceViewModel(
     _uiState.update {
       it.copy(
           currentFolderId = folderId,
+          folderHistory = if (preserveFolderHistory) it.folderHistory else emptyList(),
           items = emptyList(),
           loadState = LoadState.Loading,
           errorMessage = "",
@@ -375,7 +417,6 @@ class GroupWorkspaceViewModel(
               it.copy(
                   items = visibleItems,
                   loadState = LoadState.Success,
-                  errorMessage = "",
               )
             }
           } catch (e: CancellationException) {
@@ -398,6 +439,11 @@ class GroupWorkspaceViewModel(
         throw e
       } catch (e: Exception) {
         if (requestGeneration == fetchGeneration) {
+          if (folderId.isNotEmpty() && repository.getFile(folderId).getOrNull() == null) {
+            loadWorkspace("")
+            showError("This folder is no longer available.")
+            return@launch
+          }
           _uiState.update {
             it.copy(
                 loadState = LoadState.Error(e.message ?: "Unable to load the group workspace."),
