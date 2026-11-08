@@ -317,24 +317,8 @@ class GroupWorkspaceViewModel(
     }
   }
 
-  /** Opens a child folder and records the current folder for back navigation. */
-  fun openFolder(folderId: String) {
-    val currentFolderId = _uiState.value.currentFolderId
-    if (folderId == currentFolderId) return
 
-    _uiState.update { state -> state.copy(folderHistory = state.folderHistory + currentFolderId) }
-    loadWorkspace(folderId, preserveFolderHistory = true)
-  }
-
-  /** Navigates to the previous folder, returning whether navigation occurred. */
-  fun navigateBack(): Boolean {
-    val history = _uiState.value.folderHistory
-    if (history.isEmpty()) return false
-
-    _uiState.update { it.copy(folderHistory = history.dropLast(1)) }
-    loadWorkspace(history.last(), preserveFolderHistory = true)
-    return true
-  }
+    
 
   /** Opens a child folder and records the current folder for back navigation. */
   fun openFolder(folderId: String) {
