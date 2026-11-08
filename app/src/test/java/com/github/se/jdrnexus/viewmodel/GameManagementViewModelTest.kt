@@ -177,7 +177,7 @@ class GameManagementViewModelTest {
     advanceUntilIdle()
 
     assertTrue(viewModel.uiState.value.groups.isEmpty())
-    assertEquals(GroupLoadState.SignedOut, viewModel.uiState.value.loadState)
+    assertEquals(GroupLoadState.Empty, viewModel.uiState.value.loadState)
     assertTrue(repository.activeUsers.isEmpty())
   }
 
@@ -342,7 +342,7 @@ class GameManagementViewModelTest {
     auth.currentUser.value = null
     advanceUntilIdle()
 
-    assertEquals(GroupLoadState.SignedOut, viewModel.uiState.value.loadState)
+    assertEquals(GroupLoadState.Empty, viewModel.uiState.value.loadState)
     assertEquals(GroupActionState.Idle, viewModel.uiState.value.createState)
     // The write is stuck on the gate. If it had not been cancelled, releasing the gate would let
     // it finish and report a success.

@@ -875,15 +875,6 @@ private fun WorkspaceContent(
       }
     }
 
-    LoadState.SignedOut -> {
-      Box(
-          Modifier.fillMaxSize(),
-          contentAlignment = Alignment.Center,
-      ) {
-        Text("Sign in to view this workspace.")
-      }
-    }
-
     is LoadState.Error -> {
 
       Box(

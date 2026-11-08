@@ -94,33 +94,31 @@ fun PersonalSpaceScreen(
       },
       bottomBar = { ScreenBottomBar(selectedTab = "Files", onTabSelected = onTabSelected) },
       floatingActionButton = {
-        if (uiState.loadState != LoadState.SignedOut) {
-          Box {
-            FloatingActionButton(
-                onClick = personalSpaceViewModel::onAddClicked,
-                shape = RoundedCornerShape(50),
-                containerColor = accentColor,
-                contentColor = themeColors.accentContent,
-            ) {
-              Icon(
-                  imageVector = Icons.Filled.Add,
-                  contentDescription = "Add item",
-                  tint = themeColors.accentContent,
-              )
-            }
-            DropdownMenu(
-                expanded = uiState.isAddMenuExpanded,
-                onDismissRequest = personalSpaceViewModel::onAddMenuDismissed,
-            ) {
-              DropdownMenuItem(
-                  text = { Text("New folder") },
-                  onClick = personalSpaceViewModel::onNewFolderSelected,
-              )
-              DropdownMenuItem(
-                  text = { Text("New file") },
-                  onClick = { personalSpaceViewModel.onNewFileSelected(onCreateFile) },
-              )
-            }
+        Box {
+          FloatingActionButton(
+              onClick = personalSpaceViewModel::onAddClicked,
+              shape = RoundedCornerShape(50),
+              containerColor = accentColor,
+              contentColor = themeColors.accentContent,
+          ) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = "Add item",
+                tint = themeColors.accentContent,
+            )
+          }
+          DropdownMenu(
+              expanded = uiState.isAddMenuExpanded,
+              onDismissRequest = personalSpaceViewModel::onAddMenuDismissed,
+          ) {
+            DropdownMenuItem(
+                text = { Text("New folder") },
+                onClick = personalSpaceViewModel::onNewFolderSelected,
+            )
+            DropdownMenuItem(
+                text = { Text("New file") },
+                onClick = { personalSpaceViewModel.onNewFileSelected(onCreateFile) },
+            )
           }
         }
       },
@@ -165,13 +163,6 @@ fun PersonalSpaceScreen(
           ) {
             CircularProgressIndicator(color = accentColor)
           }
-        }
-        LoadState.SignedOut -> {
-          Text(
-              text = "Sign in to view your files.",
-              color = secondaryText,
-              modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
-          )
         }
         is LoadState.Error -> {
           Column(
