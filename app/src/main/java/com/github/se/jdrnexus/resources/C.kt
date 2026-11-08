@@ -41,6 +41,7 @@ object C {
 
     const val map_screen = "map_screen"
     const val map_google_map = "map_google_map"
+    const val map_game_pin = "map_game_pin"
     const val map_city_search_field = "map_city_search_field"
     const val map_city_search_button = "map_city_search_button"
     const val map_filters_toggle = "map_filters_toggle"

@@ -4,15 +4,24 @@ package com.github.se.jdrnexus.ui.map
 
 import android.Manifest
 import android.app.Application
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.resources.C
@@ -29,6 +38,8 @@ import org.robolectric.Shadows.shadowOf
 @RunWith(AndroidJUnit4::class)
 class MapScreenTest {
   @get:Rule val composeTestRule = createComposeRule()
+
+  // ============ Search and filters ============
 
   @Test
   fun citySearchAndFiltersAreForwardedToViewModel() {
@@ -60,6 +71,45 @@ class MapScreenTest {
 
     assertEquals(false, mapVM.uiState.value.filtersExpanded)
     composeTestRule.onAllNodesWithTag(C.Tag.map_game_system_filter).assertCountEquals(0)
+  }
+
+  @Test
+  fun keyboardSearchKeySearchesOnlyANonBlankCity() {
+    val mapVM = FakeMapVM()
+    composeTestRule.setContent { SampleAppTheme { MapScreen(mapVM) } }
+    val cityField = composeTestRule.onNodeWithTag(C.Tag.map_city_search_field)
+
+    cityField.performImeAction()
+    assertEquals(null, mapVM.searchedCity)
+
+    cityField.performTextInput("Lausanne")
+    cityField.performImeAction()
+    assertEquals("Lausanne", mapVM.searchedCity)
+  }
+
+  @Test
+  fun clearingGameSystemFilterMatchesAnySystem() {
+    val mapVM =
+        FakeMapVM(
+            MapUiState(filtersExpanded = true, filters = MapFilters(gameSystem = "Pathfinder"))
+        )
+    composeTestRule.setContent { SampleAppTheme { MapScreen(mapVM) } }
+
+    composeTestRule.onNodeWithTag(C.Tag.map_game_system_filter).performTextClearance()
+
+    assertEquals(null, mapVM.uiState.value.filters.gameSystem)
+  }
+
+  // ============ Status and retry ============
+
+  @Test
+  fun loadingShowsProgressIndicator() {
+    val mapVM = FakeMapVM(MapUiState(loadingOperations = setOf(MapOperation.GAMES)))
+    composeTestRule.setContent { SampleAppTheme { MapScreen(mapVM) } }
+
+    composeTestRule
+        .onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate))
+        .assertIsDisplayed()
   }
 
   @Test
@@ -117,6 +167,8 @@ class MapScreenTest {
     assertEquals(1, mapVM.loadRequests)
   }
 
+  // ============ Selected game ============
+
   @Test
   fun selectedGameDetailsUseViewModelData() {
     val mapVM = FakeMapVM(MapUiState(games = listOf(SUNKEN_CROWN), selectedGame = SUNKEN_CROWN))
@@ -151,6 +203,44 @@ class MapScreenTest {
   }
 
   @Test
+  fun distanceFromUnnamedSearchedCityNamesItGenerically() {
+    val mapVM =
+        FakeMapVM(
+            MapUiState(
+                games = listOf(SUNKEN_CROWN),
+                selectedGame = SUNKEN_CROWN,
+                searchedCity = MapCoordinates(46.2044, 6.1432),
+            )
+        )
+    composeTestRule.setContent { SampleAppTheme { MapScreen(mapVM) } }
+
+    composeTestRule.onNodeWithText("3.5 km from searched city").assertIsDisplayed()
+  }
+
+  // ============ Pins ============
+  // Robolectric never draws inside the Google map, so the pins are rendered on their own.
+
+  @Test
+  fun gamePinGrowsWhenSelected() {
+    var selected by mutableStateOf(false)
+    composeTestRule.setContent { SampleAppTheme { GamePin(selected = selected) } }
+    composeTestRule.onNodeWithTag(C.Tag.map_game_pin).assertWidthIsEqualTo(36.dp)
+
+    selected = true
+
+    composeTestRule.onNodeWithTag(C.Tag.map_game_pin).assertWidthIsEqualTo(56.dp)
+  }
+
+  @Test
+  fun userLocationPinIsLabelledYou() {
+    composeTestRule.setContent { SampleAppTheme { UserLocationPin() } }
+
+    composeTestRule.onNodeWithText("You").assertIsDisplayed()
+  }
+
+  // ============ Navigation ============
+
+  @Test
   fun bottomNavigationForwardsSelectedTab() {
     val mapVM = FakeMapVM()
     var selectedTab: String? = null
@@ -162,6 +252,8 @@ class MapScreenTest {
 
     assertEquals("Files", selectedTab)
   }
+
+  // ============ Test data and fakes ============
 
   private companion object {
     val SUNKEN_CROWN =

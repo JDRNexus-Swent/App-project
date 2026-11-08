@@ -5,6 +5,7 @@ package com.github.se.jdrnexus.ui.map
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.VisibleForTesting
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -271,13 +272,19 @@ private fun rememberMarkerStateAt(coordinates: MapCoordinates): MarkerState =
 
 private fun MapCoordinates.toLatLng() = LatLng(latitude, longitude)
 
-/** Accent-colored pin for a campaign session: larger and filled, with a halo, when [selected]. */
+/**
+ * Accent-colored pin for a campaign session: larger and filled, with a halo, when [selected].
+ *
+ * Internal for tests only: Robolectric never draws inside the Google map, so tests render it alone.
+ */
+@VisibleForTesting
 @Composable
-private fun GamePin(selected: Boolean) {
+internal fun GamePin(selected: Boolean) {
   val colors = LocalAppUiColors.current
   Box(
       modifier =
-          Modifier.size(if (selected) 56.dp else 36.dp)
+          Modifier.testTag(C.Tag.map_game_pin)
+              .size(if (selected) 56.dp else 36.dp)
               .background(
                   if (selected) colors.accent.copy(alpha = 0.2f) else Color.Transparent,
                   CircleShape,
@@ -301,9 +308,12 @@ private fun GamePin(selected: Boolean) {
   }
 }
 
-/** Device-location dot with a translucent halo and a "You" label. */
+/**
+ * Device-location dot with a translucent halo and a "You" label. Internal for tests, as [GamePin].
+ */
+@VisibleForTesting
 @Composable
-private fun UserLocationPin() {
+internal fun UserLocationPin() {
   val colors = LocalAppUiColors.current
   Column(horizontalAlignment = Alignment.CenterHorizontally) {
     Box(

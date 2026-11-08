@@ -161,6 +161,10 @@ class MainActivityNavigationTest {
 
       waitForTag(C.Tag.map_screen)
       composeTestRule.onNodeWithTag(C.Tag.map_screen).assertIsDisplayed()
+
+      composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+      waitForTag(TestTags.TITLE)
+      composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
     } finally {
       MapRepositoryProvider.mapRepository = defaultMapRepository
     }
