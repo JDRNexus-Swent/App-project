@@ -50,7 +50,14 @@ Document ids come from Firestore's automatic id generator (`WorkspaceRepository.
 ### 1.5 Legacy data
 
 The move from `parentFolderIds` to `placements` is a **breaking change**. Documents written with the old schema (a `parentFolderIds` list, group roots typed `FOLDER`) are not supported and no migration exists: the project only holds test data, which is wiped.
- 
+
+### 1.6 Group membership list (`users/{userId}`)
+
+`users/{userId}` holds one field, `groupIds: List<String>`: the groups the user belongs to. It is a copy of `participantIds`, kept per user, because security rules cannot search: they read this document to know which groups the caller is in (reading shared documents, dice rolls, activities and shared lore, adding a document to a group).
+
+- A user can only read their own document.
+- It must always agree with the `participantIds` of the groups, so it is written **in the same batch** as the group: `createGroup` (the GM), `addUserToGroup` and `removeUserFromGroup` (the user concerned). The rules refuse the batch otherwise, and refuse any change that disagrees with the groups. One group is added or removed per write.
+- Groups created before this field existed are not supported (same policy as 1.5): wipe them, or backfill the field.
 ---
 
 ## 2. Group root (pseudo-root)
@@ -60,7 +67,7 @@ Every campaign group has one root document, created with the group.
 - `id == groupId`, `type == GROUP_ROOT`.
 - `ownerId` is the GM at creation time. **It is never used for authorization.** Authorization uses the group's `gameMasterId` / `participantIds`.
 - `name` is a **copy of the group name**. The group document is the source of truth.
-- **Creation:** `GroupRepository.createGroup` writes the group and its root in **one batch**, so a group never exists without its root.
+- **Creation:** `GroupRepository.createGroup` writes the group, its root and the GM's `users/{uid}` document (see 1.6) in **one batch**, so a group never exists without its root, nor a GM without membership.
 - **Renaming:** `GroupRepository.updateGroup` updates the group and renames the root in the same batch. It fails if the root does not exist (a group without root is a broken state, better seen than hidden).
 - `sharedGroupsIds == [groupId]` so members can read it through the standard group read rule.
 - `placements` is empty. This is the single exception to the invariant "keys of `placements` == `sharedGroupsIds`" (see 4).
@@ -111,7 +118,7 @@ Never use `arrayUnion` / `arrayRemove` on `sharedGroupsIds` alone, and never wri
 - The GM can prepare lore, monsters or rules with `isHidden = true`, then toggle the flag to reveal them during the session.
 - **`isHidden` is a display preference, not a security boundary.** Hidden documents are downloaded by every member and filtered client-side. Never store sensitive data relying on it.
 - Invariant: **a visible document has a visible parent** in that group. Hiding a container hides its descendants. Revealing a container does not reveal its children. Enforced by every write operation.
-- The owner of a document toggles its own placement. The GM may hide any document in the group, but only reveals their own **(proposed)**.
+- The owner of a document toggles its own placement. The GM may hide any document in the group, but only reveals their own. The rules do not enforce this (see 7.5): any member can change a placement.
 ### Operations
 
 - `setItemHidden(itemId, groupId, isHidden)`:
@@ -191,13 +198,18 @@ The two cascades differ on purpose: unsharing a folder follows what is **below i
 
 The UI must ask for confirmation before deleting a folder, showing how many documents are deleted.
 
-### 7.5 Required security-rule exceptions
+### 7.5 Security-rule exceptions
 
-Normally only the owner can write a document. The cascades above write documents the actor does not own, so the rules need two narrow exceptions, each verifying a **diff** (no other field may change):
+Normally only the owner can write a document. The cascades above write documents the actor does not own, so the rules contain two exceptions on top of the owner's own edits. In both, nothing but `placements` and `sharedGroupsIds` can change.
 
-1. **Unshare (GM):** the GM of group `G` may remove the key `G` from `placements` and `sharedGroupsIds` of any document.
-2. **Reattach (any member of `G`):** `placements[G].folderId` may change only if the previous parent **no longer belongs to `G` after the batch**: `!existsAfter(old) || !(G in getAfter(old).data.sharedGroupsIds)`. The new parent must be a container in `G`, and `isHidden` may only change from `false` to `true`.
-   **Known risk:** rules are limited in document-access calls (`get` / `exists` / `getAfter`) per request, and the limit is much lower for batched writes than the size of a batch. A large cascade could be refused by the rules even if it is under 500 writes. The emulator did not apply this limit in our tests, so it must be verified on a real Firestore (does accessing the same parent from several writes count once?). **Chosen fallback:** drop exception 2 and rely on tolerant reads (7.7), so no other user's document is written. Tolerant reads are not implemented yet.
+1. **Unshare (owner or GM):** a document leaves group `G` when `G` is removed from `placements` and `sharedGroupsIds` in the same write. Allowed for the owner, and for the GM of `G` on any document of the group.
+2. **Placement entry change (any member of `G`):** exactly one entry of `placements` changes, in a group the caller belongs to, and the set of groups does not change. This is what lets a cascade reattach other users' documents (new `folderId`) and hide their descendants (`isHidden`).
+
+**Known and accepted limit of exception 2.** The group id is a map key, and the rules cannot extract it from a diff, so they cannot check who changes what, nor what the entry becomes. Any member of `G` can therefore change the placement of any document of `G`: reveal a hidden one, hide a visible one, or point it to another parent. On this path the rules do not check the new parent, nor the "visible child, visible parent" invariant. They still guarantee that nothing else of the document changes: content, name, owner and the list of groups stay out of reach. This is accepted because `isHidden` is not a security boundary (section 5) and every member can already read the document. The effect is limited to display and tree structure.
+
+**Why it is this broad.** The narrow version (reattach only if the previous parent has left the group, new parent a container of `G`, `isHidden` only from `false` to `true`) needs the rules to name the group whose entry changed, which they cannot do.
+
+**Document-access limit.** Rules are limited in document-access calls (`get` / `exists` / `getAfter`): 20 per batched write. The current rules make few calls on the cascade paths, but the emulator does not apply this limit, so a large cascade must be checked once on a real Firestore project.
 
 ### 7.6 How the repository does it
 
@@ -214,22 +226,24 @@ Concurrent writes (a player placing a document in a folder at the moment it leav
  
 ---
 
-## 8. Permissions matrix (proposed)
+## 8. Permissions matrix
 
 "Owner" is the owner of the document concerned. "GM" is the group's GM, acting on any document of the group. The security rules are the source of truth; the client code currently checks the structure only, not who calls.
 
-| Action | Owner | GM | Other member | Non-member |
-|---|---|---|---|---|
-| Read a visible doc of the group | yes | yes | yes | no |
-| Read a hidden doc | yes | yes | no (UI) | no |
-| Create a new document in a visible container | yes | yes | yes | no |
-| Share an existing document into the group | own docs | own docs | own docs | no |
-| Hide / reveal own placement | yes | yes | no | no |
-| Hide another's placement | no | yes | no | no |
-| Unshare a document from the group (recursive for containers, see 7) | own docs | any doc | no | no |
-| Edit content / rename | yes | no | no | no |
-| Delete | yes | no | no | no |
-| Rename / delete / unshare `GROUP_ROOT` | no | no | no | no |
+| Action | Owner | GM | Other member                                                                  | Non-member |
+|---|---|---|-------------------------------------------------------------------------------|---|
+| Read a visible doc of the group | yes | yes | yes                                                                           | no |
+| Read a hidden doc | yes | yes | no (UI)                                                                       | no |
+| Create a new document in a visible container | yes | yes | yes                                                                           | no |
+| Share an existing document into the group | own docs | own docs | own docs                                                                      | no |
+| Hide / reveal a placement | yes | yes | yes (rules), no in the usage as the UI offers it to the owner and the GM only | no |
+| Unshare a document from the group (recursive for containers, see 7) | own docs | any doc | no                                                                            | no |
+| Edit content / rename | yes | no | no                                                                            | no |
+| Delete | yes | no | no                                                                            | no |
+| Rename / delete `GROUP_ROOT` | no | only together with its group | no                                                                            | no |
+| Unshare `GROUP_ROOT` | no | no | no                                                                            | no |
+
+The rules cannot tell who changes a placement entry (see 7.5): "who may hide or reveal" is enforced by the UI, not by the rules. Reattachments are a side effect of unsharing or deleting a container: they are performed on other users' documents by whoever triggers the cascade, through exception 2 of 7.5.
 
 Reattachments are a side effect of unsharing or deleting a container: they are performed on other users' documents by whoever triggers the cascade, and only through the exceptions of 7.5.
  
@@ -262,7 +276,8 @@ Reattachments are a side effect of unsharing or deleting a container: they are p
 | Visible child has a visible parent | yes | yes | | yes |
 | Only owner deletes | yes | | yes | emulator |
 | GM can unshare others' docs | exception 7.5.1 | yes | | emulator |
-| Reattach after unshare / delete | exception 7.5.2 | yes | | emulator |
+| Reattach after unshare / delete | yes, broad (7.5, exception 2) | yes | | emulator |
+| `users/{uid}.groupIds` agrees with `participantIds` | yes | same batch | | emulator |
 | Unshare and delete follow the same reattachment rules | | pure functions in `CascadeRules.kt` | | yes |
 | `GROUP_ROOT` immutable | yes | yes | yes | emulator |
 | Group and root names stay equal | | batch | | yes |
@@ -282,6 +297,7 @@ Rules and batch behavior must be tested with the **Firebase emulator** (member /
 - Tolerant reads (7.7) are not implemented yet.
 - The client does not check who calls an operation: this is the job of the security rules.
 - Moving documents between folders is not supported yet.
+- Placement entry changes are open to any member of the group (7.5, exception 2).
 ---
 ---
 *Note: The structure and technical constraints detailed in this document were formulated with the help of Claude Sonnet 5.5.*

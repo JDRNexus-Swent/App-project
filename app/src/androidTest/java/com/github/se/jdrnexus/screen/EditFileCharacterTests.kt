@@ -148,6 +148,7 @@ class EditFileCharacterTests {
     composeTestRule.onNodeWithTag("action_description_longbow").performTextClearance()
     composeTestRule.onNodeWithTag("action_description_longbow").performTextInput("A magic shot")
 
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.LIST).performScrollToKey("add-stat")
     composeTestRule.onNodeWithTag("add_entry_name").performTextInput("Perception")
     composeTestRule.onNodeWithTag("add_entry_value").performTextInput("14")
     composeTestRule.onNodeWithTag("confirm_add_stat").performScrollTo().performClick()
@@ -157,10 +158,12 @@ class EditFileCharacterTests {
     composeTestRule.onNodeWithTag("confirm_add_stat").performScrollTo().performClick()
     composeTestRule.onNodeWithText("Intelligence").assertIsDisplayed()
 
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.LIST).performScrollToKey("add-action")
     composeTestRule.onNodeWithTag("add_action_name").performTextInput("Hunter's Mark")
     composeTestRule.onNodeWithTag("add_action_description").performTextInput("Mark a target")
     composeTestRule.onNodeWithTag("confirm_add_action").performScrollTo().performClick()
     composeTestRule.onNodeWithText("Hunter's Mark").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.LIST).performScrollToKey("add-action")
     composeTestRule.onNodeWithTag("add_action_name").performTextInput("Healing Word")
     composeTestRule.onNodeWithTag("add_action_description").performTextInput("Restore hit points")
     composeTestRule.onNodeWithTag("confirm_add_action").performScrollTo().performClick()
