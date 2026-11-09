@@ -15,7 +15,8 @@ fun rememberNavigationHelper(navController: NavHostController): NavigationHelper
 
 /**
  * Wraps a [NavHostController] and ignores navigation requests made while a transition is running,
- * which prevents duplicate or conflicting navigation from rapid taps. Holds no state.
+ * which prevents duplicate or conflicting navigation from rapid taps. Assumes the app's root
+ * screen is Home or SignIn. Holds no state.
  */
 class NavigationHelper(private val navController: NavHostController) {
 
