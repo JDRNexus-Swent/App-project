@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Sonnet 5.5
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.utils
 
 import android.content.Context

@@ -12,6 +12,7 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
 
   companion object {
     private const val GROUPS_COLLECTION_PATH = "campaign_groups"
+    private const val USERS_COLLECTION_PATH = "users"
   }
 
   private val groupsCollection = firestore.collection(GROUPS_COLLECTION_PATH)
@@ -20,6 +21,9 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
   private val documentsCollection by lazy {
     firestore.collection(WorkspaceRepositoryFirestore.COLLECTION_PATH)
   }
+
+  // Created on first use, like documentsCollection.
+  private val usersCollection by lazy { firestore.collection(USERS_COLLECTION_PATH) }
 
   // ==========================================
   // GROUP MANAGEMENT
@@ -30,10 +34,15 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
   }
 
   override suspend fun createGroup(group: CampaignGroup): Result<Unit> = safeFirestoreRequest {
-    // The group and its root folder are written together: both exist or neither does.
+    // The group, its root folder and the GM's membership are written together: all or nothing.
     val batch = firestore.batch()
     batch.set(groupsCollection.document(group.id), group)
     batch.set(documentsCollection.document(group.id), rootFileOf(group))
+    batch.set(
+        usersCollection.document(group.gameMasterId),
+        mapOf("groupIds" to com.google.firebase.firestore.FieldValue.arrayUnion(group.id)),
+        com.google.firebase.firestore.SetOptions.merge(),
+    )
     batch.commit().await()
   }
 
@@ -46,7 +55,21 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
   }
 
   override suspend fun deleteGroup(groupId: String): Result<Unit> = safeFirestoreRequest {
-    groupsCollection.document(groupId).delete().await()
+    val group =
+        groupsCollection.document(groupId).get().await().toObject(CampaignGroup::class.java)
+            ?: return@safeFirestoreRequest
+    val batch = firestore.batch()
+    batch.delete(groupsCollection.document(groupId))
+    batch.delete(documentsCollection.document(groupId)) // the group's root folder
+
+    group.participantIds.forEach { userId ->
+      batch.update(
+          usersCollection.document(userId),
+          "groupIds",
+          com.google.firebase.firestore.FieldValue.arrayRemove(groupId),
+      )
+    }
+    batch.commit().await()
   }
 
   override suspend fun getGroup(groupId: String): Result<CampaignGroup> = safeFirestoreRequest {
@@ -62,20 +85,38 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
 
   override suspend fun addUserToGroup(groupId: String, userId: String): Result<Unit> =
       safeFirestoreRequest {
+        // The group and the user's own list of groups change together (see the security rules).
+        val batch = firestore.batch()
         // Use FieldValue.arrayUnion to safely add an item to an array without duplicates
-        groupsCollection
-            .document(groupId)
-            .update("participantIds", com.google.firebase.firestore.FieldValue.arrayUnion(userId))
-            .await()
+        batch.update(
+            groupsCollection.document(groupId),
+            "participantIds",
+            com.google.firebase.firestore.FieldValue.arrayUnion(userId),
+        )
+        batch.set(
+            usersCollection.document(userId),
+            mapOf("groupIds" to com.google.firebase.firestore.FieldValue.arrayUnion(groupId)),
+            com.google.firebase.firestore.SetOptions.merge(),
+        )
+        batch.commit().await()
       }
 
   override suspend fun removeUserFromGroup(groupId: String, userId: String): Result<Unit> =
       safeFirestoreRequest {
+        // The group and the user's own list of groups change together (see the security rules).
+        val batch = firestore.batch()
         // Use FieldValue.arrayRemove to safely remove an item from an array
-        groupsCollection
-            .document(groupId)
-            .update("participantIds", com.google.firebase.firestore.FieldValue.arrayRemove(userId))
-            .await()
+        batch.update(
+            groupsCollection.document(groupId),
+            "participantIds",
+            com.google.firebase.firestore.FieldValue.arrayRemove(userId),
+        )
+        batch.set(
+            usersCollection.document(userId),
+            mapOf("groupIds" to com.google.firebase.firestore.FieldValue.arrayRemove(groupId)),
+            com.google.firebase.firestore.SetOptions.merge(),
+        )
+        batch.commit().await()
       }
 
   /** Create the hidden root folder of [group]: same id, same name, shared with the group itself. */

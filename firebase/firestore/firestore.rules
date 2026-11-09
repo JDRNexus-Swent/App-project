@@ -1,62 +1,384 @@
 rules_version = '2';
+
+// JDRNexus security rules. Source of truth for the model: DATA_ARCHITECTURE.md.
+//
+// Collections:
+//   campaign_groups/{groupId}  a campaign (GM + participants), with sub-collections
+//   documents/{docId}          files, folders and group roots (JDRFile)
+//   users/{userId}             { groupIds }: the groups a user belongs to. Rules read it to know
+//                              the caller's groups (a query "array-contains G" cannot tell them
+//                              otherwise). It is kept consistent with campaign_groups below.
+//   map_sessions/{sessionId}   public session listings shown on the map (read-only for clients)
 service cloud.firestore {
   match /databases/{database}/documents {
-    /**
-     * Campaign group access policy:
-     * - Signed-in group members may read groups; membership queries must include participantIds.
-     * - A creator must make themselves both Game Master and a participant.
-     * - Only the existing Game Master may update or delete a group. Updates may change members,
-     *   but cannot transfer Game Master ownership or remove the Game Master from the group.
-     *
-     * Invitation codes are not implemented yet. Add rules for their data when that feature lands.
-     */
-    function isSignedIn() {
-      return request.auth != null;
+
+    // ------------------------------------------------------------------ identity and paths
+
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+
+    function groupPath(groupId) {
+      return /databases/$(database)/documents/campaign_groups/$(groupId);
+    }
+    function docPath(docId) {
+      return /databases/$(database)/documents/documents/$(docId);
+    }
+    function userPath(userId) {
+      return /databases/$(database)/documents/users/$(userId);
     }
 
-    function isValidGroup(groupId) {
-      return request.resource.data.id == groupId
-          && request.resource.data.name is string
-          && request.resource.data.description is string
-          && request.resource.data.gameMasterId is string
-          && request.resource.data.participantIds is list;
+    // Fields whose value differs between the stored document and the one being written.
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
     }
 
-    function isGroupMaster(group) {
-      return isSignedIn() && group.gameMasterId == request.auth.uid;
+    // Groups the caller belongs to. A user without a users document belongs to no group.
+    function userGroups() {
+      return exists(userPath(uid()))
+        ? get(userPath(uid())).data.get('groupIds', [])
+        : [];
+    }
+
+    // Stored vs written group sharing of the document being updated.
+    function oldGroups() { return resource.data.sharedGroupsIds; }
+    function newGroups() { return request.resource.data.sharedGroupsIds; }
+    function oldPlacements() { return resource.data.placements; }
+    function newPlacements() { return request.resource.data.placements; }
+
+    function isMember(groupId) { return groupId in userGroups(); }
+    function isGm(groupId) { return get(groupPath(groupId)).data.gameMasterId == uid(); }
+
+    // ------------------------------------------------------------------ documents: shapes
+
+    function isPlacement(p) {
+      return p is map
+        && p.keys().hasOnly(['folderId', 'isHidden'])
+        && p.keys().hasAll(['folderId', 'isHidden'])
+        && p.folderId is string
+        && p.folderId.size() > 0
+        && p.isHidden is bool;
+    }
+
+    // An item can sit in group g under folderId if folderId is the group root (its id is g) or a
+    // folder of g, and a visible item is never under a hidden folder. Checked on the state AFTER the
+    // batch, so a folder and its content can be added together.
+    function validParentInGroup(g, folderId, isHidden) {
+      return folderId == g
+        || parentAllows(g, isHidden, getAfter(docPath(folderId)).data);
+    }
+    function parentAllows(g, isHidden, parent) {
+      return parent.type == 'FOLDER'
+        && g in parent.sharedGroupsIds
+        && (isHidden || parent.placements[g].isHidden != true);
+    }
+
+    function isOwnedFolder(folder) {
+      return folder.type == 'FOLDER' && folder.ownerId == uid();
+    }
+
+    // ------------------------------------------------------------------ documents: create
+
+    function validNewDocument(docId) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['id', 'name', 'ownerId', 'sharedGroupsIds', 'placements',
+                               'personalParentId', 'type', 'content'])
+        && d.keys().hasAll(['name', 'ownerId', 'sharedGroupsIds', 'placements',
+                            'personalParentId', 'type', 'content'])
+        && d.get('id', docId) == docId
+        && d.name is string
+        && d.content is string
+        && d.ownerId == uid()
+        && d.type in ['FOLDER', 'TEXT', 'CHARACTER']
+        && d.personalParentId is string
+        && (d.personalParentId == ''
+            || (d.personalParentId != docId
+                && isOwnedFolder(getAfter(docPath(d.personalParentId)).data)))
+        && d.sharedGroupsIds is list
+        && d.placements is map
+        && d.sharedGroupsIds.size() == d.placements.size()
+        && d.placements.keys().toSet() == d.sharedGroupsIds.toSet()
+        && d.placements.size() <= 1
+        && (d.placements.size() == 0
+            || validInitialPlacement(docId, d.sharedGroupsIds[0], d.placements));
+    }
+
+    // A document created directly in a group.
+    function validInitialPlacement(docId, g, placements) {
+      return g in userGroups()
+        && isPlacement(placements[g])
+        && placements[g].folderId != docId
+        && validParentInGroup(g, placements[g].folderId, placements[g].isHidden);
+    }
+
+    // The root of a group, created in the same batch as the group itself.
+    function validGroupRoot(docId) {
+      let d = request.resource.data;
+      let group = getAfter(groupPath(docId)).data;
+      return d.keys().hasOnly(['id', 'name', 'ownerId', 'sharedGroupsIds', 'placements',
+                               'personalParentId', 'type', 'content'])
+        && d.get('id', docId) == docId
+        && d.type == 'GROUP_ROOT'
+        && group.gameMasterId == uid()
+        && d.ownerId == uid()
+        && d.name == group.name
+        && d.sharedGroupsIds == [docId]
+        && d.placements == {}
+        && d.personalParentId == ''
+        && d.content == '';
+    }
+
+    // ------------------------------------------------------------------ documents: update
+
+    // The owner edits the text of a file. Nothing else: group sharing changes only through the
+    // placement cases below, and moving a document in the personal tree is not supported.
+    function isOwnEdit() {
+      return resource.data.type != 'GROUP_ROOT'
+        && resource.data.ownerId == uid()
+        && changedKeys().hasOnly(['name', 'content'])
+        && request.resource.data.name is string
+        && request.resource.data.content is string;
+    }
+
+    // The GM renames the root together with the group (same batch).
+    function isGroupRootRename(docId) {
+      return resource.data.type == 'GROUP_ROOT'
+        && changedKeys().hasOnly(['name'])
+        && get(groupPath(docId)).data.gameMasterId == uid()
+        && getAfter(groupPath(docId)).data.name == request.resource.data.name;
+    }
+
+    // The owner adds one of their documents to a group they belong to.
+    function isPlacementAdd(docId) {
+      return resource.data.type != 'GROUP_ROOT'
+        && resource.data.ownerId == uid()
+        && changedKeys().hasOnly(['placements', 'sharedGroupsIds'])
+        && newGroups().size() == oldGroups().size() + 1
+        && validAddedPlacement(docId, newGroups()[newGroups().size() - 1]);
+    }
+    function validAddedPlacement(docId, g) {
+      return !(g in oldGroups())
+        && newGroups().hasAll(oldGroups())
+        && newPlacements().keys().toSet() == newGroups().toSet()
+        && newPlacements().diff(oldPlacements()).affectedKeys() == [g].toSet()
+        && g in userGroups()
+        && isPlacement(newPlacements()[g])
+        && newPlacements()[g].folderId != docId
+        && validParentInGroup(g, newPlacements()[g].folderId, newPlacements()[g].isHidden);
+    }
+
+    // A document leaves a group: its owner, or the GM of that group, removes the placement.
+    function isPlacementRemove() {
+      return resource.data.type != 'GROUP_ROOT'
+        && changedKeys().hasOnly(['placements', 'sharedGroupsIds'])
+        && oldGroups().size() == newGroups().size() + 1
+        && oldGroups().hasAll(newGroups())
+        && validRemovedPlacement(oldGroups().removeAll(newGroups())[0]);
+    }
+    function validRemovedPlacement(g) {
+      return newPlacements().keys().toSet() == newGroups().toSet()
+        && oldPlacements().diff(newPlacements()).affectedKeys() == [g].toSet()
+        && (resource.data.ownerId == uid() || get(groupPath(g)).data.gameMasterId == uid());
+    }
+
+    // One placement entry changes (hide / reveal, or reattach after a cascade), in a group the
+    // caller belongs to.
+    // KNOWN AND ACCEPTED LIMIT: the group id is a map key that rules cannot read, so this case
+    // cannot check who changes what. Any member of the group can change the placement of any
+    // document of that group (including revealing a hidden one or changing its parent). This is
+    // what lets the unshare / delete cascades reattach other users' documents. Nothing else of
+    // the document can change. See DATA_ARCHITECTURE.md, section 7.5.
+    function isPlacementEntryChange() {
+      return resource.data.type != 'GROUP_ROOT'
+        && changedKeys().hasOnly(['placements'])
+        && newPlacements().keys().toSet() == oldPlacements().keys().toSet()
+        && newPlacements().diff(oldPlacements()).affectedKeys().size() == 1
+        && newPlacements().diff(oldPlacements()).affectedKeys().hasOnly(userGroups());
+    }
+
+    match /documents/{docId} {
+      // Own documents, or documents shared in one of the caller's groups.
+      allow read: if signedIn()
+        && (resource.data.ownerId == uid()
+            || resource.data.sharedGroupsIds.hasAny(userGroups()));
+
+      allow create: if signedIn()
+        && (request.resource.data.type == 'GROUP_ROOT'
+            ? validGroupRoot(docId)
+            : validNewDocument(docId));
+
+      allow update: if signedIn()
+        && (isOwnEdit()
+            || isGroupRootRename(docId)
+            || isPlacementAdd(docId)
+            || isPlacementRemove()
+            || isPlacementEntryChange());
+
+      // Only the owner deletes. A group root only goes together with its group.
+      allow delete: if signedIn()
+        && (resource.data.type == 'GROUP_ROOT'
+            ? (get(groupPath(docId)).data.gameMasterId == uid() && !existsAfter(groupPath(docId)))
+            : resource.data.ownerId == uid());
+    }
+
+    // ------------------------------------------------------------------ campaign groups
+
+    // A new group has its creator as GM and only participant, and is created together with its
+    // root and with the creator's users document.
+    function validNewGroup(groupId) {
+      let g = request.resource.data;
+      return g.keys().hasOnly(['id', 'name', 'description', 'gameMasterId', 'participantIds'])
+        && g.keys().hasAll(['name', 'description', 'gameMasterId', 'participantIds'])
+        && g.get('id', groupId) == groupId
+        && g.name is string
+        && g.name.size() > 0
+        && g.description is string
+        && g.gameMasterId == uid()
+        && g.participantIds == [uid()]
+        && getAfter(docPath(groupId)).data.type == 'GROUP_ROOT'
+        && groupId in getAfter(userPath(uid())).data.get('groupIds', []);
+    }
+
+    // The GM edits name / description. The root is renamed in the same batch.
+    function isGroupMetadataEdit(groupId) {
+      return resource.data.gameMasterId == uid()
+        && changedKeys().hasOnly(['name', 'description'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.description is string
+        && getAfter(docPath(groupId)).data.name == request.resource.data.name;
+    }
+
+    // The GM adds a participant. The participant's users document is updated in the same batch.
+    function isParticipantAdded(groupId) {
+      let ids = request.resource.data.participantIds;
+      return resource.data.gameMasterId == uid()
+        && changedKeys().hasOnly(['participantIds'])
+        && ids.size() == resource.data.participantIds.size() + 1
+        && ids.hasAll(resource.data.participantIds)
+        && groupId in getAfter(userPath(ids[ids.size() - 1])).data.get('groupIds', []);
+    }
+
+    // The GM removes a participant, or a participant leaves. The GM cannot be removed.
+    function isParticipantRemoved(groupId) {
+      let ids = request.resource.data.participantIds;
+      return changedKeys().hasOnly(['participantIds'])
+        && resource.data.participantIds.size() == ids.size() + 1
+        && resource.data.participantIds.hasAll(ids)
+        && validRemoval(groupId, resource.data.participantIds.removeAll(ids)[0]);
+    }
+    function validRemoval(groupId, userId) {
+      return userId != resource.data.gameMasterId
+        && (uid() == userId || uid() == resource.data.gameMasterId)
+        && !(groupId in getAfter(userPath(userId)).data.get('groupIds', []));
     }
 
     match /campaign_groups/{groupId} {
-      // Membership is part of the query used by GroupRepositoryFirestore.getUserGroups.
-      allow read: if isSignedIn()
-          && request.auth.uid in resource.data.participantIds;
+      // Membership is part of the query used by GroupRepositoryFirestore.getUserGroups:
+      // membership queries must filter on participantIds.
+      allow read: if signedIn() && uid() in resource.data.participantIds;
+      allow create: if signedIn() && validNewGroup(groupId);
+      allow update: if signedIn()
+        && (isGroupMetadataEdit(groupId)
+            || isParticipantAdded(groupId)
+            || isParticipantRemoved(groupId));
+      allow delete: if signedIn() && resource.data.gameMasterId == uid();
 
-      // The creator must become the group's Game Master and a participant in the same write.
-      allow create: if isSignedIn()
-          && isValidGroup(groupId)
-          && request.resource.data.gameMasterId == request.auth.uid
-          && request.auth.uid in request.resource.data.participantIds;
+      // -- Sub-collection rules
 
-      // A Game Master may set updated group data, including adding/removing participants, while
-      // keeping the same document ID and Game Master identity.
-      allow update: if isGroupMaster(resource.data)
-          && isValidGroup(groupId)
-          && request.resource.data.gameMasterId == resource.data.gameMasterId
-          && request.auth.uid in request.resource.data.participantIds;
+      // Dice rolls: members read and add their own rolls. A roll is never edited or deleted.
+      // The rules cannot check that the result is honest, only that the shape is right.
+      match /dice_rolls/{rollId} {
+        allow read: if signedIn() && isMember(groupId);
+        allow create: if signedIn() && isMember(groupId)
+          && request.resource.data.keys().hasOnly(
+               ['userId', 'username', 'diceType', 'modifier', 'totalValue', 'timestamp'])
+          && request.resource.data.keys().hasAll(
+               ['userId', 'username', 'diceType', 'modifier', 'totalValue', 'timestamp'])
+          && request.resource.data.userId == uid()
+          && request.resource.data.username is string
+          && request.resource.data.username.size() > 0
+          && request.resource.data.username.size() <= 50
+          && request.resource.data.diceType is string
+          && request.resource.data.diceType.size() <= 20
+          && request.resource.data.modifier is int
+          && request.resource.data.totalValue is int
+          && request.resource.data.timestamp == request.time;   // @ServerTimestamp
+        allow update, delete: if false;
+      }
 
-      allow delete: if isGroupMaster(resource.data);
+      match /activities/{activityId} {
+        allow read: if signedIn() && isMember(groupId);
+        allow create: if signedIn() && isMember(groupId)
+          && request.resource.data.keys().hasOnly(
+               ['userId', 'playerName', 'action', 'diceResult', 'timestamp'])
+          && request.resource.data.keys().hasAll(
+               ['userId', 'playerName', 'action', 'diceResult', 'timestamp'])
+          && request.resource.data.userId == uid()
+          && request.resource.data.playerName is string
+          && request.resource.data.playerName.size() > 0
+          && request.resource.data.action is string
+          && request.resource.data.action.size() > 0
+          && (request.resource.data.diceResult == null
+              || request.resource.data.diceResult is string)
+          && request.resource.data.timestamp == request.time;   // FieldValue.serverTimestamp()
+        allow update, delete: if false;
+      }
+
+      match /gm_data/{dataId} {
+        allow read, write: if signedIn() && isGm(groupId);
+      }
+
+      match /gm_lore/{loreId} {
+        allow read: if signedIn()
+          && (isGm(groupId) || (isMember(groupId) && resource.data.isShared == true));
+        allow write: if signedIn() && isGm(groupId);
+      }
     }
+
+    // ------------------------------------------------------------------ users
+
+    function oldGroupIds() {
+      return resource == null ? [] : resource.data.get('groupIds', []);
+    }
+    function newGroupIds() { return request.resource.data.groupIds; }
+
+    // groupIds can only follow campaign_groups: one group added if the user is a participant after
+    // the batch, or removed if they no longer are (or the group is gone).
+    function isGroupAdded(userId) {
+      return newGroupIds().size() == oldGroupIds().size() + 1
+        && newGroupIds().hasAll(oldGroupIds())
+        && userId in getAfter(groupPath(newGroupIds().removeAll(oldGroupIds())[0])).data.participantIds;
+    }
+    function isGroupRemoved(userId) {
+      return oldGroupIds().size() == newGroupIds().size() + 1
+        && oldGroupIds().hasAll(newGroupIds())
+        && groupLacksUser(oldGroupIds().removeAll(newGroupIds())[0], userId);
+    }
+    function groupLacksUser(g, userId) {
+      return !existsAfter(groupPath(g))
+        || !(userId in getAfter(groupPath(g)).data.participantIds);
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && uid() == userId;
+      allow create, update: if signedIn()
+        && request.resource.data.keys().hasOnly(['groupIds'])
+        && request.resource.data.groupIds is list
+        && (isGroupAdded(userId) || isGroupRemoved(userId));
+    }
+
+    // ------------------------------------------------------------------ map
 
     // Public session listings shown on the map. Publishing listings is not implemented yet, so
     // clients cannot write them; add write rules when that feature lands.
     match /map_sessions/{sessionId} {
-      allow read: if isSignedIn();
+      allow read: if signedIn();
     }
 
-    // Preserve the existing workspace behavior; document-level access rules are outside this
-    // group-management change and need to account for both personal and shared-group documents.
-    match /documents/{documentId} {
-      allow read, write: if true;
+    // ------------------------------------------------------------------ everything else
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
