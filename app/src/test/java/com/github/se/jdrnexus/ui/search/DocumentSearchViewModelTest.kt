@@ -58,7 +58,11 @@ class DocumentSearchViewModelTest {
     assertEquals(DocumentSearchStatus.Loading, viewModel.uiState.value.status)
     idleMainLooperForSearch()
 
-    assertEquals(listOf(personalFile, nestedCharacter), viewModel.uiState.value.results)
+    assertEquals(
+        listOf(personalFile, nestedCharacter),
+        viewModel.uiState.value.results.map { it.file },
+    )
+    assertEquals(listOf("Campaign"), viewModel.uiState.value.results.last().folderPath)
     assertEquals(DocumentSearchStatus.Results, viewModel.uiState.value.status)
 
     viewModel.clearQuery()
@@ -201,7 +205,8 @@ class DocumentSearchViewModelTest {
     viewModel.onQueryChanged("hidden")
     idleMainLooperForSearch()
 
-    assertEquals(listOf(ownHiddenFile), viewModel.uiState.value.results)
+    assertEquals(listOf(ownHiddenFile), viewModel.uiState.value.results.map { it.file })
+    assertEquals(listOf("hidden-folder"), viewModel.uiState.value.results.single().folderPath)
   }
 
   @Test
@@ -261,7 +266,7 @@ class DocumentSearchViewModelTest {
     viewModel.onQueryChanged("Needle")
     idleMainLooperForSearch()
 
-    assertEquals(listOf(hidden, visible), viewModel.uiState.value.results)
+    assertEquals(listOf(hidden, visible), viewModel.uiState.value.results.map { it.file })
   }
 
   @Test
@@ -304,7 +309,10 @@ class DocumentSearchViewModelTest {
     viewModel.onQueryChanged("Needle")
     idleMainLooperForSearch()
 
-    assertEquals(listOf(ownDocument, visibleDocument), viewModel.uiState.value.results)
+    assertEquals(
+        listOf(ownDocument, visibleDocument),
+        viewModel.uiState.value.results.map { it.file },
+    )
   }
 
   private fun groupFile(

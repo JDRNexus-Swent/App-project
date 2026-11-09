@@ -102,7 +102,7 @@ class DocumentSearchViewModel(
     if (query.isNotBlank()) onQueryChanged(query)
   }
 
-  private suspend fun search(query: String): List<JDRFile> {
+  private suspend fun search(query: String): List<DocumentSearchResult> {
     val uid =
         authRepository.authState.first()?.uid ?: throw SearchException(SearchError.NOT_SIGNED_IN)
 
@@ -114,35 +114,40 @@ class DocumentSearchViewModel(
 
     return documents
         .asSequence()
-        .filter { it.type == DocumentType.TEXT || it.type == DocumentType.CHARACTER }
-        .filter { it.name.contains(query, ignoreCase = true) }
-        .sortedWith(compareBy<JDRFile> { it.name.lowercase() }.thenBy { it.id })
+        .filter { it.file.type == DocumentType.TEXT || it.file.type == DocumentType.CHARACTER }
+        .filter { it.file.name.contains(query, ignoreCase = true) }
+        .sortedWith(
+            compareBy<DocumentSearchResult> { it.file.name.lowercase() }.thenBy { it.file.id }
+        )
         .toList()
   }
 
-  private suspend fun collectPersonalDocuments(ownerId: String): List<JDRFile> {
-    val documents = mutableListOf<JDRFile>()
-    val pendingFolderIds = ArrayDeque<String>()
+  private suspend fun collectPersonalDocuments(ownerId: String): List<DocumentSearchResult> {
+    val documents = mutableListOf<DocumentSearchResult>()
+    val pendingFolders = ArrayDeque<Pair<String, List<String>>>()
     val visitedFolderIds = mutableSetOf<String>()
 
-    fun collect(items: List<JDRFile>) {
+    fun collect(items: List<JDRFile>, folderPath: List<String>) {
       items.forEach { item ->
-        documents.add(item)
+        documents.add(DocumentSearchResult(item, folderPath))
         if (item.isContainer() && visitedFolderIds.add(item.id)) {
-          pendingFolderIds.addLast(item.id)
+          pendingFolders.addLast(item.id to (folderPath + item.name))
         }
       }
     }
 
-    collect(repository.getPersonalRootFiles(ownerId).first())
-    while (pendingFolderIds.isNotEmpty()) {
-      val folderId = pendingFolderIds.removeFirst()
-      collect(repository.getPersonalFolderFiles(folderId, ownerId).first())
+    collect(repository.getPersonalRootFiles(ownerId).first(), emptyList())
+    while (pendingFolders.isNotEmpty()) {
+      val (folderId, folderPath) = pendingFolders.removeFirst()
+      collect(repository.getPersonalFolderFiles(folderId, ownerId).first(), folderPath)
     }
     return documents
   }
 
-  private suspend fun collectGroupDocuments(groupId: String, userId: String): List<JDRFile> {
+  private suspend fun collectGroupDocuments(
+      groupId: String,
+      userId: String,
+  ): List<DocumentSearchResult> {
     val groups = groupRepository ?: throw SearchException(SearchError.SEARCH_FAILED)
     val group = groups.getGroupFlow(groupId).first()
     val isGameMaster = group?.gameMasterId == userId
@@ -170,8 +175,6 @@ class DocumentSearchViewModel(
     }
 
     val files = documentsById.values.toList()
-    if (isGameMaster) return files
-
     val childrenByParent = files.groupBy { it.placements[groupId]?.folderId }
     val ownedDescendantMemo = mutableMapOf<String, Boolean>()
 
@@ -194,14 +197,29 @@ class DocumentSearchViewModel(
       return found
     }
 
-    return files.filter { item ->
-      canPlayerSee(
-          item = item,
-          userId = userId,
-          groupId = groupId,
-          documentsById = documentsById,
-          hasOwnedDescendant = ::hasOwnedDescendant,
-      )
+    val visibleFiles =
+        if (isGameMaster) files
+        else
+            files.filter { item ->
+              canPlayerSee(
+                  item = item,
+                  userId = userId,
+                  groupId = groupId,
+                  documentsById = documentsById,
+                  hasOwnedDescendant = ::hasOwnedDescendant,
+              )
+            }
+
+    return visibleFiles.map { item ->
+      val folderPath = mutableListOf<String>()
+      var parentId = item.placements[groupId]?.folderId
+      val visited = mutableSetOf<String>()
+      while (parentId != null && parentId != groupId && visited.add(parentId)) {
+        val parent = documentsById[parentId] ?: break
+        folderPath.add(parent.name)
+        parentId = parent.placements[groupId]?.folderId
+      }
+      DocumentSearchResult(item, folderPath.asReversed())
     }
   }
 
