@@ -55,7 +55,12 @@ class AuthRepositoryFirebase internal constructor(private val client: FirebaseAu
       throw cancellation
     } catch (usernameFailure: Exception) {
       val cleanup = withContext(NonCancellable) { cleanupCreatedAccount(createdUser.uid) }
-      currentCoroutineContext().ensureActive()
+      try {
+        currentCoroutineContext().ensureActive()
+      } catch (cancellation: CancellationException) {
+        cleanup.firstFailure()?.let { cancellation.addSuppressed(AuthOperationException(it)) }
+        throw cancellation
+      }
       if (cleanup.isSuccessful) {
         AuthResult.Failure(authErrorFor(usernameFailure))
       } else {

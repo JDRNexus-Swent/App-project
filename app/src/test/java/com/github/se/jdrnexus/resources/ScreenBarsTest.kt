@@ -67,6 +67,7 @@ class ScreenBarsTest {
       composeTestRule.onNodeWithTag(C.Tag.bottomTab(tab)).assertIsNotEnabled()
     }
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).assertIsSelected()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
     assertEquals(false, tabSelected)
   }
 }

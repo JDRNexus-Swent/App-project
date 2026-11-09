@@ -20,6 +20,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
@@ -37,13 +38,11 @@ import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 import com.google.firebase.FirebaseApp
-import io.mockk.coEvery
-import io.mockk.every
-import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -99,7 +98,7 @@ class MainActivityNavigationTest {
     val repository = FakeAuthRepository()
     showApp(repository)
 
-    assert(repository.authState.value == null)
+    assertEquals(null, repository.authState.value)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
@@ -107,15 +106,15 @@ class MainActivityNavigationTest {
     waitForTag(TestTags.TITLE)
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsNotDisplayed()
-    assert(repository.signInCalls == 1)
-    assert(repository.authState.value == FakeAuthRepository.TEST_USER)
+    assertEquals(1, repository.signInCalls)
+    assertEquals(FakeAuthRepository.TEST_USER, repository.authState.value)
 
     composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
     waitForTag(C.Tag.sign_in_sign_up)
     scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsNotDisplayed()
-    assert(repository.authState.value == null)
+    assertEquals(null, repository.authState.value)
   }
 
   @Test
@@ -123,7 +122,7 @@ class MainActivityNavigationTest {
     val repository = FakeAuthRepository()
     showApp(repository)
 
-    assert(repository.authState.value == null)
+    assertEquals(null, repository.authState.value)
     scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performClick()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_username).performTextInput("Ranger")
@@ -134,8 +133,8 @@ class MainActivityNavigationTest {
     waitForTag(TestTags.TITLE)
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotDisplayed()
-    assert(repository.signUpCalls == 1)
-    assert(repository.authState.value == FakeAuthRepository.TEST_USER)
+    assertEquals(1, repository.signUpCalls)
+    assertEquals(FakeAuthRepository.TEST_USER, repository.authState.value)
   }
 
   @Test
@@ -193,13 +192,14 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).assertIsNotEnabled()
     composeTestRule.onNodeWithTag(TestTags.PSPACEBUTTON).assertIsNotEnabled()
     composeTestRule.onNodeWithTag(TestTags.DICEBUTTON).performClick()
+    composeTestRule.onAllNodesWithTag(C.Tag.dice_offline_screen).assertCountEquals(0)
     repository.signOutResult?.complete(AuthResult.Success(Unit))
 
     waitForTag(C.Tag.sign_in_sign_up)
     scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsNotDisplayed()
-    assert(repository.authState.value == null)
+    assertEquals(null, repository.authState.value)
   }
 
   @Test
@@ -226,68 +226,32 @@ class MainActivityNavigationTest {
   }
 
   @Test
-  fun gameManagementTabsAndEditFileLoreReturnHomeAndOpenPersonalSpace() {
-    val repository = FakeAuthRepository()
-    val groupRepository =
-        mockk<GroupRepository> { every { getUserGroups(any()) } returns flowOf(emptyList()) }
-    val loreFile =
-        JDRFile(
-            id = "lore-1",
-            name = "The Kingdom",
-            type = DocumentType.TEXT,
-            content =
-                """{"version":1,"type":"lore","title":"The Kingdom","sections":[{"sectionID":"history","title":"History","content":"Founded long ago."}]}""",
-        )
-    val workspaceRepository =
-        mockk<WorkspaceRepository> {
-          every { getPersonalRootFiles(any()) } returns flowOf(listOf(loreFile))
-          coEvery { getFile(loreFile.id) } returns Result.success(loreFile)
-        }
-    val authViewModel = AuthViewModel(repository)
-    val gameManagementViewModel = GameManagementViewModel(groupRepository, repository)
-    val personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, repository)
-    val editFileViewModel = EditFileViewModel(workspaceRepository)
-    composeTestRule.setContent {
-      JDRNexusApp(
-          authViewModel = authViewModel,
-          gameManagementViewModel = gameManagementViewModel,
-          personalSpaceViewModel = personalSpaceViewModel,
-          editFileViewModel = editFileViewModel,
-      )
-    }
-    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
-    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
-    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
-    waitForTag(TestTags.TITLE)
-    personalSpaceViewModel.fetchItems("")
-
-    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
-    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
-    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
-    waitForTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
-    composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
-    composeTestRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_BUTTON).assertIsDisplayed()
-    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
-    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
+  fun homeTabOnCampaignsReturnsHome() {
+    showAuthenticatedApp()
 
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
-    composeTestRule.onAllNodesWithText("My Space").assertCountEquals(1)
-    composeTestRule.waitUntil(5_000) {
-      composeTestRule.onAllNodesWithText(loreFile.name).fetchSemanticsNodes().isNotEmpty()
-    }
+    waitForText("My Space")
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+    waitForTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+
+    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
+    composeTestRule
+        .onAllNodesWithTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
+        .assertCountEquals(0)
+  }
+
+  @Test
+  fun backFromLoreReturnsToPersonalSpace() {
+    val loreFile = showAuthenticatedApp()
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    waitForText(loreFile.name)
     composeTestRule.onNodeWithText(loreFile.name).performClick()
     waitForTag(EditFileLoreTestTags.LIST)
-    composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).assertIsDisplayed()
     composeTestRule.onNodeWithTag(EditFileLoreTestTags.BACK).performClick()
+
     composeTestRule.onAllNodesWithText("My Space").assertCountEquals(1)
-    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
-    waitForTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
-    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
-    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
   }
 
   private fun showApp(repository: FakeAuthRepository = FakeAuthRepository()) {
@@ -303,6 +267,41 @@ class MainActivityNavigationTest {
     composeTestRule.waitUntil(5_000) {
       composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
     }
+  }
+
+  private fun waitForText(text: String) {
+    composeTestRule.waitUntil(5_000) {
+      composeTestRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+    }
+  }
+
+  private fun showAuthenticatedApp(): JDRFile {
+    val repository = FakeAuthRepository()
+    val loreFile =
+        JDRFile(
+            id = "lore-1",
+            name = "The Kingdom",
+            type = DocumentType.TEXT,
+            content =
+                """{"version":1,"type":"lore","title":"The Kingdom","sections":[{"sectionID":"history","title":"History","content":"Founded long ago."}]}""",
+        )
+    val workspaceRepository = FakeWorkspaceRepository(loreFile)
+    val authViewModel = AuthViewModel(repository)
+    val personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, repository)
+    composeTestRule.setContent {
+      JDRNexusApp(
+          authViewModel = authViewModel,
+          gameManagementViewModel = GameManagementViewModel(FakeGroupRepository(), repository),
+          personalSpaceViewModel = personalSpaceViewModel,
+          editFileViewModel = EditFileViewModel(workspaceRepository),
+      )
+    }
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    waitForTag(TestTags.TITLE)
+    personalSpaceViewModel.fetchItems("")
+    return loreFile
   }
 
   private fun scrollToTag(containerTag: String, targetTag: String) {
@@ -352,5 +351,79 @@ class MainActivityNavigationTest {
     companion object {
       val TEST_USER = AuthUser(uid = "user-1", email = "hero@example.com", username = "Ranger")
     }
+  }
+
+  private class FakeGroupRepository : GroupRepository by UnusedGroupRepository {
+    override fun getUserGroups(userId: String) = flowOf(emptyList<CampaignGroup>())
+  }
+
+  private class FakeWorkspaceRepository(private val file: JDRFile) :
+      WorkspaceRepository by UnusedWorkspaceRepository {
+    override suspend fun getFile(fileId: String): Result<JDRFile?> =
+        Result.success(file.takeIf { it.id == fileId })
+
+    override fun getPersonalRootFiles(ownerId: String) = flowOf(listOf(file))
+  }
+
+  private companion object {
+    val UnusedGroupRepository =
+        object : GroupRepository {
+          override fun getNewGroupId() = error("Not used")
+
+          override suspend fun createGroup(group: CampaignGroup) = error("Not used")
+
+          override suspend fun updateGroup(group: CampaignGroup) = error("Not used")
+
+          override suspend fun deleteGroup(groupId: String) = error("Not used")
+
+          override suspend fun getGroup(groupId: String) = error("Not used")
+
+          override suspend fun addUserToGroup(groupId: String, userId: String) = error("Not used")
+
+          override suspend fun removeUserFromGroup(groupId: String, userId: String) =
+              error("Not used")
+
+          override fun getGroupFlow(groupId: String) = error("Not used")
+
+          override fun getUserGroups(userId: String) = error("Not used")
+        }
+
+    val UnusedWorkspaceRepository =
+        object : WorkspaceRepository {
+          override fun getNewUid() = error("Not used")
+
+          override suspend fun createFile(file: JDRFile) = error("Not used")
+
+          override suspend fun updateFile(file: JDRFile) = error("Not used")
+
+          override suspend fun deleteFile(fileId: String) = error("Not used")
+
+          override suspend fun getFile(fileId: String) = error("Not used")
+
+          override suspend fun removeItemFromGroup(
+              itemId: String,
+              groupId: String,
+              parentFolderId: String,
+          ) = error("Not used")
+
+          override suspend fun addItemToGroup(
+              itemId: String,
+              groupId: String,
+              folderId: String,
+              isHidden: Boolean,
+              includeContent: Boolean,
+          ) = error("Not used")
+
+          override suspend fun setItemHidden(itemId: String, groupId: String, isHidden: Boolean) =
+              error("Not used")
+
+          override fun getFileFlow(fileId: String) = error("Not used")
+
+          override fun getPersonalRootFiles(ownerId: String) = error("Not used")
+
+          override fun getPersonalFolderFiles(folderId: String, ownerId: String) = error("Not used")
+
+          override fun getGroupFolderFiles(folderId: String, groupId: String) = error("Not used")
+        }
   }
 }

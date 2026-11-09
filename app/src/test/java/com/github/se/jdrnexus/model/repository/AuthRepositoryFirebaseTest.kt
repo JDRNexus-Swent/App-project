@@ -130,6 +130,41 @@ class AuthRepositoryFirebaseTest {
   }
 
   @Test
+  fun cancellingSignUpDuringFailedCleanupPreservesCleanupError() = runBlocking {
+    val client =
+        FakeFirebaseAuthClient().apply {
+          usernameFailure = AuthError.NETWORK_ERROR
+          holdAccountDeletion = true
+          deleteFailure = AuthError.NETWORK_ERROR
+        }
+    val repository = AuthRepositoryFirebase(client)
+    var cancellation: CancellationException? = null
+
+    val signUp = launch {
+      try {
+        repository.signUpWithEmail("player@example.com", "password123", "Player")
+      } catch (failure: CancellationException) {
+        cancellation = failure
+      }
+    }
+    client.accountDeletionStarted.await()
+    signUp.cancel()
+    client.accountDeletionGate.complete(Unit)
+    signUp.join()
+
+    val thrownCancellation = requireNotNull(cancellation)
+    assertEquals(1, thrownCancellation.suppressed.size)
+    assertEquals(
+        AuthError.NETWORK_ERROR,
+        (thrownCancellation.suppressed.single() as AuthOperationException).error,
+    )
+    assertTrue(client.accountExists)
+    assertEquals(null, client.authState.value)
+    assertEquals(1, client.deleteAccountCalls)
+    assertEquals(1, client.signOutCalls)
+  }
+
+  @Test
   fun signInWithEmailReturnsCurrentAccount() = runBlocking {
     val client = FakeFirebaseAuthClient()
     val repository = AuthRepositoryFirebase(client)

@@ -1,7 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus
 
-import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.hasTestTag
@@ -12,7 +11,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.personalSpace.GroupRepositoryFirestore
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
@@ -22,8 +20,6 @@ import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
-import com.google.firebase.FirebaseApp
-import com.google.firebase.auth.FirebaseAuth
 import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -37,8 +33,7 @@ class MainActivityFirebaseNavigationTest {
 
   @Test
   fun returningFromSignUpToSignInKeepsSignInAvailable() {
-    val context = ApplicationProvider.getApplicationContext<Context>()
-    val firebaseAuth = emulatorAuth(context)
+    val firebaseAuth = FirebaseEmulatorTestUtils.getAuth()
 
     composeTestRule.setContent { JDRNexusApp() }
 
@@ -55,8 +50,7 @@ class MainActivityFirebaseNavigationTest {
 
   @Test
   fun emulatorRegistrationLogoutAndSignInNavigateBetweenScreens() {
-    val context = ApplicationProvider.getApplicationContext<Context>()
-    val firebaseAuth = emulatorAuth(context)
+    val firebaseAuth = FirebaseEmulatorTestUtils.getAuth()
 
     val email = "player-${UUID.randomUUID()}@example.com"
     composeTestRule.setContent { JDRNexusApp() }
@@ -93,8 +87,7 @@ class MainActivityFirebaseNavigationTest {
 
   @Test
   fun emulatorRegistrationNavigatesToGameManagementAndLogsOut() {
-    val context = ApplicationProvider.getApplicationContext<Context>()
-    val firebaseAuth = emulatorAuth(context)
+    val firebaseAuth = FirebaseEmulatorTestUtils.getAuth()
 
     val authRepository = AuthRepositoryFirebase(firebaseAuth)
     val authViewModel = AuthViewModel(authRepository)
@@ -133,17 +126,6 @@ class MainActivityFirebaseNavigationTest {
   private fun waitForTag(tag: String) {
     composeTestRule.waitUntil(5_000) {
       composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
-    }
-  }
-
-  private fun emulatorAuth(context: Context): FirebaseAuth {
-    val firebaseApp =
-        FirebaseApp.getApps(context).firstOrNull { it.name == FirebaseApp.DEFAULT_APP_NAME }
-            ?: FirebaseApp.initializeApp(context)
-            ?: error("FirebaseApp could not be initialized for the Auth emulator test.")
-    return FirebaseAuth.getInstance(firebaseApp).apply {
-      useEmulator("127.0.0.1", 9099)
-      signOut()
     }
   }
 

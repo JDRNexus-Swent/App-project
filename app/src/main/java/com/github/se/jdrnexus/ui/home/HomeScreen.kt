@@ -65,6 +65,8 @@ fun HomeScreen(
     onPersonalSpaceClick: () -> Unit = {},
     onDiceClick: () -> Unit = {},
     onGroupManagementClick: () -> Unit = {},
+    onHomeClick: () -> Unit = {},
+    onMapClick: (() -> Unit)? = null,
 ) {
 
   val uiState by viewModel.uiState.collectAsState()
@@ -125,10 +127,15 @@ fun HomeScreen(
             onTabSelected = { tab ->
               if (canNavigate()) {
                 when (tab) {
-                  "Home" -> Unit
+                  "Home" -> onHomeClick()
                   "Campaigns" -> onGroupManagementClick()
                   "Files" -> onPersonalSpaceClick()
-                  "Map" -> showComingSoon(context, "Map")
+                  "Map" ->
+                      if (onMapClick == null) {
+                        showComingSoon(context, "Map")
+                      } else {
+                        onMapClick()
+                      }
                 }
               }
             },

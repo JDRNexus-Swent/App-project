@@ -93,26 +93,49 @@ class HomeScreenS1Test {
   }
 
   @Test
-  fun bottomNavigationRoutesCampaignsAndFiles() {
+  fun bottomNavigationDispatchesSelectedTabAction() {
     var campaignsClicked = false
     var filesClicked = false
+    var homeClicked = false
+    var mapClicked = false
     composeTestRule.setContent {
       SampleAppTheme {
         HomeScreen(
             viewModel = createViewModel(),
             onGroupManagementClick = { campaignsClicked = true },
             onPersonalSpaceClick = { filesClicked = true },
+            onHomeClick = { homeClicked = true },
+            onMapClick = { mapClicked = true },
         )
       }
     }
 
-    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
-
     Assert.assertTrue(campaignsClicked)
+    Assert.assertFalse(filesClicked)
+    Assert.assertFalse(homeClicked)
+    Assert.assertFalse(mapClicked)
+
+    campaignsClicked = false
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
     Assert.assertTrue(filesClicked)
+    Assert.assertFalse(campaignsClicked)
+    Assert.assertFalse(homeClicked)
+    Assert.assertFalse(mapClicked)
+
+    filesClicked = false
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+    Assert.assertTrue(homeClicked)
+    Assert.assertFalse(campaignsClicked)
+    Assert.assertFalse(filesClicked)
+    Assert.assertFalse(mapClicked)
+
+    homeClicked = false
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
+    Assert.assertTrue(mapClicked)
+    Assert.assertFalse(campaignsClicked)
+    Assert.assertFalse(filesClicked)
+    Assert.assertFalse(homeClicked)
   }
 
   @Test

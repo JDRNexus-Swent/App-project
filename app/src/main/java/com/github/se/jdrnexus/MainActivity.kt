@@ -155,7 +155,9 @@ fun JDRNexusApp(
           }
         }
         // Return to the existing SignIn entry rather than pushing a duplicate.
-        val onSignInScreen: () -> Unit = { navigation.popBackStack(inclusive = false) }
+        val onSignInScreen: () -> Unit = {
+          navigation.popBackStack(AllRoutes.SignIn.name, inclusive = false)
+        }
         SignUpScreen(
             signUpViewModel = activeAuthViewModel,
             onRegister = onRegister,
@@ -218,7 +220,7 @@ fun JDRNexusApp(
             onManageGroup = { showComingSoon(context, "Group management") },
             onTabSelected = { tab ->
               when (tab) {
-                "Home" -> navigation.popBackStack()
+                "Home" -> navigation.popBackStack(AllRoutes.Home.name, inclusive = false)
                 "Campaigns" -> Unit
                 "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
                 "Map" -> showComingSoon(context, "Map")

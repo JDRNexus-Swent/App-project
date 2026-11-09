@@ -99,7 +99,7 @@ fun ScreenBottomBar(
     screenTabs.forEach { tab ->
       NavigationBarItem(
           selected = selectedTab == tab.label,
-          onClick = { if (enabled) onTabSelected(tab.label) },
+          onClick = { onTabSelected(tab.label) },
           enabled = enabled,
           icon = { Icon(tab.icon, contentDescription = null) },
           label = { Text(tab.label) },

@@ -6,6 +6,7 @@ import android.os.Looper
 import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -30,6 +31,7 @@ object FirebaseEmulatorTestUtils {
   private const val EMULATOR_APP_NAME = "EmulatorApp"
   private const val EMULATOR_HOST = "127.0.0.1"
   private const val EMULATOR_PORT = 8080
+  private const val AUTH_EMULATOR_PORT = 9099
 
   /** Firestore refuses batches of more than 500 writes. */
   private const val MAX_BATCH_SIZE = 500
@@ -70,6 +72,19 @@ object FirebaseEmulatorTestUtils {
       }
     }
     return firestore
+  }
+
+  /**
+   * Returns the default app's FirebaseAuth pointed to the Auth emulator and signed out. The default
+   * app is used because the app code reads FirebaseAuth.getInstance().
+   */
+  fun getAuth(): FirebaseAuth {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    if (FirebaseApp.getApps(context).isEmpty()) FirebaseApp.initializeApp(context)
+    return FirebaseAuth.getInstance().apply {
+      useEmulator(EMULATOR_HOST, AUTH_EMULATOR_PORT)
+      signOut()
+    }
   }
 
   /**
