@@ -288,12 +288,14 @@ class MainActivityNavigationTest {
     val workspaceRepository = FakeWorkspaceRepository(loreFile)
     val authViewModel = AuthViewModel(repository)
     val personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, repository)
+    val gameManagementViewModel = GameManagementViewModel(FakeGroupRepository(), repository)
+    val editFileViewModel = EditFileViewModel(workspaceRepository)
     composeTestRule.setContent {
       JDRNexusApp(
           authViewModel = authViewModel,
-          gameManagementViewModel = GameManagementViewModel(FakeGroupRepository(), repository),
+          gameManagementViewModel = gameManagementViewModel,
           personalSpaceViewModel = personalSpaceViewModel,
-          editFileViewModel = EditFileViewModel(workspaceRepository),
+          editFileViewModel = editFileViewModel,
       )
     }
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
