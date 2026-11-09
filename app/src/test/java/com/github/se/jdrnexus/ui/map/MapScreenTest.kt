@@ -24,6 +24,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import java.time.LocalDateTime
@@ -38,6 +39,8 @@ import org.robolectric.Shadows.shadowOf
 @RunWith(AndroidJUnit4::class)
 class MapScreenTest {
   @get:Rule val composeTestRule = createComposeRule()
+
+  private val context = ApplicationProvider.getApplicationContext<Application>()
 
   // ============ Search and filters ============
 
@@ -190,9 +193,15 @@ class MapScreenTest {
 
     composeTestRule.onNodeWithTag(C.Tag.map_selected_game_title).assertIsDisplayed()
     composeTestRule.onNodeWithText("The Sunken Crown").assertIsDisplayed()
-    composeTestRule.onNodeWithText("GM Alex").assertIsDisplayed()
-    composeTestRule.onNodeWithText("2 seats open").assertIsDisplayed()
-    composeTestRule.onNodeWithText("3.5 km from you").assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(context.getString(R.string.map_game_master, "Alex"))
+        .assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(context.resources.getQuantityString(R.plurals.map_seats_open, 2, 2))
+        .assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(context.getString(R.string.map_distance_from_you, 3.5))
+        .assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.map_view_game_details).performClick()
     assertEquals("session-1", viewedGameId)
   }
@@ -209,8 +218,12 @@ class MapScreenTest {
         )
     composeTestRule.setContent { SampleAppTheme { MapScreen(mapVM) } }
 
-    composeTestRule.onNodeWithText("3.5 km from Geneva").assertIsDisplayed()
-    composeTestRule.onAllNodesWithText("3.5 km from you").assertCountEquals(0)
+    composeTestRule
+        .onNodeWithText(context.getString(R.string.map_distance_from_place, 3.5, "Geneva"))
+        .assertIsDisplayed()
+    composeTestRule
+        .onAllNodesWithText(context.getString(R.string.map_distance_from_you, 3.5))
+        .assertCountEquals(0)
   }
 
   @Test
@@ -225,7 +238,19 @@ class MapScreenTest {
         )
     composeTestRule.setContent { SampleAppTheme { MapScreen(mapVM) } }
 
-    composeTestRule.onNodeWithText("3.5 km from searched city").assertIsDisplayed()
+    val searchedCity = context.getString(R.string.map_searched_city)
+    composeTestRule
+        .onNodeWithText(context.getString(R.string.map_distance_from_place, 3.5, searchedCity))
+        .assertIsDisplayed()
+  }
+
+  @Test
+  fun singleOpenSeatIsWrittenInSingular() {
+    val game = SUNKEN_CROWN.copy(availableSeats = 1)
+    val mapVM = FakeMapVM(MapUiState(games = listOf(game), selectedGame = game))
+    composeTestRule.setContent { SampleAppTheme { MapScreen(mapVM) } }
+
+    composeTestRule.onNodeWithText("1 seat open").assertIsDisplayed()
   }
 
   // ============ Pins ============
@@ -246,7 +271,7 @@ class MapScreenTest {
   fun userLocationPinIsLabelledYou() {
     composeTestRule.setContent { SampleAppTheme { UserLocationPin() } }
 
-    composeTestRule.onNodeWithText("You").assertIsDisplayed()
+    composeTestRule.onNodeWithText(context.getString(R.string.map_you)).assertIsDisplayed()
   }
 
   // ============ Navigation ============

@@ -67,6 +67,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -330,7 +332,7 @@ internal fun UserLocationPin() {
     }
     MapPanel(shape = RoundedCornerShape(8.dp)) {
       Text(
-          "You",
+          stringResource(R.string.map_you),
           modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
           color = colors.primaryText,
           style = MaterialTheme.typography.labelSmall,
@@ -375,13 +377,17 @@ private fun MapSearchBar(
             value = query,
             onValueChange = onQueryChange,
             modifier = Modifier.weight(1f).testTag(C.Tag.map_city_search_field),
-            label = { Text("Search a city") },
+            label = { Text(stringResource(R.string.map_search_city_label)) },
             leadingIcon = {
               IconButton(
                   onClick = onSearch,
                   modifier = Modifier.testTag(C.Tag.map_city_search_button),
               ) {
-                Icon(Icons.Default.Search, contentDescription = "Search city", tint = colors.accent)
+                Icon(
+                    Icons.Default.Search,
+                    contentDescription = stringResource(R.string.map_search_city_description),
+                    tint = colors.accent,
+                )
               }
             },
             singleLine = true,
@@ -403,7 +409,11 @@ private fun MapSearchBar(
             onClick = onToggleFilters,
             modifier = Modifier.testTag(C.Tag.map_filters_toggle),
         ) {
-          Icon(Icons.Default.Tune, contentDescription = "Show filters", tint = colors.accent)
+          Icon(
+              Icons.Default.Tune,
+              contentDescription = stringResource(R.string.map_show_filters_description),
+              tint = colors.accent,
+          )
         }
       }
       if (filtersExpanded) {
@@ -434,8 +444,8 @@ private fun MapFiltersPanel(
         value = filters.gameSystem.orEmpty(),
         onValueChange = { onFiltersChange(filters.copy(gameSystem = it.ifBlank { null })) },
         modifier = Modifier.weight(1f).testTag(C.Tag.map_game_system_filter),
-        label = { Text("Game system") },
-        placeholder = { Text("Any") },
+        label = { Text(stringResource(R.string.map_game_system_label)) },
+        placeholder = { Text(stringResource(R.string.map_game_system_any)) },
         singleLine = true,
         colors =
             OutlinedTextFieldDefaults.colors(
@@ -449,7 +459,7 @@ private fun MapFiltersPanel(
             ),
     )
     TextButton(onClick = onApply, modifier = Modifier.testTag(C.Tag.map_apply_filters)) {
-      Text("Apply", color = colors.accent)
+      Text(stringResource(R.string.map_apply_filters), color = colors.accent)
     }
   }
   Row(
@@ -457,7 +467,7 @@ private fun MapFiltersPanel(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.SpaceBetween,
   ) {
-    Text("Only games with open seats", color = colors.primaryText)
+    Text(stringResource(R.string.map_open_seats_only), color = colors.primaryText)
     Switch(
         checked = filters.onlyGamesWithAvailableSeats,
         onCheckedChange = { onFiltersChange(filters.copy(onlyGamesWithAvailableSeats = it)) },
@@ -496,7 +506,7 @@ private fun MapBottomOverlay(
       ) {
         Icon(
             Icons.Default.MyLocation,
-            contentDescription = "Use device location",
+            contentDescription = stringResource(R.string.map_use_device_location_description),
             tint = colors.accent,
         )
       }
@@ -505,11 +515,9 @@ private fun MapBottomOverlay(
       MapStatusBanner(isLoading = uiState.isLoading, status = uiState.status, onRetry = onRetry)
     }
     uiState.selectedGame?.let { game ->
-      // The ViewModel measures distances from the searched city when there is one.
-      val distanceOrigin = uiState.searchedCity?.let { it.label ?: "searched city" } ?: "you"
       SelectedGameCard(
           game = game,
-          distanceOrigin = distanceOrigin,
+          searchedCity = uiState.searchedCity,
           onViewDetails = { onViewGameDetails(game.id) },
       )
     }
@@ -549,7 +557,7 @@ private fun MapStatusBanner(
               onClick = { onRetry(it.operation) },
               modifier = Modifier.testTag(C.Tag.map_retry),
           ) {
-            Text("Retry", color = colors.accent)
+            Text(stringResource(R.string.map_retry), color = colors.accent)
           }
         }
       }
@@ -561,12 +569,13 @@ private fun MapStatusBanner(
  * Card of the selected [game], laid out as in the mockup: seats, title, game master, game system,
  * distance, date, and a button opening the game's details.
  *
- * @param distanceOrigin what the distance is measured from: "you" or the searched city.
+ * @param searchedCity the city the distance is measured from, from [MapUiState.searchedCity]; null
+ *   when it is measured from the user.
  */
 @Composable
 private fun SelectedGameCard(
     game: MapGameUiModel,
-    distanceOrigin: String,
+    searchedCity: MapCoordinates?,
     onViewDetails: () -> Unit,
 ) {
   val colors = LocalAppUiColors.current
@@ -586,13 +595,17 @@ private fun SelectedGameCard(
           horizontalArrangement = Arrangement.SpaceBetween,
       ) {
         Text(
-            "NEARBY ADVENTURE",
+            stringResource(R.string.map_nearby_adventure),
             color = colors.accent,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            "${game.availableSeats} seats open",
+            pluralStringResource(
+                R.plurals.map_seats_open,
+                count = game.availableSeats,
+                game.availableSeats,
+            ),
             color = colors.secondaryText,
             style = MaterialTheme.typography.labelSmall,
         )
@@ -604,7 +617,7 @@ private fun SelectedGameCard(
           style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Serif),
           modifier = Modifier.testTag(C.Tag.map_selected_game_title),
       )
-      GameInfo(Icons.Default.Person, "GM ${game.gameMasterName}")
+      GameInfo(Icons.Default.Person, stringResource(R.string.map_game_master, game.gameMasterName))
       Row(
           modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
           horizontalArrangement = Arrangement.SpaceBetween,
@@ -617,10 +630,19 @@ private fun SelectedGameCard(
               modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
           )
         }
-        game.distanceKm?.let {
+        game.distanceKm?.let { km ->
+          // The ViewModel measures distances from the searched city when there is one.
+          val distance =
+              if (searchedCity == null) stringResource(R.string.map_distance_from_you, km)
+              else
+                  stringResource(
+                      R.string.map_distance_from_place,
+                      km,
+                      searchedCity.label ?: stringResource(R.string.map_searched_city),
+                  )
           GameInfo(
               Icons.Default.LocationOn,
-              "${"%.1f".format(it)} km from $distanceOrigin",
+              distance,
               modifier = Modifier.testTag(C.Tag.map_selected_game_distance),
           )
         }
@@ -641,7 +663,7 @@ private fun SelectedGameCard(
               ),
           shape = RoundedCornerShape(12.dp),
       ) {
-        Text("View game details")
+        Text(stringResource(R.string.map_view_game_details))
         Spacer(Modifier.width(8.dp))
         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
       }

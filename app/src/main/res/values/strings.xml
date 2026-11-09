@@ -71,4 +71,24 @@
     <string name="workspace_empty_message">Add files to share them with the group.</string>
     <string name="workspace_folder_action">Folder</string>
     <string name="workspace_file_action">File</string>
+    <string name="map_you">You</string>
+    <string name="map_search_city_label">Search a city</string>
+    <string name="map_search_city_description">Search city</string>
+    <string name="map_show_filters_description">Show filters</string>
+    <string name="map_game_system_label">Game system</string>
+    <string name="map_game_system_any">Any</string>
+    <string name="map_apply_filters">Apply</string>
+    <string name="map_open_seats_only">Only games with open seats</string>
+    <string name="map_use_device_location_description">Use device location</string>
+    <string name="map_retry">Retry</string>
+    <string name="map_nearby_adventure">NEARBY ADVENTURE</string>
+    <plurals name="map_seats_open">
+        <item quantity="one">%1$d seat open</item>
+        <item quantity="other">%1$d seats open</item>
+    </plurals>
+    <string name="map_game_master">GM %1$s</string>
+    <string name="map_distance_from_you">%1$.1f km from you</string>
+    <string name="map_distance_from_place">%1$.1f km from %2$s</string>
+    <string name="map_searched_city">searched city</string>
+    <string name="map_view_game_details">View game details</string>
 </resources>
