@@ -8,6 +8,7 @@ import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,6 +56,8 @@ class PersonalSpaceViewModelTest {
     val folderFetchRequests = mutableListOf<String>()
     val createdFiles = mutableListOf<JDRFile>()
     val rootItemsFlow = MutableStateFlow(rootItems)
+    var createCancelled = false
+      private set
 
     /** Delays collection when configured; then keeps emitting repository updates. */
     private fun <T> gatedFlow(
@@ -90,7 +93,12 @@ class PersonalSpaceViewModelTest {
     /** Captures the exact file submitted and can simulate a create failure. */
     override suspend fun createFile(file: JDRFile): Result<Unit> {
       createdFiles.add(file)
-      createGate?.await()
+      try {
+        createGate?.await()
+      } catch (e: CancellationException) {
+        createCancelled = true
+        throw e
+      }
       return createFailure?.let { Result.failure(it) } ?: Result.success(Unit)
     }
 
@@ -503,20 +511,23 @@ class PersonalSpaceViewModelTest {
   }
 
   @Test
-  fun newFileCreationFailureSetsErrorAndDoesNotNavigate() {
-    val repository = FakePersonalSpaceRepository(createFailure = IllegalStateException(""))
-    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
+  fun newFileCreationIsCancelledOnSignOutWithoutNavigating() {
+    val createGate = CompletableDeferred<Unit>()
+    val repository = FakePersonalSpaceRepository(createGate = createGate)
+    val auth = FakeAuthRepository()
+    val viewModel = PersonalSpaceViewModel(repository, auth)
     idleMainLooper()
     var navigatedFileId: String? = null
 
     viewModel.onNewFileSelected { navigatedFileId = it }
+
+    auth.currentUser.value = null
+    idleMainLooper()
+    createGate.complete(Unit)
     idleMainLooper()
 
-    assertEquals(
-        LoadState.Error("Unable to create the character file."),
-        viewModel.uiState.value.loadState,
-    )
+    assertTrue(repository.createCancelled)
+    assertEquals(LoadState.SignedOut, viewModel.uiState.value.loadState)
     assertEquals(null, navigatedFileId)
-    assertEquals(1, repository.createdFiles.size)
   }
 }
