@@ -74,17 +74,28 @@ class MapScreenTest {
   }
 
   @Test
-  fun keyboardSearchKeySearchesOnlyANonBlankCity() {
+  fun keyboardSearchKeySearchesTheTypedCity() {
     val mapVM = FakeMapVM()
     composeTestRule.setContent { SampleAppTheme { MapScreen(mapVM) } }
     val cityField = composeTestRule.onNodeWithTag(C.Tag.map_city_search_field)
 
-    cityField.performImeAction()
-    assertEquals(null, mapVM.searchedCity)
-
     cityField.performTextInput("Lausanne")
     cityField.performImeAction()
+
     assertEquals("Lausanne", mapVM.searchedCity)
+  }
+
+  @Test
+  fun blankSearchIsForwardedSoViewModelCanReportIt() {
+    val mapVM = FakeMapVM()
+    composeTestRule.setContent { SampleAppTheme { MapScreen(mapVM) } }
+
+    composeTestRule.onNodeWithTag(C.Tag.map_city_search_button).performClick()
+    assertEquals("", mapVM.searchedCity)
+
+    mapVM.searchedCity = null
+    composeTestRule.onNodeWithTag(C.Tag.map_city_search_field).performImeAction()
+    assertEquals("", mapVM.searchedCity)
   }
 
   @Test

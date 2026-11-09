@@ -344,8 +344,9 @@ internal fun UserLocationPin() {
 /**
  * Floating city search field, with a toggle revealing the game filters.
  *
- * Searching is only possible with a non-blank query, from the search icon or the keyboard action.
- * Filter edits go to [onFiltersChange] and change the visible games only once applied.
+ * The search icon and the keyboard action always forward to [onSearch]: the ViewModel validates the
+ * query and reports a blank one in its status. Filter edits go to [onFiltersChange] and change the
+ * visible games only once applied.
  *
  * @param filtersExpanded whether the filter controls are shown, from [MapUiState.filtersExpanded].
  * @param onToggleFilters shows or hides the filter controls.
@@ -363,7 +364,6 @@ private fun MapSearchBar(
     modifier: Modifier = Modifier,
 ) {
   val colors = LocalAppUiColors.current
-  val canSearch = query.isNotBlank()
 
   MapPanel(modifier = modifier) {
     Column(
@@ -379,7 +379,6 @@ private fun MapSearchBar(
             leadingIcon = {
               IconButton(
                   onClick = onSearch,
-                  enabled = canSearch,
                   modifier = Modifier.testTag(C.Tag.map_city_search_button),
               ) {
                 Icon(Icons.Default.Search, contentDescription = "Search city", tint = colors.accent)
@@ -387,7 +386,7 @@ private fun MapSearchBar(
             },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { if (canSearch) onSearch() }),
+            keyboardActions = KeyboardActions(onSearch = { onSearch() }),
             colors =
                 OutlinedTextFieldDefaults.colors(
                     focusedTextColor = colors.primaryText,
