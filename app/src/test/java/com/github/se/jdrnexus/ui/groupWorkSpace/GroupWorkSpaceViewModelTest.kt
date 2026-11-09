@@ -1062,14 +1062,14 @@ class GroupWorkSpaceViewModelTest {
     runCurrent()
 
     assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-    assertTrue(viewModel.uiState.value.items.isNotEmpty())
+    assertEquals(listOf(groupFile("notes")), viewModel.uiState.value.items)
     assertTrue(viewModel.uiState.value.canCreateFolder)
 
     authRepository.setUser(null)
     runCurrent()
 
     assertEquals(LoadState.SignedOut, viewModel.uiState.value.loadState)
-    assertTrue(viewModel.uiState.value.items.isEmpty())
+    assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
     assertFalse(viewModel.uiState.value.canCreateFolder)
     assertFalse(viewModel.uiState.value.canEditItems)
   }

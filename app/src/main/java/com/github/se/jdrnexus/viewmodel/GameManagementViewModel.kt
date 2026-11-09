@@ -54,7 +54,7 @@ sealed interface GroupLoadState {
   /** The subscription emitted one or more groups. */
   data object Success : GroupLoadState
 
-  /** The subscription emitted an empty group list, or the user is signed out. */
+  /** The subscription emitted an empty group list. */
   data object Empty : GroupLoadState
 
   /**

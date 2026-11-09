@@ -251,70 +251,74 @@ class GroupWorkspaceViewModel(
             }
 
             _uiState.value = GroupWorkspaceUiState(loadState = LoadState.Loading)
-            try {
-              groupRepository.getGroupFlow(groupId).collect { group ->
-                val newRole =
-                    when {
-                      group?.gameMasterId == uid -> GroupWorkspaceRole.GAME_MASTER
-
-                      group?.participantIds?.contains(uid) == true -> GroupWorkspaceRole.PLAYER
-
-                      else -> null
-                    }
-
-                if (newRole == null) {
-                  role = null
-                  fetchJob?.cancel()
-                  fetchGeneration++
-
-                  _uiState.update {
-                    it.copy(
-                        items = emptyList(),
-                        currentFolderId = "",
-                        currentFolderName = "",
-                        folderHistory = emptyList(),
-                        canCreateFolder = false,
-                        canEditItems = false,
-                        loadState = LoadState.Error("You are no longer a member of this group."),
-                    )
-                  }
-                  return@collect
-                }
-
-                val roleChanged = role != newRole
-                role = newRole
-
-                _uiState.update {
-                  it.copy(
-                      canCreateFolder = newRole == GroupWorkspaceRole.GAME_MASTER,
-                      canEditItems = newRole == GroupWorkspaceRole.GAME_MASTER,
-                  )
-                }
-
-                if (roleChanged || fetchJob == null) {
-                  loadWorkspace()
-                }
-              }
-            } catch (e: CancellationException) {
-              throw e
-            } catch (e: Exception) {
-              role = null
-              fetchJob?.cancel()
-              fetchGeneration++
-              _uiState.update {
-                it.copy(
-                    currentUserId = "",
-                    items = emptyList(),
-                    currentFolderId = "",
-                    currentFolderName = "",
-                    folderHistory = emptyList(),
-                    canCreateFolder = false,
-                    canEditItems = false,
-                    loadState = LoadState.Error(e.message ?: "Unable to verify group membership."),
-                )
-              }
-            }
+            observeMembership(uid)
           }
+    }
+  }
+
+  private suspend fun observeMembership(uid: String) {
+    try {
+      groupRepository.getGroupFlow(groupId).collect { group ->
+        val newRole =
+            when {
+              group?.gameMasterId == uid -> GroupWorkspaceRole.GAME_MASTER
+
+              group?.participantIds?.contains(uid) == true -> GroupWorkspaceRole.PLAYER
+
+              else -> null
+            }
+
+        if (newRole == null) {
+          role = null
+          fetchJob?.cancel()
+          fetchGeneration++
+
+          _uiState.update {
+            it.copy(
+                items = emptyList(),
+                currentFolderId = "",
+                currentFolderName = "",
+                folderHistory = emptyList(),
+                canCreateFolder = false,
+                canEditItems = false,
+                loadState = LoadState.Error("You are no longer a member of this group."),
+            )
+          }
+          return@collect
+        }
+
+        val roleChanged = role != newRole
+        role = newRole
+
+        _uiState.update {
+          it.copy(
+              canCreateFolder = newRole == GroupWorkspaceRole.GAME_MASTER,
+              canEditItems = newRole == GroupWorkspaceRole.GAME_MASTER,
+          )
+        }
+
+        if (roleChanged || fetchJob == null) {
+          loadWorkspace()
+        }
+      }
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      role = null
+      fetchJob?.cancel()
+      fetchGeneration++
+      _uiState.update {
+        it.copy(
+            currentUserId = "",
+            items = emptyList(),
+            currentFolderId = "",
+            currentFolderName = "",
+            folderHistory = emptyList(),
+            canCreateFolder = false,
+            canEditItems = false,
+            loadState = LoadState.Error(e.message ?: "Unable to verify group membership."),
+        )
+      }
     }
   }
 

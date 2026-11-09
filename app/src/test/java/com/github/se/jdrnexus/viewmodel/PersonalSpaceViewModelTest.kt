@@ -49,6 +49,7 @@ class PersonalSpaceViewModelTest {
       private val createFailure: Exception? = null,
       private val fetchGate: CompletableDeferred<Unit>? = null,
       private val folderFetchGate: CompletableDeferred<Unit>? = null,
+      private val createGate: CompletableDeferred<Unit>? = null,
   ) : WorkspaceRepository {
     val requestedRootOwners = mutableListOf<String>()
     val folderFetchRequests = mutableListOf<String>()
@@ -89,6 +90,7 @@ class PersonalSpaceViewModelTest {
     /** Captures the exact file submitted and can simulate a create failure. */
     override suspend fun createFile(file: JDRFile): Result<Unit> {
       createdFiles.add(file)
+      createGate?.await()
       return createFailure?.let { Result.failure(it) } ?: Result.success(Unit)
     }
 
@@ -212,7 +214,7 @@ class PersonalSpaceViewModelTest {
   }
 
   @Test
-  fun authStateFailureCancelsFetchAndClearsFolderNavigation() {
+  fun authStateFailureClearsNavigationAndNavigateUpDoesNotFetch() {
     val authFailureGate = CompletableDeferred<Unit>()
     val folderFetchGate = CompletableDeferred<Unit>()
     val repository =
@@ -244,11 +246,38 @@ class PersonalSpaceViewModelTest {
 
     folderFetchGate.complete(Unit)
     idleMainLooper()
-    viewModel.onNavigateUp()
+    viewModel.onNavigateUp() // to call OnNavigateUp() and assert that  it do not fetch
     idleMainLooper()
 
     assertEquals(LoadState.Error("Unable to load items."), viewModel.uiState.value.loadState)
     assertEquals(listOf(ownerId), repository.requestedRootOwners)
+    assertEquals(listOf(rootFolder.id), repository.folderFetchRequests)
+  }
+
+  @Test
+  fun signingOutCancelsPendingWritesWithoutNavigatingOrReplacingSignedOutState() {
+    val writeGate = CompletableDeferred<Unit>()
+    val repository = FakePersonalSpaceRepository(createGate = writeGate)
+    val auth = FakeAuthRepository()
+    val viewModel = PersonalSpaceViewModel(repository, auth)
+    idleMainLooper()
+
+    viewModel.onNewFolderSelected()
+    viewModel.onNewFolderNameChanged("Pending folder")
+    viewModel.createFolder()
+    var navigatedToFile = false
+    viewModel.onNewFileSelected { navigatedToFile = true }
+    idleMainLooper()
+    assertEquals(2, repository.createdFiles.size)
+
+    auth.currentUser.value = null
+    idleMainLooper()
+    writeGate.complete(Unit)
+    idleMainLooper()
+
+    assertEquals(LoadState.SignedOut, viewModel.uiState.value.loadState)
+    assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
+    assertFalse(navigatedToFile)
   }
 
   /** Verifies folder entry, nested back navigation, and the exact repository fetch sequence. */
