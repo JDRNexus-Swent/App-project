@@ -340,6 +340,21 @@ class PersonalSpaceScreenTests {
   }
 
   @Test
+  fun signedOutStateShowsSignInMessageAndHidesAddAction() {
+    val viewModel =
+        PersonalSpaceViewModel(
+            FakeWorkspaceRepository(flowOf(files)),
+            FakeAuthRepository(initialUser = null),
+        )
+    setScreen(viewModel)
+
+    composeTestRule.onNodeWithText("Sign in to view your files.").assertIsDisplayed()
+    composeTestRule.onNodeWithText("0 items").assertIsDisplayed()
+    composeTestRule.onNodeWithContentDescription("Add item").assertDoesNotExist()
+    composeTestRule.onNodeWithText("The Ashen Realms").assertDoesNotExist()
+  }
+
+  @Test
   fun loadingStateShowsProgressIndicator() {
     val repository = FakeWorkspaceRepository(flow { awaitCancellation() })
     setScreen(PersonalSpaceViewModel(repository, FakeAuthRepository()))
@@ -519,9 +534,11 @@ class PersonalSpaceScreenTests {
     ): Result<Unit> = error("Not used")
   }
 
-  private class FakeAuthRepository : AuthRepository {
+  private class FakeAuthRepository(
+      initialUser: AuthUser? = AuthUser("test-user", "player@example.com", "Player")
+  ) : AuthRepository {
     private val user = AuthUser("test-user", "player@example.com", "Player")
-    override val authState: StateFlow<AuthUser?> = MutableStateFlow(user)
+    override val authState: StateFlow<AuthUser?> = MutableStateFlow(initialUser)
 
     override suspend fun signUpWithEmail(
         email: String,

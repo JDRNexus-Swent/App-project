@@ -12,11 +12,17 @@ import com.github.se.jdrnexus.model.personalSpace.isContainer
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -25,6 +31,8 @@ import kotlinx.coroutines.launch
 /** Backend state of the current fetch. Exactly one of these at a time. */
 sealed interface LoadState {
   data object Loading : LoadState
+
+  data object SignedOut : LoadState
 
   data object Success : LoadState
 
@@ -67,6 +75,22 @@ class PersonalSpaceViewModel(
    */
   private var fetchJob: Job? = null
 
+  /** Write actions that must stop when the authenticated user changes. */
+  private val actionJobs = mutableSetOf<Job>()
+
+  private fun cancelActions() {
+    val jobs = actionJobs.toList()
+    actionJobs.clear()
+    jobs.forEach(Job::cancel)
+  }
+
+  private fun launchAction(action: suspend () -> Unit) {
+    val job = viewModelScope.launch(start = CoroutineStart.LAZY) { action() }
+    actionJobs.add(job)
+    job.invokeOnCompletion { actionJobs.remove(job) }
+    job.start()
+  }
+
   /** UID of the signed-in user, read from the auth repository. */
   private suspend fun requireUid(): String =
       authRepository.authState.first()?.uid ?: throw IllegalStateException("You must be signed in.")
@@ -74,7 +98,29 @@ class PersonalSpaceViewModel(
   // ============ Fetching functions ============
 
   init {
-    fetchItems(personalParentId = "")
+    viewModelScope.launch {
+      authRepository.authState
+          .map { it?.uid }
+          .distinctUntilChanged()
+          .catch { failure ->
+            cancelActions()
+            fetchJob?.cancel()
+            navigationPath.clear()
+            val message = failure.message?.takeIf(String::isNotBlank) ?: "Unable to load items."
+            _uiState.value = PersonalSpaceUiState(loadState = LoadState.Error(message))
+          }
+          .collect { userId ->
+            cancelActions()
+            fetchJob?.cancel()
+            navigationPath.clear()
+            if (userId == null) {
+              fetchJob = null
+              _uiState.value = PersonalSpaceUiState(loadState = LoadState.SignedOut)
+            } else {
+              fetchItems(personalParentId = "")
+            }
+          }
+    }
   }
 
   /**
@@ -205,7 +251,7 @@ class PersonalSpaceViewModel(
       return
     }
 
-    viewModelScope.launch {
+    launchAction {
       try {
         val folder =
             JDRFile(
@@ -217,12 +263,14 @@ class PersonalSpaceViewModel(
                 type = DocumentType.FOLDER,
             )
         repository.createFile(folder).getOrThrow()
+        currentCoroutineContext().ensureActive()
         _uiState.update {
           it.copy(isNewFolderDialogOpen = false, newFolderName = "", newFolderError = "")
         }
       } catch (e: CancellationException) {
         throw e
       } catch (e: Exception) {
+        currentCoroutineContext().ensureActive()
         val message = e.message?.takeIf(String::isNotBlank) ?: "Unable to create the folder."
         _uiState.update { it.copy(newFolderError = message) }
       }
@@ -236,7 +284,7 @@ class PersonalSpaceViewModel(
   fun onNewFileSelected(navigateToEditFile: (fileId: String) -> Unit) {
     _uiState.update { it.copy(isAddMenuExpanded = false) }
     val parentFolderId = _uiState.value.currentFolderId
-    viewModelScope.launch {
+    launchAction {
       val file =
           try {
             JDRFile(
@@ -251,11 +299,13 @@ class PersonalSpaceViewModel(
           } catch (e: CancellationException) {
             throw e
           } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
             val message =
                 e.message?.takeIf(String::isNotBlank) ?: "Unable to create the character file."
             _uiState.update { it.copy(loadState = LoadState.Error(message)) }
-            return@launch
+            return@launchAction
           }
+      currentCoroutineContext().ensureActive()
       navigateToEditFile(file.id)
     }
   }

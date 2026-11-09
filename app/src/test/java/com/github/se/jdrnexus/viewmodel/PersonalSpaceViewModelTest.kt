@@ -8,10 +8,11 @@ import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onStart
 import org.junit.Assert.assertEquals
@@ -49,11 +50,14 @@ class PersonalSpaceViewModelTest {
       private val createFailure: Exception? = null,
       private val fetchGate: CompletableDeferred<Unit>? = null,
       private val folderFetchGate: CompletableDeferred<Unit>? = null,
+      private val createGate: CompletableDeferred<Unit>? = null,
   ) : WorkspaceRepository {
     val requestedRootOwners = mutableListOf<String>()
     val folderFetchRequests = mutableListOf<String>()
     val createdFiles = mutableListOf<JDRFile>()
     val rootItemsFlow = MutableStateFlow(rootItems)
+    var createCancelled = false
+      private set
 
     /** Delays collection when configured; then keeps emitting repository updates. */
     private fun <T> gatedFlow(
@@ -89,6 +93,12 @@ class PersonalSpaceViewModelTest {
     /** Captures the exact file submitted and can simulate a create failure. */
     override suspend fun createFile(file: JDRFile): Result<Unit> {
       createdFiles.add(file)
+      try {
+        createGate?.await()
+      } catch (e: CancellationException) {
+        createCancelled = true
+        throw e
+      }
       return createFailure?.let { Result.failure(it) } ?: Result.success(Unit)
     }
 
@@ -125,9 +135,12 @@ class PersonalSpaceViewModelTest {
   }
 
   private class FakeAuthRepository(
-      private val user: AuthUser = AuthUser("authenticated-user-42", "player@example.com", "Player")
+      private val authStateFlow: Flow<AuthUser?>? = null,
+      initialUser: AuthUser? = AuthUser("authenticated-user-42", "player@example.com", "Player"),
   ) : AuthRepository {
-    override val authState: StateFlow<AuthUser?> = MutableStateFlow(user)
+    private val user = AuthUser("authenticated-user-42", "player@example.com", "Player")
+    val currentUser = MutableStateFlow(initialUser)
+    override val authState: Flow<AuthUser?> = authStateFlow ?: currentUser
 
     override suspend fun signUpWithEmail(
         email: String,
@@ -181,6 +194,98 @@ class PersonalSpaceViewModelTest {
     repository.rootItemsFlow.value = listOf(rootFile)
     idleMainLooper()
     assertEquals(listOf(rootFile), viewModel.uiState.value.items)
+  }
+
+  @Test
+  fun signingOutClearsLoadedFilesAndFolderNavigation() {
+    val repository =
+        FakePersonalSpaceRepository(
+            rootItems = listOf(rootFolder, rootFile),
+            itemsByFolder = mapOf(rootFolder.id to listOf(nestedFile)),
+        )
+    val auth = FakeAuthRepository()
+    val viewModel = PersonalSpaceViewModel(repository, auth)
+    idleMainLooper()
+
+    viewModel.onItemClicked(rootFolder) {}
+    idleMainLooper()
+    assertEquals(listOf(nestedFile), viewModel.uiState.value.items)
+    assertTrue(viewModel.uiState.value.canNavigateUp)
+
+    auth.currentUser.value = null
+    idleMainLooper()
+
+    assertEquals(LoadState.SignedOut, viewModel.uiState.value.loadState)
+    assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertFalse(viewModel.uiState.value.canNavigateUp)
+  }
+
+  @Test
+  fun authStateFailureClearsNavigationAndNavigateUpDoesNotFetch() {
+    val authFailureGate = CompletableDeferred<Unit>()
+    val folderFetchGate = CompletableDeferred<Unit>()
+    val repository =
+        FakePersonalSpaceRepository(
+            rootItems = listOf(rootFolder),
+            folderFetchGate = folderFetchGate,
+        )
+    val failingAuthState = flow {
+      emit(AuthUser(ownerId, "player@example.com", "Player"))
+      authFailureGate.await()
+      throw IllegalStateException("")
+    }
+    val viewModel =
+        PersonalSpaceViewModel(repository, FakeAuthRepository(authStateFlow = failingAuthState))
+    idleMainLooper()
+
+    viewModel.onItemClicked(rootFolder) {}
+    idleMainLooper()
+    assertEquals(rootFolder.id, viewModel.uiState.value.currentFolderId)
+    assertTrue(viewModel.uiState.value.canNavigateUp)
+
+    authFailureGate.complete(Unit)
+    idleMainLooper()
+
+    assertEquals(LoadState.Error("Unable to load items."), viewModel.uiState.value.loadState)
+    assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertFalse(viewModel.uiState.value.canNavigateUp)
+
+    folderFetchGate.complete(Unit)
+    idleMainLooper()
+    viewModel.onNavigateUp() // to call OnNavigateUp() and assert that  it do not fetch
+    idleMainLooper()
+
+    assertEquals(LoadState.Error("Unable to load items."), viewModel.uiState.value.loadState)
+    assertEquals(listOf(ownerId), repository.requestedRootOwners)
+    assertEquals(listOf(rootFolder.id), repository.folderFetchRequests)
+  }
+
+  @Test
+  fun signingOutCancelsPendingWritesWithoutNavigatingOrReplacingSignedOutState() {
+    val writeGate = CompletableDeferred<Unit>()
+    val repository = FakePersonalSpaceRepository(createGate = writeGate)
+    val auth = FakeAuthRepository()
+    val viewModel = PersonalSpaceViewModel(repository, auth)
+    idleMainLooper()
+
+    viewModel.onNewFolderSelected()
+    viewModel.onNewFolderNameChanged("Pending folder")
+    viewModel.createFolder()
+    var navigatedToFile = false
+    viewModel.onNewFileSelected { navigatedToFile = true }
+    idleMainLooper()
+    assertEquals(2, repository.createdFiles.size)
+
+    auth.currentUser.value = null
+    idleMainLooper()
+    writeGate.complete(Unit)
+    idleMainLooper()
+
+    assertEquals(LoadState.SignedOut, viewModel.uiState.value.loadState)
+    assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
+    assertFalse(navigatedToFile)
   }
 
   /** Verifies folder entry, nested back navigation, and the exact repository fetch sequence. */
@@ -403,5 +508,26 @@ class PersonalSpaceViewModelTest {
     assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
     assertEquals("", viewModel.uiState.value.currentFolderId)
     assertFalse(viewModel.uiState.value.canNavigateUp)
+  }
+
+  @Test
+  fun newFileCreationIsCancelledOnSignOutWithoutNavigating() {
+    val createGate = CompletableDeferred<Unit>()
+    val repository = FakePersonalSpaceRepository(createGate = createGate)
+    val auth = FakeAuthRepository()
+    val viewModel = PersonalSpaceViewModel(repository, auth)
+    idleMainLooper()
+    var navigatedFileId: String? = null
+
+    viewModel.onNewFileSelected { navigatedFileId = it }
+
+    auth.currentUser.value = null
+    idleMainLooper()
+    createGate.complete(Unit)
+    idleMainLooper()
+
+    assertTrue(repository.createCancelled)
+    assertEquals(LoadState.SignedOut, viewModel.uiState.value.loadState)
+    assertEquals(null, navigatedFileId)
   }
 }
