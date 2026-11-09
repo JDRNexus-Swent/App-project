@@ -823,6 +823,17 @@ class GroupWorkSpaceScreenInstrumentedTest {
 
     override fun getUserGroups(userId: String): Flow<List<CampaignGroup>> =
         MutableStateFlow(listOf(group))
+
+    override suspend fun createInvitation(groupId: String, gameMasterId: String): Result<String> =
+        Result.success("INVITE")
+
+    override suspend fun regenerateInvitation(
+        groupId: String,
+        gameMasterId: String,
+    ): Result<String> = Result.success("NEWINV")
+
+    override suspend fun joinGroupWithCode(code: String, userId: String): Result<CampaignGroup> =
+        Result.success(group)
   }
 
   private companion object {

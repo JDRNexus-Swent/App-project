@@ -1448,6 +1448,21 @@ class GroupWorkSpaceViewModelTest {
           override suspend fun removeUserFromGroup(groupId: String, userId: String) =
               error("Not used")
 
+          override suspend fun createInvitation(
+              groupId: String,
+              gameMasterId: String,
+          ): Result<String> = error("Not used")
+
+          override suspend fun regenerateInvitation(
+              groupId: String,
+              gameMasterId: String,
+          ): Result<String> = error("Not used")
+
+          override suspend fun joinGroupWithCode(
+              code: String,
+              userId: String,
+          ): Result<CampaignGroup> = error("Not used")
+
           override fun getGroupFlow(groupId: String) = error("Not used")
 
           override fun getUserGroups(userId: String) = error("Not used")

@@ -95,4 +95,68 @@ interface GroupRepository {
    * @return A [Flow] emitting a list of [CampaignGroup] objects the user has access to.
    */
   fun getUserGroups(userId: String): Flow<List<CampaignGroup>>
+
+  // ==========================================
+  // INVITATIONS
+  // ==========================================
+
+  /**
+   * Returns the invitation code of a group, creating one if the group has none yet. Calling it
+   * again returns the same code: nothing is written when a code already exists.
+   *
+   * @param groupId The unique identifier of the group.
+   * @param gameMasterId The id of the user making the request. It must be the group's Game Master.
+   * @return A [Result] holding the code, or an [InvitationException] with [InvitationError]
+   *   NOT_SIGNED_IN, GROUP_NOT_FOUND, NOT_GAME_MASTER or NETWORK.
+   */
+  suspend fun createInvitation(groupId: String, gameMasterId: String): Result<String>
+
+  /**
+   * Replaces the invitation code of a group by a new one. The old code stops working immediately.
+   * If the group had no code, behaves like [createInvitation].
+   *
+   * @param groupId The unique identifier of the group.
+   * @param gameMasterId The id of the user making the request. It must be the group's Game Master.
+   * @return A [Result] holding the new code, or an [InvitationException] with [InvitationError]
+   *   NOT_SIGNED_IN, GROUP_NOT_FOUND, NOT_GAME_MASTER or NETWORK.
+   */
+  suspend fun regenerateInvitation(groupId: String, gameMasterId: String): Result<String>
+
+  /**
+   * Adds [userId] to the group the [code] points to, then returns that group.
+   *
+   * @param code The invitation code, as typed by the user (case and surrounding spaces are
+   *   ignored).
+   * @param userId The id of the user who wants to join.
+   * @return A [Result] holding the joined [CampaignGroup], or an [InvitationException] with
+   *   [InvitationError] NOT_SIGNED_IN, INVALID_CODE, UNKNOWN_CODE, GROUP_NOT_FOUND, ALREADY_MEMBER
+   *   or NETWORK.
+   */
+  suspend fun joinGroupWithCode(code: String, userId: String): Result<CampaignGroup>
 }
+
+enum class InvitationError {
+  /** The caller's user id is blank: nobody is signed in. */
+  NOT_SIGNED_IN,
+
+  /** The group does not exist (or its id is blank). */
+  GROUP_NOT_FOUND,
+
+  /** The caller is not the Game Master of the group (or the group does not exist). */
+  NOT_GAME_MASTER,
+
+  /** The code is malformed (wrong length or forbidden characters). No network call was made. */
+  INVALID_CODE,
+
+  /** No invitation exists for this code: it never existed or was revoked by a regeneration. */
+  UNKNOWN_CODE,
+
+  /** The user already belongs to the group the code points to. */
+  ALREADY_MEMBER,
+
+  /** Any other failure: network, timeout, permission or unexpected error. */
+  NETWORK,
+}
+
+/** Failure of an invitation operation. Every failed [Result] of those operations holds one. */
+class InvitationException(val error: InvitationError) : Exception(error.name)
