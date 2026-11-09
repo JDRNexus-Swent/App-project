@@ -39,9 +39,16 @@ sealed interface DocumentSearchStatus {
 }
 
 /** Observable data needed to render document search results and progress. */
+data class DocumentSearchResult(
+    val file: JDRFile,
+    /** Folder names from the workspace root to the folder containing [file]. */
+    val folderPath: List<String>,
+)
+
+/** Observable data needed to render document search results and progress. */
 data class DocumentSearchUiState(
     val query: String = "",
-    val results: List<JDRFile> = emptyList(),
+    val results: List<DocumentSearchResult> = emptyList(),
     val status: DocumentSearchStatus = DocumentSearchStatus.Blank,
 )
 
