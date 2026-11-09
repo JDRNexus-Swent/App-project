@@ -3,14 +3,12 @@ package com.github.se.jdrnexus
 
 import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavBackStackEntry
-import androidx.navigation.NavDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavOptions
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
-import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -111,21 +109,19 @@ class NavigationHelperTest {
   }
 
   @Test
-  fun inclusivePopOfRootDestinationIsRefused() {
+  fun inclusivePopOfHomeAndSignInIsRefused() {
     val fakeLifecycle = mockk<Lifecycle>()
     every { fakeLifecycle.currentState } returns Lifecycle.State.RESUMED
-    val rootDestination = mockk<NavDestination>()
-    every { rootDestination.route } returns "Home"
-    val rootEntry = mockk<NavBackStackEntry>()
-    every { rootEntry.destination } returns rootDestination
-    every { rootEntry.lifecycle } returns fakeLifecycle
+    val entry = mockk<NavBackStackEntry>()
+    every { entry.lifecycle } returns fakeLifecycle
     val navController = mockk<NavHostController>()
-    every { navController.currentBackStackEntry } returns rootEntry
-    every { navController.currentBackStack } returns MutableStateFlow(listOf(rootEntry))
+    every { navController.currentBackStackEntry } returns entry
     val navigation = NavigationHelper(navController)
 
-    assertFalse(navigation.popBackStack("Home", inclusive = true))
+    assertFalse(navigation.popBackStack(AllRoutes.Home.name, inclusive = true))
+    assertFalse(navigation.popBackStack(AllRoutes.SignIn.name, inclusive = true))
 
-    verify(exactly = 0) { navController.popBackStack("Home", true) }
+    verify(exactly = 0) { navController.popBackStack(AllRoutes.Home.name, true) }
+    verify(exactly = 0) { navController.popBackStack(AllRoutes.SignIn.name, true) }
   }
 }

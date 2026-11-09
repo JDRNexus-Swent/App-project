@@ -4,7 +4,6 @@ package com.github.se.jdrnexus
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.lifecycle.Lifecycle
-import androidx.navigation.NavGraph
 import androidx.navigation.NavHostController
 import androidx.navigation.NavOptionsBuilder
 import androidx.navigation.navOptions
@@ -33,9 +32,8 @@ class NavigationHelper(private val navController: NavHostController) {
   /**
    * Pops the back stack, or does nothing if a transition is in progress.
    *
-   * Refuses an inclusive pop of the root destination. Returns true if something was popped; false
-   * means the request was ignored or there was nothing to pop, so use [canGoBack] to decide on
-   * fallbacks.
+   * Refuses an inclusive pop of Home or SignIn. Returns true if something was popped; false means
+   * the request was ignored or there was nothing to pop, so use [canGoBack] to decide on fallbacks.
    */
   fun popBackStack(route: String? = null, inclusive: Boolean = false): Boolean {
     if (!canNavigate()) return false
@@ -45,14 +43,7 @@ class NavigationHelper(private val navController: NavHostController) {
       return navController.popBackStack()
     }
 
-    if (inclusive) {
-      val rootRoute =
-          navController.currentBackStack.value
-              .firstOrNull { it.destination !is NavGraph }
-              ?.destination
-              ?.route
-      if (route == rootRoute) return false
-    }
+    if (inclusive && route in setOf(AllRoutes.Home.name, AllRoutes.SignIn.name)) return false
     return navController.popBackStack(route, inclusive)
   }
 
