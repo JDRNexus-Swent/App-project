@@ -19,6 +19,10 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.model.map.MapGame
+import com.github.se.jdrnexus.model.map.MapLocation
+import com.github.se.jdrnexus.model.map.MapRepository
+import com.github.se.jdrnexus.model.map.MapRepositoryProvider
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
@@ -146,6 +150,33 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun mapTabOpensMapScreen() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    if (FirebaseApp.getApps(context).isEmpty()) checkNotNull(FirebaseApp.initializeApp(context))
+    // No real Firestore: the Map screen loads its games from a fake repository.
+    val defaultMapRepository = MapRepositoryProvider.mapRepository
+    MapRepositoryProvider.mapRepository = NoGamesMapRepository()
+    try {
+      showApp()
+      composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
+      composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+      composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+      waitForTag(TestTags.TITLE)
+
+      composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
+
+      waitForTag(C.Tag.map_screen)
+      composeTestRule.onNodeWithTag(C.Tag.map_screen).assertIsDisplayed()
+
+      composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+      waitForTag(TestTags.TITLE)
+      composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
+    } finally {
+      MapRepositoryProvider.mapRepository = defaultMapRepository
+    }
+  }
+
+  @Test
   fun campaignsNavigateToWorkspaceAndBack() {
     val groupRepository = navigationGroupRepository()
     showApp(groupRepository = groupRepository)
@@ -215,6 +246,10 @@ class MainActivityNavigationTest {
 
     waitForText("The Sunken Crown")
     assertEquals("group-1", groupRepository.lastGroupFlowId)
+  }
+
+  private class NoGamesMapRepository : MapRepository {
+    override suspend fun loadGamesNear(location: MapLocation?): List<MapGame> = emptyList()
   }
 
   private fun showApp(
