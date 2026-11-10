@@ -10,6 +10,7 @@ import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -257,7 +258,7 @@ class GroupWorkSpaceScreenInstrumentedTest {
   fun errorStateIsRendered() {
     val error = showScreen(WorkspaceFakeRepository(rootFailure = "Read denied"), Role.PLAYER)
     composeTestRule.waitUntil(5_000) { error.uiState.value.loadState is LoadState.Error }
-    composeTestRule.onNodeWithText("Read denied").assertIsDisplayed()
+    composeTestRule.onAllNodesWithText("Read denied").onFirst().assertIsDisplayed()
   }
 
   // Verifies Game Masters can create folders through the visible dialog workflow.
