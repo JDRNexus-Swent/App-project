@@ -30,6 +30,7 @@ import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
@@ -41,6 +42,10 @@ import com.github.se.jdrnexus.ui.edition.EditFileLoreTestTags
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
+import com.github.se.jdrnexus.ui.search.DocumentSearchInterfaceVM
+import com.github.se.jdrnexus.ui.search.DocumentSearchResult
+import com.github.se.jdrnexus.ui.search.DocumentSearchStatus
+import com.github.se.jdrnexus.ui.search.DocumentSearchUiState
 import com.github.se.jdrnexus.utils.NavigationGroupRepository
 import com.github.se.jdrnexus.utils.NavigationWorkspaceRepository
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
@@ -311,6 +316,36 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun groupWorkspaceSearchShowsGroupFilesAndBackReturnsToWorkspace() {
+    val groupRepository = navigationGroupRepository()
+    val loreFile =
+        JDRFile(
+            id = "shared-lore",
+            name = "Dragon Lore",
+            ownerId = "user-1",
+            type = DocumentType.TEXT,
+            content =
+                """{"version":1,"type":"lore","title":"Dragon Lore","sections":[{"sectionID":"history","title":"History","content":"A dragon."}]}""",
+            sharedGroupsIds = listOf("group-1"),
+            placements = mapOf("group-1" to Placement(folderId = "group-1", isHidden = false)),
+        )
+    showApp(
+        groupRepository = groupRepository,
+        workspaceRepository = NavigationWorkspaceRepository(listOf(loreFile)),
+    )
+    signInAndOpenCampaigns()
+
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
+    waitForText("The Sunken Crown")
+    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Dragon")
+    waitForTag(C.Tag.searchResult(loreFile.id))
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+    waitForText("The Sunken Crown")
+  }
+
+  @Test
   fun systemBackFromWorkspaceReturnsToCampaigns() {
     val groupRepository = navigationGroupRepository()
     showApp(groupRepository = groupRepository)
@@ -368,6 +403,32 @@ class MainActivityNavigationTest {
     assertEquals("group-1", groupRepository.lastGroupFlowId)
   }
 
+  @Test
+  fun personalSpaceSearchOpensEditorAndReturnsToPersonalSpace() {
+    val searchViewModel =
+        FakeSearchViewModel(
+            JDRFile(
+                id = "lore-1",
+                name = "The Kingdom",
+                ownerId = "user-1",
+                type = DocumentType.TEXT,
+            )
+        )
+    val loreFile = showAuthenticatedApp(searchViewModel)
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    waitForText(loreFile.name)
+    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Kingdom")
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(loreFile.id)).performClick()
+
+    waitForTag(EditFileLoreTestTags.LIST)
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.BACK).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+    waitForText(loreFile.name)
+  }
+
   private class NoGamesMapRepository : MapRepository {
     override suspend fun loadGamesNear(location: MapLocation?): List<MapGame> = emptyList()
   }
@@ -422,7 +483,9 @@ class MainActivityNavigationTest {
     }
   }
 
-  private fun showAuthenticatedApp(): JDRFile {
+  private fun showAuthenticatedApp(
+      documentSearchViewModel: DocumentSearchInterfaceVM? = null
+  ): JDRFile {
     val repository = FakeAuthRepository()
     val loreFile =
         JDRFile(
@@ -447,6 +510,7 @@ class MainActivityNavigationTest {
           authRepository = repository,
           groupRepository = groupRepository,
           workspaceRepository = workspaceRepository,
+          documentSearchViewModel = documentSearchViewModel,
       )
     }
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
@@ -504,6 +568,26 @@ class MainActivityNavigationTest {
     companion object {
       val TEST_USER = AuthUser(uid = "user-1", email = "hero@example.com", username = "Ranger")
     }
+  }
+
+  private class FakeSearchViewModel(private val file: JDRFile) : DocumentSearchInterfaceVM {
+    private val mutableUiState = MutableStateFlow(DocumentSearchUiState())
+    override val uiState: StateFlow<DocumentSearchUiState> = mutableUiState
+
+    override fun onQueryChanged(query: String) {
+      mutableUiState.value =
+          DocumentSearchUiState(
+              query = query,
+              results = listOf(DocumentSearchResult(file, emptyList())),
+              status = DocumentSearchStatus.Results,
+          )
+    }
+
+    override fun clearQuery() {
+      mutableUiState.value = DocumentSearchUiState()
+    }
+
+    override fun retry() = Unit
   }
 
   private class FakeGroupRepository : GroupRepository by UnusedGroupRepository {

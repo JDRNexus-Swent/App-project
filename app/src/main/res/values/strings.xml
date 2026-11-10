@@ -29,7 +29,6 @@
     <string name="edit_character_description_label">Description</string>
     <string name="edit_character_add_action">Add action</string>
     <string name="edit_character_action_label">Action</string>
-
     <!-- Game master screen -->
     <string name="game_gm_dice_cd">Roll dice</string>
     <string name="game_gm_header">Campaign · Game Master</string>
@@ -133,4 +132,15 @@
     <string name="map_distance_from_place">%1$.1f km from %2$s</string>
     <string name="map_searched_city">searched city</string>
     <string name="map_view_game_details">View game details</string>
+    <string name="search_title">Search</string>
+    <string name="search_open">Search documents</string>
+    <string name="search_hint">Search documents</string>
+    <string name="search_clear">Clear search</string>
+    <string name="search_blank_hint">Enter a document name to search.</string>
+    <string name="search_no_results">No matching documents found.</string>
+    <string name="search_retry">Retry</string>
+    <string name="search_personal_space_path">Personal Space</string>
+    <string name="search_error_not_signed_in">Sign in to search documents.</string>
+    <string name="search_error_group_access_denied">You do not have access to search this workspace.</string>
+    <string name="search_error_failed">Search could not be completed. Please try again.</string>
 </resources>
