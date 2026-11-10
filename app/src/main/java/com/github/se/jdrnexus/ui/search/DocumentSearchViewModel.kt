@@ -117,10 +117,20 @@ class DocumentSearchViewModel(
         .filter { it.file.type == DocumentType.TEXT || it.file.type == DocumentType.CHARACTER }
         .filter { it.file.name.contains(query, ignoreCase = true) }
         .sortedWith(
-            compareBy<DocumentSearchResult> { it.file.name.lowercase() }.thenBy { it.file.id }
+            compareBy<DocumentSearchResult> { matchRank(it.file.name, query) }
+                .thenBy { it.file.name.lowercase() }
+                .thenBy { it.file.id }
         )
         .toList()
   }
+
+  private fun matchRank(name: String, query: String): Int =
+      when {
+        name.equals(query, ignoreCase = true) -> 0
+        name.startsWith(query, ignoreCase = true) -> 1
+        name.split(Regex("\\s+")).any { it.startsWith(query, ignoreCase = true) } -> 2
+        else -> 3
+      }
 
   private suspend fun collectPersonalDocuments(ownerId: String): List<DocumentSearchResult> {
     val documents = mutableListOf<DocumentSearchResult>()

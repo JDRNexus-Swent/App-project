@@ -72,6 +72,32 @@ class DocumentSearchViewModelTest {
   }
 
   @Test
+  fun ranksExactPrefixWordPrefixAndSubstringMatchesBeforeAlphabeticalTies() {
+    val matchingFiles =
+        listOf(
+            JDRFile("substring", "Folklore"),
+            JDRFile("word-prefix-a", "Ancient Lore"),
+            JDRFile("prefix-b", "Lore Book"),
+            JDRFile("exact", "lore"),
+            JDRFile("prefix-a", "Lore Atlas"),
+            JDRFile("word-prefix-b", "Forgotten Lore"),
+        )
+    val viewModel =
+        DocumentSearchViewModel(
+            repository = FakeWorkspaceRepository(rootItems = matchingFiles),
+            authRepository = FakeAuthRepository(),
+        )
+
+    viewModel.onQueryChanged("lore")
+    idleMainLooperForSearch()
+
+    assertEquals(
+        listOf("exact", "prefix-a", "prefix-b", "word-prefix-a", "word-prefix-b", "substring"),
+        viewModel.uiState.value.results.map { it.file.id },
+    )
+  }
+
+  @Test
   fun retryRepeatsTheCurrentSearchAndBlankQueryDoesNotSearch() {
     val repository = FakeWorkspaceRepository(rootItems = listOf(personalFile))
     val viewModel =
