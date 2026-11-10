@@ -139,9 +139,10 @@ interface GroupRepository {
    */
   suspend fun joinGroupWithCode(code: String, userId: String): Result<CampaignGroup>
 }
+
 /**
- * Why an invitation operation failed. Carried by [InvitationException], which every failed
- * [Result] of the invitation operations holds.
+ * Why an invitation operation failed. Carried by [InvitationException], which every failed [Result]
+ * of the invitation operations holds.
  */
 enum class InvitationError {
   /** The caller's user id is blank: nobody is signed in. */

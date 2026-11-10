@@ -33,13 +33,14 @@ object InvitationCodes {
    * @return The normalized code. It is not checked: use [isValid] for that.
    */
   fun normalize(raw: String): String = raw.trim().uppercase()
+
   /**
-  * Tells whether [code] can be an invitation code: 6 to 8 characters, all from [ALPHABET]. This is
-  * checked before any network call, so a typo costs nothing.
-  *
-  * @param code The code, already normalized with [normalize].
-  * @return `true` if the format is valid. It does not mean the invitation exists.
-  */
+   * Tells whether [code] can be an invitation code: 6 to 8 characters, all from [ALPHABET]. This is
+   * checked before any network call, so a typo costs nothing.
+   *
+   * @param code The code, already normalized with [normalize].
+   * @return `true` if the format is valid. It does not mean the invitation exists.
+   */
   fun isValid(code: String): Boolean =
       code.length in MIN_ACCEPTED_LENGTH..MAX_ACCEPTED_LENGTH && code.all { it in ALPHABET }
 }
