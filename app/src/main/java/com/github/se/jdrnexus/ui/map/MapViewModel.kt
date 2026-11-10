@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.map
 
 import androidx.lifecycle.ViewModel
@@ -133,6 +134,10 @@ class MapViewModel(
           replaceOperation(MapOperation.DEVICE_LOCATION, MapOperation.GAMES)
           loadGamesNear(location, operationAlreadyStarted = true)
         }
+  }
+
+  override fun onFiltersExpandedChange(expanded: Boolean) {
+    _uiState.update { it.copy(filtersExpanded = expanded) }
   }
 
   override fun onFiltersChange(filters: MapFilters) {

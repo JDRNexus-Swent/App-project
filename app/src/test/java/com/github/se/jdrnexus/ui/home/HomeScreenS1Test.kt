@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.home
 
 import androidx.compose.material3.MaterialTheme
@@ -15,6 +16,7 @@ import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
+import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
@@ -135,6 +137,18 @@ class HomeScreenS1Test {
     composeTestRule.onNodeWithTag(TestTags.PSPACEBUTTON).performClick()
     composeTestRule.onNodeWithTag(TestTags.PSPACE_ICON, useUnmergedTree = true).assertIsDisplayed()
     composeTestRule.onNodeWithText("Personal Space").assertIsNotDisplayed()
+
+    Assert.assertTrue(clicked)
+  }
+
+  @Test
+  fun mapTabInvokesCallback() {
+    var clicked = false
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(createViewModel(), onMapClick = { clicked = true }) }
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
 
     Assert.assertTrue(clicked)
   }

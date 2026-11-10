@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.endToEnd
 
 import android.util.Log
@@ -15,6 +16,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.MainActivity
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
@@ -99,6 +101,8 @@ class CharacterEditionE2ETest {
 
     // name modification
     composeRule.onNodeWithTag("edit_character_name").performTextReplacement("E2E edited")
+    // Close the keyboard: while it slides in, it can cover the save button.
+    Espresso.closeSoftKeyboard()
 
     composeRule
         .onNodeWithTag(EditFileCharacterTestTags.LIST)

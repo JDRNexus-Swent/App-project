@@ -77,6 +77,28 @@ class GroupWorkSpaceScreenInstrumentedTest {
     composeTestRule.onNodeWithText("  ›  Ashen Realms").assertIsDisplayed()
   }
 
+  @Test
+  fun signingOutClearsWorkspaceAndHidesWorkspaceActions() {
+    val authRepository = FakeAuthRepository()
+    val viewModel =
+        showScreen(
+            WorkspaceFakeRepository(listOf(file("notes", "Notes", DocumentType.TEXT))),
+            Role.GAME_MASTER,
+            authRepository = authRepository,
+        )
+
+    composeTestRule.waitUntil(5_000) { viewModel.uiState.value.loadState == LoadState.Success }
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("notes"), true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_actions_fab, true).assertIsDisplayed()
+
+    authRepository.setUser(null)
+
+    composeTestRule.waitUntil(5_000) { viewModel.uiState.value.loadState == LoadState.SignedOut }
+    composeTestRule.onNodeWithText("Sign in to view this workspace.").assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(C.Tag.workspaceItem("notes"), true).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_actions_fab, true).assertCountEquals(0)
+  }
+
   // Verifies the shared bottom navigation destinations and selection behavior.
   @Test
   fun bottomNavigationShowsSharedTabsAndUpdatesSelection() {
@@ -602,6 +624,7 @@ class GroupWorkSpaceScreenInstrumentedTest {
       onTabSelected: (String) -> Unit = {},
       onItemClicked: ((JDRFile, Boolean) -> Unit)? = null,
       setContent: Boolean = true,
+      authRepository: FakeAuthRepository = FakeAuthRepository(),
   ): GroupWorkspaceViewModel {
     viewModelStore?.clear()
     val group =
@@ -616,7 +639,7 @@ class GroupWorkSpaceScreenInstrumentedTest {
             GROUP,
             FakeGroupRepository(group),
             repository,
-            FakeAuthRepository(),
+            authRepository,
         )
     viewModelStore = ViewModelStore().also { it.put("workspace", viewModel) }
     if (setContent) {
@@ -789,9 +812,15 @@ class GroupWorkSpaceScreenInstrumentedTest {
         }
   }
 
-  private class FakeAuthRepository : AuthRepository {
-    override val authState =
-        MutableStateFlow<AuthUser?>(AuthUser(USER, "user@example.com", "User")).asStateFlow()
+  private class FakeAuthRepository(
+      initialUser: AuthUser? = AuthUser(USER, "user@example.com", "User"),
+  ) : AuthRepository {
+    private val mutableAuthState = MutableStateFlow(initialUser)
+    override val authState = mutableAuthState.asStateFlow()
+
+    fun setUser(user: AuthUser?) {
+      mutableAuthState.value = user
+    }
 
     override suspend fun signUpWithEmail(email: String, password: String, username: String) =
         AuthResult.Failure(AuthError.UNKNOWN)
