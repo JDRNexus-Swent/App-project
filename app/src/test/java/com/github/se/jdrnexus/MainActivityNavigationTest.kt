@@ -245,7 +245,7 @@ class MainActivityNavigationTest {
     showAuthenticatedApp()
 
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
-    waitForText("My Space")
+    waitForText(PERSONAL_SPACE_TITLE)
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
     waitForTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
@@ -266,7 +266,7 @@ class MainActivityNavigationTest {
     waitForTag(EditFileLoreTestTags.LIST)
     composeTestRule.onNodeWithTag(EditFileLoreTestTags.BACK).performClick()
 
-    composeTestRule.onAllNodesWithText("My Space").assertCountEquals(1)
+    composeTestRule.onAllNodesWithText(PERSONAL_SPACE_TITLE).assertCountEquals(1)
   }
 
   @Test
@@ -521,6 +521,7 @@ class MainActivityNavigationTest {
   private companion object {
     const val SIGN_IN_SCROLL_CONTAINER = "sign_in_scroll_container"
     const val SIGN_UP_SCROLL_CONTAINER = "sign_up_scroll_container"
+    const val PERSONAL_SPACE_TITLE = "My Space"
 
     val UnusedGroupRepository =
         object : GroupRepository {

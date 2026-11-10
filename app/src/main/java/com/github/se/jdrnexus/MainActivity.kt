@@ -14,12 +14,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.semantics
@@ -31,7 +28,6 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
@@ -123,14 +119,6 @@ fun JDRNexusApp(
   val credentialManager = remember(context) { CredentialManager.create(context) }
   val navController = rememberNavController()
   val navigation = rememberNavigationHelper(navController)
-  val currentBackStackEntry by navController.currentBackStackEntryAsState()
-  var workspaceNavigationInProgress by remember { mutableStateOf(false) }
-
-  LaunchedEffect(currentBackStackEntry?.destination?.route) {
-    if (currentBackStackEntry?.destination?.route != AllRoutes.GroupManagement.name) {
-      workspaceNavigationInProgress = false
-    }
-  }
 
   // Create an editFileViewModel to be able to retreive the file for the edition screens
   val activeEditFileViewModel = editFileViewModel ?: viewModel()
@@ -233,7 +221,7 @@ fun JDRNexusApp(
                 "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
                 "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
                 "Files" -> Unit
-                "Map" -> navController.navigate(AllRoutes.Map.name)
+                "Map" -> navigation.navigate(AllRoutes.Map.name)
               }
             },
         )
@@ -260,11 +248,8 @@ fun JDRNexusApp(
         GameManagementScreen(
             gameManagementViewModel = activeGameManagementViewModel,
             onEnterWorkspace = { groupId ->
-              if (!workspaceNavigationInProgress) {
-                workspaceNavigationInProgress = true
-                navController.navigate(GroupWorkspaceRoute.createRoute(groupId)) {
-                  launchSingleTop = true
-                }
+              navigation.navigate(GroupWorkspaceRoute.createRoute(groupId)) {
+                launchSingleTop = true
               }
             },
             onManageGroup = { showComingSoon(context, "Group management") },
@@ -273,7 +258,7 @@ fun JDRNexusApp(
                 "Home" -> navigation.popBackStack(AllRoutes.Home.name, inclusive = false)
                 "Campaigns" -> Unit
                 "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
-                "Map" -> navController.navigate(AllRoutes.Map.name)
+                "Map" -> navigation.navigate(AllRoutes.Map.name)
               }
             },
         )
@@ -319,9 +304,9 @@ fun JDRNexusApp(
             mapVM = viewModel<MapViewModel>(factory = MapViewModel.Factory),
             onTabSelected = { tab ->
               when (tab) {
-                "Home" -> navController.popBackStack(AllRoutes.Home.name, false)
-                "Campaigns" -> navController.navigate(AllRoutes.GroupManagement.name)
-                "Files" -> navController.navigate(AllRoutes.PersoSpace.name)
+                "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
+                "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
+                "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
                 "Map" -> Unit
               }
             },
