@@ -429,6 +429,17 @@ class DocumentSearchViewModelTest {
     override suspend fun removeUserFromGroup(groupId: String, userId: String): Result<Unit> =
         Result.success(Unit)
 
+    override suspend fun createInvitation(groupId: String, gameMasterId: String): Result<String> =
+        Result.success("Not used")
+
+    override suspend fun regenerateInvitation(
+        groupId: String,
+        gameMasterId: String,
+    ): Result<String> = Result.success("Not used")
+
+    override suspend fun joinGroupWithCode(code: String, userId: String): Result<CampaignGroup> =
+        Result.failure(IllegalStateException("Not used"))
+
     override fun getGroupFlow(groupId: String): Flow<CampaignGroup?> = flowOf(group)
 
     override fun getUserGroups(userId: String): Flow<List<CampaignGroup>> =

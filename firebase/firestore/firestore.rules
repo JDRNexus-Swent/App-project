@@ -280,7 +280,10 @@ service cloud.firestore {
       allow update: if signedIn()
         && (isGroupMetadataEdit(groupId)
             || isParticipantAdded(groupId)
-            || isParticipantRemoved(groupId));
+            || isParticipantRemoved(groupId);
+            // TEMPORARY (#160): the GM writes inviteCode, a joiner adds themselves.
+            || changedKeys().hasOnly(['inviteCode'])
+            || changedKeys().hasOnly(['participantIds']));
       allow delete: if signedIn() && resource.data.gameMasterId == uid();
 
       // -- Sub-collection rules
@@ -373,6 +376,13 @@ service cloud.firestore {
     // clients cannot write them; add write rules when that feature lands.
     match /map_sessions/{sessionId} {
       allow read: if signedIn();
+    }
+
+
+    // TEMPORARY (invitation rules come with #160): any signed-in user can read/write
+    // invitations and their redemptions. To replace by real rules.
+    match /invitations/{document=**} {
+      allow read, write: if signedIn();
     }
 
     // ------------------------------------------------------------------ everything else
