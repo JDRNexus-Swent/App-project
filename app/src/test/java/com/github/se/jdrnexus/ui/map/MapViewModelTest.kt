@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.map
 
 import com.github.se.jdrnexus.model.map.MapGame
@@ -52,6 +53,18 @@ class MapViewModelTest {
         viewModel.uiState.value.status,
     )
     assertTrue(viewModel.uiState.value.games.isEmpty())
+  }
+
+  @Test
+  fun filterControlsStartHiddenAndCanBeShownThenHidden() = runTest {
+    val viewModel = MapViewModel(FakeMapRepository(), FakeMapLocationRepository())
+    assertFalse(viewModel.uiState.value.filtersExpanded)
+
+    viewModel.onFiltersExpandedChange(true)
+    assertTrue(viewModel.uiState.value.filtersExpanded)
+
+    viewModel.onFiltersExpandedChange(false)
+    assertFalse(viewModel.uiState.value.filtersExpanded)
   }
 
   @Test

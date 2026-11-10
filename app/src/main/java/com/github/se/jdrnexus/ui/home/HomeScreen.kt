@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.home
 
 import androidx.compose.foundation.layout.Arrangement
@@ -32,13 +33,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.ScreenBottomBar
-import com.github.se.jdrnexus.resources.showComingSoon
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
@@ -65,11 +64,11 @@ fun HomeScreen(
     onPersonalSpaceClick: () -> Unit = {},
     onDiceClick: () -> Unit = {},
     onGroupManagementClick: () -> Unit = {},
+    onMapClick: () -> Unit = {},
 ) {
 
   val uiState by viewModel.uiState.collectAsState()
   var logoutRequested by remember { mutableStateOf(false) }
-  val context = LocalContext.current
   val colors = LocalAppUiColors.current
 
   LaunchedEffect(uiState.status) {
@@ -122,7 +121,7 @@ fun HomeScreen(
                 "Home" -> Unit
                 "Campaigns" -> onGroupManagementClick()
                 "Files" -> onPersonalSpaceClick()
-                "Map" -> showComingSoon(context, "Map")
+                "Map" -> onMapClick()
               }
             },
         )
