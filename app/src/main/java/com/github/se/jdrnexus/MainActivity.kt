@@ -2,6 +2,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus
 
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -13,7 +14,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.semantics
@@ -25,10 +31,15 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.GroupRepositoryFirestore
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
+import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.showComingSoon
@@ -39,6 +50,8 @@ import com.github.se.jdrnexus.ui.dice.DiceOfflineScreen
 import com.github.se.jdrnexus.ui.edition.EditFileCharacter
 import com.github.se.jdrnexus.ui.edition.EditFileLore
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementScreen
+import com.github.se.jdrnexus.ui.groupWorkSpace.GroupWorkSpaceScreen
+import com.github.se.jdrnexus.ui.groupWorkSpace.GroupWorkspaceViewModel
 import com.github.se.jdrnexus.ui.home.HomeScreen
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
 import com.github.se.jdrnexus.ui.map.MapScreen
@@ -76,16 +89,43 @@ enum class AllRoutes {
   Map,
 }
 
+object GroupWorkspaceRoute {
+  const val route = "group_workspace/{groupId}"
+
+  const val groupIdArgument = "groupId"
+
+  fun createRoute(groupId: String): String {
+    return "group_workspace/${Uri.encode(groupId)}"
+  }
+}
+
 /**
  * The optional ViewModel injection lets navigation tests use the production screens with a
  * deterministic fake auth repository instead of Firebase.
  */
 @Composable
-fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
+fun JDRNexusApp(
+    authViewModel: AuthViewModel? = null,
+    authRepository: AuthRepository? = null,
+    groupRepository: GroupRepository? = null,
+    workspaceRepository: WorkspaceRepository? = null,
+) {
   val activeAuthViewModel = authViewModel ?: viewModel(factory = AuthViewModel.Factory)
+  val activeAuthRepository = authRepository ?: AuthRepositoryFirebase()
+  val activeGroupRepository =
+      groupRepository ?: GroupRepositoryFirestore(FirebaseFirestore.getInstance())
+  val activeWorkspaceRepository = workspaceRepository ?: WorkspaceRepositoryProvider.repository
   val context = LocalContext.current
   val credentialManager = remember(context) { CredentialManager.create(context) }
   val navController = rememberNavController()
+  val currentBackStackEntry by navController.currentBackStackEntryAsState()
+  var workspaceNavigationInProgress by remember { mutableStateOf(false) }
+
+  LaunchedEffect(currentBackStackEntry?.destination?.route) {
+    if (currentBackStackEntry?.destination?.route != AllRoutes.GroupManagement.name) {
+      workspaceNavigationInProgress = false
+    }
+  }
 
   // Create an editFileViewModel to be able to retreive the file for the edition screens
   val editFileViewModel: EditFileViewModel = viewModel()
@@ -208,16 +248,22 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
                     viewModelFactory {
                       initializer {
                         GameManagementViewModel(
-                            groupRepository =
-                                GroupRepositoryFirestore(FirebaseFirestore.getInstance()),
-                            authRepository = AuthRepositoryFirebase(),
+                            groupRepository = activeGroupRepository,
+                            authRepository = activeAuthRepository,
                         )
                       }
                     }
             )
         GameManagementScreen(
             gameManagementViewModel = gameManagementViewModel,
-            onEnterWorkspace = { showComingSoon(context, "Workspace") },
+            onEnterWorkspace = { groupId ->
+              if (!workspaceNavigationInProgress) {
+                workspaceNavigationInProgress = true
+                navController.navigate(GroupWorkspaceRoute.createRoute(groupId)) {
+                  launchSingleTop = true
+                }
+              }
+            },
             onManageGroup = { showComingSoon(context, "Group management") },
             onTabSelected = { tab ->
               when (tab) {
@@ -225,6 +271,41 @@ fun JDRNexusApp(authViewModel: AuthViewModel? = null) {
                 "Campaigns" -> Unit
                 "Files" -> navController.navigate(AllRoutes.PersoSpace.name)
                 "Map" -> navController.navigate(AllRoutes.Map.name)
+              }
+            },
+        )
+      }
+
+      composable(route = GroupWorkspaceRoute.route) { backStackEntry ->
+        val groupId =
+            requireNotNull(backStackEntry.arguments?.getString(GroupWorkspaceRoute.groupIdArgument))
+        val groupWorkspaceViewModel: GroupWorkspaceViewModel =
+            viewModel(
+                factory =
+                    viewModelFactory {
+                      initializer {
+                        GroupWorkspaceViewModel(
+                            groupId = groupId,
+                            groupRepository = activeGroupRepository,
+                            repository = activeWorkspaceRepository,
+                            authRepository = activeAuthRepository,
+                        )
+                      }
+                    }
+            )
+        val uiState by groupWorkspaceViewModel.uiState.collectAsState()
+        GroupWorkSpaceScreen(
+            gwViewModel = groupWorkspaceViewModel,
+            groupId = groupId,
+            groupName = uiState.groupName,
+            personalItems = uiState.personalFiles,
+            onBack = { navController.popBackStack() },
+            onTabSelected = { tab ->
+              when (tab) {
+                "Home" -> navController.popBackStack(AllRoutes.Home.name, false)
+                "Campaigns" -> navController.popBackStack()
+                "Files" -> navController.navigate(AllRoutes.PersoSpace.name)
+                "Map" -> showComingSoon(context, "Map")
               }
             },
         )
