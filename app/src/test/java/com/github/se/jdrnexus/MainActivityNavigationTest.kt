@@ -1,5 +1,4 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
-// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus
 
 import android.content.Context
@@ -9,17 +8,19 @@ import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.map.MapGame
 import com.github.se.jdrnexus.model.map.MapLocation
@@ -40,6 +41,8 @@ import com.github.se.jdrnexus.ui.edition.EditFileLoreTestTags
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
+import com.github.se.jdrnexus.utils.NavigationGroupRepository
+import com.github.se.jdrnexus.utils.NavigationWorkspaceRepository
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 import com.google.firebase.FirebaseApp
@@ -212,7 +215,14 @@ class MainActivityNavigationTest {
     val repository = FakeAuthRepository()
     repository.signOutFailure = IllegalStateException("Sign-out failed")
     val viewModel = AuthViewModel(repository)
-    composeTestRule.setContent { JDRNexusApp(authViewModel = viewModel) }
+    composeTestRule.setContent {
+      JDRNexusApp(
+          authViewModel = viewModel,
+          authRepository = repository,
+          groupRepository = FakeGroupRepository(),
+          workspaceRepository = NavigationWorkspaceRepository(),
+      )
+    }
 
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
@@ -286,18 +296,119 @@ class MainActivityNavigationTest {
     }
   }
 
+  @Test
+  fun campaignsNavigateToWorkspaceAndBack() {
+    val groupRepository = navigationGroupRepository()
+    showApp(groupRepository = groupRepository)
+    signInAndOpenCampaigns()
+
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
+    waitForText("The Sunken Crown")
+
+    composeTestRule.onNodeWithContentDescription("Go back").performClick()
+    waitForTag(C.Tag.enter_workspace_button)
+  }
+
+  @Test
+  fun systemBackFromWorkspaceReturnsToCampaigns() {
+    val groupRepository = navigationGroupRepository()
+    showApp(groupRepository = groupRepository)
+    signInAndOpenCampaigns()
+
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
+    waitForText("The Sunken Crown")
+
+    Espresso.pressBack()
+
+    waitForTag(C.Tag.enter_workspace_button)
+  }
+
+  @Test
+  fun rapidWorkspaceTapsCreateOneDestinationAndOneViewModel() {
+    val groupRepository = navigationGroupRepository()
+    showApp(groupRepository = groupRepository)
+    signInAndOpenCampaigns()
+
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performTouchInput {
+      repeat(10) { click() }
+    }
+
+    waitForText("The Sunken Crown")
+    assertEquals(1, groupRepository.groupFlowLoads)
+    assertEquals("group-1", groupRepository.lastGroupFlowId)
+  }
+
+  @Test
+  fun workspaceGroupIdSurvivesSavedStateRestoration() {
+    val groupRepository = navigationGroupRepository()
+    val authRepository = FakeAuthRepository()
+    val restorationTester = StateRestorationTester(composeTestRule)
+    val authViewModel = AuthViewModel(authRepository)
+    val workspaceRepository = NavigationWorkspaceRepository()
+
+    restorationTester.setContent {
+      JDRNexusApp(
+          authViewModel = authViewModel,
+          authRepository = authRepository,
+          groupRepository = groupRepository,
+          workspaceRepository = workspaceRepository,
+      )
+    }
+    signInAndOpenCampaigns()
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
+    waitForText("The Sunken Crown")
+
+    restorationTester.emulateSavedInstanceStateRestore()
+
+    waitForText("The Sunken Crown")
+    assertEquals("group-1", groupRepository.lastGroupFlowId)
+  }
+
   private class NoGamesMapRepository : MapRepository {
     override suspend fun loadGamesNear(location: MapLocation?): List<MapGame> = emptyList()
   }
 
-  private fun showApp(repository: FakeAuthRepository = FakeAuthRepository()) {
+  private fun showApp(
+      repository: FakeAuthRepository = FakeAuthRepository(),
+      groupRepository: NavigationGroupRepository? = null,
+      workspaceRepository: NavigationWorkspaceRepository = NavigationWorkspaceRepository(),
+  ) {
     val context = ApplicationProvider.getApplicationContext<Context>()
     if (FirebaseApp.getApps(context).isEmpty()) {
       checkNotNull(FirebaseApp.initializeApp(context))
     }
     val viewModel = AuthViewModel(repository)
-    composeTestRule.setContent { JDRNexusApp(authViewModel = viewModel) }
+    composeTestRule.setContent {
+      JDRNexusApp(
+          authViewModel = viewModel,
+          authRepository = repository,
+          groupRepository = groupRepository,
+          workspaceRepository = workspaceRepository,
+      )
+    }
   }
+
+  private fun signInAndOpenCampaigns() {
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    waitForTag(TestTags.GROUPMANAGEMENTBUTTON)
+    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+  }
+
+  private fun navigationGroupRepository() =
+      NavigationGroupRepository(
+          CampaignGroup(
+              id = "group-1",
+              name = "The Sunken Crown",
+              gameMasterId = "user-1",
+              participantIds = listOf("user-1"),
+          )
+      )
 
   private fun waitForTag(tag: String) {
     composeTestRule.waitUntil(5_000) {
@@ -322,9 +433,10 @@ class MainActivityNavigationTest {
                 """{"version":1,"type":"lore","title":"The Kingdom","sections":[{"sectionID":"history","title":"History","content":"Founded long ago."}]}""",
         )
     val workspaceRepository = FakeWorkspaceRepository(loreFile)
+    val groupRepository = FakeGroupRepository()
     val authViewModel = AuthViewModel(repository)
     val personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, repository)
-    val gameManagementViewModel = GameManagementViewModel(FakeGroupRepository(), repository)
+    val gameManagementViewModel = GameManagementViewModel(groupRepository, repository)
     val editFileViewModel = EditFileViewModel(workspaceRepository)
     composeTestRule.setContent {
       JDRNexusApp(
@@ -332,6 +444,9 @@ class MainActivityNavigationTest {
           gameManagementViewModel = gameManagementViewModel,
           personalSpaceViewModel = personalSpaceViewModel,
           editFileViewModel = editFileViewModel,
+          authRepository = repository,
+          groupRepository = groupRepository,
+          workspaceRepository = workspaceRepository,
       )
     }
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")

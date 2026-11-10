@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.resources.AppTopBar
+import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.JdrNexusLogo
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.resources.showComingSoon
@@ -554,6 +555,7 @@ private fun CampaignGroupCard(
           colors = colors,
           icon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.size(16.dp)) },
           onClick = onEnterWorkspace,
+          modifier = Modifier.testTag(C.Tag.enter_workspace_button),
       )
       if (isGameMaster) {
         Row(
@@ -648,6 +650,7 @@ private fun PrimaryActionButton(
  */
 @Composable
 private fun OutlinedActionButton(
+    modifier: Modifier = Modifier,
     label: String,
     colors: GameManagementColors,
     onClick: () -> Unit,
@@ -655,7 +658,7 @@ private fun OutlinedActionButton(
 ) {
   Button(
       onClick = onClick,
-      modifier = Modifier.fillMaxWidth().height(42.dp),
+      modifier = modifier.fillMaxWidth().height(42.dp),
       shape = RoundedCornerShape(10.dp),
       border = androidx.compose.foundation.BorderStroke(1.dp, colors.outline),
       colors =

@@ -71,6 +71,7 @@ object C {
     const val dice_offline_error_dismiss = "dice_offline_error_dismiss"
     const val dice_offline_shake_toggle = "dice_offline_shake_toggle"
 
+    const val enter_workspace_button = "enter_workspace_button"
     const val workspace_actions_fab = "workspace_actions_fab"
     const val workspace_add_folder = "workspace_add_folder"
     const val workspace_add_file = "workspace_add_file"
