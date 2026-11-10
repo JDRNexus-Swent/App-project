@@ -3,8 +3,15 @@ package com.github.se.jdrnexus.model.personalSpace
 
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
 import com.github.se.jdrnexus.utils.waitFor
+import com.google.android.gms.tasks.Tasks
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
+import io.mockk.every
+import io.mockk.mockk
 import java.util.UUID
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import org.junit.After
@@ -13,6 +20,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -23,7 +31,7 @@ import org.robolectric.RobolectricTestRunner
  * "firebase emulators:exec --config firebase.test.json".
  */
 @RunWith(RobolectricTestRunner::class)
-class GroupRepositoryInvitationsFirestoreTest {
+class GroupRepositoryInvitationFirestoreTest {
 
   companion object {
     private const val GM_ID = "gm1"
@@ -117,6 +125,29 @@ class GroupRepositoryInvitationsFirestoreTest {
 
   private suspend fun userGroupIds(userId: String): Any? =
       firestore.collection("users").document(userId).get().await().get("groupIds")
+
+  /** A repository whose first read of an invitation fails with [error]. No emulator involved. */
+  private fun repositoryFailingOnInvitationRead(error: Exception): GroupRepository {
+    val firestoreMock = mockk<FirebaseFirestore>()
+    val invitationsMock = mockk<CollectionReference>()
+    val invitationDocMock = mockk<DocumentReference>()
+    every { firestoreMock.collection("invitations") } returns invitationsMock
+    every { invitationsMock.document(any()) } returns invitationDocMock
+    every { invitationDocMock.get() } returns Tasks.forException(error)
+    every { firestoreMock.collection("campaign_groups") } returns mockk(relaxed = true)
+    return GroupRepositoryFirestore(firestoreMock)
+  }
+
+  /** A repository whose first read of a group fails with [error]. No emulator involved. */
+  private fun repositoryFailingOnGroupRead(error: Exception): GroupRepository {
+    val firestoreMock = mockk<FirebaseFirestore>()
+    val groupsMock = mockk<CollectionReference>()
+    val groupDocMock = mockk<DocumentReference>()
+    every { firestoreMock.collection("campaign_groups") } returns groupsMock
+    every { groupsMock.document(any()) } returns groupDocMock
+    every { groupDocMock.get() } returns Tasks.forException(error)
+    return GroupRepositoryFirestore(firestoreMock)
+  }
 
   // ==========================================
   // createInvitation
@@ -271,6 +302,13 @@ class GroupRepositoryInvitationsFirestoreTest {
     assertEquals(0, invitationCount())
   }
 
+  @Test
+  fun regenerateInvitationFailsWithGroupNotFoundForBlankGroupId() = runBlocking {
+    val result = repository.regenerateInvitation("", GM_ID)
+
+    assertEquals(InvitationError.GROUP_NOT_FOUND, result.invitationError())
+  }
+
   // ==========================================
   // joinGroupWithCode
   // ==========================================
@@ -390,5 +428,98 @@ class GroupRepositoryInvitationsFirestoreTest {
     assertEquals(InvitationError.GROUP_NOT_FOUND, result.invitationError())
     assertNull("no redemption must be written", redemptionData(code, PLAYER_ID))
     assertFalse(firestore.collection("users").document(PLAYER_ID).get().await().exists())
+  }
+
+  @Test
+  fun joinGroupWithCodeFailsWithUnknownCodeWhenInvitationHasNoGroupId() = runBlocking {
+    val groupId = createGroup()
+    // A malformed invitation, written directly: no groupId.
+    firestore
+        .collection("invitations")
+        .document(UNUSED_CODE)
+        .set(mapOf("createdBy" to GM_ID))
+        .await()
+    usedCodes += UNUSED_CODE
+
+    val result = repository.joinGroupWithCode(UNUSED_CODE, PLAYER_ID)
+
+    assertEquals(InvitationError.UNKNOWN_CODE, result.invitationError())
+    assertEquals(listOf(GM_ID), participantIds(groupId))
+    assertNull(userGroupIds(PLAYER_ID))
+  }
+
+  // ==========================================
+  // ERROR MAPPING (mockk: the emulator without rules cannot produce these errors)
+  // ==========================================
+
+  @Test
+  fun joinMapsPermissionDeniedToTheConfiguredError() = runBlocking {
+    val repo =
+        repositoryFailingOnInvitationRead(
+            FirebaseFirestoreException("denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)
+        )
+
+    val result = repo.joinGroupWithCode(UNUSED_CODE, PLAYER_ID)
+
+    // Must match the onPermissionDenied value written in joinGroupWithCode.
+    assertEquals(InvitationError.NETWORK, result.invitationError())
+  }
+
+  @Test
+  fun joinMapsNotFoundToGroupNotFound() = runBlocking {
+    val repo =
+        repositoryFailingOnInvitationRead(
+            FirebaseFirestoreException("missing", FirebaseFirestoreException.Code.NOT_FOUND)
+        )
+
+    val result = repo.joinGroupWithCode(UNUSED_CODE, PLAYER_ID)
+
+    assertEquals(InvitationError.GROUP_NOT_FOUND, result.invitationError())
+  }
+
+  @Test
+  fun joinMapsOtherFirestoreCodesToNetwork() = runBlocking {
+    val repo =
+        repositoryFailingOnInvitationRead(
+            FirebaseFirestoreException("offline", FirebaseFirestoreException.Code.UNAVAILABLE)
+        )
+
+    val result = repo.joinGroupWithCode(UNUSED_CODE, PLAYER_ID)
+
+    assertEquals(InvitationError.NETWORK, result.invitationError())
+  }
+
+  @Test
+  fun joinMapsUnexpectedExceptionToNetwork() = runBlocking {
+    val repo = repositoryFailingOnInvitationRead(IllegalStateException("Kaboom"))
+
+    val result = repo.joinGroupWithCode(UNUSED_CODE, PLAYER_ID)
+
+    assertEquals(InvitationError.NETWORK, result.invitationError())
+  }
+
+  @Test
+  fun joinDoesNotSwallowCancellation() = runBlocking {
+    val repo = repositoryFailingOnInvitationRead(CancellationException("cancelled"))
+
+    try {
+      repo.joinGroupWithCode(UNUSED_CODE, PLAYER_ID)
+      fail("a cancellation must be rethrown, not turned into a failed Result")
+    } catch (e: CancellationException) {
+      assertEquals("cancelled", e.message)
+    }
+  }
+
+  @Test
+  fun regenerateMapsPermissionDeniedToNotGameMaster() = runBlocking {
+    val repo =
+        repositoryFailingOnGroupRead(
+            FirebaseFirestoreException("denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)
+        )
+
+    val result = repo.regenerateInvitation("g1", GM_ID)
+
+    // Must match the onPermissionDenied value written in regenerateInvitation.
+    assertEquals(InvitationError.NOT_GAME_MASTER, result.invitationError())
   }
 }

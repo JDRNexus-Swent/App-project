@@ -7,7 +7,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class InvitationCodesTest {
+class InvitationCodeTest {
 
   @Test
   fun generatedCodeHasTheExpectedLength() {

@@ -280,7 +280,7 @@ service cloud.firestore {
       allow update: if signedIn()
         && (isGroupMetadataEdit(groupId)
             || isParticipantAdded(groupId)
-            || isParticipantRemoved(groupId));
+            || isParticipantRemoved(groupId);
             // TEMPORARY (#160): the GM writes inviteCode, a joiner adds themselves.
             || changedKeys().hasOnly(['inviteCode'])
             || changedKeys().hasOnly(['participantIds']));
