@@ -613,6 +613,7 @@ class GroupWorkspaceViewModel(
                 includeContent = file.type == DocumentType.FOLDER,
             )
             .getOrThrow()
+        refreshPersonalFiles(uid)
       }
     }
   }

@@ -308,7 +308,6 @@ fun JDRNexusApp(
                 "Map" -> showComingSoon(context, "Map")
               }
             },
-            onFileAdded = { groupWorkspaceViewModel.refreshPersonalFiles(uiState.currentUserId) },
         )
       }
 

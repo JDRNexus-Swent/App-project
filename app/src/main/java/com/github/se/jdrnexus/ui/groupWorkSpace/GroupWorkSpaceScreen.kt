@@ -103,7 +103,6 @@ fun GroupWorkSpaceScreen(
     onTabSelected: (String) -> Unit = {},
     onItemClicked: ((JDRFile, Boolean) -> Unit)? = null,
     personalItems: List<JDRFile> = emptyList(),
-    onFileAdded: () -> Unit = {},
 ) {
   val uiState by gwViewModel.uiState.collectAsState()
   val scope = rememberCoroutineScope()
@@ -359,7 +358,6 @@ fun GroupWorkSpaceScreen(
                                   job?.join()
 
                                   if (gwViewModel.uiState.value.errorMessage.isEmpty()) {
-                                    onFileAdded()
                                     showAddFilesDialog = false
                                   }
                                 }
