@@ -7,6 +7,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -93,6 +94,52 @@ class HomeScreenS1Test {
   }
 
   @Test
+  fun bottomNavigationDispatchesSelectedTabAction() {
+    var campaignsClicked = false
+    var filesClicked = false
+    var homeClicked = false
+    var mapClicked = false
+    composeTestRule.setContent {
+      SampleAppTheme {
+        HomeScreen(
+            viewModel = createViewModel(),
+            onGroupManagementClick = { campaignsClicked = true },
+            onPersonalSpaceClick = { filesClicked = true },
+            onHomeClick = { homeClicked = true },
+            onMapClick = { mapClicked = true },
+        )
+      }
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+    Assert.assertTrue(campaignsClicked)
+    Assert.assertFalse(filesClicked)
+    Assert.assertFalse(homeClicked)
+    Assert.assertFalse(mapClicked)
+
+    campaignsClicked = false
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    Assert.assertTrue(filesClicked)
+    Assert.assertFalse(campaignsClicked)
+    Assert.assertFalse(homeClicked)
+    Assert.assertFalse(mapClicked)
+
+    filesClicked = false
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+    Assert.assertTrue(homeClicked)
+    Assert.assertFalse(campaignsClicked)
+    Assert.assertFalse(filesClicked)
+    Assert.assertFalse(mapClicked)
+
+    homeClicked = false
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
+    Assert.assertTrue(mapClicked)
+    Assert.assertFalse(campaignsClicked)
+    Assert.assertFalse(filesClicked)
+    Assert.assertFalse(homeClicked)
+  }
+
+  @Test
   fun logoutButtonInvokesCallbackOnSuccessfulSignOut() {
     val signOutResult = CompletableDeferred<AuthResult<Unit>>()
     val viewModel = AuthViewModel(FakeAuthRepository { signOutResult.await() })
@@ -128,6 +175,25 @@ class HomeScreenS1Test {
   }
 
   @Test
+  fun logoutCannotBeRequestedAgainWhileSignOutIsPending() {
+    val signOutResult = CompletableDeferred<AuthResult<Unit>>()
+    val repository = FakeAuthRepository { signOutResult.await() }
+    val viewModel = AuthViewModel(repository)
+    composeTestRule.setContent { SampleAppTheme { HomeScreen(viewModel) } }
+
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.waitUntil(5_000) { repository.signOutCalls == 1 }
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).assertIsNotEnabled()
+    listOf("home", "campaigns", "files", "map").forEach { tab ->
+      composeTestRule.onNodeWithTag(C.Tag.bottomTab(tab)).assertIsNotEnabled()
+    }
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    Assert.assertEquals(1, repository.signOutCalls)
+
+    signOutResult.complete(AuthResult.Success(Unit))
+  }
+
+  @Test
   fun personalSpaceButtonInvokesCallback() {
     var clicked = false
     composeTestRule.setContent {
@@ -158,6 +224,8 @@ class HomeScreenS1Test {
   private class FakeAuthRepository(
       private val signOutAction: suspend () -> AuthResult<Unit> = { AuthResult.Success(Unit) }
   ) : AuthRepository {
+    var signOutCalls = 0
+
     override val authState: Flow<AuthUser?> = emptyFlow()
 
     override suspend fun signUpWithEmail(
@@ -174,6 +242,9 @@ class HomeScreenS1Test {
     override suspend fun signInWithGoogle(idToken: String): AuthResult<AuthUser> =
         AuthResult.Failure(AuthError.UNKNOWN)
 
-    override suspend fun signOut(): AuthResult<Unit> = signOutAction()
+    override suspend fun signOut(): AuthResult<Unit> {
+      signOutCalls++
+      return signOutAction()
+    }
   }
 }

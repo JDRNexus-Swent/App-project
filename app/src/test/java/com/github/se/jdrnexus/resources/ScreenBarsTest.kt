@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -47,5 +48,26 @@ class ScreenBarsTest {
     composeTestRule.runOnIdle { darkTheme = true }
     composeTestRule.onNodeWithTag(C.Tag.shared_top_bar).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.shared_bottom_bar).assertIsDisplayed()
+  }
+
+  @Test
+  fun disabledBottomBarDoesNotDispatchTabActions() {
+    var tabSelected = false
+    composeTestRule.setContent {
+      SampleAppTheme {
+        ScreenBottomBar(
+            selectedTab = "Campaigns",
+            onTabSelected = { tabSelected = true },
+            enabled = false,
+        )
+      }
+    }
+
+    listOf("home", "campaigns", "files", "map").forEach { tab ->
+      composeTestRule.onNodeWithTag(C.Tag.bottomTab(tab)).assertIsNotEnabled()
+    }
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).assertIsSelected()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+    assertEquals(false, tabSelected)
   }
 }
