@@ -278,38 +278,38 @@ class GroupWorkspaceViewModel(
           fetchJob?.cancel()
           fetchGeneration++
 
-            _uiState.update {
-              it.copy(
-                  items = emptyList(),
-                  currentFolderId = "",
-                  currentFolderName = "",
-                  folderHistory = emptyList(),
-                  canCreateFolder = false,
-                  canEditItems = false,
-                  loadState = LoadState.Error("You are no longer a member of this group."),
-                  groupId = "",
-                  groupName = "",
-              )
-            }
+          _uiState.update {
+            it.copy(
+                items = emptyList(),
+                currentFolderId = "",
+                currentFolderName = "",
+                folderHistory = emptyList(),
+                canCreateFolder = false,
+                canEditItems = false,
+                loadState = LoadState.Error("You are no longer a member of this group."),
+                groupId = "",
+                groupName = "",
+            )
+          }
           personalFilesJob?.cancel()
-            personalFilesJob = null
+          personalFilesJob = null
           return@collect
         }
 
         val roleChanged = role != newRole
         role = newRole
 
-          _uiState.update {
-            it.copy(
-                canCreateFolder = newRole == GroupWorkspaceRole.GAME_MASTER,
-                canEditItems = newRole == GroupWorkspaceRole.GAME_MASTER,
-                groupId = groupId,
-                groupName = group?.name.orEmpty(),
-            )
-          }
+        _uiState.update {
+          it.copy(
+              canCreateFolder = newRole == GroupWorkspaceRole.GAME_MASTER,
+              canEditItems = newRole == GroupWorkspaceRole.GAME_MASTER,
+              groupId = groupId,
+              groupName = group?.name.orEmpty(),
+          )
+        }
 
-          if (personalFilesJob == null) {
-            personalFilesJob = loadPersonalFiles(uid)
+        if (personalFilesJob == null) {
+          personalFilesJob = loadPersonalFiles(uid)
         }
 
         if (roleChanged || fetchJob == null) {
@@ -503,8 +503,7 @@ class GroupWorkspaceViewModel(
                 it.copy(
                     items = emptyList(),
                     loadState = LoadState.Error(message),
-                    errorMessage =
-                        it.personalFilesError.ifBlank { message },
+                    errorMessage = it.personalFilesError.ifBlank { message },
                 )
               }
             }
@@ -526,7 +525,7 @@ class GroupWorkspaceViewModel(
                 currentFolderName = "",
                 errorMessage =
                     it.personalFilesError.ifBlank {
-                        e.message ?: "Unable to load the group workspace."
+                      e.message ?: "Unable to load the group workspace."
                     },
             )
           }
