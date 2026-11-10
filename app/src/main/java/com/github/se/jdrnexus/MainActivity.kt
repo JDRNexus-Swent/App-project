@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus
 
 import android.os.Bundle
@@ -40,6 +41,8 @@ import com.github.se.jdrnexus.ui.edition.EditFileLore
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementScreen
 import com.github.se.jdrnexus.ui.home.HomeScreen
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
+import com.github.se.jdrnexus.ui.map.MapScreen
+import com.github.se.jdrnexus.ui.map.MapViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
@@ -71,6 +74,7 @@ enum class AllRoutes {
   GroupManagement,
   EditChar,
   EditLore,
+  Map,
 }
 
 /**
@@ -137,12 +141,14 @@ fun JDRNexusApp(
         val onPersonalSpaceClicked = { navigation.navigate(AllRoutes.PersoSpace.name) }
         val onDiceClicked = { navigation.navigate(AllRoutes.Dice.name) }
         val onGroupManagementClicked = { navigation.navigate(AllRoutes.GroupManagement.name) }
+        val onMapClicked = { navigation.navigate(AllRoutes.Map.name) }
         HomeScreen(
             viewModel = activeAuthViewModel,
             onLogout = onLogout,
             onPersonalSpaceClick = onPersonalSpaceClicked,
             onDiceClick = onDiceClicked,
             onGroupManagementClick = onGroupManagementClicked,
+            onMapClick = onMapClicked,
         )
       }
 
@@ -189,7 +195,7 @@ fun JDRNexusApp(
                 "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
                 "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
                 "Files" -> Unit
-                "Map" -> showComingSoon(context, "Map")
+                "Map" -> navController.navigate(AllRoutes.Map.name)
               }
             },
         )
@@ -223,9 +229,25 @@ fun JDRNexusApp(
                 "Home" -> navigation.popBackStack(AllRoutes.Home.name, inclusive = false)
                 "Campaigns" -> Unit
                 "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
-                "Map" -> showComingSoon(context, "Map")
+                "Map" -> navController.navigate(AllRoutes.Map.name)
               }
             },
+        )
+      }
+
+      composable(route = AllRoutes.Map.name) {
+        MapScreen(
+            mapVM = viewModel<MapViewModel>(factory = MapViewModel.Factory),
+            onTabSelected = { tab ->
+              when (tab) {
+                "Home" -> navController.popBackStack(AllRoutes.Home.name, false)
+                "Campaigns" -> navController.navigate(AllRoutes.GroupManagement.name)
+                "Files" -> navController.navigate(AllRoutes.PersoSpace.name)
+                "Map" -> Unit
+              }
+            },
+            // No game details screen yet.
+            onViewGameDetails = { showComingSoon(context, "Game details") },
         )
       }
 

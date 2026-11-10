@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.home
 
 import androidx.compose.foundation.layout.Arrangement
@@ -38,7 +39,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.ScreenBottomBar
-import com.github.se.jdrnexus.resources.showComingSoon
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
@@ -66,7 +66,7 @@ fun HomeScreen(
     onDiceClick: () -> Unit = {},
     onGroupManagementClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
-    onMapClick: (() -> Unit)? = null,
+    onMapClick: () -> Unit = {},
 ) {
 
   val uiState by viewModel.uiState.collectAsState()
@@ -125,18 +125,11 @@ fun HomeScreen(
             selectedTab = "Home",
             enabled = canNavigate(),
             onTabSelected = { tab ->
-              if (canNavigate()) {
-                when (tab) {
-                  "Home" -> onHomeClick()
-                  "Campaigns" -> onGroupManagementClick()
-                  "Files" -> onPersonalSpaceClick()
-                  "Map" ->
-                      if (onMapClick == null) {
-                        showComingSoon(context, "Map")
-                      } else {
-                        onMapClick()
-                      }
-                }
+              when (tab) {
+                "Home" -> onHomeClick()
+                "Campaigns" -> onGroupManagementClick()
+                "Files" -> onPersonalSpaceClick()
+                "Map" -> onMapClick()
               }
             },
         )
