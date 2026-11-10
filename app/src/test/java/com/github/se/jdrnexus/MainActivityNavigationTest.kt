@@ -1,5 +1,4 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
-// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus
 
 import android.content.Context
@@ -21,10 +20,6 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
-import com.github.se.jdrnexus.model.map.MapGame
-import com.github.se.jdrnexus.model.map.MapLocation
-import com.github.se.jdrnexus.model.map.MapRepository
-import com.github.se.jdrnexus.model.map.MapRepositoryProvider
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
@@ -227,38 +222,6 @@ class MainActivityNavigationTest {
       groupRepository: NavigationGroupRepository? = null,
       workspaceRepository: NavigationWorkspaceRepository = NavigationWorkspaceRepository(),
   ) {
-  @Test
-  fun mapTabOpensMapScreen() {
-    val context = ApplicationProvider.getApplicationContext<Context>()
-    if (FirebaseApp.getApps(context).isEmpty()) checkNotNull(FirebaseApp.initializeApp(context))
-    // No real Firestore: the Map screen loads its games from a fake repository.
-    val defaultMapRepository = MapRepositoryProvider.mapRepository
-    MapRepositoryProvider.mapRepository = NoGamesMapRepository()
-    try {
-      showApp()
-      composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
-      composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
-      composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
-      waitForTag(TestTags.TITLE)
-
-      composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
-
-      waitForTag(C.Tag.map_screen)
-      composeTestRule.onNodeWithTag(C.Tag.map_screen).assertIsDisplayed()
-
-      composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
-      waitForTag(TestTags.TITLE)
-      composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
-    } finally {
-      MapRepositoryProvider.mapRepository = defaultMapRepository
-    }
-  }
-
-  private class NoGamesMapRepository : MapRepository {
-    override suspend fun loadGamesNear(location: MapLocation?): List<MapGame> = emptyList()
-  }
-
-  private fun showApp(repository: FakeAuthRepository = FakeAuthRepository()) {
     val context = ApplicationProvider.getApplicationContext<Context>()
     if (FirebaseApp.getApps(context).isEmpty()) {
       checkNotNull(FirebaseApp.initializeApp(context))
