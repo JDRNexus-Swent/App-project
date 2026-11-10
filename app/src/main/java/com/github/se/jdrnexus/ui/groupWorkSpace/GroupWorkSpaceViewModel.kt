@@ -19,7 +19,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
@@ -239,23 +241,42 @@ class GroupWorkspaceViewModel(
     require(groupId.isNotBlank()) { "Group ID cannot be empty." }
 
     viewModelScope.launch {
-      try {
-        val uid = requireUid()
-
-        groupRepository.getGroupFlow(groupId).collect { group ->
-          val newRole =
-              when {
-                group?.gameMasterId == uid -> GroupWorkspaceRole.GAME_MASTER
-
-                group?.participantIds?.contains(uid) == true -> GroupWorkspaceRole.PLAYER
-
-                else -> null
-              }
-
-          if (newRole == null) {
-            role = null
+      authRepository.authState
+          .map { it?.uid }
+          .distinctUntilChanged()
+          .collectLatest { uid ->
             fetchJob?.cancel()
+            fetchJob = null
             fetchGeneration++
+            role = null
+
+            if (uid == null) {
+              _uiState.value = GroupWorkspaceUiState(loadState = LoadState.SignedOut)
+              return@collectLatest
+            }
+
+            _uiState.value = GroupWorkspaceUiState(loadState = LoadState.Loading)
+            observeMembership(uid)
+          }
+    }
+  }
+
+  private suspend fun observeMembership(uid: String) {
+    try {
+      groupRepository.getGroupFlow(groupId).collect { group ->
+        val newRole =
+            when {
+              group?.gameMasterId == uid -> GroupWorkspaceRole.GAME_MASTER
+
+              group?.participantIds?.contains(uid) == true -> GroupWorkspaceRole.PLAYER
+
+              else -> null
+            }
+
+        if (newRole == null) {
+          role = null
+          fetchJob?.cancel()
+          fetchGeneration++
 
             _uiState.update {
               it.copy(
@@ -270,13 +291,13 @@ class GroupWorkspaceViewModel(
                   groupName = "",
               )
             }
-            personalFilesJob?.cancel()
+          personalFilesJob?.cancel()
             personalFilesJob = null
-            return@collect
-          }
+          return@collect
+        }
 
-          val roleChanged = role != newRole
-          role = newRole
+        val roleChanged = role != newRole
+        role = newRole
 
           _uiState.update {
             it.copy(
@@ -289,30 +310,29 @@ class GroupWorkspaceViewModel(
 
           if (personalFilesJob == null) {
             personalFilesJob = loadPersonalFiles(uid)
-          }
+        }
 
-          if (roleChanged || fetchJob == null) {
-            loadWorkspace()
-          }
+        if (roleChanged || fetchJob == null) {
+          loadWorkspace()
         }
-      } catch (e: CancellationException) {
-        throw e
-      } catch (e: Exception) {
-        role = null
-        fetchJob?.cancel()
-        fetchGeneration++
-        _uiState.update {
-          it.copy(
-              currentUserId = "",
-              items = emptyList(),
-              currentFolderId = "",
-              currentFolderName = "",
-              folderHistory = emptyList(),
-              canCreateFolder = false,
-              canEditItems = false,
-              loadState = LoadState.Error(e.message ?: "Unable to verify group membership."),
-          )
-        }
+      }
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      role = null
+      fetchJob?.cancel()
+      fetchGeneration++
+      _uiState.update {
+        it.copy(
+            currentUserId = "",
+            items = emptyList(),
+            currentFolderId = "",
+            currentFolderName = "",
+            folderHistory = emptyList(),
+            canCreateFolder = false,
+            canEditItems = false,
+            loadState = LoadState.Error(e.message ?: "Unable to verify group membership."),
+        )
       }
     }
   }
