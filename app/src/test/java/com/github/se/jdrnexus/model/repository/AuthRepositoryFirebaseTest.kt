@@ -194,6 +194,65 @@ class AuthRepositoryFirebaseTest {
   }
 
   @Test
+  fun cancellingSignUpDuringCleanupStillDeletesAccountAndSignsOut() = runBlocking {
+    val client =
+        FakeFirebaseAuthClient().apply {
+          usernameFailure = AuthError.NETWORK_ERROR
+          holdAccountDeletion = true
+        }
+    val repository = AuthRepositoryFirebase(client)
+    var result: AuthResult<AuthUser>? = null
+
+    val signUp = launch {
+      result = repository.signUpWithEmail("player@example.com", "password123", "Player")
+    }
+    client.accountDeletionStarted.await()
+    signUp.cancel()
+    client.accountDeletionGate.complete(Unit)
+    signUp.join()
+
+    assertEquals(null, result)
+    assertFalse(client.accountExists)
+    assertEquals(null, client.authState.value)
+    assertEquals(1, client.signOutCalls)
+  }
+
+  @Test
+  fun cancellingSignUpDuringFailedCleanupPreservesCleanupError() = runBlocking {
+    val client =
+        FakeFirebaseAuthClient().apply {
+          usernameFailure = AuthError.NETWORK_ERROR
+          holdAccountDeletion = true
+          deleteFailure = AuthError.NETWORK_ERROR
+        }
+    val repository = AuthRepositoryFirebase(client)
+    var cancellation: CancellationException? = null
+
+    val signUp = launch {
+      try {
+        repository.signUpWithEmail("player@example.com", "password123", "Player")
+      } catch (failure: CancellationException) {
+        cancellation = failure
+      }
+    }
+    client.accountDeletionStarted.await()
+    signUp.cancel()
+    client.accountDeletionGate.complete(Unit)
+    signUp.join()
+
+    val thrownCancellation = requireNotNull(cancellation)
+    assertEquals(1, thrownCancellation.suppressed.size)
+    assertEquals(
+        AuthError.NETWORK_ERROR,
+        (thrownCancellation.suppressed.single() as AuthOperationException).error,
+    )
+    assertTrue(client.accountExists)
+    assertEquals(null, client.authState.value)
+    assertEquals(1, client.deleteAccountCalls)
+    assertEquals(1, client.signOutCalls)
+  }
+
+  @Test
   fun unexpectedExceptionIsReportedAsUnknownError() = runBlocking {
     val client =
         FakeFirebaseAuthClient().apply { unexpectedSignInFailure = IllegalStateException("boom") }
@@ -343,6 +402,9 @@ class AuthRepositoryFirebaseTest {
     var suspendUsernameUpdate = false
     val usernameUpdateStarted = CompletableDeferred<Unit>()
     var cancelAccountCreation = false
+    var holdAccountDeletion = false
+    val accountDeletionStarted = CompletableDeferred<Unit>()
+    val accountDeletionGate = CompletableDeferred<Unit>()
     var deleteAccountCalls = 0
     var signOutCalls = 0
 
@@ -369,6 +431,10 @@ class AuthRepositoryFirebaseTest {
       deleteAccountCalls++
       // Like Task.await(), fails if the caller is cancelled: cleanup must run as NonCancellable.
       currentCoroutineContext().ensureActive()
+      if (holdAccountDeletion) {
+        accountDeletionStarted.complete(Unit)
+        accountDeletionGate.await()
+      }
       deleteFailure?.let { throw AuthOperationException(it) }
       accountExists = false
       authState.value = null

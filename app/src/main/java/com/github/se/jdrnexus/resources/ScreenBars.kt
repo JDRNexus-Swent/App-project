@@ -89,6 +89,7 @@ fun ScreenBottomBar(
     selectedTab: String,
     onTabSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
   val colors = LocalAppUiColors.current
   NavigationBar(
@@ -99,6 +100,7 @@ fun ScreenBottomBar(
       NavigationBarItem(
           selected = selectedTab == tab.label,
           onClick = { onTabSelected(tab.label) },
+          enabled = enabled,
           icon = { Icon(tab.icon, contentDescription = null) },
           label = { Text(tab.label) },
           modifier =

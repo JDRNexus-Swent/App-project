@@ -10,6 +10,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.callbackFlow
@@ -52,7 +54,13 @@ class AuthRepositoryFirebase internal constructor(private val client: FirebaseAu
       cleanup.firstFailure()?.let { cancellation.addSuppressed(AuthOperationException(it)) }
       throw cancellation
     } catch (usernameFailure: Exception) {
-      val cleanup = cleanupCreatedAccount(createdUser.uid)
+      val cleanup = withContext(NonCancellable) { cleanupCreatedAccount(createdUser.uid) }
+      try {
+        currentCoroutineContext().ensureActive()
+      } catch (cancellation: CancellationException) {
+        cleanup.firstFailure()?.let { cancellation.addSuppressed(AuthOperationException(it)) }
+        throw cancellation
+      }
       if (cleanup.isSuccessful) {
         AuthResult.Failure(authErrorFor(usernameFailure))
       } else {
