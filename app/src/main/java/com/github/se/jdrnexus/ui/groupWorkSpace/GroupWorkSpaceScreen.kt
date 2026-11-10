@@ -276,7 +276,6 @@ fun GroupWorkSpaceScreen(
                   job?.join()
 
                   if (gwViewModel.uiState.value.errorMessage.isEmpty()) {
-                    onFileAdded()
                     showCreateFolderDialog = false
                     folderName = ""
                   }
@@ -360,6 +359,7 @@ fun GroupWorkSpaceScreen(
                                   job?.join()
 
                                   if (gwViewModel.uiState.value.errorMessage.isEmpty()) {
+                                    onFileAdded()
                                     showAddFilesDialog = false
                                   }
                                 }

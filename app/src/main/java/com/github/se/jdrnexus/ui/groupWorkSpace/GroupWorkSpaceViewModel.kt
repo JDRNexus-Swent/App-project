@@ -338,7 +338,8 @@ class GroupWorkspaceViewModel(
   }
 
   fun refreshPersonalFiles(userId: String) {
-    loadPersonalFiles(userId)
+    personalFilesJob?.cancel()
+    personalFilesJob = loadPersonalFiles(userId)
   }
 
   private fun loadPersonalFiles(uid: String): Job = viewModelScope.launch {
@@ -636,6 +637,7 @@ class GroupWorkspaceViewModel(
                 parentFolderId = parentId.ifEmpty { groupId },
             )
             .getOrThrow()
+        refreshPersonalFiles(uid)
       }
     }
   }

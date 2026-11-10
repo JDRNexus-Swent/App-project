@@ -650,11 +650,11 @@ private fun PrimaryActionButton(
  */
 @Composable
 private fun OutlinedActionButton(
+    modifier: Modifier = Modifier,
     label: String,
     colors: GameManagementColors,
     onClick: () -> Unit,
     icon: (@Composable () -> Unit)? = null,
-    modifier: Modifier = Modifier,
 ) {
   Button(
       onClick = onClick,
