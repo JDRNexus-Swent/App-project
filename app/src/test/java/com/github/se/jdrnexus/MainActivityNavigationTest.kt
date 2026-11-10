@@ -21,15 +21,15 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.model.map.MapGame
+import com.github.se.jdrnexus.model.map.MapLocation
+import com.github.se.jdrnexus.model.map.MapRepository
+import com.github.se.jdrnexus.model.map.MapRepositoryProvider
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
-import com.github.se.jdrnexus.model.map.MapGame
-import com.github.se.jdrnexus.model.map.MapLocation
-import com.github.se.jdrnexus.model.map.MapRepository
-import com.github.se.jdrnexus.model.map.MapRepositoryProvider
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
@@ -60,12 +60,12 @@ class MainActivityNavigationTest {
   fun startsAtSignInAndReturnsFromSignUp() {
     showApp()
 
-    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+    scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed().performClick()
-    scrollToTag("sign_up_scroll_container", C.Tag.sign_up_sign_in)
+    scrollToTag(SIGN_UP_SCROLL_CONTAINER, C.Tag.sign_up_sign_in)
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).performClick()
-    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+    scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotDisplayed()
   }
@@ -73,13 +73,13 @@ class MainActivityNavigationTest {
   @Test
   fun rapidSignUpTapsDoNotStackScreensOrLeaveNavigationBlank() {
     showApp()
-    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+    scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
 
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performTouchInput {
       repeat(10) { click() }
     }
     waitForTag(C.Tag.sign_up_sign_in)
-    scrollToTag("sign_up_scroll_container", C.Tag.sign_up_sign_in)
+    scrollToTag(SIGN_UP_SCROLL_CONTAINER, C.Tag.sign_up_sign_in)
 
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsDisplayed().performClick()
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
@@ -89,7 +89,7 @@ class MainActivityNavigationTest {
       repeat(10) { click() }
     }
     waitForTag(C.Tag.sign_up_sign_in)
-    scrollToTag("sign_up_scroll_container", C.Tag.sign_up_sign_in)
+    scrollToTag(SIGN_UP_SCROLL_CONTAINER, C.Tag.sign_up_sign_in)
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).performTouchInput {
       repeat(10) { click() }
     }
@@ -116,7 +116,7 @@ class MainActivityNavigationTest {
 
     composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
     waitForTag(C.Tag.sign_in_sign_up)
-    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+    scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsNotDisplayed()
     assertEquals(null, repository.authState.value)
@@ -128,7 +128,7 @@ class MainActivityNavigationTest {
     showApp(repository)
 
     assertEquals(null, repository.authState.value)
-    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+    scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performClick()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_username).performTextInput("Ranger")
     composeTestRule.onNodeWithTag(C.Tag.sign_up_email).performTextInput("hero@example.com")
@@ -201,7 +201,7 @@ class MainActivityNavigationTest {
     repository.signOutResult?.complete(AuthResult.Success(Unit))
 
     waitForTag(C.Tag.sign_in_sign_up)
-    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+    scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsNotDisplayed()
     assertEquals(null, repository.authState.value)
@@ -231,7 +231,7 @@ class MainActivityNavigationTest {
   }
 
   @Test
-  fun homeTabOnCampaignsReturnsHome() {
+  fun homeTabFromCampaignsOpenedViaFilesReturnsHome() {
     showAuthenticatedApp()
 
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
@@ -404,6 +404,9 @@ class MainActivityNavigationTest {
   }
 
   private companion object {
+    const val SIGN_IN_SCROLL_CONTAINER = "sign_in_scroll_container"
+    const val SIGN_UP_SCROLL_CONTAINER = "sign_up_scroll_container"
+
     val UnusedGroupRepository =
         object : GroupRepository {
           override fun getNewGroupId() = error("Not used")

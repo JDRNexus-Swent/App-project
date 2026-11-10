@@ -31,18 +31,23 @@ import org.junit.runner.RunWith
 class MainActivityFirebaseNavigationTest {
   @get:Rule val composeTestRule = createComposeRule()
 
+  private companion object {
+    const val SIGN_IN_SCROLL_CONTAINER = "sign_in_scroll_container"
+    const val SIGN_UP_SCROLL_CONTAINER = "sign_up_scroll_container"
+  }
+
   @Test
   fun returningFromSignUpToSignInKeepsSignInAvailable() {
     val firebaseAuth = FirebaseEmulatorTestUtils.getAuth()
 
     composeTestRule.setContent { JDRNexusApp() }
 
-    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+    scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed().performClick()
-    scrollToTag("sign_up_scroll_container", C.Tag.sign_up_sign_in)
+    scrollToTag(SIGN_UP_SCROLL_CONTAINER, C.Tag.sign_up_sign_in)
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).performClick()
-    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+    scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotDisplayed()
     assertNull(firebaseAuth.currentUser)
@@ -55,12 +60,12 @@ class MainActivityFirebaseNavigationTest {
     val email = "player-${UUID.randomUUID()}@example.com"
     composeTestRule.setContent { JDRNexusApp() }
 
-    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+    scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performClick()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_username).performTextInput("Ranger")
     composeTestRule.onNodeWithTag(C.Tag.sign_up_email).performTextInput(email)
     composeTestRule.onNodeWithTag(C.Tag.sign_up_password).performTextInput("secret1")
-    scrollToTag("sign_up_scroll_container", C.Tag.sign_up_submit)
+    scrollToTag(SIGN_UP_SCROLL_CONTAINER, C.Tag.sign_up_submit)
     composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
 
     waitForTag(TestTags.TITLE)
@@ -70,7 +75,7 @@ class MainActivityFirebaseNavigationTest {
 
     composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
     waitForTag(C.Tag.sign_in_sign_up)
-    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+    scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
     assertNull(firebaseAuth.currentUser)
 
@@ -104,12 +109,12 @@ class MainActivityFirebaseNavigationTest {
       )
     }
 
-    scrollToTag("sign_in_scroll_container", C.Tag.sign_in_sign_up)
+    scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performClick()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_username).performTextInput("Ranger")
     composeTestRule.onNodeWithTag(C.Tag.sign_up_email).performTextInput(email)
     composeTestRule.onNodeWithTag(C.Tag.sign_up_password).performTextInput("secret1")
-    scrollToTag("sign_up_scroll_container", C.Tag.sign_up_submit)
+    scrollToTag(SIGN_UP_SCROLL_CONTAINER, C.Tag.sign_up_submit)
     composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
     waitForTag(TestTags.TITLE)
     composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
