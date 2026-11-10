@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.gameManagement
 
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
@@ -351,5 +352,117 @@ class GameSessionRepositoryFirestoreTest {
         )
     assertEquals(expected, repository.loadActivities(groupId).getOrThrow().single())
     assertEquals(expected, repository.observeActivities(groupId).waitFor { it.size == 1 }.single())
+  }
+
+  @Test
+  fun corruptedSessionFailsTheSessionStream() = runBlocking {
+    val corruptedSessions =
+        listOf(
+            mapOf("enemies" to listOf("not an enemy")),
+            mapOf("enemies" to listOf(mapOf("id" to "enemy-1", "initiative" to 3))),
+            mapOf("npcs" to listOf(42)),
+            mapOf("currentRound" to 0),
+        )
+
+    val failures = corruptedSessions.map { observeSessionFailure(it) }
+
+    assertEquals(
+        listOf(
+            "Invalid enemy data.",
+            "Invalid enemy character.",
+            "Invalid NPC data.",
+            "Combat round must be at least one.",
+        ),
+        failures,
+    )
+  }
+
+  @Test
+  fun sessionWithMissingFieldsUsesDefaults() = runBlocking {
+    val npc =
+        mapOf(
+            "id" to "npc-1",
+            "name" to "Guide",
+            "portraitUrl" to "https://example.com/guide.png",
+            "information" to "Helpful",
+        )
+    sessionDocument().set(mapOf("npcs" to listOf(npc))).await()
+
+    val session = repository.observeSession(groupId).waitFor { it.npcs.isNotEmpty() }
+
+    assertEquals(
+        GameSessionSnapshot(
+            isCombatActive = false,
+            currentRound = 1,
+            npcs = listOf(GameNpc("npc-1", "Guide", "https://example.com/guide.png", "Helpful")),
+        ),
+        session,
+    )
+  }
+
+  @Test
+  fun loreWithoutVisibilityIsPrivate() = runBlocking {
+    firestore
+        .collection("campaign_groups/$groupId/gm_lore")
+        .document("old-map")
+        .set(mapOf("content" to """{"version":1,"type":"lore","title":"Old Map"}"""))
+        .await()
+
+    val lore = repository.observeLore(groupId).waitFor { it.size == 1 }
+
+    assertEquals(listOf(GameLoreEntry("old-map", LoreFile("Old Map", emptyList()), false)), lore)
+  }
+
+  @Test
+  fun activityWithoutTimestampIsShownFirst() = runBlocking {
+    val activities = firestore.collection("campaign_groups/$groupId/activities")
+    activities
+        .document("older")
+        .set(
+            mapOf(
+                "userId" to "player-1",
+                "playerName" to "Ari",
+                "action" to "Opened the door",
+                "timestamp" to Date(2000),
+            )
+        )
+        .await()
+    activities
+        .document("pending")
+        .set(mapOf("userId" to "player-1", "playerName" to "Ari", "action" to "Drew a sword"))
+        .await()
+
+    val loaded = repository.loadActivities(groupId).getOrThrow()
+    val observed = repository.observeActivities(groupId).waitFor { it.size == 2 }
+
+    assertEquals(listOf("pending", "older"), loaded.map { it.id })
+    assertEquals(listOf("pending", "older"), observed.map { it.id })
+  }
+
+  @Test
+  fun gameMasterCanRecordActivityWithoutDice() = runBlocking {
+    firestore
+        .collection("campaign_groups")
+        .document(groupId)
+        .set(CampaignGroup(id = groupId, name = "Quest", gameMasterId = "gm-1"))
+        .await()
+
+    val result = repository.recordActivity(groupId, "gm-1", "Mira", "Started combat")
+
+    assertTrue(result.isSuccess)
+    val activity = repository.loadActivities(groupId).getOrThrow().single()
+    assertEquals("gm-1", activity.userId)
+    assertEquals(null, activity.diceResult)
+  }
+
+  private fun sessionDocument() =
+      firestore.collection("campaign_groups/$groupId/gm_data").document("session")
+
+  /** Stores [data] as the session document and returns the error the session stream fails with. */
+  private suspend fun observeSessionFailure(data: Map<String, Any>): String? {
+    sessionDocument().set(data).await()
+    return runCatching { repository.observeSession(groupId).waitFor { true } }
+        .exceptionOrNull()
+        ?.message
   }
 }
