@@ -32,6 +32,8 @@ uiGraphics = "1.12.1"
 googleid = "1.2.1"
 navigationCompose = "2.10.2"
 mapsCompose = "6.4.1"
+# 3D rendering (Filament) for the dice roller.
+sceneview = "4.61.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -76,6 +78,7 @@ kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-t
 googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleid" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 google-maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "mapsCompose" }
+sceneview = { group = "io.github.sceneview", name = "sceneview", version.ref = "sceneview" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
