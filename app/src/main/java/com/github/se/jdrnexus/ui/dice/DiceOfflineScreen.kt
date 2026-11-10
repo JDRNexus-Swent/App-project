@@ -3,7 +3,12 @@ package com.github.se.jdrnexus.ui.dice
 
 // import androidx.compose.ui.tooling.preview.Preview
 // import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import android.content.Context
+import android.provider.Settings
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -38,7 +43,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,14 +55,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -66,6 +73,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
@@ -102,13 +110,14 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
 import com.github.se.jdrnexus.resources.MAX_LANDSCAPE_CONTENT_WIDTH
 import com.github.se.jdrnexus.resources.useLandscapeLayout
+import dev.romainguy.kotlin.math.Quaternion
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
-import kotlinx.coroutines.delay
+import kotlin.random.Random
 
 private data class DiceThemeColors(
     val backgroundColor: Color,
@@ -126,6 +135,7 @@ private data class DiceThemeColors(
     val rollText: Color,
     val errorBackground: Color,
     val errorText: Color,
+    val fumbleGlow: Color,
 )
 
 /** Maps the roles used by this screen onto the app's [MaterialTheme] color scheme. */
@@ -148,14 +158,18 @@ private fun diceThemeColors(): DiceThemeColors {
       rollText = scheme.onPrimary,
       errorBackground = scheme.errorContainer,
       errorText = scheme.onErrorContainer,
+      fumbleGlow = scheme.error,
   )
 }
 
 /**
- * How long the die shows its rolling indicator before revealing the result. Internal so tests wait
- * for the same duration as the screen.
+ * How long the die tumbles before revealing the result. Internal so tests wait for the same
+ * duration as the screen.
  */
-internal const val ROLL_ANIMATION_MILLIS = 1000L
+internal const val ROLL_ANIMATION_MILLIS = 1400L
+
+/** How long the landed die bounces and glows once the result is shown. Purely decorative. */
+internal const val LANDING_ANIMATION_MILLIS = 450
 
 /**
  * Offline dice roller: lets the user pick a die, adjust the modifier and roll, without saving the
@@ -169,6 +183,7 @@ internal const val ROLL_ANIMATION_MILLIS = 1000L
  * @param diceViewModel The ViewModel handling dice selection, modifiers and rolls.
  * @param shakeDetector Source of shakes; the real accelerometer by default, a fake in tests.
  * @param onClose Called when the user closes the dice roller.
+ * @param dieView Draws the die; the 3D die by default ([LocalDieView]), a flat one in tests.
  */
 @Composable
 fun DiceOfflineScreen(
@@ -182,6 +197,7 @@ fun DiceOfflineScreen(
         ),
     shakeDetector: ShakeDetector = rememberAccelerometerShakeDetector(),
     onClose: () -> Unit = {},
+    dieView: DieView = LocalDieView.current,
 ) {
   val uiState by diceViewModel.uiState.collectAsState()
   var shakeEnabled by rememberSaveable { mutableStateOf(true) }
@@ -201,6 +217,7 @@ fun DiceOfflineScreen(
           } else {
             null
           },
+      dieView = dieView,
   )
 }
 
@@ -236,6 +253,10 @@ internal class ShakeToggleState(
 /**
  * Stateless body of [DiceOfflineScreen], split out so previews and tests can render it with a fixed
  * [uiState] and no Firebase.
+ *
+ * [firstRollSeed] picks how the die tumbles on its first roll, each later roll using the next seed.
+ * Random by default, so every session looks different; tests pass a fixed one. [dieView] draws the
+ * die: the 3D one by default, a flat one in tests, where 3D cannot render.
  */
 @Composable
 internal fun DiceOfflineContent(
@@ -243,6 +264,8 @@ internal fun DiceOfflineContent(
     diceViewModel: DiceInterfaceVM,
     onClose: () -> Unit,
     shakeToggle: ShakeToggleState? = null,
+    firstRollSeed: Int = remember { Random.nextInt() },
+    dieView: DieView = ThreeDDieView,
 ) {
   val colors = diceThemeColors()
 
@@ -272,6 +295,8 @@ internal fun DiceOfflineContent(
             dimens = dimens,
             onClose = onClose,
             shakeToggle = shakeToggle,
+            firstRollSeed = firstRollSeed,
+            dieView = dieView,
         )
       } else {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -290,6 +315,8 @@ internal fun DiceOfflineContent(
                 DieImage(
                     uiState = uiState,
                     colors = colors,
+                    firstRollSeed = firstRollSeed,
+                    dieView = dieView,
                     onRollAnimationFinished = diceViewModel::onRollAnimationFinished,
                 )
               },
@@ -330,6 +357,8 @@ private fun DiceLandscapeBody(
     dimens: DiceDimens,
     onClose: () -> Unit,
     shakeToggle: ShakeToggleState?,
+    firstRollSeed: Int,
+    dieView: DieView,
 ) {
   // Panel widths and the gap are fractions of the card rather than fixed dp, so the die keeps the
   // same share of the screen on every phone. The gap comes out of the controls panel, so the die
@@ -357,6 +386,8 @@ private fun DiceLandscapeBody(
             DieImage(
                 uiState = uiState,
                 colors = colors,
+                firstRollSeed = firstRollSeed,
+                dieView = dieView,
                 onRollAnimationFinished = diceViewModel::onRollAnimationFinished,
             )
           }
@@ -642,59 +673,201 @@ private fun DiceUiState.displayedResult(): DiceRollResult? = currentResult?.take
   it.diceType == selectedDice
 }
 
+/** Opacity of the glow behind a landed die at its brightest, for an ordinary roll. */
+private const val LANDING_GLOW_ALPHA = 0.35f
+
+/** Opacity of the glow behind a landed die at its brightest, for the highest or lowest face. */
+private const val CRITICAL_GLOW_ALPHA = 0.8f
+
+/** Radius of the landing glow when it appears and when it has faded, as fractions of the die. */
+private const val GLOW_START_RADIUS = 0.35f
+private const val GLOW_END_RADIUS = 0.7f
+
+/** Value of the system "animator duration scale" when the user turned animations off. */
+private const val ANIMATIONS_OFF_SCALE = 0f
+
+/** Animator duration scale assumed when the setting has never been written. */
+private const val DEFAULT_ANIMATOR_SCALE = 1f
+
+/** Whether the user turned off animations in the system settings ("Remove animations"). */
+private fun animationsDisabled(context: Context): Boolean =
+    Settings.Global.getFloat(
+        context.contentResolver,
+        Settings.Global.ANIMATOR_DURATION_SCALE,
+        DEFAULT_ANIMATOR_SCALE,
+    ) == ANIMATIONS_OFF_SCALE
+
 /**
- * Big die image, filling the size it is given, with the raw roll engraved on its front face ("?"
- * before the first roll, or a loading indicator while rolling). [onRollAnimationFinished] is called
- * once the loading indicator has been shown for [ROLL_ANIMATION_MILLIS].
+ * The die at one moment, as a [DieView] draws it. [rotation] and [lift] (a height, as a fraction of
+ * the die's size) change on every frame of a roll: reading them while drawing, rather than while
+ * composing, keeps the screen from recomposing at every frame.
+ */
+class DieViewState
+internal constructor(
+    val diceType: DiceType,
+    /** Whether the die is tumbling: its value must not show yet. */
+    val isRolling: Boolean,
+    /** Value the die shows once landed, or null before its first roll. */
+    val shownValue: Int?,
+    val rotation: () -> Quaternion,
+    val lift: () -> Float,
+)
+
+/**
+ * Draws the die. The app uses [ThreeDDieView]; tests use [FlatDieView]. Public because
+ * [DiceOfflineScreen], which is public, takes one.
+ */
+typealias DieView = @Composable (DieViewState) -> Unit
+
+/** The 3D die, tumbling and landing on its result. */
+internal val ThreeDDieView: DieView = { state ->
+  Die3D(
+      diceType = state.diceType,
+      rotation = state.rotation,
+      lift = state.lift,
+      modifier = Modifier.fillMaxSize(),
+  )
+}
+
+/**
+ * A still picture of the die with its value written on its front face. Tests use it because the 3D
+ * engine cannot render under Robolectric; it follows the same roll timing as the 3D die.
+ */
+internal val FlatDieView: DieView = { state -> FlatDie(state) }
+
+/**
+ * The [DieView] a [DiceOfflineScreen] uses when none is passed: the 3D die. Tests that reach the
+ * screen through the whole app, and so cannot pass one, provide [FlatDieView] here instead.
+ */
+internal val LocalDieView = staticCompositionLocalOf { ThreeDDieView }
+
+/**
+ * The big die, filling the size it is given, drawn by [dieView]. When a roll starts
+ * ([DiceUiState.isRolling]), the die tumbles for [ROLL_ANIMATION_MILLIS] from where it rests to the
+ * rolled value; only then is [onRollAnimationFinished] called and the result shown, with a short
+ * bounce and glow. With system animations off, it turns to the result at once.
+ *
+ * [firstRollSeed] picks the tumble of the first roll, each later roll using the next seed.
  */
 @Composable
 private fun DieImage(
     uiState: DiceUiState,
     colors: DiceThemeColors,
+    firstRollSeed: Int,
+    dieView: DieView,
     onRollAnimationFinished: () -> Unit,
 ) {
+  val diceType = uiState.selectedDice
   val result = uiState.displayedResult()
-  val face = dieFace(uiState.selectedDice)
+  val context = LocalContext.current
+  // How the die rests between rolls: on its last result, or on its highest face before any roll.
+  var restingRotation by
+      remember(diceType) {
+        mutableStateOf(landingRotation(diceType, result?.rawValue ?: diceType.maxValue))
+      }
+  // The tumble being played, or null when the die rests.
+  var motion by remember { mutableStateOf<RollMotion?>(null) }
+  val progress = remember { Animatable(0f) }
+  // Moves the tumble's seed on at every roll, so two rolls never tumble the same way.
+  var landedRolls by remember { mutableIntStateOf(0) }
+  // Counts animated landings: each one plays the bounce, and none plays it when the die is merely
+  // shown, e.g. after a rotation of the screen.
+  var bounces by remember { mutableIntStateOf(0) }
+  val landing = remember { Animatable(1f) }
 
-  BoxWithConstraints(
+  LaunchedEffect(uiState.isRolling) {
+    if (!uiState.isRolling) return@LaunchedEffect
+    val target = result?.let { landingRotation(diceType, it.rawValue) } ?: restingRotation
+    // Read at every roll, so changing the setting applies to the next roll.
+    val animated = !animationsDisabled(context)
+    if (animated) {
+      motion = RollMotion(from = restingRotation, to = target, seed = firstRollSeed + landedRolls)
+      progress.snapTo(0f)
+      // Linear here: RollMotion applies the die's deceleration itself.
+      progress.animateTo(1f, tween(ROLL_ANIMATION_MILLIS.toInt(), easing = LinearEasing))
+    }
+    restingRotation = target
+    motion = null
+    landedRolls++
+    if (animated) bounces++
+    onRollAnimationFinished()
+  }
+  // Separate from the roll, which is cancelled as soon as the roll ends and would cut the bounce.
+  LaunchedEffect(bounces) {
+    if (bounces == 0) return@LaunchedEffect
+    landing.snapTo(0f)
+    landing.animateTo(1f, tween(LANDING_ANIMATION_MILLIS))
+  }
+
+  val glow = result?.takeUnless { uiState.isRolling }?.let { landingGlow(it, colors) }
+  Box(
       modifier =
-          Modifier.fillMaxSize().testTag(C.Tag.dice_offline_die).semantics {
-            contentDescription = "${uiState.selectedDice.name} die"
-          },
+          Modifier.fillMaxSize()
+              .testTag(C.Tag.dice_offline_die)
+              .semantics { contentDescription = "${diceType.name} die" }
+              .drawBehind {
+                val fade = landing.value
+                if (glow != null && fade < 1f) {
+                  val radiusFraction =
+                      GLOW_START_RADIUS + (GLOW_END_RADIUS - GLOW_START_RADIUS) * fade
+                  val radius = size.minDimension * radiusFraction
+                  val fadingGlow = glow.copy(alpha = glow.alpha * (1f - fade))
+                  drawCircle(
+                      brush =
+                          Brush.radialGradient(
+                              colors = listOf(fadingGlow, Color.Transparent),
+                              center = center,
+                              radius = radius,
+                          ),
+                      radius = radius,
+                  )
+                }
+              }
+              .graphicsLayer {
+                val scale = landingScale(landing.value)
+                scaleX = scale
+                scaleY = scale
+              },
   ) {
+    dieView(
+        DieViewState(
+            diceType = diceType,
+            isRolling = uiState.isRolling,
+            shownValue = result?.rawValue,
+            rotation = { motion?.rotation(progress.value) ?: restingRotation },
+            lift = { motion?.lift(progress.value) ?: 0f },
+        )
+    )
+  }
+}
+
+/**
+ * The die's picture with its value engraved on its front face: "?" before the first roll, nothing
+ * while it rolls.
+ */
+@Composable
+private fun FlatDie(state: DieViewState) {
+  val colors = diceThemeColors()
+  val face = dieFace(state.diceType)
+  BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
     Image(
         painter = painterResource(face.image),
         contentDescription = null,
         contentScale = ContentScale.Fit,
         modifier = Modifier.fillMaxSize(),
     )
-    if (uiState.isRolling) {
-      CircularProgressIndicator(
-          color = colors.dieText,
-          modifier =
-              Modifier.centeredAt(face.centerX, face.centerY)
-                  .size(40.dp)
-                  .testTag(C.Tag.dice_offline_loading),
-      )
-      // A roll stays "rolling" until the UI says its animation is over.
-      LaunchedEffect(key1 = uiState.isRolling) {
-        delay(ROLL_ANIMATION_MILLIS)
-        onRollAnimationFinished()
-      }
-    } else {
+    if (!state.isRolling) {
       // Sized in dp so the number always fits its face, whatever the user's font scale.
-
-      // textheight is an empirical value found by the agent to fit the number in the die and
+      // textHeight is an empirical value found by the agent to fit the number in the die and
       // make it look nice
-      val fontSize = with(LocalDensity.current) { (maxWidth * face.textHeight).toSp() }
       Text(
-          text = result?.rawValue?.toString() ?: "?",
+          text = state.shownValue?.toString() ?: "?",
           style =
               TextStyle(
                   color = colors.dieText,
                   fontFamily = FontFamily.Serif,
                   fontWeight = FontWeight.Bold,
-                  fontSize = fontSize,
+                  fontSize = with(LocalDensity.current) { (maxWidth * face.textHeight).toSp() },
                   shadow = Shadow(Color.Black.copy(alpha = 0.7f), Offset(0f, 3f), 4f),
               ),
           modifier =
@@ -704,7 +877,18 @@ private fun DieImage(
   }
 }
 
-/** The computation of the current roll including the modifier, or a hint before the first roll. */
+/** Color and peak opacity of the glow behind a landed [result]: brighter on a critical face. */
+private fun landingGlow(result: DiceRollResult, colors: DiceThemeColors): Color =
+    when (result.rawValue) {
+      result.diceType.maxValue -> colors.accentColor.copy(alpha = CRITICAL_GLOW_ALPHA)
+      1 -> colors.fumbleGlow.copy(alpha = CRITICAL_GLOW_ALPHA)
+      else -> colors.accentColor.copy(alpha = LANDING_GLOW_ALPHA)
+    }
+
+/**
+ * The computation of the current roll including the modifier, a hint before the first roll, or a
+ * placeholder while rolling, so the total never shows before the die lands.
+ */
 @Composable
 private fun DieResultText(uiState: DiceUiState, colors: DiceThemeColors) {
   val result = uiState.displayedResult()
@@ -712,7 +896,9 @@ private fun DieResultText(uiState: DiceUiState, colors: DiceThemeColors) {
   Spacer(Modifier.height(8.dp))
   Text(
       text =
-          if (result == null) {
+          if (uiState.isRolling) {
+            AnnotatedString("Rolling your ${uiState.selectedDice.name}…")
+          } else if (result == null) {
             AnnotatedString("Tap Roll to throw your ${uiState.selectedDice.name}")
           } else {
             buildAnnotatedString {

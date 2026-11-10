@@ -62,7 +62,6 @@ object C {
     const val dice_offline_die = "dice_offline_die"
     const val dice_offline_result = "dice_offline_result"
     const val dice_offline_result_detail = "dice_offline_result_detail"
-    const val dice_offline_loading = "dice_offline_loading"
     const val dice_offline_modifier_value = "dice_offline_modifier_value"
     const val dice_offline_modifier_decrease = "dice_offline_modifier_decrease"
     const val dice_offline_modifier_increase = "dice_offline_modifier_increase"

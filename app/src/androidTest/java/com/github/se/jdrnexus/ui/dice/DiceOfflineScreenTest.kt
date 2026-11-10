@@ -121,7 +121,12 @@ class DiceOfflineScreenTest {
   ): DiceViewModel {
     composeTestRule.setContent {
       SampleAppTheme(darkTheme = darkTheme) {
-        DiceOfflineScreen(diceViewModel = vm, shakeDetector = shakeDetector, onClose = onClose)
+        DiceOfflineScreen(
+            diceViewModel = vm,
+            shakeDetector = shakeDetector,
+            onClose = onClose,
+            dieView = FlatDieView,
+        )
       }
     }
     return vm
@@ -175,7 +180,6 @@ class DiceOfflineScreenTest {
     node(C.Tag.dice_offline_result_detail).assertTextEquals("Tap Roll to throw your D20")
     node(C.Tag.dice_offline_modifier_value).assertTextEquals("+0")
     node(C.Tag.diceOfflineSelect("D20")).assertIsSelected()
-    node(C.Tag.dice_offline_loading).assertDoesNotExist()
     node(C.Tag.dice_offline_error).assertDoesNotExist()
   }
 
@@ -240,7 +244,6 @@ class DiceOfflineScreenTest {
     assertFalse(vm.uiState.value.isRolling)
     assertEquals(DiceType.D8, result.diceType)
     assertTrue(result.rawValue in 1..8)
-    node(C.Tag.dice_offline_loading).assertDoesNotExist()
     node(C.Tag.dice_offline_result).assertTextEquals(result.rawValue.toString())
     node(C.Tag.dice_offline_result_detail)
         .assertTextEquals("Total: ${result.rawValue} + 3 = ${result.rawValue + 3}")
@@ -316,7 +319,11 @@ class DiceOfflineScreenTest {
     composeTestRule.setContent {
       SampleAppTheme {
         Box(Modifier.size(width = 320.dp, height = screenHeight)) {
-          DiceOfflineScreen(diceViewModel = vm, shakeDetector = FakeShakeDetector())
+          DiceOfflineScreen(
+              diceViewModel = vm,
+              shakeDetector = FakeShakeDetector(),
+              dieView = FlatDieView,
+          )
         }
       }
     }
@@ -335,7 +342,7 @@ class DiceOfflineScreenTest {
   fun defaultViewModelFromTheFactoryDrivesTheScreen() {
     // No ViewModel passed: the screen builds its own through DiceViewModelFactory, as in the app.
     // No roll here, so the test never depends on the roll animation.
-    composeTestRule.setContent { SampleAppTheme { DiceOfflineScreen() } }
+    composeTestRule.setContent { SampleAppTheme { DiceOfflineScreen(dieView = FlatDieView) } }
 
     node(C.Tag.dice_offline_selected_type).assertTextEquals("D20")
     node(C.Tag.dice_offline_result).assertTextEquals("?")
@@ -371,7 +378,7 @@ class DiceOfflineScreenTest {
     val shaker = FakeShakeDetector()
     val vm = setScreen(shakeDetector = shaker)
     shaker.awaitListening()
-    // Freeze virtual time so the 1 s roll animation cannot end during the test.
+    // Freeze virtual time so the roll animation cannot end during the test.
     composeTestRule.mainClock.autoAdvance = false
 
     assertTrue(shaker.sendShake())
@@ -423,7 +430,11 @@ class DiceOfflineScreenTest {
     composeTestRule.setContent {
       CompositionLocalProvider(LocalLifecycleOwner provides owner) {
         SampleAppTheme {
-          DiceOfflineScreen(diceViewModel = createViewModel(), shakeDetector = shaker)
+          DiceOfflineScreen(
+              diceViewModel = createViewModel(),
+              shakeDetector = shaker,
+              dieView = FlatDieView,
+          )
         }
       }
     }
