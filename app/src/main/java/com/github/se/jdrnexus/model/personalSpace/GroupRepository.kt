@@ -125,6 +125,11 @@ interface GroupRepository {
   /**
    * Adds [userId] to the group the [code] points to, then returns that group.
    *
+   * The membership is written in one batch, then the group is read back. If that last read fails,
+   * the user **is already a member** but the call returns NETWORK, and retrying returns
+   * ALREADY_MEMBER. After a NETWORK or ALREADY_MEMBER failure, callers should rely on
+   * [getUserGroups] to know whether the user joined, rather than on the error alone.
+   *
    * @param code The invitation code, as typed by the user (case and surrounding spaces are
    *   ignored).
    * @param userId The id of the user who wants to join.
@@ -134,7 +139,10 @@ interface GroupRepository {
    */
   suspend fun joinGroupWithCode(code: String, userId: String): Result<CampaignGroup>
 }
-
+/**
+ * Why an invitation operation failed. Carried by [InvitationException], which every failed
+ * [Result] of the invitation operations holds.
+ */
 enum class InvitationError {
   /** The caller's user id is blank: nobody is signed in. */
   NOT_SIGNED_IN,
@@ -142,7 +150,7 @@ enum class InvitationError {
   /** The group does not exist (or its id is blank). */
   GROUP_NOT_FOUND,
 
-  /** The caller is not the Game Master of the group (or the group does not exist). */
+  /** The caller is not the Game Master of the group. */
   NOT_GAME_MASTER,
 
   /** The code is malformed (wrong length or forbidden characters). No network call was made. */
