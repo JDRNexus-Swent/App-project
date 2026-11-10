@@ -337,6 +337,10 @@ class GroupWorkspaceViewModel(
     }
   }
 
+  fun refreshPersonalFiles(userId: String) {
+    loadPersonalFiles(userId)
+  }
+
   private fun loadPersonalFiles(uid: String): Job = viewModelScope.launch {
     try {
       personalFilesFlow(uid).collect { files ->

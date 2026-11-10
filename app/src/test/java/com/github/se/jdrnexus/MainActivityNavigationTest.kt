@@ -12,7 +12,6 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
@@ -152,12 +151,12 @@ class MainActivityNavigationTest {
     showApp(groupRepository = groupRepository)
     signInAndOpenCampaigns()
 
-    waitForText("Enter workspace")
-    composeTestRule.onNodeWithText("Enter workspace").performClick()
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
     waitForText("The Sunken Crown")
 
     composeTestRule.onNodeWithContentDescription("Go back").performClick()
-    waitForText("Enter workspace")
+    waitForTag(C.Tag.enter_workspace_button)
   }
 
   @Test
@@ -166,13 +165,13 @@ class MainActivityNavigationTest {
     showApp(groupRepository = groupRepository)
     signInAndOpenCampaigns()
 
-    waitForText("Enter workspace")
-    composeTestRule.onNodeWithText("Enter workspace").performClick()
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
     waitForText("The Sunken Crown")
 
     Espresso.pressBack()
 
-    waitForText("Enter workspace")
+    waitForTag(C.Tag.enter_workspace_button)
   }
 
   @Test
@@ -181,8 +180,10 @@ class MainActivityNavigationTest {
     showApp(groupRepository = groupRepository)
     signInAndOpenCampaigns()
 
-    waitForText("Enter workspace")
-    composeTestRule.onNodeWithText("Enter workspace").performTouchInput { repeat(10) { click() } }
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performTouchInput {
+      repeat(10) { click() }
+    }
 
     waitForText("The Sunken Crown")
     assertEquals(1, groupRepository.groupFlowLoads)
@@ -206,8 +207,8 @@ class MainActivityNavigationTest {
       )
     }
     signInAndOpenCampaigns()
-    waitForText("Enter workspace")
-    composeTestRule.onNodeWithText("Enter workspace").performClick()
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
     waitForText("The Sunken Crown")
 
     restorationTester.emulateSavedInstanceStateRestore()
