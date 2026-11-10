@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onCompletion
@@ -108,6 +109,114 @@ class GroupWorkSpaceViewModelTest {
     assertTrue(gm.uiState.value.canEditItems)
     assertFalse(player.uiState.value.canCreateFolder)
     assertFalse(player.uiState.value.canEditItems)
+  }
+
+  @Test
+  fun exposesGroupNameAndAllNonFolderPersonalFiles() = runTest {
+    val rootFile = JDRFile(id = "root-file", ownerId = OWNER_ID)
+    val folder = JDRFile(id = "personal-folder", ownerId = OWNER_ID, type = DocumentType.FOLDER)
+    val secondFolder =
+        JDRFile(
+            id = "second-folder",
+            ownerId = OWNER_ID,
+            type = DocumentType.FOLDER,
+        )
+    val nestedFolder =
+        JDRFile(
+            id = "nested-folder",
+            ownerId = OWNER_ID,
+            type = DocumentType.FOLDER,
+            personalParentId = folder.id,
+        )
+    val nestedFile =
+        JDRFile(
+            id = "nested-file",
+            ownerId = OWNER_ID,
+            personalParentId = nestedFolder.id,
+        )
+    val secondNestedFile =
+        JDRFile(
+            id = "second-nested-file",
+            ownerId = OWNER_ID,
+            personalParentId = secondFolder.id,
+        )
+    val otherUsersFile = JDRFile(id = "other-users-file", ownerId = OTHER_USER_ID)
+    val repository =
+        FakeWorkspaceRepository(
+            listOf(
+                rootFile,
+                folder,
+                secondFolder,
+                nestedFolder,
+                nestedFile,
+                secondNestedFile,
+                otherUsersFile,
+            )
+        )
+    val groupRepository =
+        FakeGroupRepository(
+            CampaignGroup(
+                id = GROUP_ID,
+                name = "The Sunken Crown",
+                gameMasterId = OWNER_ID,
+                participantIds = listOf(OWNER_ID),
+            )
+        )
+
+    val viewModel =
+        GroupWorkspaceViewModel(GROUP_ID, groupRepository, repository, FakeAuthRepository())
+    runCurrent()
+
+    assertEquals("The Sunken Crown", viewModel.uiState.value.groupName)
+    assertEquals(
+        listOf(rootFile.id, nestedFile.id, secondNestedFile.id),
+        viewModel.uiState.value.personalFiles.map { it.id },
+    )
+    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
+  }
+
+  @Test
+  fun exposesPersonalFilesLoadingFailure() = runTest {
+    val repository =
+        FakeWorkspaceRepository(
+            personalRootFailure = IllegalStateException("Personal Space unavailable")
+        )
+    val viewModel =
+        GroupWorkspaceViewModel(
+            GROUP_ID,
+            FakeGroupRepository(groupForRole(GroupWorkspaceRole.GAME_MASTER)),
+            repository,
+            FakeAuthRepository(),
+        )
+    runCurrent()
+
+    assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.personalFiles)
+    assertEquals("Personal Space unavailable", viewModel.uiState.value.personalFilesError)
+    assertEquals("Personal Space unavailable", viewModel.uiState.value.errorMessage)
+    assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
+  }
+
+  @Test
+  fun repeatedGroupUpdatesDoNotReloadWorkspace() = runTest {
+    val groupRepository = FakeGroupRepository(groupForRole(GroupWorkspaceRole.GAME_MASTER))
+    val repository = FakeWorkspaceRepository()
+    val viewModel =
+        viewModel(
+            repository,
+            GroupWorkspaceRole.GAME_MASTER,
+            groupRepository = groupRepository,
+        )
+    runCurrent()
+
+    val initialGroupLoads = repository.groupRootLoads
+    val initialPersonalLoads = repository.personalRootLoads
+    groupRepository.group.value =
+        groupForRole(GroupWorkspaceRole.GAME_MASTER).copy(description = "updated")
+    runCurrent()
+
+    assertEquals(initialGroupLoads, repository.groupRootLoads)
+    assertEquals(initialPersonalLoads, repository.personalRootLoads)
+    assertEquals(GROUP_ID, viewModel.uiState.value.groupId)
   }
 
   @Test
@@ -1237,6 +1346,7 @@ class GroupWorkSpaceViewModelTest {
       initialFiles: List<JDRFile> = emptyList(),
       private val folderGates: Map<String, CompletableDeferred<Unit>> = emptyMap(),
       private val folderFailures: Map<String, Exception> = emptyMap(),
+      private val personalRootFailure: Exception? = null,
   ) : WorkspaceRepository {
     val files = initialFiles.associateByTo(linkedMapOf(), JDRFile::id)
     private val folderFlows = mutableMapOf<Pair<String, String>, MutableStateFlow<List<JDRFile>>>()
@@ -1246,6 +1356,8 @@ class GroupWorkSpaceViewModelTest {
     private var nextId = 0
     var updateFailure: Exception? = null
     var hiddenFailure: Exception? = null
+    var groupRootLoads = 0
+    var personalRootLoads = 0
     val addRequests = mutableListOf<AddRequest>()
     val removeRequests = mutableListOf<RemovalRequest>()
     val hiddenRequests = mutableListOf<Pair<String, Boolean>>()
@@ -1345,8 +1457,11 @@ class GroupWorkSpaceViewModelTest {
     override fun getFileFlow(fileId: String): Flow<JDRFile?> =
         fileFlows.getOrPut(fileId) { MutableStateFlow(files[fileId]) }.asStateFlow()
 
-    override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> =
-        getPersonalFolderFiles("", ownerId)
+    override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> {
+      personalRootLoads++
+      return personalRootFailure?.let { failure -> flow { throw failure } }
+          ?: getPersonalFolderFiles("", ownerId)
+    }
 
     override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
         personalFlows
@@ -1362,6 +1477,7 @@ class GroupWorkSpaceViewModelTest {
             .asStateFlow()
 
     override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> {
+      if (folderId == groupId) groupRootLoads++
       folderRequests += folderId
       val source =
           folderFlows

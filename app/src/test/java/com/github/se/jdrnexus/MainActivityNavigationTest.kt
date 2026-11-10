@@ -6,25 +6,33 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.home.TestTags
+import com.github.se.jdrnexus.utils.NavigationGroupRepository
+import com.github.se.jdrnexus.utils.NavigationWorkspaceRepository
 import com.google.firebase.FirebaseApp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -138,18 +146,123 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(C.Tag.dice_offline_screen).assertIsNotDisplayed()
   }
 
-  private fun showApp(repository: FakeAuthRepository = FakeAuthRepository()) {
+  @Test
+  fun campaignsNavigateToWorkspaceAndBack() {
+    val groupRepository = navigationGroupRepository()
+    showApp(groupRepository = groupRepository)
+    signInAndOpenCampaigns()
+
+    waitForText("Enter workspace")
+    composeTestRule.onNodeWithText("Enter workspace").performClick()
+    waitForText("The Sunken Crown")
+
+    composeTestRule.onNodeWithContentDescription("Go back").performClick()
+    waitForText("Enter workspace")
+  }
+
+  @Test
+  fun systemBackFromWorkspaceReturnsToCampaigns() {
+    val groupRepository = navigationGroupRepository()
+    showApp(groupRepository = groupRepository)
+    signInAndOpenCampaigns()
+
+    waitForText("Enter workspace")
+    composeTestRule.onNodeWithText("Enter workspace").performClick()
+    waitForText("The Sunken Crown")
+
+    Espresso.pressBack()
+
+    waitForText("Enter workspace")
+  }
+
+  @Test
+  fun rapidWorkspaceTapsCreateOneDestinationAndOneViewModel() {
+    val groupRepository = navigationGroupRepository()
+    showApp(groupRepository = groupRepository)
+    signInAndOpenCampaigns()
+
+    waitForText("Enter workspace")
+    composeTestRule.onNodeWithText("Enter workspace").performTouchInput { repeat(10) { click() } }
+
+    waitForText("The Sunken Crown")
+    assertEquals(1, groupRepository.groupFlowLoads)
+    assertEquals("group-1", groupRepository.lastGroupFlowId)
+  }
+
+  @Test
+  fun workspaceGroupIdSurvivesSavedStateRestoration() {
+    val groupRepository = navigationGroupRepository()
+    val authRepository = FakeAuthRepository()
+    val restorationTester = StateRestorationTester(composeTestRule)
+    val authViewModel = AuthViewModel(authRepository)
+    val workspaceRepository = NavigationWorkspaceRepository()
+
+    restorationTester.setContent {
+      JDRNexusApp(
+          authViewModel = authViewModel,
+          authRepository = authRepository,
+          groupRepository = groupRepository,
+          workspaceRepository = workspaceRepository,
+      )
+    }
+    signInAndOpenCampaigns()
+    waitForText("Enter workspace")
+    composeTestRule.onNodeWithText("Enter workspace").performClick()
+    waitForText("The Sunken Crown")
+
+    restorationTester.emulateSavedInstanceStateRestore()
+
+    waitForText("The Sunken Crown")
+    assertEquals("group-1", groupRepository.lastGroupFlowId)
+  }
+
+  private fun showApp(
+      repository: FakeAuthRepository = FakeAuthRepository(),
+      groupRepository: NavigationGroupRepository? = null,
+      workspaceRepository: NavigationWorkspaceRepository = NavigationWorkspaceRepository(),
+  ) {
     val context = ApplicationProvider.getApplicationContext<Context>()
     if (FirebaseApp.getApps(context).isEmpty()) {
       checkNotNull(FirebaseApp.initializeApp(context))
     }
     val viewModel = AuthViewModel(repository)
-    composeTestRule.setContent { JDRNexusApp(authViewModel = viewModel) }
+    composeTestRule.setContent {
+      JDRNexusApp(
+          authViewModel = viewModel,
+          authRepository = repository,
+          groupRepository = groupRepository,
+          workspaceRepository = workspaceRepository,
+      )
+    }
   }
+
+  private fun signInAndOpenCampaigns() {
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    waitForTag(TestTags.GROUPMANAGEMENTBUTTON)
+    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+  }
+
+  private fun navigationGroupRepository() =
+      NavigationGroupRepository(
+          CampaignGroup(
+              id = "group-1",
+              name = "The Sunken Crown",
+              gameMasterId = "user-1",
+              participantIds = listOf("user-1"),
+          )
+      )
 
   private fun waitForTag(tag: String) {
     composeTestRule.waitUntil(5_000) {
       composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+    }
+  }
+
+  private fun waitForText(text: String) {
+    composeTestRule.waitUntil(5_000) {
+      composeTestRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
     }
   }
 
