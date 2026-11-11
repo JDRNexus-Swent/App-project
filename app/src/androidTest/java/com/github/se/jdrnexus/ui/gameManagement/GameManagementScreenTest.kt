@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.gameManagement
 
 import androidx.compose.runtime.mutableStateOf
@@ -43,7 +44,7 @@ class GameManagementScreenTest {
   @get:Rule val composeTestRule = createComposeRule()
 
   @Test
-  fun gameMasterSeesManageAndDisabledInviteActions() {
+  fun gameMasterSeesManageAndInviteActions() {
     setContent(
         uiState =
             stateFor(
@@ -57,7 +58,7 @@ class GameManagementScreenTest {
     )
 
     composeTestRule.onNodeWithText("Manage group").assertIsDisplayed()
-    composeTestRule.onNodeWithText("Invite · Coming soon").assertIsDisplayed().assertIsNotEnabled()
+    composeTestRule.onNodeWithText("Invite").assertIsDisplayed().assertIsEnabled()
   }
 
   @Test
@@ -96,7 +97,7 @@ class GameManagementScreenTest {
 
     composeTestRule.onNodeWithText("Enter workspace").assertIsDisplayed().assertIsEnabled()
     composeTestRule.onAllNodesWithText("Manage group").assertCountEquals(0)
-    composeTestRule.onAllNodesWithText("Invite · Coming soon").assertCountEquals(0)
+    composeTestRule.onAllNodesWithText("Invite").assertCountEquals(0)
   }
 
   @Test
@@ -436,7 +437,7 @@ class GameManagementScreenTest {
             onDismissSuccess = onDismissSuccess,
             onEnterWorkspace = onEnterWorkspace,
             onManageGroup = onManageGroup,
-            onInvite = {},
+            invitationVM = NoOpInvitationVM,
             onTabSelected = onTabSelected,
         )
       }

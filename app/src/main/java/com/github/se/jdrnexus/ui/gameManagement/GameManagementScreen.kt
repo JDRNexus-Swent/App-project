@@ -23,12 +23,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -54,6 +55,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -62,6 +64,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
@@ -74,9 +77,12 @@ import com.github.se.jdrnexus.viewmodel.GameManagementUiState
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.GroupLoadState
 import com.github.se.jdrnexus.viewmodel.GroupRole
+import com.github.se.jdrnexus.viewmodel.InvitationState
+import com.github.se.jdrnexus.viewmodel.JoinState
 import com.github.se.jdrnexus.viewmodel.UserGroup
 
-private data class GameManagementColors(
+/** The theme colours used by the game-management screen and its dialogs. */
+internal data class GameManagementColors(
     val background: Color,
     val card: Color,
     val raised: Color,
@@ -89,8 +95,9 @@ private data class GameManagementColors(
     val bannerColors: List<Color>,
 )
 
+/** Reads [GameManagementColors] from the current app theme. */
 @Composable
-private fun gameManagementColors(): GameManagementColors {
+internal fun gameManagementColors(): GameManagementColors {
   val colors = LocalAppUiColors.current
   return GameManagementColors(
       background = colors.background,
@@ -127,7 +134,6 @@ fun GameManagementScreen(
     gameManagementViewModel: GameManagementViewModel,
 ) {
   val uiState by gameManagementViewModel.uiState.collectAsState()
-  val context = LocalContext.current
   LaunchedEffect(gameManagementViewModel) { gameManagementViewModel.loadGroups() }
 
   GameManagementScreenContent(
@@ -140,13 +146,18 @@ fun GameManagementScreen(
       onDismissSuccess = gameManagementViewModel::dismissSuccessMessage,
       onEnterWorkspace = onEnterWorkspace,
       onManageGroup = onManageGroup,
-      // The invite dialog comes with #129; until then the button says the feature is coming soon.
-      onInvite = { showComingSoon(context, "Invitations") },
+      invitationVM = gameManagementViewModel,
       onTabSelected = onTabSelected,
   )
 }
 
-/** Renders the game-management screen from state and callbacks, without owning screen state. */
+/**
+ * Renders the game-management screen from state and callbacks. It only keeps which invitation
+ * dialog is open; codes and join results come from [uiState].
+ *
+ * @param invitationVM receives the invite and join actions of the dialogs.
+ * @param renderDialogsAsWindow whether dialogs open in their own window; tests render them inline.
+ */
 @Composable
 internal fun GameManagementScreenContent(
     uiState: GameManagementUiState,
@@ -158,11 +169,16 @@ internal fun GameManagementScreenContent(
     onDismissSuccess: () -> Unit,
     onEnterWorkspace: (String) -> Unit,
     onManageGroup: (String) -> Unit,
-    onInvite: (String) -> Unit,
+    invitationVM: GroupInvitationVM,
     onTabSelected: (String) -> Unit,
-    renderCreateDialogAsWindow: Boolean = true,
+    renderDialogsAsWindow: Boolean = true,
 ) {
   val colors = gameManagementColors()
+  var inviteGroupId by rememberSaveable { mutableStateOf<String?>(null) }
+  var isJoinDialogOpen by rememberSaveable { mutableStateOf(false) }
+  LaunchedEffect(uiState.joinState) {
+    if (uiState.joinState is JoinState.Joined) isJoinDialogOpen = false
+  }
 
   Scaffold(
       containerColor = colors.background,
@@ -199,6 +215,19 @@ internal fun GameManagementScreenContent(
             Spacer(Modifier.width(8.dp))
             Text("Create a new group", fontWeight = FontWeight.Medium)
           }
+        }
+        item {
+          OutlinedActionButton(
+              label = stringResource(R.string.join_group_action),
+              colors = colors,
+              icon = { Icon(Icons.AutoMirrored.Filled.Login, null, Modifier.size(16.dp)) },
+              onClick = {
+                // Clears the result of an earlier join, so its error isn't shown again.
+                invitationVM.resetJoinState()
+                isJoinDialogOpen = true
+              },
+              modifier = Modifier.testTag(C.Tag.join_group_button),
+          )
         }
       }
       if (uiState.successMessage.isNotEmpty()) {
@@ -251,7 +280,13 @@ internal fun GameManagementScreenContent(
                     colors = colors,
                     onEnterWorkspace = { onEnterWorkspace(userGroup.group.id) },
                     onManageGroup = { onManageGroup(userGroup.group.id) },
-                    onInvite = { onInvite(userGroup.group.id) },
+                    onInvite = {
+                      invitationVM.loadInvitation(userGroup.group.id)
+                      inviteGroupId = userGroup.group.id
+                    },
+                    // The ViewModel ignores a load while another runs, so opening a second
+                    // group's dialog then would show the first group's code under its name.
+                    inviteEnabled = uiState.invitationState != InvitationState.Loading,
                 )
               }
             }
@@ -269,11 +304,33 @@ internal fun GameManagementScreenContent(
     }
   }
 
+  val invitedGroup = uiState.groups.firstOrNull { it.group.id == inviteGroupId }?.group
+  if (invitedGroup != null) {
+    InviteDialog(
+        groupName = invitedGroup.name,
+        code = uiState.inviteCode,
+        state = uiState.invitationState,
+        renderAsWindow = renderDialogsAsWindow,
+        onRetry = { invitationVM.loadInvitation(invitedGroup.id) },
+        onRegenerate = { invitationVM.regenerateInvitation(invitedGroup.id) },
+        onDismiss = { inviteGroupId = null },
+    )
+  }
+  if (isJoinDialogOpen) {
+    JoinGroupDialog(
+        state = uiState.joinState,
+        renderAsWindow = renderDialogsAsWindow,
+        onClearError = invitationVM::resetJoinState,
+        onJoin = invitationVM::joinGroup,
+        onDismiss = { isJoinDialogOpen = false },
+    )
+  }
+
   if (uiState.isCreateDialogOpen) {
     CreateGroupDialog(
         uiState = uiState,
         colors = colors,
-        renderAsWindow = renderCreateDialogAsWindow,
+        renderAsWindow = renderDialogsAsWindow,
         onNameChanged = onGroupNameChanged,
         onCreate = onCreateGroup,
         onDismiss = onDismissCreateDialog,
@@ -498,6 +555,7 @@ private fun CampaignGroupCard(
     onEnterWorkspace: () -> Unit,
     onManageGroup: () -> Unit,
     onInvite: () -> Unit,
+    inviteEnabled: Boolean,
 ) {
   Column(
       modifier =
@@ -581,18 +639,19 @@ private fun CampaignGroupCard(
           Text("·", color = colors.outline)
           TextButton(
               onClick = onInvite,
-              enabled = false,
+              enabled = inviteEnabled,
               contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+              modifier = Modifier.testTag(C.Tag.invite_button),
           ) {
             Icon(
-                Icons.Filled.Lock,
+                Icons.Filled.PersonAdd,
                 null,
-                tint = colors.secondaryText,
-                modifier = Modifier.size(12.dp),
+                tint = if (inviteEnabled) colors.accent else colors.secondaryText,
+                modifier = Modifier.size(13.dp),
             )
             Text(
-                "Invite · Coming soon",
-                color = colors.secondaryText,
+                stringResource(R.string.invite_action),
+                color = if (inviteEnabled) colors.text else colors.secondaryText,
                 fontSize = 10.sp,
                 modifier = Modifier.padding(start = 4.dp),
             )
@@ -881,8 +940,22 @@ private fun GameManagementScreenPreview() {
         onDismissSuccess = {},
         onEnterWorkspace = {},
         onManageGroup = {},
-        onInvite = {},
+        invitationVM = NoOpInvitationVM,
         onTabSelected = {},
     )
   }
+}
+
+/**
+ * A [GroupInvitationVM] whose actions do nothing, for previews and tests that only render the
+ * screen.
+ */
+internal object NoOpInvitationVM : GroupInvitationVM {
+  override fun loadInvitation(groupId: String) = Unit
+
+  override fun regenerateInvitation(groupId: String) = Unit
+
+  override fun joinGroup(code: String) = Unit
+
+  override fun resetJoinState() = Unit
 }
