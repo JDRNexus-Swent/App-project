@@ -56,8 +56,49 @@ The move from `parentFolderIds` to `placements` is a **breaking change**. Docume
 `users/{userId}` holds one field, `groupIds: List<String>`: the groups the user belongs to. It is a copy of `participantIds`, kept per user, because security rules cannot search: they read this document to know which groups the caller is in (reading shared documents, dice rolls, activities and shared lore, adding a document to a group).
 
 - A user can only read their own document.
-- It must always agree with the `participantIds` of the groups, so it is written **in the same batch** as the group: `createGroup` (the GM), `addUserToGroup` and `removeUserFromGroup` (the user concerned). The rules refuse the batch otherwise, and refuse any change that disagrees with the groups. One group is added or removed per write.
+- It must always agree with the `participantIds` of the groups, so it is written **in the same batch** as the group: `createGroup` (the GM), `addUserToGroup` and `removeUserFromGroup` (the user concerned), and `joinGroupWithCode` (the user who joins, see 1.7). The rules refuse the batch otherwise, and refuse any change that disagrees with the groups. One group is added or removed per write.
 - Groups created before this field existed are not supported (same policy as 1.5): wipe them, or backfill the field.
+
+### 1.7 Invitations (`invitations/{code}`)
+
+A Game Master shares a short code; a signed-in user who knows it adds themselves to the group. Knowing a valid code is the only way in for someone who is not already a member.
+
+#### Data shape
+
+| Where | Content |
+|---|---|
+| `invitations/{code}` | `{ groupId, createdBy }`. The code is the document id. Never `""`. |
+| `campaign_groups/{groupId}.inviteCode` | The group's current code. |
+| `invitations/{code}/redemptions/{uid}` | `{ groupId }`. The "ticket" written by a user when they join with the code. |
+
+- **The code** has 8 characters drawn from a `SecureRandom`, from the alphabet `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (no `0/O`, `1/I`, nor `L`). User input is normalized (trimmed, uppercased) and accepted with 6 to 8 characters. Generation and validation live in `InvitationCodes` (pure, tested without the emulator).
+- **`inviteCode` is not part of `CampaignGroup`.** Only `GroupRepositoryFirestore` reads and writes it. It is absent until the first `createInvitation`, and never `null` or `""`. `updateGroup` writes `toMap()`, which never contains it, so it is not overwritten. `createGroup` writes the whole object, so it must only be used for new groups.
+- **One valid code per group.** The group points to its invitation (`inviteCode`) and the invitation points to its group (`groupId`). The rules refuse a pointer without its target and a target without its pointer (see below).
+
+#### Operations (`GroupRepository`)
+
+The repository does not authenticate: the caller passes the user id (like `addUserToGroup`) and the rules check `request.auth.uid`. A blank id gives `NOT_SIGNED_IN`. Every failure is `Result.failure(InvitationException(error))`.
+
+| Operation | Writes (one atomic unit) |
+|---|---|
+| `createInvitation(groupId, gameMasterId)` | Transaction: read the group, then create `invitations/{code}` and set `inviteCode`. Returns the existing code if there is one, writing nothing, so two concurrent calls cannot create two codes. |
+| `regenerateInvitation(groupId, gameMasterId)` | `WriteBatch`: delete `invitations/{old}`, create `invitations/{new}`, update `inviteCode`. The old code stops working. Acts like `createInvitation` if the group had no code. |
+| `joinGroupWithCode(code, userId)` | `WriteBatch`: create `redemptions/{uid}`, `arrayUnion(uid)` on `participantIds`, `arrayUnion(groupId)` on `users/{uid}.groupIds` (merge). Only the current user is added, never a whole list. |
+
+- **"Already a member" is checked before writing**, on `users/{uid}.groupIds`: a non-member cannot read the group, and this is the list the rules trust (1.6). The GM is detected the same way.
+- A revoked code and a code that never existed both give `UNKNOWN_CODE`. A group that does not exist gives `GROUP_NOT_FOUND`. If the group was deleted but its invitation survives, the join batch fails on the group update and nothing is written.
+- If the join batch succeeds but the final read of the group fails, the call returns `NETWORK` although the user is a member, and a retry returns `ALREADY_MEMBER`. Callers should rely on `getUserGroups` to know whether the user joined.
+
+#### Security rules
+
+- `invitations/{code}`: any signed-in user may `get` one, nobody may `list` (a code can be used by someone who knows it, not discovered). It is never updated: it is deleted and recreated.
+- **Create** an invitation: only the GM of the target group, shape exactly `{ groupId, createdBy }`, `createdBy == uid`, and the group's `inviteCode` equals the code **after** the batch (`getAfter`). **Delete**: only the GM of the invitation's group.
+- **GM edit of `inviteCode`** (`isInviteCodeEdit`): a separate case from the metadata edit. Only the GM, only the `inviteCode` field, a non-empty string, and the invitation it names exists after the batch and points to this group (`getAfter`).
+- **Redemption**: only its own user (`{uid} == request.auth.uid`), shape `{ groupId }`, the invitation exists (`get`), `groupId` is the invitation's, and the code is the group's **current** `inviteCode`. `create` and `update` are allowed, `delete` and `read` are not. Because `update` is allowed, a user who left a group can rejoin with the same code as long as it has not been regenerated: this is intended. A GM who wants to keep someone out regenerates the code.
+- **Self join** (`isSelfJoin`): a non-GM updates a group only by adding **their own uid** to `participantIds` (exactly one added, none removed, no other field changed). The code used is the group's current `inviteCode` read before the write, never a value typed by the user, so an old code is useless. The redemption must exist after the write (`existsAfter`) and the group must be in `users/{uid}.groupIds` after the write (`getAfter`). The new uid is expected in last position, which is what `arrayUnion` does (same assumption as `isParticipantAdded`).
+- The redemption exists because rules cannot see which code a user typed. Writing it in the **same batch** as the membership turns "this user knows a valid code" into a document the rules can read. The chain is: valid current code, then redemption allowed, then membership allowed. The order of the writes inside the batch does not matter, `existsAfter` reads the final state.
+- Reads of other documents by the rules count towards the limit of document-access calls (20 per batched write). A join makes about 6 to 8, see section 12.
+
 ---
 
 ## 2. Group root (pseudo-root)
@@ -242,10 +283,16 @@ Concurrent writes (a player placing a document in a folder at the moment it leav
 | Delete | yes | no | no                                                                            | no |
 | Rename / delete `GROUP_ROOT` | no | only together with its group | no                                                                            | no |
 | Unshare `GROUP_ROOT` | no | no | no                                                                            | no |
+| Create / regenerate / revoke the group's invite code (1.7) | n/a | yes | no | no |
+| Read one invitation by its code (`get`) | n/a | yes | yes | yes (signed in) |
+| List invitations | n/a | no | no | no |
+| Join the group with the current code (1.7) | n/a | n/a (already in) | n/a (already in) | yes (signed in), adds only their own uid |
 
 The rules cannot tell who changes a placement entry (see 7.5): "who may hide or reveal" is enforced by the UI, not by the rules. Reattachments are a side effect of unsharing or deleting a container: they are performed on other users' documents by whoever triggers the cascade, through exception 2 of 7.5.
 
 Reattachments are a side effect of unsharing or deleting a container: they are performed on other users' documents by whoever triggers the cascade, and only through the exceptions of 7.5.
+
+A user who left a group can join it again with the same code as long as the GM has not regenerated it (see 1.7). Regenerating the code is the GM's way to close the door.
  
 ---
 
@@ -284,6 +331,15 @@ Reattachments are a side effect of unsharing or deleting a container: they are p
 | Personal queries exclude `GROUP_ROOT` | | single filter | | yes |
 | `isHidden` filtering | no (not a boundary) | none (view model) | single function | yes |
 | Batch size limit | | yes | | yes |
+| Invitation and `inviteCode` point to each other (no ghost code) | yes (`getAfter` both ways, 1.7) | transaction / same batch | | emulator (repository, no rules) |
+| One valid code per group | yes | transaction (`createInvitation`) | | emulator (repository, no rules) |
+| Old code stops working after regeneration | yes (redemption needs the current code) | delete + create in one batch | | emulator (repository, no rules) |
+| Join writes redemption, `participantIds` and `groupIds` together | yes (`existsAfter`, `getAfter`) | same batch | | emulator (repository, no rules) |
+| Join adds only the current user | yes (`isSelfJoin`) | `arrayUnion(userId)` | | emulator (repository, no rules) |
+| Only the GM writes `inviteCode` and invitations | yes | checked before writing | | emulator (repository, no rules) |
+| Invitations cannot be listed | yes | | | not tested yet |
+| Already member refused before any write | | yes (`users/{uid}.groupIds`) | | emulator |
+| Code generation: alphabet, length, normalization | | pure functions (`InvitationCodes`) | | yes |
 
 Rules and batch behavior must be tested with the **Firebase emulator** (member / non-member / GM / owner), not only with mocks.
  
@@ -298,7 +354,12 @@ Rules and batch behavior must be tested with the **Firebase emulator** (member /
 - The client does not check who calls an operation: this is the job of the security rules.
 - Moving documents between folders is not supported yet.
 - Placement entry changes are open to any member of the group (7.5, exception 2).
+- The invitation rules (1.7) have no rules tests yet: the repository tests run on the emulator without the security rules. Rules tests that load `firestore.rules` with signed-in users come with the test refactor. Until then, the "denied" cases (listing, old code, adding another user, another field, non-GM) are not verified automatically.
+- The join makes about 6 to 8 document-access calls in the rules (limit: 20 per batched write). The emulator does not apply the limit: to check once on a real Firestore project.
+- Deleting or regenerating an invitation does not delete its `redemptions` subcollection (Firestore never cascades): the documents stay as harmless orphans. To handle with the group lifecycle (9).
+- `deleteGroup` does not delete the group's invitation: the code stays known but points to nothing (`joinGroupWithCode` returns `GROUP_NOT_FOUND`).
+- `regenerateInvitation` checks that the new code is free with a plain read, not atomically (the collision probability is negligible). Two simultaneous regenerations can leave one valid invitation that the group no longer knows.
+- A refused write (`PERMISSION_DENIED`) during an invitation operation is mapped to a generic error (`NETWORK` for a join, `NOT_GAME_MASTER` for create and regenerate), because the real cause is not known to the client.
 ---
 ---
 *Note: The structure and technical constraints detailed in this document were formulated with the help of Claude Sonnet 5.5.*
- 
