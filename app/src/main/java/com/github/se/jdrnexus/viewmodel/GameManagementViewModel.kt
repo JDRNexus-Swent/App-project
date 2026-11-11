@@ -365,9 +365,12 @@ class GameManagementViewModel(
    * wrong format fails with [InvitationError.INVALID_CODE] without any request.
    *
    * Calls while a join is running are ignored. On success the group list updates through the
-   * existing [GroupRepository.getUserGroups] subscription. A NETWORK error can still mean the user
-   * joined (the membership is written before the group is read back): the group list stays the
-   * source of truth.
+   * existing [GroupRepository.getUserGroups] subscription.
+   *
+   * A NETWORK error does not always mean the join failed: the repository writes the membership,
+   * then reads the group back, and only that read may have failed. This function does not check
+   * which case happened. If the membership was written, the group still appears in [uiState]'s
+   * group list through the same subscription, without another request.
    */
   override fun joinGroup(code: String) {
     if (_uiState.value.joinState == JoinState.Joining) return
@@ -410,8 +413,11 @@ class GameManagementViewModel(
    * Shared flow of [loadInvitation] and [regenerateInvitation]: checks the caller locally, then
    * runs [request] with the signed-in user's id and exposes the code or the error.
    *
-   * The role check uses the live group list and only avoids a pointless request; the repository and
-   * the Firestore rules still enforce it.
+   * A group the user plays in as a Player fails with [InvitationError.NOT_GAME_MASTER] without any
+   * request. A group missing from the user's list is sent to the repository, because only it can
+   * tell a deleted group ([InvitationError.GROUP_NOT_FOUND]) from someone else's group
+   * ([InvitationError.NOT_GAME_MASTER]). The local check only saves a request; the repository and
+   * the Firestore rules enforce the Game Master rule.
    */
   private fun requestInviteCode(
       groupId: String,
@@ -425,7 +431,7 @@ class GameManagementViewModel(
     val error =
         when {
           userId == null -> InvitationError.NOT_SIGNED_IN
-          role != GroupRole.GAME_MASTER -> InvitationError.NOT_GAME_MASTER
+          role == GroupRole.PLAYER -> InvitationError.NOT_GAME_MASTER
           else -> null
         }
     val code = if (clearPreviousCode) null else state.inviteCode
