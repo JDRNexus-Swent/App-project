@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.gameManagement
 
 import androidx.compose.foundation.background
@@ -63,6 +64,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.resources.AppTopBar
+import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.JdrNexusLogo
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.resources.showComingSoon
@@ -125,6 +127,7 @@ fun GameManagementScreen(
     gameManagementViewModel: GameManagementViewModel,
 ) {
   val uiState by gameManagementViewModel.uiState.collectAsState()
+  val context = LocalContext.current
   LaunchedEffect(gameManagementViewModel) { gameManagementViewModel.loadGroups() }
 
   GameManagementScreenContent(
@@ -137,7 +140,8 @@ fun GameManagementScreen(
       onDismissSuccess = gameManagementViewModel::dismissSuccessMessage,
       onEnterWorkspace = onEnterWorkspace,
       onManageGroup = onManageGroup,
-      onInvite = gameManagementViewModel::requestInvitationPlaceholder,
+      // The invite dialog comes with #129; until then the button says the feature is coming soon.
+      onInvite = { showComingSoon(context, "Invitations") },
       onTabSelected = onTabSelected,
   )
 }
@@ -176,23 +180,25 @@ internal fun GameManagementScreenContent(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
       item { GroupHeading(uiState = uiState, colors = colors) }
-      item {
-        Button(
-            onClick = onCreateGroupClick,
-            modifier =
-                Modifier.fillMaxWidth()
-                    .height(48.dp)
-                    .testTag(GameManagementTestTags.CREATE_GROUP_BUTTON),
-            shape = RoundedCornerShape(50),
-            colors =
-                ButtonDefaults.buttonColors(
-                    containerColor = colors.accent,
-                    contentColor = colors.accentContent,
-                ),
-        ) {
-          Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-          Spacer(Modifier.width(8.dp))
-          Text("Create a new group", fontWeight = FontWeight.Medium)
+      if (uiState.loadState != GroupLoadState.SignedOut) {
+        item {
+          Button(
+              onClick = onCreateGroupClick,
+              modifier =
+                  Modifier.fillMaxWidth()
+                      .height(48.dp)
+                      .testTag(GameManagementTestTags.CREATE_GROUP_BUTTON),
+              shape = RoundedCornerShape(50),
+              colors =
+                  ButtonDefaults.buttonColors(
+                      containerColor = colors.accent,
+                      contentColor = colors.accentContent,
+                  ),
+          ) {
+            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Create a new group", fontWeight = FontWeight.Medium)
+          }
         }
       }
       if (uiState.successMessage.isNotEmpty()) {
@@ -206,6 +212,14 @@ internal fun GameManagementScreenContent(
       }
       when (val loadState = uiState.loadState) {
         GroupLoadState.Loading -> item { GroupLoadingCard(colors) }
+        GroupLoadState.SignedOut ->
+            item {
+              Text(
+                  text = "Sign in to manage campaigns.",
+                  color = colors.secondaryText,
+                  modifier = Modifier.padding(vertical = 16.dp),
+              )
+            }
         is GroupLoadState.Error ->
             item {
               GroupLoadError(
@@ -544,6 +558,7 @@ private fun CampaignGroupCard(
           colors = colors,
           icon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.size(16.dp)) },
           onClick = onEnterWorkspace,
+          modifier = Modifier.testTag(C.Tag.enter_workspace_button),
       )
       if (isGameMaster) {
         Row(
@@ -638,6 +653,7 @@ private fun PrimaryActionButton(
  */
 @Composable
 private fun OutlinedActionButton(
+    modifier: Modifier = Modifier,
     label: String,
     colors: GameManagementColors,
     onClick: () -> Unit,
@@ -645,7 +661,7 @@ private fun OutlinedActionButton(
 ) {
   Button(
       onClick = onClick,
-      modifier = Modifier.fillMaxWidth().height(42.dp),
+      modifier = modifier.fillMaxWidth().height(42.dp),
       shape = RoundedCornerShape(10.dp),
       border = androidx.compose.foundation.BorderStroke(1.dp, colors.outline),
       colors =

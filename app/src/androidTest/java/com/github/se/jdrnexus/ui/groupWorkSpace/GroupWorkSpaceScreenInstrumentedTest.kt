@@ -10,6 +10,7 @@ import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -75,6 +76,28 @@ class GroupWorkSpaceScreenInstrumentedTest {
 
     // Verify the breadcrumb keeps the spaces around its separator.
     composeTestRule.onNodeWithText("  ›  Ashen Realms").assertIsDisplayed()
+  }
+
+  @Test
+  fun signingOutClearsWorkspaceAndHidesWorkspaceActions() {
+    val authRepository = FakeAuthRepository()
+    val viewModel =
+        showScreen(
+            WorkspaceFakeRepository(listOf(file("notes", "Notes", DocumentType.TEXT))),
+            Role.GAME_MASTER,
+            authRepository = authRepository,
+        )
+
+    composeTestRule.waitUntil(5_000) { viewModel.uiState.value.loadState == LoadState.Success }
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("notes"), true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_actions_fab, true).assertIsDisplayed()
+
+    authRepository.setUser(null)
+
+    composeTestRule.waitUntil(5_000) { viewModel.uiState.value.loadState == LoadState.SignedOut }
+    composeTestRule.onNodeWithText("Sign in to view this workspace.").assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(C.Tag.workspaceItem("notes"), true).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_actions_fab, true).assertCountEquals(0)
   }
 
   // Verifies the shared bottom navigation destinations and selection behavior.
@@ -235,7 +258,7 @@ class GroupWorkSpaceScreenInstrumentedTest {
   fun errorStateIsRendered() {
     val error = showScreen(WorkspaceFakeRepository(rootFailure = "Read denied"), Role.PLAYER)
     composeTestRule.waitUntil(5_000) { error.uiState.value.loadState is LoadState.Error }
-    composeTestRule.onNodeWithText("Read denied").assertIsDisplayed()
+    composeTestRule.onAllNodesWithText("Read denied").onFirst().assertIsDisplayed()
   }
 
   // Verifies Game Masters can create folders through the visible dialog workflow.
@@ -602,6 +625,7 @@ class GroupWorkSpaceScreenInstrumentedTest {
       onTabSelected: (String) -> Unit = {},
       onItemClicked: ((JDRFile, Boolean) -> Unit)? = null,
       setContent: Boolean = true,
+      authRepository: FakeAuthRepository = FakeAuthRepository(),
   ): GroupWorkspaceViewModel {
     viewModelStore?.clear()
     val group =
@@ -616,7 +640,7 @@ class GroupWorkSpaceScreenInstrumentedTest {
             GROUP,
             FakeGroupRepository(group),
             repository,
-            FakeAuthRepository(),
+            authRepository,
         )
     viewModelStore = ViewModelStore().also { it.put("workspace", viewModel) }
     if (setContent) {
@@ -789,9 +813,15 @@ class GroupWorkSpaceScreenInstrumentedTest {
         }
   }
 
-  private class FakeAuthRepository : AuthRepository {
-    override val authState =
-        MutableStateFlow<AuthUser?>(AuthUser(USER, "user@example.com", "User")).asStateFlow()
+  private class FakeAuthRepository(
+      initialUser: AuthUser? = AuthUser(USER, "user@example.com", "User"),
+  ) : AuthRepository {
+    private val mutableAuthState = MutableStateFlow(initialUser)
+    override val authState = mutableAuthState.asStateFlow()
+
+    fun setUser(user: AuthUser?) {
+      mutableAuthState.value = user
+    }
 
     override suspend fun signUpWithEmail(email: String, password: String, username: String) =
         AuthResult.Failure(AuthError.UNKNOWN)
@@ -823,6 +853,17 @@ class GroupWorkSpaceScreenInstrumentedTest {
 
     override fun getUserGroups(userId: String): Flow<List<CampaignGroup>> =
         MutableStateFlow(listOf(group))
+
+    override suspend fun createInvitation(groupId: String, gameMasterId: String): Result<String> =
+        Result.success("INVITE")
+
+    override suspend fun regenerateInvitation(
+        groupId: String,
+        gameMasterId: String,
+    ): Result<String> = Result.success("NEWINV")
+
+    override suspend fun joinGroupWithCode(code: String, userId: String): Result<CampaignGroup> =
+        Result.success(group)
   }
 
   private companion object {

@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.home
 
 import androidx.compose.foundation.layout.Arrangement
@@ -38,7 +39,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.ScreenBottomBar
-import com.github.se.jdrnexus.resources.showComingSoon
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
@@ -65,22 +65,25 @@ fun HomeScreen(
     onPersonalSpaceClick: () -> Unit = {},
     onDiceClick: () -> Unit = {},
     onGroupManagementClick: () -> Unit = {},
+    onHomeClick: () -> Unit = {},
+    onMapClick: () -> Unit = {},
 ) {
 
   val uiState by viewModel.uiState.collectAsState()
-  var logoutRequested by remember { mutableStateOf(false) }
+  val logoutRequested = remember { mutableStateOf(false) }
+  val canNavigate = { !logoutRequested.value && uiState.status !is AuthStatus.Loading }
   val context = LocalContext.current
   val colors = LocalAppUiColors.current
 
   LaunchedEffect(uiState.status) {
     when (uiState.status) {
       AuthStatus.Idle -> {
-        if (logoutRequested) {
-          logoutRequested = false
+        if (logoutRequested.value) {
+          logoutRequested.value = false
           onLogout()
         }
       }
-      is AuthStatus.Error -> logoutRequested = false
+      is AuthStatus.Error -> logoutRequested.value = false
       else -> Unit
     }
   }
@@ -104,9 +107,12 @@ fun HomeScreen(
             trailingContent = {
               TextButton(
                   onClick = {
-                    logoutRequested = true
-                    viewModel.signOut()
+                    if (!logoutRequested.value) {
+                      logoutRequested.value = true
+                      viewModel.signOut()
+                    }
                   },
+                  enabled = !logoutRequested.value && uiState.status !is AuthStatus.Loading,
                   modifier = Modifier.testTag(TestTags.LOGOUT),
               ) {
                 Text("Log out")
@@ -117,12 +123,13 @@ fun HomeScreen(
       bottomBar = {
         ScreenBottomBar(
             selectedTab = "Home",
+            enabled = canNavigate(),
             onTabSelected = { tab ->
               when (tab) {
-                "Home" -> Unit
+                "Home" -> onHomeClick()
                 "Campaigns" -> onGroupManagementClick()
                 "Files" -> onPersonalSpaceClick()
-                "Map" -> showComingSoon(context, "Map")
+                "Map" -> onMapClick()
               }
             },
         )
@@ -151,7 +158,8 @@ fun HomeScreen(
           horizontalArrangement = Arrangement.spacedBy(12.dp),
       ) {
         Button(
-            onClick = onDiceClick,
+            onClick = { if (canNavigate()) onDiceClick() },
+            enabled = canNavigate(),
             modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.DICEBUTTON),
             shape = RoundedCornerShape(8.dp),
             colors =
@@ -167,7 +175,8 @@ fun HomeScreen(
           )
         }
         Button(
-            onClick = onGroupManagementClick,
+            onClick = { if (canNavigate()) onGroupManagementClick() },
+            enabled = canNavigate(),
             modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.GROUPMANAGEMENTBUTTON),
             shape = RoundedCornerShape(8.dp),
             colors =
@@ -183,7 +192,8 @@ fun HomeScreen(
           )
         }
         Button(
-            onClick = onPersonalSpaceClick,
+            onClick = { if (canNavigate()) onPersonalSpaceClick() },
+            enabled = canNavigate(),
             modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.PSPACEBUTTON),
             shape = RoundedCornerShape(8.dp),
             colors =

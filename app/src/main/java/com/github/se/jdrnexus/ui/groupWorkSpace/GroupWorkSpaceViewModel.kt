@@ -19,7 +19,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
@@ -43,6 +45,10 @@ data class GroupWorkspaceUiState(
     val canEditItems: Boolean = false,
     val currentFolderName: String = "",
     val folderHistory: List<String> = emptyList(),
+    val groupId: String = "",
+    val groupName: String = "",
+    val personalFiles: List<JDRFile> = emptyList(),
+    val personalFilesError: String = "",
 )
 
 class GroupWorkspaceViewModel(
@@ -59,6 +65,7 @@ class GroupWorkspaceViewModel(
 
   // Keeps track of the coroutine currently loading the workspace.
   private var fetchJob: Job? = null
+  private var personalFilesJob: Job? = null
   private var fetchGeneration = 0L
 
   // Prevents two workspace modifications from running their critical sections simultaneously within
@@ -234,73 +241,161 @@ class GroupWorkspaceViewModel(
     require(groupId.isNotBlank()) { "Group ID cannot be empty." }
 
     viewModelScope.launch {
-      try {
-        val uid = requireUid()
-
-        groupRepository.getGroupFlow(groupId).collect { group ->
-          val newRole =
-              when {
-                group?.gameMasterId == uid -> GroupWorkspaceRole.GAME_MASTER
-
-                group?.participantIds?.contains(uid) == true -> GroupWorkspaceRole.PLAYER
-
-                else -> null
-              }
-
-          if (newRole == null) {
-            role = null
+      authRepository.authState
+          .map { it?.uid }
+          .distinctUntilChanged()
+          .collectLatest { uid ->
             fetchJob?.cancel()
+            fetchJob = null
             fetchGeneration++
+            role = null
 
-            _uiState.update {
-              it.copy(
-                  items = emptyList(),
-                  currentFolderId = "",
-                  currentFolderName = "",
-                  folderHistory = emptyList(),
-                  canCreateFolder = false,
-                  canEditItems = false,
-                  loadState = LoadState.Error("You are no longer a member of this group."),
-              )
+            if (uid == null) {
+              _uiState.value = GroupWorkspaceUiState(loadState = LoadState.SignedOut)
+              return@collectLatest
             }
-            return@collect
-          }
 
-          val roleChanged = role != newRole
-          role = newRole
+            _uiState.value = GroupWorkspaceUiState(loadState = LoadState.Loading)
+            observeMembership(uid)
+          }
+    }
+  }
+
+  private suspend fun observeMembership(uid: String) {
+    try {
+      groupRepository.getGroupFlow(groupId).collect { group ->
+        val newRole =
+            when {
+              group?.gameMasterId == uid -> GroupWorkspaceRole.GAME_MASTER
+
+              group?.participantIds?.contains(uid) == true -> GroupWorkspaceRole.PLAYER
+
+              else -> null
+            }
+
+        if (newRole == null) {
+          role = null
+          fetchJob?.cancel()
+          fetchGeneration++
 
           _uiState.update {
             it.copy(
-                canCreateFolder = newRole == GroupWorkspaceRole.GAME_MASTER,
-                canEditItems = newRole == GroupWorkspaceRole.GAME_MASTER,
+                items = emptyList(),
+                currentFolderId = "",
+                currentFolderName = "",
+                folderHistory = emptyList(),
+                canCreateFolder = false,
+                canEditItems = false,
+                loadState = LoadState.Error("You are no longer a member of this group."),
+                groupId = "",
+                groupName = "",
             )
           }
-
-          if (roleChanged || fetchJob == null) {
-            loadWorkspace()
-          }
+          personalFilesJob?.cancel()
+          personalFilesJob = null
+          return@collect
         }
-      } catch (e: CancellationException) {
-        throw e
-      } catch (e: Exception) {
-        role = null
-        fetchJob?.cancel()
-        fetchGeneration++
+
+        val roleChanged = role != newRole
+        role = newRole
+
         _uiState.update {
           it.copy(
-              currentUserId = "",
-              items = emptyList(),
-              currentFolderId = "",
-              currentFolderName = "",
-              folderHistory = emptyList(),
-              canCreateFolder = false,
-              canEditItems = false,
-              loadState = LoadState.Error(e.message ?: "Unable to verify group membership."),
+              canCreateFolder = newRole == GroupWorkspaceRole.GAME_MASTER,
+              canEditItems = newRole == GroupWorkspaceRole.GAME_MASTER,
+              groupId = groupId,
+              groupName = group?.name.orEmpty(),
           )
         }
+
+        if (personalFilesJob == null) {
+          personalFilesJob = loadPersonalFiles(uid)
+        }
+
+        if (roleChanged || fetchJob == null) {
+          loadWorkspace()
+        }
+      }
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      role = null
+      fetchJob?.cancel()
+      fetchGeneration++
+      _uiState.update {
+        it.copy(
+            currentUserId = "",
+            items = emptyList(),
+            currentFolderId = "",
+            currentFolderName = "",
+            folderHistory = emptyList(),
+            canCreateFolder = false,
+            canEditItems = false,
+            loadState = LoadState.Error(e.message ?: "Unable to verify group membership."),
+        )
       }
     }
   }
+
+  fun refreshPersonalFiles(userId: String) {
+    personalFilesJob?.cancel()
+    personalFilesJob = loadPersonalFiles(userId)
+  }
+
+  private fun loadPersonalFiles(uid: String): Job = viewModelScope.launch {
+    try {
+      personalFilesFlow(uid).collect { files ->
+        _uiState.update {
+          it.copy(
+              personalFiles = files,
+              personalFilesError = "",
+              errorMessage = if (it.personalFilesError.isNotBlank()) "" else it.errorMessage,
+          )
+        }
+      }
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      val message = e.message?.takeIf(String::isNotBlank) ?: "Unable to load personal files."
+      _uiState.update {
+        it.copy(
+            personalFiles = emptyList(),
+            personalFilesError = message,
+            errorMessage = message,
+        )
+      }
+    }
+  }
+
+  /**
+   * Keeps the traversal behind one repository-facing helper so it can be replaced by the shared
+   * Personal Space traversal when that API is available.
+   */
+  private fun personalFilesFlow(uid: String) =
+      repository.getPersonalRootFiles(uid).map { roots ->
+        val files = mutableListOf<JDRFile>()
+        val visited = mutableSetOf<String>()
+
+        suspend fun collectFolder(folder: JDRFile) {
+          if (!visited.add(folder.id)) return
+          repository.getPersonalFolderFiles(folder.id, uid).first().forEach { child ->
+            if (child.type == DocumentType.FOLDER) {
+              collectFolder(child)
+            } else if (child.type != DocumentType.GROUP_ROOT) {
+              files += child
+            }
+          }
+        }
+
+        roots.forEach { root ->
+          if (root.type == DocumentType.FOLDER) {
+            collectFolder(root)
+          } else if (root.type != DocumentType.GROUP_ROOT) {
+            files += root
+          }
+        }
+        files
+      }
 
   /** Opens a child folder and records the current folder for back navigation. */
   fun openFolder(folderId: String) {
@@ -336,7 +431,7 @@ class GroupWorkspaceViewModel(
           folderHistory = if (preserveFolderHistory) it.folderHistory else emptyList(),
           items = emptyList(),
           loadState = LoadState.Loading,
-          errorMessage = "",
+          errorMessage = it.personalFilesError.ifBlank { "" },
       )
     }
 
@@ -413,7 +508,7 @@ class GroupWorkspaceViewModel(
                 it.copy(
                     items = emptyList(),
                     loadState = LoadState.Error(message),
-                    errorMessage = message,
+                    errorMessage = it.personalFilesError.ifBlank { message },
                 )
               }
             }
@@ -433,6 +528,10 @@ class GroupWorkspaceViewModel(
                 loadState = LoadState.Error(e.message ?: "Unable to load the group workspace."),
                 items = emptyList(),
                 currentFolderName = "",
+                errorMessage =
+                    it.personalFilesError.ifBlank {
+                      e.message ?: "Unable to load the group workspace."
+                    },
             )
           }
         }
@@ -514,6 +613,7 @@ class GroupWorkspaceViewModel(
                 includeContent = file.type == DocumentType.FOLDER,
             )
             .getOrThrow()
+        refreshPersonalFiles(uid)
       }
     }
   }
@@ -538,6 +638,7 @@ class GroupWorkspaceViewModel(
                 parentFolderId = parentId.ifEmpty { groupId },
             )
             .getOrThrow()
+        refreshPersonalFiles(uid)
       }
     }
   }
