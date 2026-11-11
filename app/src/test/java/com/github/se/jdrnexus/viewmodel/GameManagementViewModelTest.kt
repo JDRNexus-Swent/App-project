@@ -1,9 +1,12 @@
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.viewmodel
 
 import androidx.lifecycle.ViewModelStore
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
+import com.github.se.jdrnexus.model.personalSpace.InvitationError
+import com.github.se.jdrnexus.model.personalSpace.InvitationException
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
@@ -15,7 +18,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -375,91 +380,435 @@ class GameManagementViewModelTest {
     )
   }
 
-  @Test
-  fun gameMasterInvitationRequestReturnsComingSoonMessage() = runTest {
-    val user = AuthUser("gm-1", null, null)
-    val group = CampaignGroup(id = "group-1", name = "Campaign", gameMasterId = user.uid)
-    val viewModel =
-        createViewModel(
-            FakeGroupRepository { flowOf(listOf(group)) },
-            FakeAuthRepository(user),
-        )
-    advanceUntilIdle()
+  // ==========================================
+  // INVITE CODES (Game Master)
+  // ==========================================
 
-    viewModel.requestInvitationPlaceholder(group.id)
+  @Test
+  fun gameMasterLoadsTheGroupsInviteCode() = runTest {
+    val gate = CompletableDeferred<Unit>()
+    val repository = InvitationGroupRepository(listOf(GM_GROUP)).apply { inviteGate = gate }
+    val viewModel = createViewModel(repository, FakeAuthRepository(GM))
+    runCurrent()
+    assertEquals(InvitationState.Idle, viewModel.uiState.value.invitationState)
+
+    viewModel.loadInvitation(GM_GROUP.id)
+    runCurrent()
+
+    assertEquals(InvitationState.Loading, viewModel.uiState.value.invitationState)
+    assertEquals(listOf(GM_GROUP.id to GM.uid), repository.createCalls)
+    gate.complete(Unit)
+    runCurrent()
+
+    assertEquals(InvitationState.Idle, viewModel.uiState.value.invitationState)
+    assertEquals(FIRST_CODE, viewModel.uiState.value.inviteCode)
+  }
+
+  @Test
+  fun regeneratingReplacesTheCode() = runTest {
+    val repository = InvitationGroupRepository(listOf(GM_GROUP))
+    val viewModel = createViewModel(repository, FakeAuthRepository(GM))
+    runCurrent()
+    viewModel.loadInvitation(GM_GROUP.id)
+    runCurrent()
+
+    viewModel.regenerateInvitation(GM_GROUP.id)
+    runCurrent()
+
+    assertEquals(SECOND_CODE, viewModel.uiState.value.inviteCode)
+    assertEquals(InvitationState.Idle, viewModel.uiState.value.invitationState)
+    assertEquals(listOf(GM_GROUP.id to GM.uid), repository.regenerateCalls)
+    assertEquals(listOf(GM_GROUP.id to GM.uid), repository.createCalls)
+  }
+
+  @Test
+  fun playerCannotLoadTheCode() = runTest {
+    val repository = InvitationGroupRepository(listOf(PLAYER_GROUP))
+    val viewModel = createViewModel(repository, FakeAuthRepository(PLAYER))
+    runCurrent()
+
+    viewModel.loadInvitation(PLAYER_GROUP.id)
+    runCurrent()
 
     assertEquals(
-        GroupActionState.Success(group.id, "Invitation management is coming soon."),
+        InvitationState.Error(InvitationError.NOT_GAME_MASTER),
         viewModel.uiState.value.invitationState,
+    )
+    assertEquals(emptyList<Pair<String, String>>(), repository.createCalls)
+  }
+
+  @Test
+  fun playerCannotRegenerateTheCode() = runTest {
+    val repository = InvitationGroupRepository(listOf(PLAYER_GROUP))
+    val viewModel = createViewModel(repository, FakeAuthRepository(PLAYER))
+    runCurrent()
+
+    viewModel.regenerateInvitation(PLAYER_GROUP.id)
+    runCurrent()
+
+    assertEquals(
+        InvitationState.Error(InvitationError.NOT_GAME_MASTER),
+        viewModel.uiState.value.invitationState,
+    )
+    assertEquals(emptyList<Pair<String, String>>(), repository.regenerateCalls)
+  }
+
+  @Test
+  fun groupMissingFromTheUsersListIsCheckedByTheRepository() = runTest {
+    val repository = InvitationGroupRepository(listOf(GM_GROUP))
+    val viewModel = createViewModel(repository, FakeAuthRepository(GM))
+    runCurrent()
+
+    viewModel.loadInvitation("unknown-group")
+    runCurrent()
+
+    assertEquals(
+        InvitationState.Error(InvitationError.GROUP_NOT_FOUND),
+        viewModel.uiState.value.invitationState,
+    )
+    assertEquals(listOf("unknown-group" to GM.uid), repository.createCalls)
+  }
+
+  @Test
+  fun signedOutUserCannotManageCodes() = runTest {
+    val repository = InvitationGroupRepository(listOf(GM_GROUP))
+    val viewModel = createViewModel(repository, FakeAuthRepository(user = null))
+    runCurrent()
+
+    viewModel.loadInvitation(GM_GROUP.id)
+    runCurrent()
+
+    assertEquals(
+        InvitationState.Error(InvitationError.NOT_SIGNED_IN),
+        viewModel.uiState.value.invitationState,
+    )
+    assertEquals(emptyList<Pair<String, String>>(), repository.createCalls)
+  }
+
+  @Test
+  fun loadFailureExposesTheRepositoryError() = runTest {
+    val repository =
+        InvitationGroupRepository(listOf(GM_GROUP)).apply {
+          inviteFailure = InvitationException(InvitationError.GROUP_NOT_FOUND)
+        }
+    val viewModel = createViewModel(repository, FakeAuthRepository(GM))
+    runCurrent()
+
+    viewModel.loadInvitation(GM_GROUP.id)
+    runCurrent()
+
+    assertEquals(
+        InvitationState.Error(InvitationError.GROUP_NOT_FOUND),
+        viewModel.uiState.value.invitationState,
+    )
+    assertEquals(null, viewModel.uiState.value.inviteCode)
+  }
+
+  @Test
+  fun failedRegenerationKeepsTheStillValidCode() = runTest {
+    val repository = InvitationGroupRepository(listOf(GM_GROUP))
+    val viewModel = createViewModel(repository, FakeAuthRepository(GM))
+    runCurrent()
+    viewModel.loadInvitation(GM_GROUP.id)
+    runCurrent()
+    repository.inviteFailure = InvitationException(InvitationError.NETWORK)
+
+    viewModel.regenerateInvitation(GM_GROUP.id)
+    runCurrent()
+
+    assertEquals(
+        InvitationState.Error(InvitationError.NETWORK),
+        viewModel.uiState.value.invitationState,
+    )
+    assertEquals(FIRST_CODE, viewModel.uiState.value.inviteCode)
+  }
+
+  @Test
+  fun codeCanBeLoadedAgainAfterAnError() = runTest {
+    val repository =
+        InvitationGroupRepository(listOf(GM_GROUP)).apply {
+          inviteFailure = InvitationException(InvitationError.NETWORK)
+        }
+    val viewModel = createViewModel(repository, FakeAuthRepository(GM))
+    runCurrent()
+    viewModel.loadInvitation(GM_GROUP.id)
+    runCurrent()
+    assertEquals(
+        InvitationState.Error(InvitationError.NETWORK),
+        viewModel.uiState.value.invitationState,
+    )
+    repository.inviteFailure = null
+
+    viewModel.loadInvitation(GM_GROUP.id)
+    runCurrent()
+
+    assertEquals(InvitationState.Idle, viewModel.uiState.value.invitationState)
+    assertEquals(FIRST_CODE, viewModel.uiState.value.inviteCode)
+    assertEquals(2, repository.createCalls.size)
+  }
+
+  @Test
+  fun codeRequestsWhileACodeIsLoadingAreIgnored() = runTest {
+    val gate = CompletableDeferred<Unit>()
+    val repository = InvitationGroupRepository(listOf(GM_GROUP)).apply { inviteGate = gate }
+    val viewModel = createViewModel(repository, FakeAuthRepository(GM))
+    runCurrent()
+
+    viewModel.loadInvitation(GM_GROUP.id)
+    viewModel.loadInvitation(GM_GROUP.id)
+    viewModel.regenerateInvitation(GM_GROUP.id)
+    runCurrent()
+
+    assertEquals(listOf(GM_GROUP.id to GM.uid), repository.createCalls)
+    assertEquals(emptyList<Pair<String, String>>(), repository.regenerateCalls)
+    gate.complete(Unit)
+    runCurrent()
+
+    assertEquals(FIRST_CODE, viewModel.uiState.value.inviteCode)
+  }
+
+  @Test
+  fun loadingAnotherGroupClearsThePreviousCode() = runTest {
+    val repository = InvitationGroupRepository(listOf(GM_GROUP, SECOND_GM_GROUP))
+    val viewModel = createViewModel(repository, FakeAuthRepository(GM))
+    runCurrent()
+    viewModel.loadInvitation(GM_GROUP.id)
+    runCurrent()
+    repository.inviteGate = CompletableDeferred()
+
+    viewModel.loadInvitation(SECOND_GM_GROUP.id)
+    runCurrent()
+
+    assertEquals(InvitationState.Loading, viewModel.uiState.value.invitationState)
+    assertEquals(null, viewModel.uiState.value.inviteCode)
+  }
+
+  @Test
+  fun signingOutWhileACodeLoadsDropsTheResult() = runTest {
+    val gate = CompletableDeferred<Unit>()
+    val auth = FakeAuthRepository(GM)
+    val repository = InvitationGroupRepository(listOf(GM_GROUP)).apply { inviteGate = gate }
+    val viewModel = createViewModel(repository, auth)
+    runCurrent()
+    viewModel.loadInvitation(GM_GROUP.id)
+    runCurrent()
+
+    auth.currentUser.value = null
+    runCurrent()
+    // The request is stuck on the gate. If it had not been cancelled, releasing the gate would
+    // expose the code to the signed-out screen.
+    gate.complete(Unit)
+    runCurrent()
+
+    assertEquals(GroupLoadState.SignedOut, viewModel.uiState.value.loadState)
+    assertEquals(InvitationState.Idle, viewModel.uiState.value.invitationState)
+    assertEquals(null, viewModel.uiState.value.inviteCode)
+  }
+
+  // ==========================================
+  // JOINING WITH A CODE
+  // ==========================================
+
+  @Test
+  fun joinNormalizesTheCodeAndEndsJoined() = runTest {
+    val gate = CompletableDeferred<Unit>()
+    val repository =
+        InvitationGroupRepository(listOf(JOINABLE_GROUP)).apply {
+          addInvitation(FIRST_CODE, JOINABLE_GROUP.id)
+          joinGate = gate
+        }
+    val viewModel = createViewModel(repository, FakeAuthRepository(PLAYER))
+    runCurrent()
+    assertEquals(JoinState.Idle, viewModel.uiState.value.joinState)
+
+    viewModel.joinGroup("  ${FIRST_CODE.lowercase()} ")
+    runCurrent()
+
+    assertEquals(JoinState.Joining, viewModel.uiState.value.joinState)
+    assertEquals(listOf(FIRST_CODE to PLAYER.uid), repository.joinCalls)
+    gate.complete(Unit)
+    runCurrent()
+
+    assertEquals(JoinState.Joined(JOINABLE_GROUP.id), viewModel.uiState.value.joinState)
+  }
+
+  @Test
+  fun joinedGroupAppearsInTheGroupList() = runTest {
+    val repository =
+        InvitationGroupRepository(listOf(JOINABLE_GROUP)).apply {
+          addInvitation(FIRST_CODE, JOINABLE_GROUP.id)
+        }
+    val viewModel = createViewModel(repository, FakeAuthRepository(PLAYER))
+    runCurrent()
+    assertEquals(GroupLoadState.Empty, viewModel.uiState.value.loadState)
+
+    viewModel.joinGroup(FIRST_CODE)
+    runCurrent()
+
+    val joinedGroup =
+        JOINABLE_GROUP.copy(participantIds = JOINABLE_GROUP.participantIds + PLAYER.uid)
+    assertEquals(listOf(UserGroup(joinedGroup, GroupRole.PLAYER)), viewModel.uiState.value.groups)
+  }
+
+  @Test
+  fun malformedCodesFailWithoutARequest() = runTest {
+    val repository = InvitationGroupRepository(listOf(JOINABLE_GROUP))
+    val viewModel = createViewModel(repository, FakeAuthRepository(PLAYER))
+    runCurrent()
+
+    // A blank code and a wrong-length code, the two cases named in issue #163. Every format rule
+    // is tested in InvitationCodeTest; this only checks that the ViewModel rejects them locally.
+    for (code in listOf("   ", "ABC23")) {
+      // Start each code from Idle, so the error cannot be left over from the previous code.
+      viewModel.resetJoinState()
+      viewModel.joinGroup(code)
+      runCurrent()
+
+      assertEquals(
+          "code \"$code\"",
+          JoinState.Error(InvitationError.INVALID_CODE),
+          viewModel.uiState.value.joinState,
+      )
+    }
+    assertEquals(emptyList<Pair<String, String>>(), repository.joinCalls)
+  }
+
+  @Test
+  fun signedOutUserCannotJoin() = runTest {
+    val repository =
+        InvitationGroupRepository(listOf(JOINABLE_GROUP)).apply {
+          addInvitation(FIRST_CODE, JOINABLE_GROUP.id)
+        }
+    val viewModel = createViewModel(repository, FakeAuthRepository(user = null))
+    runCurrent()
+
+    viewModel.joinGroup(FIRST_CODE)
+    runCurrent()
+
+    assertEquals(
+        JoinState.Error(InvitationError.NOT_SIGNED_IN),
+        viewModel.uiState.value.joinState,
+    )
+    assertEquals(emptyList<Pair<String, String>>(), repository.joinCalls)
+  }
+
+  @Test
+  fun eachRepositoryJoinErrorEndsInItsOwnErrorState() = runTest {
+    for (error in
+        listOf(
+            InvitationError.UNKNOWN_CODE,
+            InvitationError.ALREADY_MEMBER,
+            InvitationError.GROUP_NOT_FOUND,
+            InvitationError.NETWORK,
+        )) {
+      val repository =
+          InvitationGroupRepository(listOf(JOINABLE_GROUP)).apply {
+            joinFailure = InvitationException(error)
+          }
+      val viewModel = createViewModel(repository, FakeAuthRepository(PLAYER))
+      runCurrent()
+
+      viewModel.joinGroup(FIRST_CODE)
+      runCurrent()
+
+      assertEquals(error.name, JoinState.Error(error), viewModel.uiState.value.joinState)
+    }
+  }
+
+  @Test
+  fun joinCanBeResubmittedAfterAnError() = runTest {
+    val repository =
+        InvitationGroupRepository(listOf(JOINABLE_GROUP)).apply {
+          addInvitation(FIRST_CODE, JOINABLE_GROUP.id)
+        }
+    val viewModel = createViewModel(repository, FakeAuthRepository(PLAYER))
+    runCurrent()
+    viewModel.joinGroup(SECOND_CODE)
+    runCurrent()
+    assertEquals(JoinState.Error(InvitationError.UNKNOWN_CODE), viewModel.uiState.value.joinState)
+
+    viewModel.joinGroup(FIRST_CODE)
+    runCurrent()
+
+    assertEquals(JoinState.Joined(JOINABLE_GROUP.id), viewModel.uiState.value.joinState)
+    assertEquals(
+        listOf(SECOND_CODE to PLAYER.uid, FIRST_CODE to PLAYER.uid),
+        repository.joinCalls,
     )
   }
 
   @Test
-  fun playerCannotRequestInvitationManagement() = runTest {
-    val user = AuthUser("player-1", null, null)
-    val group = CampaignGroup(id = "group-1", name = "Campaign", gameMasterId = "gm-1")
-    val viewModel =
-        createViewModel(
-            FakeGroupRepository { flowOf(listOf(group)) },
-            FakeAuthRepository(user),
-        )
-    advanceUntilIdle()
+  fun secondJoinWhileJoiningIsIgnored() = runTest {
+    val repository =
+        InvitationGroupRepository(listOf(JOINABLE_GROUP)).apply {
+          addInvitation(FIRST_CODE, JOINABLE_GROUP.id)
+          joinGate = CompletableDeferred()
+        }
+    val viewModel = createViewModel(repository, FakeAuthRepository(PLAYER))
+    runCurrent()
 
-    viewModel.requestInvitationPlaceholder(group.id)
+    viewModel.joinGroup(FIRST_CODE)
+    viewModel.joinGroup(FIRST_CODE)
+    runCurrent()
 
-    assertEquals(
-        GroupActionState.Error("Only the group's Game Master can manage invitations."),
-        viewModel.uiState.value.invitationState,
-    )
+    assertEquals(listOf(FIRST_CODE to PLAYER.uid), repository.joinCalls)
   }
 
   @Test
-  fun cannotRequestInvitationManagementForGroupNotInUsersList() = runTest {
-    val user = AuthUser("gm-1", null, null)
-    val viewModel =
-        createViewModel(
-            FakeGroupRepository { flowOf(emptyList()) },
-            FakeAuthRepository(user),
-        )
-    advanceUntilIdle()
+  fun resetJoinStateClearsAFinishedJoin() = runTest {
+    val repository = InvitationGroupRepository(listOf(JOINABLE_GROUP))
+    val viewModel = createViewModel(repository, FakeAuthRepository(PLAYER))
+    runCurrent()
+    viewModel.joinGroup(FIRST_CODE)
+    runCurrent()
+    assertEquals(JoinState.Error(InvitationError.UNKNOWN_CODE), viewModel.uiState.value.joinState)
 
-    viewModel.requestInvitationPlaceholder("unknown-group")
+    viewModel.resetJoinState()
 
-    assertEquals(
-        GroupActionState.Error("Only the group's Game Master can manage invitations."),
-        viewModel.uiState.value.invitationState,
-    )
+    assertEquals(JoinState.Idle, viewModel.uiState.value.joinState)
   }
 
   @Test
-  fun signedOutUserCannotRequestInvitationManagement() = runTest {
-    val viewModel =
-        createViewModel(
-            FakeGroupRepository { flowOf(emptyList()) },
-            FakeAuthRepository(user = null),
-        )
-    advanceUntilIdle()
+  fun resetJoinStateIsIgnoredWhileJoining() = runTest {
+    val repository =
+        InvitationGroupRepository(listOf(JOINABLE_GROUP)).apply {
+          addInvitation(FIRST_CODE, JOINABLE_GROUP.id)
+          joinGate = CompletableDeferred()
+        }
+    val viewModel = createViewModel(repository, FakeAuthRepository(PLAYER))
+    runCurrent()
+    viewModel.joinGroup(FIRST_CODE)
+    runCurrent()
 
-    viewModel.requestInvitationPlaceholder("group-1")
+    viewModel.resetJoinState()
+    viewModel.joinGroup(FIRST_CODE)
+    runCurrent()
 
-    assertEquals(
-        GroupActionState.Error("You must be signed in to manage invitations."),
-        viewModel.uiState.value.invitationState,
-    )
+    assertEquals(JoinState.Joining, viewModel.uiState.value.joinState)
+    assertEquals(listOf(FIRST_CODE to PLAYER.uid), repository.joinCalls)
   }
 
   @Test
-  fun blankInvitationSelectionShowsAnActionableError() = runTest {
-    val viewModel =
-        createViewModel(FakeGroupRepository { flowOf(emptyList()) }, FakeAuthRepository())
-    advanceUntilIdle()
+  fun signingOutDuringAJoinDropsTheResult() = runTest {
+    val gate = CompletableDeferred<Unit>()
+    val auth = FakeAuthRepository(PLAYER)
+    val repository =
+        InvitationGroupRepository(listOf(JOINABLE_GROUP)).apply {
+          addInvitation(FIRST_CODE, JOINABLE_GROUP.id)
+          joinGate = gate
+        }
+    val viewModel = createViewModel(repository, auth)
+    runCurrent()
+    viewModel.joinGroup(FIRST_CODE)
+    runCurrent()
 
-    viewModel.requestInvitationPlaceholder(" ")
+    auth.currentUser.value = null
+    runCurrent()
+    gate.complete(Unit)
+    runCurrent()
 
-    assertEquals(
-        GroupActionState.Error("Select a group to manage invitations."),
-        viewModel.uiState.value.invitationState,
-    )
+    assertEquals(GroupLoadState.SignedOut, viewModel.uiState.value.loadState)
+    assertEquals(JoinState.Idle, viewModel.uiState.value.joinState)
   }
 
   private class FakeAuthRepository(
@@ -515,7 +864,141 @@ class GameManagementViewModelTest {
         .onCompletion { activeUsers -= userId }
   }
 
+  /**
+   * In-memory invitations that behave like `GroupRepositoryFirestore`: one code per group, a
+   * regeneration revokes the old code, joining adds the user to the group and therefore to their
+   * [getUserGroups] list, and the same cases return the same [InvitationError].
+   */
+  private class InvitationGroupRepository(
+      groups: List<CampaignGroup>,
+      private val newCodes: ArrayDeque<String> = ArrayDeque(listOf(FIRST_CODE, SECOND_CODE)),
+  ) : GroupRepository by UnusedGroupRepository {
+    private val groups = MutableStateFlow(groups)
+    private val groupIdByCode = mutableMapOf<String, String>()
+    private val codeByGroupId = mutableMapOf<String, String>()
+
+    /** When set, code requests wait until it completes. */
+    var inviteGate: CompletableDeferred<Unit>? = null
+
+    /** When set, code requests fail with it. */
+    var inviteFailure: Throwable? = null
+
+    /** When set, join requests wait until it completes. */
+    var joinGate: CompletableDeferred<Unit>? = null
+
+    /** When set, join requests fail with it. */
+    var joinFailure: Throwable? = null
+
+    val createCalls = mutableListOf<Pair<String, String>>()
+    val regenerateCalls = mutableListOf<Pair<String, String>>()
+    val joinCalls = mutableListOf<Pair<String, String>>()
+
+    fun addInvitation(code: String, groupId: String) {
+      groupIdByCode[code] = groupId
+      codeByGroupId[groupId] = code
+    }
+
+    override suspend fun createInvitation(groupId: String, gameMasterId: String): Result<String> {
+      createCalls += groupId to gameMasterId
+      return codeRequest(groupId, gameMasterId) { codeByGroupId[groupId] ?: newCode(groupId) }
+    }
+
+    override suspend fun regenerateInvitation(
+        groupId: String,
+        gameMasterId: String,
+    ): Result<String> {
+      regenerateCalls += groupId to gameMasterId
+      return codeRequest(groupId, gameMasterId) {
+        codeByGroupId.remove(groupId)?.let(groupIdByCode::remove)
+        newCode(groupId)
+      }
+    }
+
+    override suspend fun joinGroupWithCode(code: String, userId: String): Result<CampaignGroup> {
+      joinCalls += code to userId
+      joinGate?.await()
+      joinFailure?.let {
+        return Result.failure(it)
+      }
+      val group =
+          groups.value.firstOrNull { it.id == groupIdByCode[code] }
+              ?: return failure(InvitationError.UNKNOWN_CODE)
+      if (userId in group.participantIds) return failure(InvitationError.ALREADY_MEMBER)
+      val joined = group.copy(participantIds = group.participantIds + userId)
+      groups.update { all -> all.map { if (it.id == joined.id) joined else it } }
+      return Result.success(joined)
+    }
+
+    override fun getUserGroups(userId: String): Flow<List<CampaignGroup>> = groups.map { all ->
+      all.filter { userId in it.participantIds }
+    }
+
+    private suspend fun codeRequest(
+        groupId: String,
+        gameMasterId: String,
+        produceCode: () -> String,
+    ): Result<String> {
+      inviteGate?.await()
+      inviteFailure?.let {
+        return Result.failure(it)
+      }
+      val group =
+          groups.value.firstOrNull { it.id == groupId }
+              ?: return failure(InvitationError.GROUP_NOT_FOUND)
+      if (group.gameMasterId != gameMasterId) return failure(InvitationError.NOT_GAME_MASTER)
+      return Result.success(produceCode())
+    }
+
+    private fun newCode(groupId: String): String =
+        newCodes.removeFirst().also { addInvitation(it, groupId) }
+
+    private fun <T> failure(error: InvitationError): Result<T> =
+        Result.failure(InvitationException(error))
+  }
+
   private companion object {
+    const val FIRST_CODE = "ABCD2345"
+    const val SECOND_CODE = "WXYZ6789"
+
+    val GM = AuthUser("gm-1", null, null)
+    val PLAYER = AuthUser("player-1", null, null)
+
+    /** Managed by [GM]. */
+    val GM_GROUP =
+        CampaignGroup(
+            id = "group-1",
+            name = "The Sunken Crown",
+            gameMasterId = GM.uid,
+            participantIds = listOf(GM.uid),
+        )
+
+    /** A second group managed by [GM]. */
+    val SECOND_GM_GROUP =
+        CampaignGroup(
+            id = "group-2",
+            name = "Ashes of Myr",
+            gameMasterId = GM.uid,
+            participantIds = listOf(GM.uid),
+        )
+
+    /** [PLAYER] is already a member. */
+    val PLAYER_GROUP =
+        CampaignGroup(
+            id = "group-3",
+            name = "The Last Lantern",
+            gameMasterId = "gm-2",
+            participantIds = listOf("gm-2", PLAYER.uid),
+        )
+
+    /** [PLAYER] is not a member yet. */
+    val JOINABLE_GROUP =
+        CampaignGroup(
+            id = "group-4",
+            name = "Iron Wake",
+            gameMasterId = "gm-2",
+            participantIds = listOf("gm-2"),
+        )
+
     val UnusedGroupRepository =
         object : GroupRepository {
           override fun getNewGroupId() = error("Not used")
