@@ -411,6 +411,7 @@ class GameSessionRepositoryFirestoreTest {
     val lore = repository.observeLore(groupId).waitFor { it.size == 1 }
 
     assertEquals(listOf(GameLoreEntry("old-map", LoreFile("Old Map", emptyList()), false)), lore)
+    assertTrue(repository.observeSharedLore(groupId).waitFor { true }.isEmpty())
   }
 
   @Test
