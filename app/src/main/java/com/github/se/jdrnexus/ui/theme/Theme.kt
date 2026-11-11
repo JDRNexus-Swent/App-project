@@ -34,7 +34,7 @@ private val LightColorScheme =
         onSecondary = Color(0xFF2E2520),
         onTertiary = Color.White,
         onBackground = Color(0xFFE7E0D8),
-        onSurface = Color(0xFFD1C7BD),
+        onSurface = Color(0xFF33251D),
     )
 
 @Composable

@@ -51,7 +51,7 @@ internal fun EditFileScaffold(
   Surface(
       modifier = Modifier.fillMaxSize().navigationBarsPadding(),
       color = MaterialTheme.colorScheme.background,
-      contentColor = MaterialTheme.colorScheme.onBackground,
+      contentColor = MaterialTheme.colorScheme.onSurface,
   ) {
     when {
       isLoading -> {
