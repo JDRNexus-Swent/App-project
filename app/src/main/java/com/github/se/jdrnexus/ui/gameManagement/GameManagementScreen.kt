@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.gameManagement
 
 import androidx.compose.foundation.background
@@ -126,6 +127,7 @@ fun GameManagementScreen(
     gameManagementViewModel: GameManagementViewModel,
 ) {
   val uiState by gameManagementViewModel.uiState.collectAsState()
+  val context = LocalContext.current
   LaunchedEffect(gameManagementViewModel) { gameManagementViewModel.loadGroups() }
 
   GameManagementScreenContent(
@@ -138,7 +140,8 @@ fun GameManagementScreen(
       onDismissSuccess = gameManagementViewModel::dismissSuccessMessage,
       onEnterWorkspace = onEnterWorkspace,
       onManageGroup = onManageGroup,
-      onInvite = gameManagementViewModel::requestInvitationPlaceholder,
+      // The invite dialog comes with #129; until then the button says the feature is coming soon.
+      onInvite = { showComingSoon(context, "Invitations") },
       onTabSelected = onTabSelected,
   )
 }
