@@ -21,10 +21,15 @@ import com.github.se.jdrnexus.model.sensor.ShakeDetector
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import dev.romainguy.kotlin.math.Quaternion
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.flow.update
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -51,11 +56,23 @@ private class FixedRollViewModel : DiceInterfaceVM {
   override fun dismissError() = Unit
 }
 
-/** Shake source driven by hand. */
+/**
+ * Shake source driven by hand. [handledShakes] counts the shakes the screen has finished handling,
+ * so a test can tell "ignored" from "not read yet".
+ */
 private class ManualShakeDetector : ShakeDetector {
   val source = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+  private val handled = AtomicInteger(0)
+  val handledShakes: Int
+    get() = handled.get()
+
   override val isAvailable = true
-  override val shakes = source
+
+  // emit() returns once the screen's collect block has run, so counting after it means "handled".
+  override val shakes: Flow<Unit> = source.transform {
+    emit(it)
+    handled.incrementAndGet()
+  }
 }
 
 /** A value every die has, from the D4 up. */
@@ -186,9 +203,11 @@ class DiceOfflineScreenRollAnimationTest {
     }
   }
 
-  @Test
-  fun shakeRollPlaysTheSameAnimationAsTheButton() {
-    val shaker = ManualShakeDetector()
+  /**
+   * Shows the whole screen around the real ViewModel and [shaker], waits until it listens to the
+   * shakes, then stops the clock.
+   */
+  private fun setShakeScreen(shaker: ManualShakeDetector): DiceViewModel {
     val vm = DiceViewModel(DiceLogic(), diceRepository = null)
     composeTestRule.setContent {
       SampleAppTheme {
@@ -197,6 +216,30 @@ class DiceOfflineScreenRollAnimationTest {
     }
     composeTestRule.waitUntil { shaker.source.subscriptionCount.value > 0 }
     clock.autoAdvance = false
+    return vm
+  }
+
+  @Test
+  fun shakeDuringTheRollDoesNothing() {
+    val shaker = ManualShakeDetector()
+    val vm = setShakeScreen(shaker)
+
+    assertTrue(shaker.source.tryEmit(Unit))
+    clock.advanceTimeByFrame()
+    assertTrue("a shake should start the roll", vm.uiState.value.isRolling)
+    val firstRoll = vm.uiState.value.currentResult
+
+    assertTrue(shaker.source.tryEmit(Unit))
+    clock.advanceTimeByFrame()
+
+    assertEquals("the screen must have handled the second shake", 2, shaker.handledShakes)
+    assertSame("a second shake must not reroll", firstRoll, vm.uiState.value.currentResult)
+  }
+
+  @Test
+  fun shakeRollPlaysTheSameAnimationAsTheButton() {
+    val shaker = ManualShakeDetector()
+    val vm = setShakeScreen(shaker)
 
     assertTrue(shaker.source.tryEmit(Unit))
     clock.advanceTimeByFrame()
