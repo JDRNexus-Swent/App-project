@@ -89,6 +89,9 @@ fun EditFileCharacter(
     var newStatValue by remember { mutableStateOf("") }
     var newActionName by remember { mutableStateOf("") }
     var newActionDescription by remember { mutableStateOf("") }
+    val newStatNameError = state.fieldErrors[EditFileField.NewCharacterStatName]
+    val newStatValueError = state.fieldErrors[EditFileField.NewCharacterStatValue]
+    val newActionNameError = state.fieldErrors[EditFileField.NewCharacterActionName]
 
     LazyColumn(
         modifier =
@@ -185,28 +188,36 @@ fun EditFileCharacter(
           ) {
             OutlinedTextField(
                 value = newStatName,
-                onValueChange = { newStatName = it },
+                onValueChange = {
+                  newStatName = it
+                  viewModel.onAddStatNameChange(it)
+                },
                 modifier = Modifier.weight(1f).testTag("add_entry_name"),
                 label = { Text(stringResource(R.string.edit_character_stat_name_label)) },
                 singleLine = true,
+                isError = newStatNameError != null,
+                supportingText = newStatNameError?.let { message -> ({ Text(message) }) },
             )
             OutlinedTextField(
                 value = newStatValue,
-                onValueChange = { newStatValue = it },
+                onValueChange = {
+                  newStatValue = it
+                  viewModel.onAddStatValueChange(it)
+                },
                 modifier = Modifier.weight(0.6f).testTag("add_entry_value"),
                 label = { Text(stringResource(R.string.edit_character_value_label)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                isError = newStatValueError != null,
+                supportingText = newStatValueError?.let { message -> ({ Text(message) }) },
             )
           }
           OutlinedButton(
               onClick = {
                 val name = newStatName.trim()
                 val value = newStatValue.toDoubleOrNull()
-                if (name.isBlank() || value == null || !value.isFinite()) {
-                  return@OutlinedButton
-                }
-                viewModel.addCharacterStat(name, value)
+                viewModel.addCharacterStat(name, value ?: Double.NaN)
+                if (name.isBlank() || value == null || !value.isFinite()) return@OutlinedButton
                 newStatName = ""
                 newStatValue = ""
               },
@@ -246,10 +257,15 @@ fun EditFileCharacter(
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
           OutlinedTextField(
               value = newActionName,
-              onValueChange = { newActionName = it },
+              onValueChange = {
+                newActionName = it
+                viewModel.onAddActionNameChange(it)
+              },
               modifier = Modifier.fillMaxWidth().testTag("add_action_name"),
               label = { Text(stringResource(R.string.edit_character_action_name_label)) },
               singleLine = true,
+              isError = newActionNameError != null,
+              supportingText = newActionNameError?.let { message -> ({ Text(message) }) },
           )
           OutlinedTextField(
               value = newActionDescription,
@@ -261,10 +277,8 @@ fun EditFileCharacter(
           OutlinedButton(
               onClick = {
                 val name = newActionName.trim()
-                if (name.isBlank()) {
-                  return@OutlinedButton
-                }
                 viewModel.addCharacterAction(name, newActionDescription)
+                if (name.isBlank()) return@OutlinedButton
                 newActionName = ""
                 newActionDescription = ""
               },

@@ -5,14 +5,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.ui.edition.EditFileErrorMessage
 import com.github.se.jdrnexus.ui.edition.EditFileSaveButton
@@ -108,7 +112,16 @@ class EditFileComponentsTests {
     composeTestRule
         .onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate))
         .assertIsDisplayed()
-    composeTestRule.onNodeWithTag("saving").assertIsNotDisplayed()
+    composeTestRule.onNodeWithTag("saving").assertIsDisplayed().assertIsNotEnabled()
+    composeTestRule
+        .onNodeWithTag("saving_progress", useUnmergedTree = true)
+        .assertWidthIsEqualTo(20.dp)
+        .assertHeightIsEqualTo(20.dp)
+    assertEquals(
+        composeTestRule.onNodeWithTag("save").fetchSemanticsNode().boundsInRoot.height,
+        composeTestRule.onNodeWithTag("saving").fetchSemanticsNode().boundsInRoot.height,
+        0.5f,
+    )
     composeTestRule.onNodeWithTag("save").assertIsDisplayed()
     composeTestRule.onNodeWithTag("save").assertTextEquals("Save")
     composeTestRule.onNodeWithTag("saved").assertIsDisplayed()

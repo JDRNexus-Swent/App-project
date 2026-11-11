@@ -8,6 +8,12 @@ import kotlinx.coroutines.flow.StateFlow
 
 /** Field identity for errors that belong beside an editable value in the screen. */
 sealed interface EditFileField {
+  data object NewCharacterStatName : EditFileField
+
+  data object NewCharacterStatValue : EditFileField
+
+  data object NewCharacterActionName : EditFileField
+
   data class CharacterStatName(val statID: String) : EditFileField
 
   data class CharacterStatValue(val statID: String) : EditFileField
@@ -43,6 +49,15 @@ interface EditFileInterfaceVM {
 
   /** Replaces the character's display name. */
   fun updateCharacterName(name: String)
+
+  /** Validates the new stat name draft and updates its field error. */
+  fun onAddStatNameChange(name: String)
+
+  /** Validates the new stat value draft and updates its field error. */
+  fun onAddStatValueChange(value: String)
+
+  /** Validates the new action name draft and updates its field error. */
+  fun onAddActionNameChange(name: String)
 
   /** Updates current HP without allowing negative values or values above max HP. */
   fun updateCharacterCurrentHp(current: Int)

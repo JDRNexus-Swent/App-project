@@ -227,13 +227,13 @@ class EditFileViewModelTest {
     assertEquals(initial, viewModel.uiState.value.character)
     assertEquals(
         EditFileViewModel.STAT_VALUE_ERROR,
-        viewModel.uiState.value.fieldErrors.values.single(),
+        viewModel.uiState.value.fieldErrors[EditFileField.NewCharacterStatValue],
     )
 
     viewModel.addCharacterStat(" ", 1.0)
     assertEquals(
         EditFileViewModel.STAT_NAME_ERROR,
-        viewModel.uiState.value.fieldErrors.values.single(),
+        viewModel.uiState.value.fieldErrors[EditFileField.NewCharacterStatName],
     )
     viewModel.updateCharacterStatName("strength", "")
     assertEquals(
@@ -256,15 +256,91 @@ class EditFileViewModelTest {
     viewModel.addCharacterAction(" ", "Description")
     assertEquals(
         EditFileViewModel.ACTION_NAME_ERROR,
-        viewModel.uiState.value.fieldErrors.values.single(),
+        viewModel.uiState.value.fieldErrors[EditFileField.NewCharacterActionName],
     )
     viewModel.updateCharacterActionName("sword_attack", "")
     assertEquals(
         EditFileViewModel.ACTION_NAME_ERROR,
-        viewModel.uiState.value.fieldErrors.values.single(),
+        viewModel.uiState.value.fieldErrors[EditFileField.CharacterActionName("sword_attack")],
     )
     viewModel.removeCharacterAction("missing")
     assertEquals(EditFileViewModel.ACTION_NOT_FOUND_ERROR, viewModel.uiState.value.error)
+  }
+
+  @Test
+  fun fixingOneFieldErrorKeepsOtherFieldErrorsUntilTheyAreFixed() {
+    val viewModel =
+        loadedViewModel(
+            JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
+        )
+    val nameField = EditFileField.CharacterStatName("strength")
+    val valueField = EditFileField.CharacterStatValue("strength")
+
+    viewModel.updateCharacterStatName("strength", "")
+    viewModel.updateCharacterStatValue("strength", Double.NaN)
+
+    assertEquals(
+        mapOf(
+            nameField to EditFileViewModel.STAT_NAME_ERROR,
+            valueField to EditFileViewModel.STAT_VALUE_ERROR,
+        ),
+        viewModel.uiState.value.fieldErrors,
+    )
+
+    viewModel.updateCharacterStatName("strength", "Might")
+
+    assertEquals(
+        mapOf(valueField to EditFileViewModel.STAT_VALUE_ERROR),
+        viewModel.uiState.value.fieldErrors,
+    )
+
+    viewModel.updateCharacterStatValue("strength", 17.0)
+
+    assertTrue(viewModel.uiState.value.fieldErrors.isEmpty())
+  }
+
+  @Test
+  fun newEntryDraftValidationTracksEachFieldAsItChanges() {
+    val viewModel =
+        loadedViewModel(
+            JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
+        )
+
+    viewModel.onAddStatNameChange("")
+    viewModel.onAddStatValueChange("")
+
+    assertEquals(
+        mapOf(
+            EditFileField.NewCharacterStatName to EditFileViewModel.STAT_NAME_ERROR,
+            EditFileField.NewCharacterStatValue to EditFileViewModel.STAT_VALUE_ERROR,
+        ),
+        viewModel.uiState.value.fieldErrors,
+    )
+
+    viewModel.onAddStatNameChange("Stealth")
+
+    assertEquals(
+        mapOf(EditFileField.NewCharacterStatValue to EditFileViewModel.STAT_VALUE_ERROR),
+        viewModel.uiState.value.fieldErrors,
+    )
+
+    viewModel.onAddStatValueChange("invalid")
+    assertEquals(
+        mapOf(EditFileField.NewCharacterStatValue to EditFileViewModel.STAT_VALUE_ERROR),
+        viewModel.uiState.value.fieldErrors,
+    )
+
+    viewModel.onAddStatValueChange("2.5")
+    assertTrue(viewModel.uiState.value.fieldErrors.isEmpty())
+
+    viewModel.onAddActionNameChange("")
+    assertEquals(
+        mapOf(EditFileField.NewCharacterActionName to EditFileViewModel.ACTION_NAME_ERROR),
+        viewModel.uiState.value.fieldErrors,
+    )
+
+    viewModel.onAddActionNameChange("Guard")
+    assertTrue(viewModel.uiState.value.fieldErrors.isEmpty())
   }
 
   @Test
@@ -364,7 +440,7 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun savePersistsUpdatedJsonToSameFileAndPreservesRepositoryMetadata() {
+  fun saveAndReopenPreservesStatsActionsAndRepositoryMetadata() {
     val file =
         JDRFile(
             id = "character",
@@ -380,6 +456,7 @@ class EditFileViewModelTest {
     idleMainLooper()
     viewModel.updateCharacterName("Saved Hero")
     viewModel.addCharacterStat("Willpower", 17.0)
+    viewModel.addCharacterAction("Healing", "Restore health")
 
     viewModel.saveJDRfile()
     idleMainLooper()
@@ -393,11 +470,47 @@ class EditFileViewModelTest {
     val savedStat = savedContent.getJSONArray("stats").getJSONObject(2)
     assertEquals("Willpower", savedStat.getString("name"))
     assertEquals(17, savedStat.getInt("value"))
+    val savedAction =
+        JSONObject(savedFile.content)
+            .getJSONObject("character")
+            .getJSONArray("actions")
+            .getJSONObject(2)
+    assertEquals("Healing", savedAction.getString("name"))
+    assertEquals("Restore health", savedAction.getString("description"))
     assertEquals(18, savedContent.getJSONObject("hp").getInt("current"))
     assertEquals(24, savedContent.getJSONObject("hp").getInt("max"))
     assertTrue(viewModel.uiState.value.isSaved)
     assertFalse(viewModel.uiState.value.isSaving)
     assertNull(viewModel.uiState.value.error)
+
+    val reopened = loadedViewModel(savedFile, FakeRepository(savedFile))
+    assertEquals(
+        listOf("Strength", "Dexterity", "Willpower"),
+        reopened.uiState.value.character!!.stats.map { it.name },
+    )
+    assertEquals(
+        listOf("Sword Attack", "Heavy Strike", "Healing"),
+        reopened.uiState.value.character!!.actions.map { it.name },
+    )
+    assertEquals(
+        listOf("Attack", "Strike", "Restore health"),
+        reopened.uiState.value.character!!.actions.map { it.description },
+    )
+  }
+
+  @Test
+  fun invalidUnaddedDraftErrorsDoNotPreventSaving() {
+    val file = JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
+    val repository = FakeRepository(file)
+    val viewModel = loadedViewModel(file, repository)
+    viewModel.addCharacterStat("", Double.NaN)
+    viewModel.addCharacterAction("", "")
+
+    viewModel.saveJDRfile()
+    idleMainLooper()
+
+    assertEquals(1, repository.updatedFiles.size)
+    assertTrue(viewModel.uiState.value.isSaved)
   }
 
   @Test
