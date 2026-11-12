@@ -2,7 +2,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.jdrfile
 
-import android.os.Looper
 import com.github.se.jdrnexus.codec.JDRFileCodecException
 import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
@@ -14,37 +13,34 @@ import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import com.github.se.jdrnexus.utils.MainDispatcherRule
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows.shadowOf
 
-@RunWith(RobolectricTestRunner::class)
+@OptIn(ExperimentalCoroutinesApi::class)
 class EditFileViewModelTest {
   private val characterJson =
       """{"version":1,"type":"character","character":{"name":"Jean-claude","stats":[{"statID":"strength","name":"Strength","value":16},{"statID":"dexterity","name":"Dexterity","value":12}],"actions":[{"actionID":"sword_attack","name":"Sword Attack","description":"Attack"},{"actionID":"heavy_strike","name":"Heavy Strike","description":"Strike"}],"hp":{"current":18,"max":24}}}"""
   private val loreJson =
       """{"version":1,"type":"lore","title":"The Kingdom","sections":[{"sectionID":"history","title":"History","content":"Founded long ago."},{"sectionID":"king","title":"The King","content":"Rules today."}]}"""
 
-  /**
-   * idleMainLooper() lets Robolectric process the queued main-thread work so the coroutine started
-   * by the ViewModel can finish.
-   */
-  private fun idleMainLooper() {
-    shadowOf(Looper.getMainLooper()).idle()
-  }
+  @get:Rule val mainDispatcherRule = MainDispatcherRule()
 
   @Test
-  fun loadsCharacterUsingRepositoryFileTypeAndExposesItsModel() {
+  fun loadsCharacterUsingRepositoryFileTypeAndExposesItsModel() = runTest {
     val file =
         JDRFile(
             id = "character-1",
@@ -56,7 +52,7 @@ class EditFileViewModelTest {
     val viewModel = EditFileViewModel(repository)
 
     viewModel.loadFile(file.id)
-    idleMainLooper()
+    runCurrent()
 
     assertEquals(listOf(file.id), repository.requestedFileIds)
     assertEquals(file, viewModel.uiState.value.file)
@@ -81,18 +77,18 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun loadingAndSavingFlagsReflectPendingRepositoryOperations() {
+  fun loadingAndSavingFlagsReflectPendingRepositoryOperations() = runTest {
     val file = JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
     val loadGate = CompletableDeferred<Unit>()
     val loadRepository = FakeRepository(file, getFileGate = loadGate)
     val loadingViewModel = EditFileViewModel(loadRepository)
 
     loadingViewModel.loadFile(file.id)
-    idleMainLooper()
+    runCurrent()
     assertTrue(loadingViewModel.uiState.value.isLoading)
 
     loadGate.complete(Unit)
-    idleMainLooper()
+    runCurrent()
     assertFalse(loadingViewModel.uiState.value.isLoading)
     assertEquals(file, loadingViewModel.uiState.value.file)
 
@@ -102,18 +98,18 @@ class EditFileViewModelTest {
     savingViewModel.updateCharacterName("Updated")
 
     savingViewModel.saveJDRfile()
-    idleMainLooper()
+    runCurrent()
     assertTrue(savingViewModel.uiState.value.isSaving)
     assertFalse(savingViewModel.uiState.value.isSaved)
 
     saveGate.complete(Unit)
-    idleMainLooper()
+    runCurrent()
     assertFalse(savingViewModel.uiState.value.isSaving)
     assertTrue(savingViewModel.uiState.value.isSaved)
   }
 
   @Test
-  fun loadsLoreAndAcceptsEmptyCollections() {
+  fun loadsLoreAndAcceptsEmptyCollections() = runTest {
     val loreFile = JDRFile(id = "lore-1", type = DocumentType.TEXT, content = loreJson)
     val loreViewModel = loadedViewModel(loreFile)
     assertEquals(
@@ -153,16 +149,16 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun loadErrorsAreExposedForMissingFilesRepositoryFailuresAndInvalidContent() {
+  fun loadErrorsAreExposedForMissingFilesRepositoryFailuresAndInvalidContent() = runTest {
     val missing = EditFileViewModel(FakeRepository())
     missing.loadFile("missing")
-    idleMainLooper()
+    runCurrent()
     assertEquals(EditFileViewModel.FILE_NOT_FOUND, missing.uiState.value.error)
 
     val repositoryFailure =
         EditFileViewModel(FakeRepository(getFailure = IllegalStateException("Offline")))
     repositoryFailure.loadFile("file")
-    idleMainLooper()
+    runCurrent()
     assertEquals("Offline", repositoryFailure.uiState.value.error)
 
     val mismatched =
@@ -178,7 +174,7 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun characterFieldsStatsAndActionsAreEditedByStableIds() {
+  fun characterFieldsStatsAndActionsAreEditedByStableIds() = runTest {
     val viewModel =
         loadedViewModel(
             JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
@@ -217,7 +213,7 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun invalidCharacterEditsDoNotApplyAndExposeValidation() {
+  fun invalidCharacterEditsDoNotApplyAndExposeValidation() = runTest {
     val viewModel =
         loadedViewModel(
             JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
@@ -269,7 +265,7 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun healthPointUpdatesValidateBoundsAndClampCurrentWhenMaximumDrops() {
+  fun healthPointUpdatesValidateBoundsAndClampCurrentWhenMaximumDrops() = runTest {
     val viewModel =
         loadedViewModel(
             JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
@@ -302,7 +298,7 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun loadingInvalidHealthPointsExposesFieldErrorsAndPreventsSaving() {
+  fun loadingInvalidHealthPointsExposesFieldErrorsAndPreventsSaving() = runTest {
     val invalidFile =
         JDRFile(
             id = "character",
@@ -322,7 +318,7 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun loreTitleAndSectionsAreUpdatedIndividuallyBySectionId() {
+  fun loreTitleAndSectionsAreUpdatedIndividuallyBySectionId() = runTest {
     val viewModel =
         loadedViewModel(JDRFile(id = "lore", type = DocumentType.TEXT, content = loreJson))
 
@@ -347,7 +343,7 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun invalidLoreSectionTitlesAndUnknownIdsAreRejected() {
+  fun invalidLoreSectionTitlesAndUnknownIdsAreRejected() = runTest {
     val viewModel =
         loadedViewModel(JDRFile(id = "lore", type = DocumentType.TEXT, content = loreJson))
 
@@ -365,7 +361,7 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun savePersistsUpdatedJsonToSameFileAndPreservesRepositoryMetadata() {
+  fun savePersistsUpdatedJsonToSameFileAndPreservesRepositoryMetadata() = runTest {
     val file =
         JDRFile(
             id = "character",
@@ -378,12 +374,12 @@ class EditFileViewModelTest {
     val repository = FakeRepository(file)
     val viewModel = EditFileViewModel(repository)
     viewModel.loadFile(file.id)
-    idleMainLooper()
+    runCurrent()
     viewModel.updateCharacterName("Saved Hero")
     viewModel.addCharacterStat("Willpower", 17.0)
 
     viewModel.saveJDRfile()
-    idleMainLooper()
+    runCurrent()
 
     val savedFile = repository.updatedFiles.single()
     assertEquals(file.id, savedFile.id)
@@ -402,13 +398,13 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun saveReportsValidationAndRepositoryErrors() {
+  fun saveReportsValidationAndRepositoryErrors() = runTest {
     val invalidFile = JDRFile(id = "lore", type = DocumentType.TEXT, content = loreJson)
     val validationRepo = FakeRepository(invalidFile)
     val invalid = loadedViewModel(invalidFile, validationRepo)
     invalid.updateLoreSectionTitle("history", " ")
     invalid.saveJDRfile()
-    idleMainLooper()
+    runCurrent()
     assertEquals(
         EditFileViewModel.SECTION_TITLE_ERROR,
         invalid.uiState.value.fieldErrors[EditFileField.LoreSectionTitle("history")],
@@ -423,21 +419,21 @@ class EditFileViewModelTest {
     val failing = loadedViewModel(invalidFile, failingRepo)
     failing.updateLoreTitle("Valid title")
     failing.saveJDRfile()
-    idleMainLooper()
+    runCurrent()
     assertEquals("Write denied", failing.uiState.value.error)
     assertFalse(failing.uiState.value.isSaved)
     assertFalse(failing.uiState.value.isSaving)
   }
 
   @Test
-  fun cancelledSaveResetsSavingFlagWithoutReportingAnError() {
+  fun cancelledSaveResetsSavingFlagWithoutReportingAnError() = runTest {
     val file = JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
     val repository = FakeRepository(file, updateFailure = CancellationException("Save cancelled"))
     val viewModel = loadedViewModel(file, repository)
 
     viewModel.updateCharacterName("Updated")
     viewModel.saveJDRfile()
-    idleMainLooper()
+    runCurrent()
 
     assertFalse(viewModel.uiState.value.isSaving)
     assertFalse(viewModel.uiState.value.isSaved)
@@ -445,14 +441,14 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun emptyCharacterNameAndLoreTitleCanBeSaved() {
+  fun emptyCharacterNameAndLoreTitleCanBeSaved() = runTest {
     val characterFile =
         JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
     val characterRepository = FakeRepository(characterFile)
     val character = loadedViewModel(characterFile, characterRepository)
     character.updateCharacterName("")
     character.saveJDRfile()
-    idleMainLooper()
+    runCurrent()
     assertEquals(
         "",
         JSONObject(characterRepository.updatedFiles.single().content)
@@ -466,7 +462,7 @@ class EditFileViewModelTest {
     val lore = loadedViewModel(loreFile, loreRepository)
     lore.updateLoreTitle("")
     lore.saveJDRfile()
-    idleMainLooper()
+    runCurrent()
     assertEquals(
         "",
         JSONObject(loreRepository.updatedFiles.single().content).getString("title"),
@@ -475,7 +471,7 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun saveBeforeLoadingExposesAnError() {
+  fun saveBeforeLoadingExposesAnError() = runTest {
     val viewModel = EditFileViewModel(FakeRepository())
 
     viewModel.saveJDRfile()
@@ -484,18 +480,18 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun reloadingCancelsThePendingLoad() {
+  fun reloadingCancelsThePendingLoad() = runTest {
     val file = JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
     val staleGate = CompletableDeferred<Unit>()
     val repository = FakeRepository(file, getFileGate = staleGate, gatedFileId = "missing")
     val viewModel = EditFileViewModel(repository)
     viewModel.loadFile("missing")
-    idleMainLooper()
+    runCurrent()
 
     viewModel.loadFile(file.id)
-    idleMainLooper()
+    runCurrent()
     staleGate.complete(Unit)
-    idleMainLooper()
+    runCurrent()
 
     assertEquals(listOf("missing", file.id), repository.requestedFileIds)
     assertEquals(file, viewModel.uiState.value.file)
@@ -503,23 +499,31 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun errorsWithoutMessageFallBackToGenericText() {
-    val loreFile = JDRFile(id = "lore", type = DocumentType.TEXT, content = loreJson)
-    val loadFailure = EditFileViewModel(FakeRepository(getFailure = IllegalStateException()))
-    val saveFailure =
-        loadedViewModel(loreFile, FakeRepository(loreFile, updateFailure = IllegalStateException()))
-    saveFailure.updateLoreTitle("A New Realm")
+  fun loadErrorWithoutMessageFallsBackToGenericText() = runTest {
+    val loadFailureViewModel =
+        EditFileViewModel(FakeRepository(getFailure = IllegalStateException()))
 
-    loadFailure.loadFile(loreFile.id)
-    saveFailure.saveJDRfile()
-    idleMainLooper()
+    loadFailureViewModel.loadFile("lore")
+    runCurrent()
 
-    assertEquals(EditFileViewModel.LOAD_ERROR, loadFailure.uiState.value.error)
-    assertEquals(EditFileViewModel.SAVE_ERROR, saveFailure.uiState.value.error)
+    assertEquals(EditFileViewModel.LOAD_ERROR, loadFailureViewModel.uiState.value.error)
   }
 
   @Test
-  fun loadingInvalidFieldsExposesEveryFieldError() {
+  fun saveErrorWithoutMessageFallsBackToGenericText() = runTest {
+    val loreFile = JDRFile(id = "lore", type = DocumentType.TEXT, content = loreJson)
+    val saveFailureViewModel =
+        loadedViewModel(loreFile, FakeRepository(loreFile, updateFailure = IllegalStateException()))
+    saveFailureViewModel.updateLoreTitle("A New Realm")
+
+    saveFailureViewModel.saveJDRfile()
+    runCurrent()
+
+    assertEquals(EditFileViewModel.SAVE_ERROR, saveFailureViewModel.uiState.value.error)
+  }
+
+  @Test
+  fun loadingInvalidFieldsExposesEveryFieldError() = runTest {
     val file =
         JDRFile(
             id = "character",
@@ -542,7 +546,7 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun fileThatFailedToLoadIsNeverSaved() {
+  fun fileThatFailedToLoadIsNeverSaved() = runTest {
     val files =
         listOf(
             JDRFile(id = "character", type = DocumentType.CHARACTER, content = loreJson),
@@ -553,7 +557,7 @@ class EditFileViewModelTest {
     val viewModels = files.zip(repositories).map { (file, repo) -> loadedViewModel(file, repo) }
 
     viewModels.forEach { it.saveJDRfile() }
-    idleMainLooper()
+    runCurrent()
 
     assertEquals(
         listOf(
@@ -567,7 +571,7 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun saveIgnoresSecondTapWhileSaving() {
+  fun saveIgnoresSecondTapWhileSaving() = runTest {
     val file = JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
     val saveGate = CompletableDeferred<Unit>()
     val repository = FakeRepository(file, updateFileGate = saveGate)
@@ -575,18 +579,23 @@ class EditFileViewModelTest {
     viewModel.updateCharacterName("Updated")
 
     viewModel.saveJDRfile()
-    idleMainLooper()
+    runCurrent()
     viewModel.saveJDRfile()
-    idleMainLooper()
+    runCurrent()
+    assertEquals(1, repository.updatedFiles.size)
+    assertTrue(viewModel.uiState.value.isSaving)
+    assertFalse(viewModel.uiState.value.isSaved)
+    assertNull(viewModel.uiState.value.error)
+
     saveGate.complete(Unit)
-    idleMainLooper()
+    runCurrent()
 
     assertEquals(1, repository.updatedFiles.size)
     assertTrue(viewModel.uiState.value.isSaved)
   }
 
   @Test
-  fun editDuringSaveLeavesFileUnsaved() {
+  fun editDuringSaveLeavesFileUnsaved() = runTest {
     val file = JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
     val saveGate = CompletableDeferred<Unit>()
     val repository = FakeRepository(file, updateFileGate = saveGate)
@@ -594,10 +603,13 @@ class EditFileViewModelTest {
     viewModel.updateCharacterName("Saved Hero")
 
     viewModel.saveJDRfile()
-    idleMainLooper()
+    runCurrent()
     viewModel.updateCharacterName("Edited Hero")
+    assertTrue(viewModel.uiState.value.isSaving)
+    assertFalse(viewModel.uiState.value.isSaved)
+
     saveGate.complete(Unit)
-    idleMainLooper()
+    runCurrent()
 
     val savedName =
         JSONObject(repository.updatedFiles.single().content)
@@ -610,7 +622,7 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun editingTheWrongFileTypeReportsAnError() {
+  fun editingTheWrongFileTypeReportsAnError() = runTest {
     val loreFile = JDRFile(id = "lore", type = DocumentType.TEXT, content = loreJson)
     val characterFile =
         JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
@@ -638,7 +650,7 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun unknownCharacterIdsAreRejected() {
+  fun unknownCharacterIdsAreRejected() = runTest {
     val file = JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
     val original = loadedViewModel(file).uiState.value.character
     val edits: List<(EditFileViewModel) -> Unit> =
@@ -663,13 +675,13 @@ class EditFileViewModelTest {
     assertEquals(List(4) { original }, viewModels.map { it.uiState.value.character })
   }
 
-  private fun loadedViewModel(
+  private fun TestScope.loadedViewModel(
       file: JDRFile,
       repository: FakeRepository = FakeRepository(file),
   ): EditFileViewModel {
     val viewModel = EditFileViewModel(repository)
     viewModel.loadFile(file.id)
-    idleMainLooper()
+    runCurrent()
     return viewModel
   }
 
