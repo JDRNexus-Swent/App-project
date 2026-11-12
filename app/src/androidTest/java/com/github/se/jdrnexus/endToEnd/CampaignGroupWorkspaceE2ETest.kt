@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.endToEnd
 
 import android.util.Log
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -180,7 +182,7 @@ class CampaignGroupWorkspaceE2ETest {
     }
 
     // Verify that the newly created campaign group opens its workspace.
-    composeRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
+    composeRule.onNodeWithTag(C.Tag.enter_workspace_button).performScrollTo().performClick()
     waitForTag(C.Tag.workspace_actions_fab)
     composeRule.onNodeWithTag(C.Tag.workspace_actions_fab).assertIsDisplayed()
 

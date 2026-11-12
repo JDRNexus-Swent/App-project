@@ -1,3 +1,4 @@
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
 <resources>
     <string name="app_name">JDRNexus</string>
     <string name="edit_lore_title">LORE NOTE</string>
@@ -143,4 +144,33 @@
     <string name="search_error_not_signed_in">Sign in to search documents.</string>
     <string name="search_error_group_access_denied">You do not have access to search this workspace.</string>
     <string name="search_error_failed">Search could not be completed. Please try again.</string>
+</resources>
+    <string name="invite_action">Invite</string>
+    <string name="join_group_action">Join a group</string>
+    <string name="dialog_close">Close</string>
+    <string name="invitation_cancel">Cancel</string>
+    <string name="invite_dialog_title">Invite players</string>
+    <string name="invite_dialog_subtitle">Share this code with the players of %1$s.</string>
+    <string name="invite_code_label">INVITATION CODE</string>
+    <string name="invite_retry">Try again</string>
+    <string name="invite_copy">Copy</string>
+    <string name="invite_share">Share</string>
+    <string name="invite_share_text">Join my JDRNexus group with code %1$s</string>
+    <string name="invite_regenerate">Regenerate code</string>
+    <string name="invite_regenerate_title">Regenerate this code?</string>
+    <string name="invite_regenerate_message">The current code will stop working. Players who haven\'t joined yet will need the new one.</string>
+    <string name="invite_regenerate_confirm">Regenerate</string>
+    <string name="join_dialog_title">Join a group</string>
+    <string name="join_dialog_subtitle">Enter the code your GameMaster shared with you.</string>
+    <string name="join_code_label">Invitation code</string>
+    <string name="join_submit">Join group</string>
+    <string name="join_in_progress">Joining…</string>
+    <string name="invitation_error_not_signed_in">Sign in again to continue.</string>
+    <string name="invitation_error_group_not_found">This group no longer exists.</string>
+    <string name="invitation_error_not_game_master">Only the GameMaster can invite players.</string>
+    <string name="invitation_error_invalid_code">Codes are 8 letters and numbers.</string>
+    <string name="invitation_error_unknown_code">This code doesn\'t exist or has been replaced.</string>
+    <string name="invitation_error_already_member">You\'re already in this group.</string>
+    <string name="invitation_error_network">Something went wrong. Check your connection and try again.</string>
+    <string name="join_error_network">Something went wrong. You may already have joined: check your groups list before trying again.</string>
 </resources>
