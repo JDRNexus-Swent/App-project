@@ -144,7 +144,6 @@
     <string name="search_error_not_signed_in">Sign in to search documents.</string>
     <string name="search_error_group_access_denied">You do not have access to search this workspace.</string>
     <string name="search_error_failed">Search could not be completed. Please try again.</string>
-</resources>
     <string name="invite_action">Invite</string>
     <string name="join_group_action">Join a group</string>
     <string name="dialog_close">Close</string>
