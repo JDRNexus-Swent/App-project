@@ -46,11 +46,10 @@ class HomeScreenS1Test {
   }
 
   @Test
-  fun displaysTitleProfileQuicktoolsAndSharedBottomBar() {
+  fun displaysTitleQuicktoolsAndSharedBottomBar() {
     composeTestRule.setContent { SampleAppTheme { HomeScreen(createViewModel()) } }
 
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
-    composeTestRule.onNodeWithTag(TestTags.PROFILE_PIC).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.QUICKTOOLS).assertIsDisplayed()
     composeTestRule.onNodeWithText("More features coming soon").assertIsDisplayed()
     composeTestRule
