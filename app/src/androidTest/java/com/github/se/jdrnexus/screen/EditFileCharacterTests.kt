@@ -376,7 +376,6 @@ class EditFileCharacterTests {
     composeTestRule.waitForIdle()
     assertEquals(currentHpTop, currentHpField.fetchSemanticsNode().boundsInRoot.top, 1f)
     assertEquals(maxHpTop, maxHpField.fetchSemanticsNode().boundsInRoot.top, 1f)
-
   }
 
   @Test
@@ -397,7 +396,6 @@ class EditFileCharacterTests {
     composeTestRule.waitForIdle()
     assertEquals(nameTop, nameField.fetchSemanticsNode().boundsInRoot.top, 1f)
     assertEquals(valueTop, valueField.fetchSemanticsNode().boundsInRoot.top, 1f)
-
   }
 
   @Test
@@ -418,7 +416,6 @@ class EditFileCharacterTests {
     composeTestRule.waitForIdle()
     assertEquals(nameTop, nameField.fetchSemanticsNode().boundsInRoot.top, 1f)
     assertEquals(valueTop, valueField.fetchSemanticsNode().boundsInRoot.top, 1f)
-
   }
 
   @Test
