@@ -195,8 +195,6 @@ dependencies {
   implementation(libs.geofire.android.common)
   implementation(libs.kotlinx.serialization.core)
   implementation(libs.kotlinx.coroutines.play.services)
-
-  implementation(libs.sceneview)
 }
 
 // Kaspresso pulls an old protobuf-lite that clashes with the protobuf-javalite used by Firestore
