@@ -1,11 +1,16 @@
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
+import com.github.se.jdrnexus.model.personalSpace.InvitationCodes
+import com.github.se.jdrnexus.model.personalSpace.InvitationError
+import com.github.se.jdrnexus.model.personalSpace.InvitationException
 import com.github.se.jdrnexus.model.repository.AuthRepository
+import com.github.se.jdrnexus.ui.gameManagement.GroupInvitationVM
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -31,7 +36,7 @@ enum class GroupRole {
 /** A campaign and the signed-in user's role in it, ready for presentation by the screen. */
 data class UserGroup(val group: CampaignGroup, val role: GroupRole)
 
-/** State of group creation or access to the invitation placeholder. */
+/** State of group creation. */
 sealed interface GroupActionState {
   data object Idle : GroupActionState
 
@@ -41,6 +46,33 @@ sealed interface GroupActionState {
   data class Success(val groupId: String, val message: String = "") : GroupActionState
 
   data class Error(val message: String) : GroupActionState
+}
+
+/** Progress of loading or regenerating the invite code of a group the user manages. */
+sealed interface InvitationState {
+  /** No request is running; [GameManagementUiState.inviteCode] holds the last code, if any. */
+  data object Idle : InvitationState
+
+  /** The code is being loaded or regenerated. */
+  data object Loading : InvitationState
+
+  /** The last request failed for the given [error]; the screen picks the matching text. */
+  data class Error(val error: InvitationError) : InvitationState
+}
+
+/** Progress of joining a group with an invitation code. */
+sealed interface JoinState {
+  /** No join was requested, or the previous result was cleared. */
+  data object Idle : JoinState
+
+  /** The join request is running. */
+  data object Joining : JoinState
+
+  /** The user joined the group [groupId]; the group list shows it through its own subscription. */
+  data class Joined(val groupId: String) : JoinState
+
+  /** The join failed for the given [error]; the screen picks the matching text. */
+  data class Error(val error: InvitationError) : JoinState
 }
 
 /** The current result of observing the signed-in user's campaign groups. */
@@ -74,7 +106,9 @@ data class GameManagementUiState(
     val groups: List<UserGroup> = emptyList(),
     val loadState: GroupLoadState = GroupLoadState.Loading,
     val createState: GroupActionState = GroupActionState.Idle,
-    val invitationState: GroupActionState = GroupActionState.Idle,
+    val inviteCode: String? = null,
+    val invitationState: InvitationState = InvitationState.Idle,
+    val joinState: JoinState = JoinState.Idle,
     val isCreateDialogOpen: Boolean = false,
     val groupName: String = "",
 ) {
@@ -90,7 +124,9 @@ data class GameManagementUiState(
 }
 
 /**
- * Observes the signed-in user's campaign groups and exposes their roles to the group screen.
+ * Observes the signed-in user's campaign groups and exposes their roles to the group screen. It
+ * also manages invitation codes ([GroupInvitationVM]): the Game Master gets and regenerates a
+ * group's code, and any signed-in user joins a group with one.
  *
  * The user's UID comes from [AuthRepository.authState] and is passed to
  * [GroupRepository.getUserGroups]. Repository emissions update [uiState] continuously. Firebase
@@ -104,7 +140,7 @@ data class GameManagementUiState(
 class GameManagementViewModel(
     private val groupRepository: GroupRepository,
     private val authRepository: AuthRepository,
-) : ViewModel() {
+) : ViewModel(), GroupInvitationVM {
 
   private val _uiState = MutableStateFlow(GameManagementUiState())
   val uiState: StateFlow<GameManagementUiState> = _uiState.asStateFlow()
@@ -117,9 +153,18 @@ class GameManagementViewModel(
 
   private var createJob: Job? = null
 
+  /** The running load or regeneration of an invite code; both share [InvitationState.Loading]. */
+  private var invitationJob: Job? = null
+
+  private var joinJob: Job? = null
+
   private fun cancelActions() {
     createJob?.cancel()
     createJob = null
+    invitationJob?.cancel()
+    invitationJob = null
+    joinJob?.cancel()
+    joinJob = null
   }
 
   init {
@@ -289,37 +334,129 @@ class GameManagementViewModel(
   }
 
   /**
-   * Exposes the invitation placeholder for a group the current user manages.
+   * Loads the invite code of [groupId], creating one if the group has none. The previous code is
+   * cleared first, so the screen never shows another group's code while this one loads.
    *
-   * The live group list already contains each group's role, so this placeholder needs no repository
-   * request. Success identifies the selected group so the UI can explain that invitation codes are
-   * not available yet. No code is generated or shared. This client-side check is not a security
-   * boundary; future invitation operations must be authorized by Firestore rules or trusted backend
-   * logic.
+   * Only the group's Game Master may manage its code. Calls while a code is loading or regenerating
+   * are ignored.
    */
-  fun requestInvitationPlaceholder(groupId: String) {
-    val state = _uiState.value
-    if (currentUserId == null) {
-      _uiState.update {
-        it.copy(
-            invitationState = GroupActionState.Error("You must be signed in to manage invitations.")
-        )
-      }
+  override fun loadInvitation(groupId: String) {
+    requestInviteCode(groupId, clearPreviousCode = true) { gameMasterId ->
+      groupRepository.createInvitation(groupId, gameMasterId)
+    }
+  }
+
+  /**
+   * Replaces the invite code of [groupId]; the old code stops working. The current code stays
+   * visible until the new one arrives, because a failed regeneration leaves the old code valid.
+   * This expects the code of the same group to be loaded first with [loadInvitation], as the invite
+   * dialog does.
+   *
+   * Same checks as [loadInvitation]. The screen asks for confirmation before calling this.
+   */
+  override fun regenerateInvitation(groupId: String) {
+    requestInviteCode(groupId, clearPreviousCode = false) { gameMasterId ->
+      groupRepository.regenerateInvitation(groupId, gameMasterId)
+    }
+  }
+
+  /**
+   * Joins the group that [code] points to. The code is trimmed and uppercased; a code with the
+   * wrong format fails with [InvitationError.INVALID_CODE] without any request.
+   *
+   * Calls while a join is running are ignored. On success the group list updates through the
+   * existing [GroupRepository.getUserGroups] subscription.
+   *
+   * A NETWORK error does not always mean the join failed: the repository writes the membership,
+   * then reads the group back, and only that read may have failed. This function does not check
+   * which case happened. If the membership was written, the group still appears in [uiState]'s
+   * group list through the same subscription, without another request.
+   */
+  override fun joinGroup(code: String) {
+    if (_uiState.value.joinState == JoinState.Joining) return
+    val userId = currentUserId
+    val normalizedCode = InvitationCodes.normalize(code)
+    val error =
+        when {
+          userId == null -> InvitationError.NOT_SIGNED_IN
+          !InvitationCodes.isValid(normalizedCode) -> InvitationError.INVALID_CODE
+          else -> null
+        }
+    if (error != null) {
+      _uiState.update { it.copy(joinState = JoinState.Error(error)) }
       return
     }
 
-    val selectedGroup = state.groups.firstOrNull { it.group.id == groupId }
-    val result =
-        when {
-          groupId.isBlank() -> GroupActionState.Error("Select a group to manage invitations.")
-          selectedGroup == null || selectedGroup.role != GroupRole.GAME_MASTER ->
-              GroupActionState.Error("Only the group's Game Master can manage invitations.")
-          else ->
-              GroupActionState.Success(
-                  groupId = groupId,
-                  message = "Invitation management is coming soon.",
-              )
-        }
-    _uiState.update { it.copy(invitationState = result) }
+    _uiState.update { it.copy(joinState = JoinState.Joining) }
+    joinJob = viewModelScope.launch {
+      val result = groupRepository.joinGroupWithCode(normalizedCode, requireNotNull(userId))
+      val joinState =
+          result.fold(
+              onSuccess = { group -> JoinState.Joined(group.id) },
+              onFailure = { failure -> JoinState.Error(failure.toInvitationError()) },
+          )
+      _uiState.update { it.copy(joinState = joinState) }
+    }
   }
+
+  /**
+   * Clears a previous join result before the join dialog opens again. Ignored while a join is
+   * running: clearing [JoinState.Joining] would let a second join start before the first ends.
+   */
+  override fun resetJoinState() {
+    _uiState.update {
+      if (it.joinState == JoinState.Joining) it else it.copy(joinState = JoinState.Idle)
+    }
+  }
+
+  /**
+   * Shared flow of [loadInvitation] and [regenerateInvitation]: checks the caller locally, then
+   * runs [request] with the signed-in user's id and exposes the code or the error.
+   *
+   * A group the user plays in as a Player fails with [InvitationError.NOT_GAME_MASTER] without any
+   * request. A group missing from the user's list is sent to the repository, because only it can
+   * tell a deleted group ([InvitationError.GROUP_NOT_FOUND]) from someone else's group
+   * ([InvitationError.NOT_GAME_MASTER]). The local check only saves a request; the repository and
+   * the Firestore rules enforce the Game Master rule.
+   */
+  private fun requestInviteCode(
+      groupId: String,
+      clearPreviousCode: Boolean,
+      request: suspend (gameMasterId: String) -> Result<String>,
+  ) {
+    val state = _uiState.value
+    if (state.invitationState == InvitationState.Loading) return
+    val userId = currentUserId
+    val role = state.groups.firstOrNull { it.group.id == groupId }?.role
+    val error =
+        when {
+          userId == null -> InvitationError.NOT_SIGNED_IN
+          role == GroupRole.PLAYER -> InvitationError.NOT_GAME_MASTER
+          else -> null
+        }
+    val code = if (clearPreviousCode) null else state.inviteCode
+    if (error != null) {
+      _uiState.update { it.copy(inviteCode = code, invitationState = InvitationState.Error(error)) }
+      return
+    }
+
+    _uiState.update { it.copy(inviteCode = code, invitationState = InvitationState.Loading) }
+    invitationJob = viewModelScope.launch {
+      val result = request(requireNotNull(userId))
+      _uiState.update { current ->
+        result.fold(
+            onSuccess = { newCode ->
+              current.copy(inviteCode = newCode, invitationState = InvitationState.Idle)
+            },
+            onFailure = { failure ->
+              current.copy(invitationState = InvitationState.Error(failure.toInvitationError()))
+            },
+        )
+      }
+    }
+  }
+
+  /** Every repository failure carries an [InvitationError]; anything else counts as NETWORK. */
+  private fun Throwable.toInvitationError(): InvitationError =
+      (this as? InvitationException)?.error ?: InvitationError.NETWORK
 }

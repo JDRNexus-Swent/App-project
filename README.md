@@ -43,6 +43,7 @@ A player can belong to multiple campaigns, and each one gets its own shared work
 - **Authentication:** Firebase Authentication (Google Sign-In).
 - **Notifications:** Firebase Cloud Messaging.
 - **Device features:** GPS + map, microphone and speaker.
+- **3D dice:** SceneView (Filament).
 
 ## Figma link
    [Find our mockups here](https://www.figma.com/design/ZjG9mZc75jXXEqUHVstTES/App-design?node-id=0-1&t=LaPPKQe3UxfPWKZE-1)
@@ -50,3 +51,6 @@ A player can belong to multiple campaigns, and each one gets its own shared work
 ## Contributors
 - JDRNexus team (@Cledje, @ ThibaultCochetEPFL, @bechlima, @Artyst05, @ LDfrt, @ MeriemEPFL, @ s-tan-S )
 - AI agents
+
+## Credits
+- 3D dice: ["RPG Dice Set"](https://sketchfab.com/3d-models/rpg-dice-set-e4f74102066344a298dec7f455fa6bdb) by [ghosted](https://sketchfab.com/dianaavlis2002), licensed under [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/). Changed: only the black set is kept, each die is centred, and the textures are shrunk to 1024 px.

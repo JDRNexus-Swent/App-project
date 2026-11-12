@@ -17,6 +17,7 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.WriteBatch
+import io.mockk.coEvery
 import io.mockk.confirmVerified
 import io.mockk.every
 import io.mockk.mockk
@@ -592,6 +593,34 @@ class WorkspaceRepositoryFirestoreTest {
     assertEquals(file, getPersistedFile("file"))
   }
 
+  /**
+   * Simulates a concurrent request: the read made before the transaction still sees the item as not
+   * shared, but the stored item is already in the group. The check inside the transaction must
+   * catch it, and nothing must be written.
+   */
+  @Test
+  fun addItemToGroup_refusesAnItemAddedByAConcurrentRequest() = runBlocking {
+    val folder1 = inGroup("folder1", "group", "group", DocumentType.FOLDER)
+    val folder2 = inGroup("folder2", "group", "group", DocumentType.FOLDER)
+    val sharedFile = inGroup("file", "group", "folder1")
+    val staleFile = JDRFile(id = "file", ownerId = "A")
+    persistFiles(groupRootOf("group"), folder1, folder2, sharedFile)
+    val repositorySpy = spyk(WorkspaceRepositoryFirestore(firestore))
+    coEvery { repositorySpy.getFile("file") } returns Result.success(staleFile)
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repositorySpy.addItemToGroup("file", "group", "folder2")
+        }
+
+    assertFailureWith(
+        result,
+        IllegalStateException::class.java,
+        "This item is already in the group.",
+    )
+    assertEquals(sharedFile, getPersistedFile("file"))
+  }
+
   @Test
   fun addItemToGroup_refusesADestinationThatIsNotAFolder() = runBlocking {
     val notAFolder = inGroup("text", "group", "group")
@@ -1057,9 +1086,58 @@ class WorkspaceRepositoryFirestoreTest {
   fun setItemHidden_refusesToHideMoreItemsThanOneBatchCanWrite() = runBlocking {
     val folder = inGroup("folder", "group", "group", DocumentType.FOLDER)
     persistFiles(groupRootOf("group"), folder)
-    val repositorySpy = spyk(WorkspaceRepositoryFirestore(firestore))
     val children = (1..500).map { inGroup("child-$it", "group", "folder") }
-    every { repositorySpy.getGroupFolderFiles("folder", "group") } returns flowOf(children)
+    // Write the children to the emulator so the direct query in setItemHidden finds them.
+    val batch = firestore.batch()
+    children.forEach {
+      batch.set(
+          firestore.collection(WorkspaceRepositoryFirestore.COLLECTION_PATH).document(it.id),
+          it,
+      )
+    }
+    batch.commit().await()
+
+    val result =
+        runAndPumpMainLooper("setItemHidden") { repository.setItemHidden("folder", "group", true) }
+
+    assertFailureWith(
+        result,
+        IllegalStateException::class.java,
+        "Too many items to update at once (maximum 500).",
+    )
+    assertEquals(folder, getPersistedFile("folder"))
+  }
+
+  /**
+   * Simulates a file added to a folder while it was being hidden: the folder is hidden but the file
+   * is still visible. The second pass must hide it, and only what is below the folder.
+   */
+  @Test
+  fun hideLateAdditions_hidesAFileLeftVisibleInAHiddenFolder() = runBlocking {
+    val folder = inGroup("folder", "group", "group", DocumentType.FOLDER, isHidden = true)
+    val late = inGroup("late", "group", "folder")
+    val alreadyHidden = inGroup("hidden", "group", "folder", isHidden = true)
+    val sibling = inGroup("sibling", "group", "group")
+    persistFiles(groupRootOf("group"), folder, late, alreadyHidden, sibling)
+    val firestoreRepository = WorkspaceRepositoryFirestore(firestore)
+
+    runAndPumpMainLooper("hideLateAdditions") {
+      firestoreRepository.hideLateAdditions(folder, "group")
+    }
+
+    assertEquals(hiddenIn(late, "group"), getPersistedFile("late"))
+    assertEquals(alreadyHidden, getPersistedFile("hidden"))
+    assertEquals(sibling, getPersistedFile("sibling"))
+  }
+
+  /** If the second pass fails, the folder is already hidden: the error must say so. */
+  @Test
+  fun setItemHidden_explainsWhenTheSecondPassFailsAfterTheFolderIsHidden() = runBlocking {
+    val folder = inGroup("folder", "group", "group", DocumentType.FOLDER)
+    persistFiles(groupRootOf("group"), folder)
+    val repositorySpy = spyk(WorkspaceRepositoryFirestore(firestore))
+    coEvery { repositorySpy.hideLateAdditions(any(), any()) } throws
+        IllegalStateException("late pass failed")
 
     val result =
         runAndPumpMainLooper("setItemHidden") {
@@ -1069,9 +1147,9 @@ class WorkspaceRepositoryFirestoreTest {
     assertFailureWith(
         result,
         IllegalStateException::class.java,
-        "Too many items to update at once (maximum 500).",
+        "The folder is hidden, but some recently added items may still be visible. Try again.",
     )
-    assertEquals(folder, getPersistedFile("folder"))
+    assertEquals(hiddenIn(folder, "group"), getPersistedFile("folder"))
   }
 
   @Test
