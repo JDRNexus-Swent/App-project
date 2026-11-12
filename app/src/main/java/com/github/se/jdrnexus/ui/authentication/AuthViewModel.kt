@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.authentication
 
 import android.content.Context
@@ -60,10 +61,30 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
 
   fun onUsernameChange(username: String) = updateInput { copy(username = username) }
 
+  /**
+   * Removes the field errors and turns an [AuthStatus.Error] back into [AuthStatus.Idle], keeping
+   * the typed email, password and username.
+   *
+   * [SignInScreen] and [SignUpScreen] share one instance of this ViewModel in `JDRNexusApp`, so
+   * each of them calls this before switching to the other; otherwise an error from one screen would
+   * show on the other. A running request ([AuthStatus.Loading]) or a finished one
+   * ([AuthStatus.Success]) is left untouched.
+   */
+  fun clearErrors() {
+    _uiState.update {
+      it.copy(
+          emailError = null,
+          passwordError = null,
+          usernameError = null,
+          status = if (it.status is AuthStatus.Error) AuthStatus.Idle else it.status,
+      )
+    }
+  }
+
   fun signUp() {
     if (isAuthenticationLocked()) return
     val form = _uiState.value
-    validate(form, requireUsername = true)?.let {
+    validate(form, isSignUp = true)?.let {
       setStatus(AuthStatus.Error(it))
       return
     }
@@ -80,7 +101,7 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
   fun signIn() {
     if (isAuthenticationLocked()) return
     val form = _uiState.value
-    validate(form, requireUsername = false)?.let {
+    validate(form, isSignUp = false)?.let {
       setStatus(AuthStatus.Error(it))
       return
     }
@@ -206,19 +227,26 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
         AuthStatus.Error(AuthError.UNKNOWN.message)
       }
 
-  private fun isAuthenticationLocked(): Boolean =
+  /**
+   * Whether a request is running ([AuthStatus.Loading]) or has already signed the user in
+   * ([AuthStatus.Success]). Reads the current state, not the last value a screen composed.
+   */
+  fun isAuthenticationLocked(): Boolean =
       _uiState.value.status.let { it is AuthStatus.Loading || it is AuthStatus.Success }
 
-  private fun validate(form: AuthUiState, requireUsername: Boolean): String? {
+  private fun validate(form: AuthUiState, isSignUp: Boolean): String? {
     val emailError = if (!isValidEmail(form.email)) AuthError.INVALID_EMAIL.message else null
+    // The length rule is a sign-up policy. On sign-in, any non-empty password goes to the
+    // repository, which reports a wrong one as AuthError.INVALID_CREDENTIALS.
     val passwordError =
-        if (form.password.length < MIN_PASSWORD_LENGTH) {
-          "Password must be at least $MIN_PASSWORD_LENGTH characters."
-        } else {
-          null
+        when {
+          isSignUp && form.password.length < MIN_PASSWORD_LENGTH ->
+              "Password must be at least $MIN_PASSWORD_LENGTH characters."
+          !isSignUp && form.password.isEmpty() -> AuthError.EMPTY_PASSWORD.message
+          else -> null
         }
     val usernameError =
-        if (requireUsername && form.username.isBlank()) AuthError.INVALID_USERNAME.message else null
+        if (isSignUp && form.username.isBlank()) AuthError.INVALID_USERNAME.message else null
 
     _uiState.update {
       it.copy(
@@ -235,9 +263,15 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
       state.update().let { updated ->
         updated.copy(
             emailError = updated.emailError?.takeUnless { isValidEmail(updated.email) },
+            // Each password error disappears once the rule that produced it is met: any
+            // character for the sign-in "empty" error, the full length for the sign-up one.
             passwordError =
-                updated.passwordError?.takeUnless {
-                  updated.password.length >= MIN_PASSWORD_LENGTH
+                updated.passwordError?.takeUnless { error ->
+                  if (error == AuthError.EMPTY_PASSWORD.message) {
+                    updated.password.isNotEmpty()
+                  } else {
+                    updated.password.length >= MIN_PASSWORD_LENGTH
+                  }
                 },
             usernameError = updated.usernameError?.takeUnless { updated.username.isNotBlank() },
             status =

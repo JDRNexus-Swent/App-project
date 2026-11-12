@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus
 
 import android.content.Context
@@ -32,6 +33,7 @@ import com.github.se.jdrnexus.model.personalSpace.FileEdit
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
@@ -44,6 +46,7 @@ import com.github.se.jdrnexus.ui.home.TestTags
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
 import com.github.se.jdrnexus.utils.NavigationGroupRepository
 import com.github.se.jdrnexus.utils.NavigationWorkspaceRepository
+import com.github.se.jdrnexus.utils.tapInOneFrame
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 import com.google.firebase.FirebaseApp
@@ -144,6 +147,43 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotDisplayed()
     assertEquals(1, repository.signUpCalls)
     assertEquals(FakeAuthRepository.TEST_USER, repository.authState.value)
+  }
+
+  @Test
+  fun signUpLinkAndSignInTappedInOneFrameOpenSignUpWithoutSigningIn() {
+    val repository = FakeAuthRepository()
+    showApp(repository)
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+
+    composeTestRule.tapInOneFrame(C.Tag.sign_in_sign_up, C.Tag.sign_in_submit)
+    waitForTag(C.Tag.sign_up_sign_in)
+
+    assertEquals(0, repository.signInCalls)
+    assertEquals(null, repository.authState.value)
+    composeTestRule.onAllNodesWithTag(TestTags.TITLE).assertCountEquals(0)
+  }
+
+  @Test
+  fun systemBackFromSignUpNeverShowsSignUpErrorsOnSignIn() {
+    val repository = FakeAuthRepository().apply { signUpResult = CompletableDeferred() }
+    showApp(repository)
+    scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_username).performTextInput("Ranger")
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
+
+    Espresso.pressBack()
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).assertExists()
+    repository.signUpResult?.complete(AuthResult.Failure(AuthError.EMAIL_ALREADY_IN_USE))
+    waitForText(AuthError.EMAIL_ALREADY_IN_USE.message)
+    Espresso.pressBack()
+    waitForTag(C.Tag.sign_in_submit)
+
+    composeTestRule.onAllNodesWithTag(C.Tag.sign_up_submit).assertCountEquals(0)
+    composeTestRule.onAllNodesWithText(AuthError.EMAIL_ALREADY_IN_USE.message).assertCountEquals(0)
   }
 
   @Test
@@ -469,6 +509,7 @@ class MainActivityNavigationTest {
     var signUpCalls = 0
     var signOutResult: CompletableDeferred<AuthResult<Unit>>? = null
     var signOutFailure: Exception? = null
+    var signUpResult: CompletableDeferred<AuthResult<AuthUser>>? = null
 
     override suspend fun signUpWithEmail(
         email: String,
@@ -476,6 +517,11 @@ class MainActivityNavigationTest {
         username: String,
     ): AuthResult<AuthUser> {
       signUpCalls++
+      signUpResult?.let {
+        val result = it.await()
+        if (result is AuthResult.Success) mutableAuthState.value = result.value
+        return result
+      }
       mutableAuthState.value = TEST_USER
       return AuthResult.Success(TEST_USER)
     }
