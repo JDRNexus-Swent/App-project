@@ -42,8 +42,9 @@ private const val DIE_FRAMING_PADDING = 0.8f
  * through around it. [rotation] and [lift] (a height, as a fraction of the die's size) are read on
  * every frame, without recomposing, so a roll can move the die smoothly.
  *
- * All dice live in one model, sharing their textures; only [diceType] is shown. [onShown] is called
- * once the model has loaded and shows [diceType], e.g. for tests to wait for it.
+ * All dice live in one model, sharing their textures; only [diceType] is shown. [onDieSelected] is
+ * called once the die's node is found in the model and made the only visible one, e.g. for tests to
+ * wait for it; the die may not be drawn yet.
  */
 @Composable
 internal fun Die3D(
@@ -51,7 +52,7 @@ internal fun Die3D(
     rotation: () -> Quaternion,
     lift: () -> Float,
     modifier: Modifier = Modifier,
-    onShown: () -> Unit = {},
+    onDieSelected: () -> Unit = {},
 ) {
   val engine = rememberEngine()
   val modelLoader = rememberModelLoader(engine)
@@ -66,13 +67,13 @@ internal fun Die3D(
   // The loop below starts once; these keep it reading the latest functions it was given.
   val currentRotation by rememberUpdatedState(rotation)
   val currentLift by rememberUpdatedState(lift)
-  val currentOnShown by rememberUpdatedState(onShown)
+  val currentOnDieSelected by rememberUpdatedState(onDieSelected)
 
   LaunchedEffect(dice, diceType) {
     val node = dice ?: return@LaunchedEffect
     node.renderableNodes.forEach { it.isVisible = it.name == diceType.modelNodeName }
     // Only once the die really is in the model: a node renamed in dice.glb would show nothing.
-    if (node.renderableNodes.any { it.name == diceType.modelNodeName }) currentOnShown()
+    if (node.renderableNodes.any { it.name == diceType.modelNodeName }) currentOnDieSelected()
     // Follows the roll frame by frame, without recomposing the scene.
     snapshotFlow { currentRotation() to currentLift() }
         .collect { (newRotation, newLift) ->

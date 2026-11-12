@@ -18,10 +18,10 @@ import org.junit.runner.RunWith
 private val DIE_SIZE = 200.dp
 
 /**
- * How long the model may take to load and show. Generous: CI renders 3D in software on the CPU,
- * which is far slower than a phone's GPU.
+ * How long the model may take to load and select a die. Generous: CI renders 3D in software on the
+ * CPU, which is far slower than a phone's GPU.
  */
-private const val SHOWN_TIMEOUT_MILLIS = 20_000L
+private const val MODEL_TIMEOUT_MILLIS = 20_000L
 
 /** A value every die has, whose face the die is asked to turn to the viewer after the first one. */
 private const val NEXT_FACING_VALUE = 3
@@ -39,8 +39,8 @@ class Die3DTest {
   /** Value whose face the die is asked to turn towards the viewer. */
   private var facingValue by mutableIntStateOf(1)
 
-  /** The die [Die3D] last reported as shown. */
-  private var shownDie: DiceType? = null
+  /** The die [Die3D] last reported as selected. */
+  private var selectedDie: DiceType? = null
 
   /** How many times [Die3D] has read the rotation it was given. */
   private var rotationReads = 0
@@ -54,30 +54,30 @@ class Die3DTest {
         },
         lift = { 0f },
         modifier = Modifier.size(DIE_SIZE),
-        onShown = { shownDie = diceType },
+        onDieSelected = { selectedDie = diceType },
     )
   }
 
-  private fun waitUntilShown(type: DiceType) =
-      composeTestRule.waitUntil(SHOWN_TIMEOUT_MILLIS) { shownDie == type }
+  private fun waitUntilSelected(type: DiceType) =
+      composeTestRule.waitUntil(MODEL_TIMEOUT_MILLIS) { selectedDie == type }
 
   @Test
-  fun everyDieOfTheModelCanBeShown() {
+  fun everyDieOfTheModelCanBeSelected() {
     setDie()
     DiceType.entries.forEach { type ->
       diceType = type
-      waitUntilShown(type)
+      waitUntilSelected(type)
     }
   }
 
   @Test
-  fun dieFollowsItsRotationWhenItChanges() {
+  fun rotationProviderIsReadAgainWhenFacingValueChanges() {
     setDie()
-    waitUntilShown(DiceType.D20)
+    waitUntilSelected(DiceType.D20)
     val readsBefore = rotationReads
 
     facingValue = NEXT_FACING_VALUE
 
-    composeTestRule.waitUntil(SHOWN_TIMEOUT_MILLIS) { rotationReads > readsBefore }
+    composeTestRule.waitUntil(MODEL_TIMEOUT_MILLIS) { rotationReads > readsBefore }
   }
 }
