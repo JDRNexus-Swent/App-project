@@ -256,7 +256,10 @@ fun PersonalSpaceScreen(
           }
         },
         confirmButton = {
-          TextButton(onClick = personalSpaceViewModel::createFolder) { Text("Create") }
+            TextButton(
+                onClick = personalSpaceViewModel::createFolder,
+                enabled = !uiState.isCreatingFolder,
+            ) { Text("Create") }
         },
         dismissButton = {
           TextButton(onClick = personalSpaceViewModel::onNewFolderDialogDismissed) {

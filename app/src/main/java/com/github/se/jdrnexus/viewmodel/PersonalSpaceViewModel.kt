@@ -56,6 +56,7 @@ data class PersonalSpaceUiState(
     val isNewFolderDialogOpen: Boolean = false,
     val newFolderName: String = "",
     val newFolderError: String = "",
+    val isCreatingFolder: Boolean = false,
 )
 
 // ============ Definition of the ViewModel ============
@@ -170,13 +171,14 @@ class PersonalSpaceViewModel(
 
   /** Folders open in this screen; every other JDR file is opened as a document. */
   fun onItemClicked(item: JDRFile, navigateToDocument: (document: JDRFile) -> Unit) {
-    if (item.isContainer()) {
-      navigationPath.addLast(_uiState.value.currentFolderId)
-      folderNames.addLast(item.name)
-      fetchItems(personalParentId = item.id)
-    } else {
-      navigateToDocument(item)
-    }
+      if (item.isContainer()) {
+          if (_uiState.value.loadState == LoadState.Loading) return
+          navigationPath.addLast(_uiState.value.currentFolderId)
+          folderNames.addLast(item.name)
+          fetchItems(personalParentId = item.id)
+      } else {
+          navigateToDocument(item)
+      }
   }
 
   /**
@@ -250,12 +252,14 @@ class PersonalSpaceViewModel(
    * exposed in [PersonalSpaceUiState.newFolderError].
    */
   fun createFolder() {
-    val state = _uiState.value
-    val name = state.newFolderName.trim()
-    if (name.isEmpty()) {
-      _uiState.update { it.copy(newFolderError = "Folder name cannot be empty.") }
-      return
-    }
+      val state = _uiState.value
+      if (state.isCreatingFolder) return
+      val name = state.newFolderName.trim()
+      if (name.isEmpty()) {
+          _uiState.update { it.copy(newFolderError = "Folder name cannot be empty.") }
+          return
+      }
+      _uiState.update { it.copy(isCreatingFolder = true) }
 
     launchAction {
       try {
@@ -279,6 +283,8 @@ class PersonalSpaceViewModel(
         currentCoroutineContext().ensureActive()
         val message = e.message?.takeIf(String::isNotBlank) ?: "Unable to create the folder."
         _uiState.update { it.copy(newFolderError = message) }
+      } finally {
+          _uiState.update { it.copy(isCreatingFolder = false) }
       }
     }
   }

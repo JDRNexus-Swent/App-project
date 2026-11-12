@@ -349,6 +349,38 @@ class PersonalSpaceViewModelTest {
         repository.folderFetchRequests,
     )
   }
+  /** Verifies a second folder tap is ignored while the first folder is still opening. */
+  @Test
+  fun secondFolderTapWhileOneIsOpeningIsIgnored() {
+    val otherFolder = JDRFile("folder-3", "Other folder", type = DocumentType.FOLDER)
+    val folderFetchGate = CompletableDeferred<Unit>()
+    val repository =
+      FakePersonalSpaceRepository(
+        rootItems = listOf(rootFolder, otherFolder),
+        itemsByFolder = mapOf(rootFolder.id to listOf(nestedFile)),
+        folderFetchGate = folderFetchGate,
+      )
+    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
+    idleMainLooper()
+
+    viewModel.onItemClicked(rootFolder) {}
+    viewModel.onItemClicked(otherFolder) {} // the screen still shows the old list: ignored
+    idleMainLooper()
+    folderFetchGate.complete(Unit)
+    idleMainLooper()
+
+    assertEquals(rootFolder.id, viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(rootFolder.name), viewModel.uiState.value.folderPath)
+    assertEquals(listOf(nestedFile), viewModel.uiState.value.items)
+    assertEquals(listOf(rootFolder.id), repository.folderFetchRequests)
+
+    viewModel.onNavigateUp()
+    idleMainLooper()
+
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(rootFolder, otherFolder), viewModel.uiState.value.items)
+    assertFalse(viewModel.uiState.value.canNavigateUp)
+  }
 
   /** Verifies that all non-folder file types are sent to document navigation, not folder fetch. */
   @Test
@@ -482,6 +514,31 @@ class PersonalSpaceViewModelTest {
 
     assertEquals("Create denied", viewModel.uiState.value.newFolderError)
     assertTrue(viewModel.uiState.value.isNewFolderDialogOpen)
+    assertFalse(viewModel.uiState.value.isCreatingFolder)
+  }
+  /** Verifies a double tap on "Create" saves one folder and the flag is cleared afterwards. */
+  @Test
+  fun doubleTapOnCreateCreatesOnlyOneFolder() {
+    val createGate = CompletableDeferred<Unit>()
+    val repository = FakePersonalSpaceRepository(createGate = createGate)
+    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
+    idleMainLooper()
+    viewModel.onNewFolderSelected()
+    viewModel.onNewFolderNameChanged("Folder")
+
+    viewModel.createFolder()
+    viewModel.createFolder() // second tap while the first creation is running
+    idleMainLooper()
+
+    assertTrue(viewModel.uiState.value.isCreatingFolder)
+    assertEquals(1, repository.createdFiles.size)
+
+    createGate.complete(Unit)
+    idleMainLooper()
+
+    assertEquals(1, repository.createdFiles.size)
+    assertFalse(viewModel.uiState.value.isCreatingFolder)
+    assertFalse(viewModel.uiState.value.isNewFolderDialogOpen)
   }
 
   /** Verifies fetch failures expose their message and leave the failed directory's items empty. */
