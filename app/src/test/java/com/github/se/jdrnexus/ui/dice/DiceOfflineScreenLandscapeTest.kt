@@ -62,7 +62,9 @@ class DiceOfflineScreenLandscapeTest {
   ) = vm.also {
     composeTestRule.setContent {
       SampleAppTheme(darkTheme = true) {
-        Box(Modifier.size(screenSize)) { DiceOfflineScreen(diceViewModel = it, onClose = onClose) }
+        Box(Modifier.size(screenSize)) {
+          DiceOfflineScreen(diceViewModel = it, onClose = onClose, dieView = FlatDieView)
+        }
       }
     }
   }
@@ -236,6 +238,7 @@ class DiceOfflineScreenLandscapeTest {
               uiState = DiceUiState(errorMessage = "Failed to sync roll"),
               diceViewModel = DismissCountingDiceVM(onDismissError = { dismissCount++ }),
               onClose = {},
+              dieView = FlatDieView,
           )
         }
       }
@@ -286,7 +289,12 @@ class DiceOfflineScreenLandscapeTest {
     composeTestRule.setContent {
       SampleAppTheme(darkTheme = true) {
         Box(Modifier.size(screenSize)) {
-          DiceOfflineContent(uiState = uiState, diceViewModel = vm, onClose = {})
+          DiceOfflineContent(
+              uiState = uiState,
+              diceViewModel = vm,
+              onClose = {},
+              dieView = FlatDieView,
+          )
         }
       }
     }
@@ -310,7 +318,11 @@ class DiceOfflineScreenLandscapeTest {
     composeTestRule.setContent {
       SampleAppTheme(darkTheme = true) {
         Box(Modifier.size(screenSize)) {
-          DiceOfflineScreen(diceViewModel = vm, shakeDetector = AvailableShakeDetector)
+          DiceOfflineScreen(
+              diceViewModel = vm,
+              shakeDetector = AvailableShakeDetector,
+              dieView = FlatDieView,
+          )
         }
       }
     }

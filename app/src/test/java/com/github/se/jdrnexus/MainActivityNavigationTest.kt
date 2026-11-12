@@ -3,6 +3,7 @@
 package com.github.se.jdrnexus
 
 import android.content.Context
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
@@ -40,6 +41,8 @@ import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
+import com.github.se.jdrnexus.ui.dice.FlatDieView
+import com.github.se.jdrnexus.ui.dice.LocalDieView
 import com.github.se.jdrnexus.ui.edition.EditFileLoreTestTags
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
@@ -257,12 +260,16 @@ class MainActivityNavigationTest {
     repository.signOutFailure = IllegalStateException("Sign-out failed")
     val viewModel = AuthViewModel(repository)
     composeTestRule.setContent {
-      JDRNexusApp(
-          authViewModel = viewModel,
-          authRepository = repository,
-          groupRepository = FakeGroupRepository(),
-          workspaceRepository = NavigationWorkspaceRepository(),
-      )
+      // This test opens the dice screen, and Robolectric cannot render the 3D die: draw the flat
+      // one instead.
+      CompositionLocalProvider(LocalDieView provides FlatDieView) {
+        JDRNexusApp(
+            authViewModel = viewModel,
+            authRepository = repository,
+            groupRepository = FakeGroupRepository(),
+            workspaceRepository = NavigationWorkspaceRepository(),
+        )
+      }
     }
 
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
@@ -424,12 +431,15 @@ class MainActivityNavigationTest {
     }
     val viewModel = AuthViewModel(repository)
     composeTestRule.setContent {
-      JDRNexusApp(
-          authViewModel = viewModel,
-          authRepository = repository,
-          groupRepository = groupRepository,
-          workspaceRepository = workspaceRepository,
-      )
+      // The 3D die cannot render under Robolectric: the dice screen draws the flat one instead.
+      CompositionLocalProvider(LocalDieView provides FlatDieView) {
+        JDRNexusApp(
+            authViewModel = viewModel,
+            authRepository = repository,
+            groupRepository = groupRepository,
+            workspaceRepository = workspaceRepository,
+        )
+      }
     }
   }
 
