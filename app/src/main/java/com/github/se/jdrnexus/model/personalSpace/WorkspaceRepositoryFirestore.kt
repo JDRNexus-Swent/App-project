@@ -17,6 +17,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     internal const val COLLECTION_PATH = "documents"
     private const val FIELD_PLACEMENTS = "placements"
     private const val FIELD_SHARED_GROUPS_IDS = "sharedGroupsIds"
+    private const val MAX_LATE_PASSES = 3
   }
 
   private val collection = firestore.collection(COLLECTION_PATH)
@@ -145,7 +146,6 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
 
     val item = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
     check(item.type != DocumentType.GROUP_ROOT) { "A group root cannot be added to a group." }
-    check(groupId !in item.sharedGroupsIds) { "This item is already in the group." }
 
     // Pre-calculate the personal subtree. This doesn't depend on group visibility.
     val subtree =
@@ -153,6 +153,10 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
 
     firestore
         .runTransaction { transaction ->
+          val currentItem =
+              transaction.get(collection.document(itemId)).toObject(JDRFile::class.java)
+                  ?: throw IllegalArgumentException("Item not found.")
+          check(groupId !in currentItem.sharedGroupsIds) { "This item is already in the group." }
           val destinationSnapshot = transaction.get(collection.document(folderId))
           val destination =
               destinationSnapshot.toObject(JDRFile::class.java)
@@ -203,20 +207,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     val item = getFile(itemId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
     check(item.type != DocumentType.GROUP_ROOT) { "A group root cannot be hidden." }
     // Pre-calculate the group subtree if we're hiding, because it needs queries
-    val subtree =
-        if (isHidden) {
-          val allGroupFiles =
-              collection
-                  .whereArrayContains(FIELD_SHARED_GROUPS_IDS, groupId)
-                  .get()
-                  .await()
-                  .toObjects(JDRFile::class.java)
-          subtreeOf(item) { folder ->
-            allGroupFiles.filter { it.placements[groupId]?.folderId == folder.id }
-          }
-        } else {
-          emptyList()
-        }
+    val subtree = if (isHidden) collectGroupSubtree(item, groupId) else emptyList()
 
     firestore
         .runTransaction { transaction ->
@@ -261,6 +252,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
           }
         }
         .await()
+    if (isHidden) hideLateAdditions(item, groupId)
   }
 
   /**
@@ -297,6 +289,37 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
   /** [root] and everything below it in its owner's personal space. */
   private suspend fun collectPersonalSubtree(root: JDRFile): List<JDRFile> =
       subtreeOf(root) { getPersonalFolderFiles(it.id, root.ownerId).first() }
+
+  /** [root] and everything below it in the folder tree of [groupId], read with one query. */
+  private suspend fun collectGroupSubtree(root: JDRFile, groupId: String): List<JDRFile> {
+    val allGroupFiles =
+        collection
+            .whereArrayContains(FIELD_SHARED_GROUPS_IDS, groupId)
+            .get()
+            .await()
+            .toObjects(JDRFile::class.java)
+    return subtreeOf(root) { folder ->
+      allGroupFiles.filter { it.placements[groupId]?.folderId == folder.id }
+    }
+  }
+
+  /**
+   * Hides what was added to the subtree of [root] while it was being hidden. Once [root] is hidden,
+   * new additions inherit the hidden state, so a few passes are enough to catch what was missed.
+   */
+  internal suspend fun hideLateAdditions(root: JDRFile, groupId: String) {
+    repeat(MAX_LATE_PASSES) {
+      val stillVisible =
+          collectGroupSubtree(root, groupId).filter { it.placements[groupId]?.isHidden != true }
+      if (stillVisible.isEmpty()) return
+      check(stillVisible.size <= MAX_BATCH_WRITES) {
+        "Too many items to update at once (maximum $MAX_BATCH_WRITES)."
+      }
+      val batch = firestore.batch()
+      stillVisible.forEach { batch.update(collection.document(it.id), hiddenUpdate(groupId, true)) }
+      batch.commit().await()
+    }
+  }
 
   override fun getFileFlow(fileId: String): Flow<JDRFile?> = callbackFlow {
     // callbackFlow bridges Firestore's callback API with Kotlin Coroutines Flow.
