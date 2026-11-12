@@ -475,6 +475,8 @@ class MainActivityNavigationTest {
     val workspaceRepository = FakeWorkspaceRepository(emptyList())
     val groupRepository = FakeGroupRepository()
     val authViewModel = AuthViewModel(authRepository)
+    val personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, authRepository)
+    val editFileViewModel = EditFileViewModel(workspaceRepository)
     val searchViewModel =
         DocumentSearchViewModel(
             repository = workspaceRepository,
@@ -485,8 +487,8 @@ class MainActivityNavigationTest {
     restorationTester.setContent {
       JDRNexusApp(
           authViewModel = authViewModel,
-          personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, authRepository),
-          editFileViewModel = EditFileViewModel(workspaceRepository),
+          personalSpaceViewModel = personalSpaceViewModel,
+          editFileViewModel = editFileViewModel,
           authRepository = authRepository,
           groupRepository = groupRepository,
           workspaceRepository = workspaceRepository,
