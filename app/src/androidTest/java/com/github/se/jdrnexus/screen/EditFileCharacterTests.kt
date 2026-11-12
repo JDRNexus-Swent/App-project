@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Codex <noreply@openai.com>
 package com.github.se.jdrnexus.screen
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -339,8 +340,7 @@ class EditFileCharacterTests {
     assertEquals("Guard", viewModel.uiState.value.character!!.actions.single().name)
   }
 
-  @Test
-  fun outlinedFieldsKeepTheirPositionWhenValidationErrorsAppear() {
+  private fun setUpCharacterWithEditableFields(): EditFileViewModel {
     val file =
         JDRFile(
             id = "character-field-errors",
@@ -359,6 +359,12 @@ class EditFileCharacterTests {
       EditFileCharacter(viewModel = viewModel, onBack = {}, onSaved = {})
     }
 
+    return viewModel
+  }
+
+  @Test
+  fun hpFieldsKeepTheirPositionWhenCurrentHpErrorAppears() {
+    val viewModel = setUpCharacterWithEditableFields()
     val currentHpField = composeTestRule.onNodeWithTag(EditFileCharacterTestTags.CURRENT_HP)
     val maxHpField = composeTestRule.onNodeWithTag(EditFileCharacterTestTags.MAX_HP)
     val currentHpTop = currentHpField.fetchSemanticsNode().boundsInRoot.top
@@ -371,11 +377,11 @@ class EditFileCharacterTests {
     assertEquals(currentHpTop, currentHpField.fetchSemanticsNode().boundsInRoot.top, 1f)
     assertEquals(maxHpTop, maxHpField.fetchSemanticsNode().boundsInRoot.top, 1f)
 
-    viewModel.updateCharacterCurrentHp(18)
-    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
-      viewModel.uiState.value.fieldErrors.isEmpty()
-    }
+  }
 
+  @Test
+  fun statFieldsKeepTheirPositionWhenNameErrorAppears() {
+    val viewModel = setUpCharacterWithEditableFields()
     composeTestRule
         .onNodeWithTag(EditFileCharacterTestTags.LIST)
         .performScrollToKey("stat-strength")
@@ -392,10 +398,19 @@ class EditFileCharacterTests {
     assertEquals(nameTop, nameField.fetchSemanticsNode().boundsInRoot.top, 1f)
     assertEquals(valueTop, valueField.fetchSemanticsNode().boundsInRoot.top, 1f)
 
-    viewModel.updateCharacterStatName("strength", "Strength")
-    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
-      viewModel.uiState.value.fieldErrors.isEmpty()
-    }
+  }
+
+  @Test
+  fun statFieldsKeepTheirPositionWhenValueErrorAppears() {
+    val viewModel = setUpCharacterWithEditableFields()
+    composeTestRule
+        .onNodeWithTag(EditFileCharacterTestTags.LIST)
+        .performScrollToKey("stat-strength")
+    val nameField = composeTestRule.onNodeWithTag("stat_name_strength")
+    val valueField = composeTestRule.onNodeWithTag("stat_value_strength")
+    val nameTop = nameField.fetchSemanticsNode().boundsInRoot.top
+    val valueTop = valueField.fetchSemanticsNode().boundsInRoot.top
+
     viewModel.updateCharacterStatValue("strength", Double.NaN)
     composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
       viewModel.uiState.value.fieldErrors[EditFileField.CharacterStatValue("strength")] != null
@@ -404,10 +419,11 @@ class EditFileCharacterTests {
     assertEquals(nameTop, nameField.fetchSemanticsNode().boundsInRoot.top, 1f)
     assertEquals(valueTop, valueField.fetchSemanticsNode().boundsInRoot.top, 1f)
 
-    viewModel.updateCharacterStatValue("strength", 16.0)
-    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
-      viewModel.uiState.value.fieldErrors.isEmpty()
-    }
+  }
+
+  @Test
+  fun actionFieldsKeepTheirPositionWhenNameErrorAppears() {
+    val viewModel = setUpCharacterWithEditableFields()
     composeTestRule
         .onNodeWithTag(EditFileCharacterTestTags.LIST)
         .performScrollToKey("action-longbow")
