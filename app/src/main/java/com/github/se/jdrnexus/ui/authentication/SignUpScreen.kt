@@ -1,6 +1,8 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.authentication
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -76,6 +78,17 @@ fun SignUpScreen(
 
   // Keeps track of whether the password should be visible or masked.
   var passwordVisible by remember { mutableStateOf(false) }
+
+  val canAct = authActionGuard(signUpViewModel)
+  // Leaving for the sign-in screen clears this screen's errors, which would otherwise show there
+  // because both screens use the same AuthViewModel.
+  val goToSignIn = {
+    signUpViewModel.clearErrors()
+    onSignInScreen()
+  }
+  // System back follows the same guard as the "Log in" link: while a sign-up request runs, leaving
+  // would let its result (an error, or the signed-in user) land on the sign-in screen.
+  BackHandler { if (canAct()) goToSignIn() }
 
   // Navigate to the next screen after successful registration.
   LaunchedEffect(uiState.status) {
@@ -262,7 +275,7 @@ fun SignUpScreen(
 
       // Register button.
       Button(
-          onClick = { signUpViewModel.signUp() },
+          onClick = { if (canAct()) signUpViewModel.signUp() },
           enabled = !isAuthenticationLocked,
           modifier = Modifier.fillMaxWidth().height(54.dp).testTag(C.Tag.sign_up_submit),
           shape = RoundedCornerShape(18.dp),
@@ -298,7 +311,7 @@ fun SignUpScreen(
         )
 
         TextButton(
-            onClick = onSignInScreen,
+            onClick = { if (canAct()) goToSignIn() },
             enabled = !isAuthenticationLocked,
             modifier = Modifier.testTag(C.Tag.sign_up_sign_in),
             contentPadding = PaddingValues(2.dp),
