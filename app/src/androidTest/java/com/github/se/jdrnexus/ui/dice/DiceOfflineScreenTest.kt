@@ -34,16 +34,13 @@ import com.github.se.jdrnexus.model.sensor.ShakeDetector
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.google.firebase.firestore.FirebaseFirestore
-import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.transform
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -69,21 +66,13 @@ private object SignedOutAuthRepository : AuthRepository {
 private const val WAIT_TIMEOUT_MILLIS = 5_000L
 
 /**
- * Shake source driven by hand; room for one event, so [sendShake] never drops a shake.
- * [handledShakes] counts the shakes the screen has finished handling, so a test can tell "ignored"
- * from "not read yet".
+ * Shake source driven by hand; room for one event, so [sendShake] never drops a shake. Whether a
+ * shake during a roll is ignored is tested in DiceOfflineScreenRollAnimationTest, under
+ * Robolectric: CI turns this emulator's animations off, and then the die lands at once.
  */
 private class FakeShakeDetector(override val isAvailable: Boolean = true) : ShakeDetector {
   val source = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-  private val handled = AtomicInteger(0)
-  val handledShakes: Int
-    get() = handled.get()
-
-  // emit() returns once the screen's collect block has run, so counting after it means "handled".
-  override val shakes: Flow<Unit> = source.transform {
-    emit(it)
-    handled.incrementAndGet()
-  }
+  override val shakes: Flow<Unit> = source
 
   fun sendShake(): Boolean = source.tryEmit(Unit)
 }
@@ -121,7 +110,12 @@ class DiceOfflineScreenTest {
   ): DiceViewModel {
     composeTestRule.setContent {
       SampleAppTheme(darkTheme = darkTheme) {
-        DiceOfflineScreen(diceViewModel = vm, shakeDetector = shakeDetector, onClose = onClose)
+        DiceOfflineScreen(
+            diceViewModel = vm,
+            shakeDetector = shakeDetector,
+            onClose = onClose,
+            dieView = FlatDieView,
+        )
       }
     }
     return vm
@@ -175,7 +169,6 @@ class DiceOfflineScreenTest {
     node(C.Tag.dice_offline_result_detail).assertTextEquals("Tap Roll to throw your D20")
     node(C.Tag.dice_offline_modifier_value).assertTextEquals("+0")
     node(C.Tag.diceOfflineSelect("D20")).assertIsSelected()
-    node(C.Tag.dice_offline_loading).assertDoesNotExist()
     node(C.Tag.dice_offline_error).assertDoesNotExist()
   }
 
@@ -240,7 +233,6 @@ class DiceOfflineScreenTest {
     assertFalse(vm.uiState.value.isRolling)
     assertEquals(DiceType.D8, result.diceType)
     assertTrue(result.rawValue in 1..8)
-    node(C.Tag.dice_offline_loading).assertDoesNotExist()
     node(C.Tag.dice_offline_result).assertTextEquals(result.rawValue.toString())
     node(C.Tag.dice_offline_result_detail)
         .assertTextEquals("Total: ${result.rawValue} + 3 = ${result.rawValue + 3}")
@@ -316,7 +308,11 @@ class DiceOfflineScreenTest {
     composeTestRule.setContent {
       SampleAppTheme {
         Box(Modifier.size(width = 320.dp, height = screenHeight)) {
-          DiceOfflineScreen(diceViewModel = vm, shakeDetector = FakeShakeDetector())
+          DiceOfflineScreen(
+              diceViewModel = vm,
+              shakeDetector = FakeShakeDetector(),
+              dieView = FlatDieView,
+          )
         }
       }
     }
@@ -335,7 +331,7 @@ class DiceOfflineScreenTest {
   fun defaultViewModelFromTheFactoryDrivesTheScreen() {
     // No ViewModel passed: the screen builds its own through DiceViewModelFactory, as in the app.
     // No roll here, so the test never depends on the roll animation.
-    composeTestRule.setContent { SampleAppTheme { DiceOfflineScreen() } }
+    composeTestRule.setContent { SampleAppTheme { DiceOfflineScreen(dieView = FlatDieView) } }
 
     node(C.Tag.dice_offline_selected_type).assertTextEquals("D20")
     node(C.Tag.dice_offline_result).assertTextEquals("?")
@@ -364,28 +360,6 @@ class DiceOfflineScreenTest {
     node(C.Tag.dice_offline_result).assertTextEquals(result.rawValue.toString())
     node(C.Tag.dice_offline_result_detail)
         .assertTextEquals("Total: ${result.rawValue} + 3 = ${result.rawValue + 3}")
-  }
-
-  @Test
-  fun shakeDuringTheRollAnimationDoesNothing() {
-    val shaker = FakeShakeDetector()
-    val vm = setScreen(shakeDetector = shaker)
-    shaker.awaitListening()
-    // Freeze virtual time so the 1 s roll animation cannot end during the test.
-    composeTestRule.mainClock.autoAdvance = false
-
-    assertTrue(shaker.sendShake())
-    composeTestRule.mainClock.advanceTimeByFrame()
-    assertTrue(vm.uiState.value.isRolling)
-    val firstRoll = vm.uiState.value.currentResult
-
-    assertTrue(shaker.sendShake())
-    composeTestRule.mainClock.advanceTimeByFrame()
-    assertEquals("The screen must have handled the second shake", 2, shaker.handledShakes)
-
-    assertSame("A second shake must not reroll", firstRoll, vm.uiState.value.currentResult)
-    composeTestRule.mainClock.autoAdvance = true
-    awaitRollFinished(vm)
   }
 
   @Test
@@ -423,7 +397,11 @@ class DiceOfflineScreenTest {
     composeTestRule.setContent {
       CompositionLocalProvider(LocalLifecycleOwner provides owner) {
         SampleAppTheme {
-          DiceOfflineScreen(diceViewModel = createViewModel(), shakeDetector = shaker)
+          DiceOfflineScreen(
+              diceViewModel = createViewModel(),
+              shakeDetector = shaker,
+              dieView = FlatDieView,
+          )
         }
       }
     }

@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -103,6 +104,7 @@ fun GroupWorkSpaceScreen(
     onTabSelected: (String) -> Unit = {},
     onItemClicked: ((JDRFile, Boolean) -> Unit)? = null,
     personalItems: List<JDRFile> = emptyList(),
+    onSearchClicked: () -> Unit = {},
 ) {
   val uiState by gwViewModel.uiState.collectAsState()
   val scope = rememberCoroutineScope()
@@ -185,6 +187,7 @@ fun GroupWorkSpaceScreen(
                 if (uiState.currentFolderId.isEmpty()) groupName else uiState.currentFolderName,
             itemCount = uiState.items.size,
             onBack = { navigateBack() },
+            onSearchClicked = onSearchClicked,
             roleLabel =
                 if (uiState.loadState == LoadState.Success) {
                   if (uiState.canCreateFolder) {
@@ -776,6 +779,7 @@ fun WorkspaceCard(
  * @param itemCount Number of items in the current folder.
  * @param onBack Called when the back button is pressed.
  * @param roleLabel Role label associated with the current user.
+ * @param onSearchClicked Called when the search action is pressed.
  */
 @Composable
 fun WorkspaceHeader(
@@ -783,6 +787,7 @@ fun WorkspaceHeader(
     itemCount: Int,
     onBack: () -> Unit,
     roleLabel: String?,
+    onSearchClicked: () -> Unit = {},
 ) {
 
   Column(modifier = Modifier.fillMaxWidth()) {
@@ -816,6 +821,17 @@ fun WorkspaceHeader(
       )
 
       Spacer(Modifier.weight(1f))
+
+      IconButton(
+          onClick = onSearchClicked,
+          modifier = Modifier.testTag(C.Tag.search_open),
+      ) {
+        Icon(
+            imageVector = Icons.Filled.Search,
+            contentDescription = stringResource(R.string.search_open),
+            tint = color().primary,
+        )
+      }
     }
 
     Text(

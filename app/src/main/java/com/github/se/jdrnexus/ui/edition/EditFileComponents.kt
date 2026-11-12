@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -177,7 +178,13 @@ internal fun EditFileSaveButton(
     onSave: () -> Unit,
 ) {
   if (isSaving) {
-    CircularProgressIndicator(modifier = Modifier.fillMaxWidth())
+    Button(
+        onClick = {},
+        enabled = false,
+        modifier = Modifier.fillMaxWidth().testTag(testTag),
+    ) {
+      CircularProgressIndicator(modifier = Modifier.size(20.dp).testTag("${testTag}_progress"))
+    }
   } else {
     Button(
         onClick = onSave,

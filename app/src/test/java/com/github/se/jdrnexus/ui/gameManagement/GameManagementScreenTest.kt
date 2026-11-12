@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.gameManagement
 
 import androidx.compose.runtime.mutableStateOf
@@ -18,7 +19,9 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
+import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import com.github.se.jdrnexus.utils.RecordingInvitationVM
 import com.github.se.jdrnexus.viewmodel.GameManagementUiState
 import com.github.se.jdrnexus.viewmodel.GroupActionState
 import com.github.se.jdrnexus.viewmodel.GroupLoadState
@@ -34,7 +37,7 @@ class GameManagementScreenTest {
   @get:Rule val composeTestRule = createComposeRule()
 
   @Test
-  fun gameMasterSeesManageAndDisabledInviteActions() {
+  fun gameMasterSeesManageAndInviteActions() {
     setContent(
         uiState =
             stateFor(
@@ -48,7 +51,7 @@ class GameManagementScreenTest {
     )
 
     composeTestRule.onNodeWithText("Manage group").assertIsDisplayed()
-    composeTestRule.onNodeWithText("Invite · Coming soon").assertIsDisplayed().assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.invite_button).assertIsDisplayed().assertIsEnabled()
   }
 
   @Test
@@ -67,7 +70,7 @@ class GameManagementScreenTest {
 
     composeTestRule.onNodeWithText("Enter workspace").assertIsDisplayed().assertIsEnabled()
     composeTestRule.onAllNodesWithText("Manage group").assertCountEquals(0)
-    composeTestRule.onAllNodesWithText("Invite · Coming soon").assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(C.Tag.invite_button).assertCountEquals(0)
   }
 
   @Test
@@ -266,9 +269,9 @@ class GameManagementScreenTest {
             onDismissSuccess = onDismissSuccess,
             onEnterWorkspace = onEnterWorkspace,
             onManageGroup = {},
-            onInvite = {},
+            invitationVM = RecordingInvitationVM(),
             onTabSelected = {},
-            renderCreateDialogAsWindow = false,
+            renderDialogsAsWindow = false,
         )
       }
     }

@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.jdrfile
 
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
@@ -8,6 +9,12 @@ import kotlinx.coroutines.flow.StateFlow
 
 /** Field identity for errors that belong beside an editable value in the screen. */
 sealed interface EditFileField {
+  data object NewCharacterStatName : EditFileField
+
+  data object NewCharacterStatValue : EditFileField
+
+  data object NewCharacterActionName : EditFileField
+
   data class CharacterStatName(val statID: String) : EditFileField
 
   data class CharacterStatValue(val statID: String) : EditFileField
@@ -31,6 +38,10 @@ data class EditFileUiState(
     val isSaved: Boolean = false,
     val error: String? = null,
     val fieldErrors: Map<EditFileField, String> = emptyMap(),
+    val newStatName: String = "",
+    val newStatValue: String = "",
+    val newActionName: String = "",
+    val newActionDescription: String = "",
 )
 
 /** UI-facing contract for editing and saving a character or lore file. */
@@ -44,14 +55,26 @@ interface EditFileInterfaceVM {
   /** Replaces the character's display name. */
   fun updateCharacterName(name: String)
 
+  /** Stores and validates the new stat name draft. */
+  fun onAddStatNameChange(name: String)
+
+  /** Stores and validates the new stat value draft. */
+  fun onAddStatValueChange(value: String)
+
+  /** Stores and validates the new action name draft. */
+  fun onAddActionNameChange(name: String)
+
+  /** Stores the new action description draft. */
+  fun onAddActionDescriptionChange(description: String)
+
   /** Updates current HP without allowing negative values or values above max HP. */
   fun updateCharacterCurrentHp(current: Int)
 
   /** Updates max HP without allowing negative values, clamping current HP when necessary. */
   fun updateCharacterMaxHp(max: Int)
 
-  /** Adds a named stat under a generated ID if [value] is finite. */
-  fun addCharacterStat(name: String, value: Double)
+  /** Validates and adds the stat draft, clearing its inputs only on success. */
+  fun addCharacterStat()
 
   /** Updates the name of the stat identified by [statID]. */
   fun updateCharacterStatName(statID: String, name: String)
@@ -62,8 +85,8 @@ interface EditFileInterfaceVM {
   /** Removes the stat identified by [statID]. */
   fun removeCharacterStat(statID: String)
 
-  /** Adds a named action under a generated ID. */
-  fun addCharacterAction(name: String, description: String)
+  /** Validates and adds the action draft, clearing its inputs only on success. */
+  fun addCharacterAction()
 
   /** Updates the name for the action identified by [actionID]. */
   fun updateCharacterActionName(actionID: String, name: String)

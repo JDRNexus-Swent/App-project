@@ -1,11 +1,14 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus
 
 import android.content.Context
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.StateRestorationTester
@@ -31,19 +34,29 @@ import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.FileEdit
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
+import com.github.se.jdrnexus.ui.dice.FlatDieView
+import com.github.se.jdrnexus.ui.dice.LocalDieView
 import com.github.se.jdrnexus.ui.edition.EditFileLoreTestTags
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
+import com.github.se.jdrnexus.ui.search.DocumentSearchInterfaceVM
+import com.github.se.jdrnexus.ui.search.DocumentSearchResult
+import com.github.se.jdrnexus.ui.search.DocumentSearchStatus
+import com.github.se.jdrnexus.ui.search.DocumentSearchUiState
+import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
 import com.github.se.jdrnexus.utils.NavigationGroupRepository
 import com.github.se.jdrnexus.utils.NavigationWorkspaceRepository
+import com.github.se.jdrnexus.utils.tapInOneFrame
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 import com.google.firebase.FirebaseApp
@@ -147,6 +160,43 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun signUpLinkAndSignInTappedInOneFrameOpenSignUpWithoutSigningIn() {
+    val repository = FakeAuthRepository()
+    showApp(repository)
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+
+    composeTestRule.tapInOneFrame(C.Tag.sign_in_sign_up, C.Tag.sign_in_submit)
+    waitForTag(C.Tag.sign_up_sign_in)
+
+    assertEquals(0, repository.signInCalls)
+    assertEquals(null, repository.authState.value)
+    composeTestRule.onAllNodesWithTag(TestTags.TITLE).assertCountEquals(0)
+  }
+
+  @Test
+  fun systemBackFromSignUpNeverShowsSignUpErrorsOnSignIn() {
+    val repository = FakeAuthRepository().apply { signUpResult = CompletableDeferred() }
+    showApp(repository)
+    scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_username).performTextInput("Ranger")
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
+
+    Espresso.pressBack()
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).assertExists()
+    repository.signUpResult?.complete(AuthResult.Failure(AuthError.EMAIL_ALREADY_IN_USE))
+    waitForText(AuthError.EMAIL_ALREADY_IN_USE.message)
+    Espresso.pressBack()
+    waitForTag(C.Tag.sign_in_submit)
+
+    composeTestRule.onAllNodesWithTag(C.Tag.sign_up_submit).assertCountEquals(0)
+    composeTestRule.onAllNodesWithText(AuthError.EMAIL_ALREADY_IN_USE.message).assertCountEquals(0)
+  }
+
+  @Test
   fun homeNavigationOpensDiceAndReturnsHome() {
     val repository = FakeAuthRepository()
     showApp(repository)
@@ -217,12 +267,16 @@ class MainActivityNavigationTest {
     repository.signOutFailure = IllegalStateException("Sign-out failed")
     val viewModel = AuthViewModel(repository)
     composeTestRule.setContent {
-      JDRNexusApp(
-          authViewModel = viewModel,
-          authRepository = repository,
-          groupRepository = FakeGroupRepository(),
-          workspaceRepository = NavigationWorkspaceRepository(),
-      )
+      // This test opens the dice screen, and Robolectric cannot render the 3D die: draw the flat
+      // one instead.
+      CompositionLocalProvider(LocalDieView provides FlatDieView) {
+        JDRNexusApp(
+            authViewModel = viewModel,
+            authRepository = repository,
+            groupRepository = FakeGroupRepository(),
+            workspaceRepository = NavigationWorkspaceRepository(),
+        )
+      }
     }
 
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
@@ -312,6 +366,36 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun groupWorkspaceSearchShowsGroupFilesAndBackReturnsToWorkspace() {
+    val groupRepository = navigationGroupRepository()
+    val loreFile =
+        JDRFile(
+            id = "shared-lore",
+            name = "Dragon Lore",
+            ownerId = "user-1",
+            type = DocumentType.TEXT,
+            content =
+                """{"version":1,"type":"lore","title":"Dragon Lore","sections":[{"sectionID":"history","title":"History","content":"A dragon."}]}""",
+            sharedGroupsIds = listOf("group-1"),
+            placements = mapOf("group-1" to Placement(folderId = "group-1", isHidden = false)),
+        )
+    showApp(
+        groupRepository = groupRepository,
+        workspaceRepository = NavigationWorkspaceRepository(listOf(loreFile)),
+    )
+    signInAndOpenCampaigns()
+
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
+    waitForText("The Sunken Crown")
+    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Dragon")
+    waitForTag(C.Tag.searchResult(loreFile.id))
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+    waitForText("The Sunken Crown")
+  }
+
+  @Test
   fun systemBackFromWorkspaceReturnsToCampaigns() {
     val groupRepository = navigationGroupRepository()
     showApp(groupRepository = groupRepository)
@@ -369,6 +453,146 @@ class MainActivityNavigationTest {
     assertEquals("group-1", groupRepository.lastGroupFlowId)
   }
 
+  @Test
+  fun personalSpaceSearchOpensEditorAndReturnsToPersonalSpace() {
+    val searchViewModel =
+        FakeSearchViewModel(
+            JDRFile(
+                id = "lore-1",
+                name = "The Kingdom",
+                ownerId = "user-1",
+                type = DocumentType.TEXT,
+            )
+        )
+    val loreFile = showAuthenticatedApp(searchViewModel)
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    waitForText(loreFile.name)
+    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Kingdom")
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(loreFile.id)).performClick()
+
+    waitForTag(EditFileLoreTestTags.LIST)
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.BACK).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+    waitForText(loreFile.name)
+  }
+
+  @Test
+  fun searchBackRestoresThePersonalSpaceFolder() {
+    // The folder is the root entry; its lore document appears only inside that folder.
+    val folder =
+        JDRFile(
+            id = "campaign",
+            name = "Campaign",
+            ownerId = "user-1",
+            type = DocumentType.FOLDER,
+        )
+    val loreFile =
+        JDRFile(
+            id = "nested-lore",
+            name = "The Kingdom",
+            ownerId = "user-1",
+            personalParentId = folder.id,
+            type = DocumentType.TEXT,
+        )
+    val searchViewModel = FakeSearchViewModel(loreFile)
+    showAuthenticatedApp(searchViewModel, personalFolder = folder)
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    waitForText(folder.name)
+    composeTestRule.onNodeWithText(folder.name).performClick()
+    waitForText(loreFile.name)
+    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Kingdom")
+    waitForTag(C.Tag.searchResult(loreFile.id))
+
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    // The header stays "My Space", so verify the folder contents rather than a folder-name title.
+    // If Back returned to the root, the folder row would be shown instead of its lore document.
+    composeTestRule.onNodeWithText(loreFile.name).assertIsDisplayed()
+    composeTestRule.onNodeWithText(folder.name).assertIsNotDisplayed()
+  }
+
+  @Test
+  fun searchQuerySurvivesActivityRecreation() {
+    val restorationTester = StateRestorationTester(composeTestRule)
+    val authRepository = FakeAuthRepository()
+    val workspaceRepository = FakeWorkspaceRepository(emptyList())
+    val groupRepository = FakeGroupRepository()
+    val authViewModel = AuthViewModel(authRepository)
+    val personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, authRepository)
+    val editFileViewModel = EditFileViewModel(workspaceRepository)
+    val searchViewModel =
+        DocumentSearchViewModel(
+            repository = workspaceRepository,
+            authRepository = authRepository,
+        )
+
+    // Rotation recreates the UI but retains its ViewModels; this emulates that save/restore cycle.
+    restorationTester.setContent {
+      JDRNexusApp(
+          authViewModel = authViewModel,
+          personalSpaceViewModel = personalSpaceViewModel,
+          editFileViewModel = editFileViewModel,
+          authRepository = authRepository,
+          groupRepository = groupRepository,
+          workspaceRepository = workspaceRepository,
+          documentSearchViewModel = searchViewModel,
+      )
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Dragon")
+
+    restorationTester.emulateSavedInstanceStateRestore()
+
+    composeTestRule.onNodeWithTag(C.Tag.search_query).assertTextContains("Dragon")
+  }
+
+  @Test
+  fun systemBackFromSearchRestoresThePersonalSpaceFolder() {
+    // The folder is the root entry; its lore document appears only inside that folder.
+    val folder =
+        JDRFile(
+            id = "system-back-campaign",
+            name = "System Back Campaign",
+            ownerId = "user-1",
+            type = DocumentType.FOLDER,
+        )
+    val searchResult =
+        JDRFile(
+            id = "system-back-lore",
+            name = "System Back Lore",
+            ownerId = "user-1",
+            personalParentId = folder.id,
+            type = DocumentType.TEXT,
+        )
+    val searchViewModel = FakeSearchViewModel(searchResult)
+    val personalLore = showAuthenticatedApp(searchViewModel, personalFolder = folder)
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    waitForText(folder.name)
+    composeTestRule.onNodeWithText(folder.name).performClick()
+    waitForText(personalLore.name)
+    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("System Back")
+    waitForTag(C.Tag.searchResult(searchResult.id))
+
+    Espresso.pressBack()
+
+    // The header stays "My Space"; the nested file proves the folder state was restored.
+    composeTestRule.onNodeWithText(personalLore.name).assertIsDisplayed()
+    composeTestRule.onNodeWithText(folder.name).assertIsNotDisplayed()
+  }
+
   private class NoGamesMapRepository : MapRepository {
     override suspend fun loadGamesNear(location: MapLocation?): List<MapGame> = emptyList()
   }
@@ -384,12 +608,15 @@ class MainActivityNavigationTest {
     }
     val viewModel = AuthViewModel(repository)
     composeTestRule.setContent {
-      JDRNexusApp(
-          authViewModel = viewModel,
-          authRepository = repository,
-          groupRepository = groupRepository,
-          workspaceRepository = workspaceRepository,
-      )
+      // The 3D die cannot render under Robolectric: the dice screen draws the flat one instead.
+      CompositionLocalProvider(LocalDieView provides FlatDieView) {
+        JDRNexusApp(
+            authViewModel = viewModel,
+            authRepository = repository,
+            groupRepository = groupRepository,
+            workspaceRepository = workspaceRepository,
+        )
+      }
     }
   }
 
@@ -423,17 +650,22 @@ class MainActivityNavigationTest {
     }
   }
 
-  private fun showAuthenticatedApp(): JDRFile {
+  private fun showAuthenticatedApp(
+      documentSearchViewModel: DocumentSearchInterfaceVM? = null,
+      personalFolder: JDRFile? = null,
+  ): JDRFile {
     val repository = FakeAuthRepository()
     val loreFile =
         JDRFile(
             id = "lore-1",
             name = "The Kingdom",
+            ownerId = "user-1",
+            personalParentId = personalFolder?.id.orEmpty(),
             type = DocumentType.TEXT,
             content =
                 """{"version":1,"type":"lore","title":"The Kingdom","sections":[{"sectionID":"history","title":"History","content":"Founded long ago."}]}""",
         )
-    val workspaceRepository = FakeWorkspaceRepository(loreFile)
+    val workspaceRepository = FakeWorkspaceRepository(listOfNotNull(personalFolder, loreFile))
     val groupRepository = FakeGroupRepository()
     val authViewModel = AuthViewModel(repository)
     val personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, repository)
@@ -448,6 +680,7 @@ class MainActivityNavigationTest {
           authRepository = repository,
           groupRepository = groupRepository,
           workspaceRepository = workspaceRepository,
+          documentSearchViewModel = documentSearchViewModel,
       )
     }
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
@@ -469,6 +702,7 @@ class MainActivityNavigationTest {
     var signUpCalls = 0
     var signOutResult: CompletableDeferred<AuthResult<Unit>>? = null
     var signOutFailure: Exception? = null
+    var signUpResult: CompletableDeferred<AuthResult<AuthUser>>? = null
 
     override suspend fun signUpWithEmail(
         email: String,
@@ -476,6 +710,11 @@ class MainActivityNavigationTest {
         username: String,
     ): AuthResult<AuthUser> {
       signUpCalls++
+      signUpResult?.let {
+        val result = it.await()
+        if (result is AuthResult.Success) mutableAuthState.value = result.value
+        return result
+      }
       mutableAuthState.value = TEST_USER
       return AuthResult.Success(TEST_USER)
     }
@@ -507,16 +746,37 @@ class MainActivityNavigationTest {
     }
   }
 
+  private class FakeSearchViewModel(private val file: JDRFile) : DocumentSearchInterfaceVM {
+    private val mutableUiState = MutableStateFlow(DocumentSearchUiState())
+    override val uiState: StateFlow<DocumentSearchUiState> = mutableUiState
+
+    override fun onQueryChanged(query: String) {
+      mutableUiState.value =
+          DocumentSearchUiState(
+              query = query,
+              results = listOf(DocumentSearchResult(file, emptyList())),
+              status = DocumentSearchStatus.Results,
+          )
+    }
+
+    override fun clearQuery() {
+      mutableUiState.value = DocumentSearchUiState()
+    }
+
+    override fun retry() = Unit
+  }
+
   private class FakeGroupRepository : GroupRepository by UnusedGroupRepository {
     override fun getUserGroups(userId: String) = flowOf(emptyList<CampaignGroup>())
   }
 
-  private class FakeWorkspaceRepository(private val file: JDRFile) :
+  private class FakeWorkspaceRepository(private val files: List<JDRFile>) :
       WorkspaceRepository by UnusedWorkspaceRepository {
     override suspend fun getFile(fileId: String): Result<JDRFile?> =
-        Result.success(file.takeIf { it.id == fileId })
+        Result.success(files.firstOrNull { it.id == fileId })
 
-    override fun getPersonalFolderFiles(folderId: String, ownerId: String) = flowOf(listOf(file))
+    override fun getPersonalFolderFiles(folderId: String, ownerId: String) =
+        flowOf(files.filter { it.ownerId == ownerId && it.personalParentId == folderId })
   }
 
   private companion object {
@@ -541,24 +801,17 @@ class MainActivityNavigationTest {
           override suspend fun removeUserFromGroup(groupId: String, userId: String) =
               error("Not used")
 
-          override suspend fun createInvitation(
-              groupId: String,
-              gameMasterId: String,
-          ): Result<String> = error("Not used")
-
-          override suspend fun regenerateInvitation(
-              groupId: String,
-              gameMasterId: String,
-          ): Result<String> = error("Not used")
-
-          override suspend fun joinGroupWithCode(
-              code: String,
-              userId: String,
-          ): Result<CampaignGroup> = error("Not used")
-
           override fun getGroupFlow(groupId: String) = error("Not used")
 
           override fun getUserGroups(userId: String) = error("Not used")
+
+          override suspend fun createInvitation(groupId: String, gameMasterId: String) =
+              error("Not used")
+
+          override suspend fun regenerateInvitation(groupId: String, gameMasterId: String) =
+              error("Not used")
+
+          override suspend fun joinGroupWithCode(code: String, userId: String) = error("Not used")
         }
 
     val UnusedWorkspaceRepository =
@@ -573,10 +826,8 @@ class MainActivityNavigationTest {
 
           override suspend fun getFile(fileId: String) = error("Not used")
 
-          override suspend fun removeItemFromGroup(
-              itemId: String,
-              groupId: String,
-          ) = error("Not used")
+          override suspend fun removeItemFromGroup(itemId: String, groupId: String) =
+              error("Not used")
 
           override suspend fun addItemToGroup(
               itemId: String,

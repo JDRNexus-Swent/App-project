@@ -22,6 +22,10 @@ object C {
     const val shared_top_bar = "shared_top_bar"
     const val shared_back_button = "shared_back_button"
     const val shared_bottom_bar = "shared_bottom_bar"
+    const val search_open = "document_search_open"
+    const val search_query = "document_search_query"
+    const val search_clear = "document_search_clear"
+    const val search_loading = "document_search_loading"
 
     const val sign_in_email = "auth_sign_in_email"
     const val sign_in_password = "auth_sign_in_password"
@@ -62,7 +66,6 @@ object C {
     const val dice_offline_die = "dice_offline_die"
     const val dice_offline_result = "dice_offline_result"
     const val dice_offline_result_detail = "dice_offline_result_detail"
-    const val dice_offline_loading = "dice_offline_loading"
     const val dice_offline_modifier_value = "dice_offline_modifier_value"
     const val dice_offline_modifier_decrease = "dice_offline_modifier_decrease"
     const val dice_offline_modifier_increase = "dice_offline_modifier_increase"
@@ -70,6 +73,27 @@ object C {
     const val dice_offline_error = "dice_offline_error"
     const val dice_offline_error_dismiss = "dice_offline_error_dismiss"
     const val dice_offline_shake_toggle = "dice_offline_shake_toggle"
+
+    const val invite_button = "game_management_invite"
+    const val join_group_button = "game_management_join_group"
+    const val invite_dialog = "invite_dialog"
+    const val invite_close = "invite_close"
+    const val invite_code = "invite_code"
+    const val invite_loading = "invite_loading"
+    const val invite_retry = "invite_retry"
+    const val invite_error = "invite_error"
+    const val invite_copy = "invite_copy"
+    const val invite_share = "invite_share"
+    const val invite_regenerate = "invite_regenerate"
+    const val invite_regenerate_cancel = "invite_regenerate_cancel"
+    const val invite_regenerate_confirm = "invite_regenerate_confirm"
+    const val join_dialog = "join_dialog"
+    const val join_close = "join_close"
+    const val join_code_field = "join_code_field"
+    const val join_error = "join_error"
+    const val join_submit = "join_submit"
+    const val join_loading = "join_loading"
+    const val join_cancel = "join_cancel"
 
     const val enter_workspace_button = "enter_workspace_button"
     const val workspace_actions_fab = "workspace_actions_fab"
@@ -147,5 +171,8 @@ object C {
 
     /** Tag of the button restoring the hidden GM dashboard section [key]. */
     fun gameGmRestore(key: String) = "game_gm_restore_$key"
+
+    /** Tag of the search result item with [fileId]. */
+    fun searchResult(fileId: String) = "document_search_result_$fileId"
   }
 }

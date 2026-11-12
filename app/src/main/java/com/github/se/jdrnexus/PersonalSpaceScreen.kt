@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -33,6 +34,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -45,6 +47,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,6 +59,7 @@ import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.isContainer
 import com.github.se.jdrnexus.resources.AppTopBar
+import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import com.github.se.jdrnexus.viewmodel.LoadState
@@ -67,6 +72,7 @@ fun PersonalSpaceScreen(
     onDocumentClicked: (JDRFile) -> Unit,
     onCreateFile: (String) -> Unit,
     onTabSelected: (String) -> Unit,
+    onSearchClicked: () -> Unit = {},
 ) {
   val uiState by personalSpaceViewModel.uiState.collectAsState()
   val personalSpaceItems = uiState.items
@@ -94,6 +100,17 @@ fun PersonalSpaceScreen(
         AppTopBar(
             title = uiState.folderPath.lastOrNull() ?: "Personal Space",
             onBack = handleBack,
+            trailingContent = {
+              IconButton(
+                  onClick = onSearchClicked,
+                  modifier = Modifier.testTag(C.Tag.search_open),
+              ) {
+                Icon(
+                    imageVector = Icons.Filled.Search,
+                    contentDescription = stringResource(R.string.search_open),
+                )
+              }
+            },
         )
       },
       bottomBar = { ScreenBottomBar(selectedTab = "Files", onTabSelected = onTabSelected) },

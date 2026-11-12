@@ -21,7 +21,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,7 +44,6 @@ import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 
 object TestTags {
   const val TITLE = "home_title"
-  const val PROFILE_PIC = "home_image_placeholder"
   const val QUICKTOOLS = "home_quicktools"
   const val PSPACEBUTTON = "home_to_pspace"
   const val DICEBUTTON = "home_to_dice"
@@ -95,15 +93,6 @@ fun HomeScreen(
         AppTopBar(
             title = "JDRNexus",
             titleModifier = Modifier.testTag(TestTags.TITLE),
-            leadingContent = {
-              Surface(
-                  modifier = Modifier.size(40.dp).testTag(TestTags.PROFILE_PIC),
-                  color = colors.raisedSurface,
-                  shape = MaterialTheme.shapes.medium,
-              ) {
-                Box {}
-              }
-            },
             trailingContent = {
               TextButton(
                   onClick = {

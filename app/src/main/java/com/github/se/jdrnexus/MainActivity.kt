@@ -26,9 +26,11 @@ import androidx.credentials.CredentialManager
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.GroupRepositoryFirestore
@@ -52,6 +54,10 @@ import com.github.se.jdrnexus.ui.home.HomeScreen
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
 import com.github.se.jdrnexus.ui.map.MapScreen
 import com.github.se.jdrnexus.ui.map.MapViewModel
+import com.github.se.jdrnexus.ui.search.DocumentSearchInterfaceVM
+import com.github.se.jdrnexus.ui.search.DocumentSearchScope
+import com.github.se.jdrnexus.ui.search.DocumentSearchScreen
+import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
@@ -79,6 +85,7 @@ enum class AllRoutes {
   SignUp,
   Home,
   PersoSpace,
+  Search,
   Dice,
   GroupManagement,
   EditChar,
@@ -96,19 +103,25 @@ object GroupWorkspaceRoute {
   }
 }
 
-/**
- * Optional ViewModel injection lets navigation tests use the production screens with deterministic
- * fake repositories instead of Firebase.
- */
+object GroupDocumentSearchRoute {
+  const val route = "group_document_search/{groupId}"
+  const val groupIdArgument = "groupId"
+
+  fun createRoute(groupId: String): String = "group_document_search/${Uri.encode(groupId)}"
+}
+
+/** Optional dependencies let navigation tests use production screens with deterministic fakes. */
 @Composable
 fun JDRNexusApp(
     authViewModel: AuthViewModel? = null,
+    startDestination: AllRoutes = AllRoutes.SignIn,
     gameManagementViewModel: GameManagementViewModel? = null,
     personalSpaceViewModel: PersonalSpaceViewModel? = null,
     editFileViewModel: EditFileViewModel? = null,
     workspaceRepository: WorkspaceRepository? = null,
     authRepository: AuthRepository? = null,
     groupRepository: GroupRepository? = null,
+    documentSearchViewModel: DocumentSearchInterfaceVM? = null,
 ) {
   val activeAuthViewModel = authViewModel ?: viewModel(factory = AuthViewModel.Factory)
   val activeAuthRepository = authRepository ?: AuthRepositoryFirebase()
@@ -122,6 +135,15 @@ fun JDRNexusApp(
 
   // Create an editFileViewModel to be able to retreive the file for the edition screens
   val activeEditFileViewModel = editFileViewModel ?: viewModel()
+  val openDocument: (JDRFile) -> Unit = { document ->
+    activeEditFileViewModel.loadFile(document.id)
+    when (document.type) {
+      DocumentType.CHARACTER -> navigation.navigate(AllRoutes.EditChar.name)
+      DocumentType.TEXT -> navigation.navigate(AllRoutes.EditLore.name)
+      DocumentType.FOLDER,
+      DocumentType.GROUP_ROOT -> Unit
+    }
+  }
 
   Scaffold(
       containerColor = MaterialTheme.colorScheme.background,
@@ -131,7 +153,7 @@ fun JDRNexusApp(
     NavHost(
         navController = navController,
         // Use instead of deriving it from the current destination.
-        startDestination = AllRoutes.SignIn.name,
+        startDestination = startDestination.name,
         modifier = Modifier.fillMaxSize().padding(innerPadding),
     ) {
       composable(route = AllRoutes.SignIn.name) {
@@ -198,20 +220,10 @@ fun JDRNexusApp(
       }
 
       composable(route = AllRoutes.PersoSpace.name) {
-        val onDocumentClicked: (JDRFile) -> Unit = { document ->
-          activeEditFileViewModel.loadFile(document.id)
-          when (document.type) {
-            DocumentType.CHARACTER -> navigation.navigate(AllRoutes.EditChar.name)
-            DocumentType.TEXT -> navigation.navigate(AllRoutes.EditLore.name)
-            DocumentType.FOLDER -> Unit
-            DocumentType.GROUP_ROOT -> Unit
-          }
-        }
-
         PersonalSpaceScreen(
             onBackButton = { navigation.popBackStack() },
             personalSpaceViewModel = personalSpaceViewModel ?: viewModel(),
-            onDocumentClicked = onDocumentClicked,
+            onDocumentClicked = openDocument,
             onCreateFile = { fileId ->
               activeEditFileViewModel.loadFile(fileId)
               navigation.navigate(AllRoutes.EditChar.name)
@@ -224,6 +236,15 @@ fun JDRNexusApp(
                 "Map" -> navigation.navigate(AllRoutes.Map.name)
               }
             },
+            onSearchClicked = { navigation.navigate(AllRoutes.Search.name) },
+        )
+      }
+
+      composable(route = AllRoutes.Search.name) {
+        DocumentSearchScreen(
+            onBack = { navigation.popBackStack() },
+            onDocumentClicked = openDocument,
+            searchViewModel = documentSearchViewModel ?: viewModel<DocumentSearchViewModel>(),
         )
       }
 
@@ -296,6 +317,44 @@ fun JDRNexusApp(
                 "Map" -> showComingSoon(context, "Map")
               }
             },
+            onSearchClicked = {
+              navigation.navigate(GroupDocumentSearchRoute.createRoute(groupId))
+            },
+        )
+      }
+
+      composable(
+          route = GroupDocumentSearchRoute.route,
+          arguments =
+              listOf(
+                  navArgument(GroupDocumentSearchRoute.groupIdArgument) {
+                    type = NavType.StringType
+                  }
+              ),
+      ) { backStackEntry ->
+        val groupId =
+            requireNotNull(
+                backStackEntry.arguments?.getString(GroupDocumentSearchRoute.groupIdArgument)
+            )
+        val groupSearchViewModel =
+            documentSearchViewModel
+                ?: viewModel<DocumentSearchViewModel>(
+                    factory =
+                        viewModelFactory {
+                          initializer {
+                            DocumentSearchViewModel(
+                                scope = DocumentSearchScope.Group(groupId),
+                                repository = activeWorkspaceRepository,
+                                authRepository = activeAuthRepository,
+                                groupRepository = activeGroupRepository,
+                            )
+                          }
+                        }
+                )
+        DocumentSearchScreen(
+            onBack = { navigation.popBackStack() },
+            onDocumentClicked = openDocument,
+            searchViewModel = groupSearchViewModel,
         )
       }
 
