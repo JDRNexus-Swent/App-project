@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.PERSONAL_ROOT_ID
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.model.personalSpace.isContainer
@@ -146,7 +147,7 @@ class DocumentSearchViewModel(
       }
     }
 
-    collect(repository.getPersonalRootFiles(ownerId).first(), emptyList())
+    collect(repository.getPersonalFolderFiles(PERSONAL_ROOT_ID, ownerId).first(), emptyList())
     while (pendingFolders.isNotEmpty()) {
       val (folderId, folderPath) = pendingFolders.removeFirst()
       collect(repository.getPersonalFolderFiles(folderId, ownerId).first(), folderPath)

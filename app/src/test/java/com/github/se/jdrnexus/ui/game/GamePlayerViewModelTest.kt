@@ -8,6 +8,7 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.FileEdit
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.Placement
@@ -467,8 +468,13 @@ class GamePlayerViewModelTest {
       return folders[folderId] ?: MutableStateFlow(emptyList())
     }
 
-    override suspend fun updateFile(file: JDRFile): Result<Unit> {
-      updatedFiles += file
+    override suspend fun updateFile(edit: FileEdit): Result<Unit> {
+      updatedFiles +=
+          JDRFile(
+              id = edit.id,
+              name = edit.name,
+              content = edit.content,
+          )
       updateGate?.await()
       return updateResult
     }
@@ -503,7 +509,7 @@ class GamePlayerViewModelTest {
 
           override suspend fun createFile(file: JDRFile) = error("Not used")
 
-          override suspend fun updateFile(file: JDRFile) = error("Not used")
+          override suspend fun updateFile(edit: FileEdit) = error("Not used")
 
           override suspend fun deleteFile(fileId: String) = error("Not used")
 
@@ -512,7 +518,6 @@ class GamePlayerViewModelTest {
           override suspend fun removeItemFromGroup(
               itemId: String,
               groupId: String,
-              parentFolderId: String,
           ) = error("Not used")
 
           override suspend fun addItemToGroup(
@@ -527,8 +532,6 @@ class GamePlayerViewModelTest {
               error("Not used")
 
           override fun getFileFlow(fileId: String) = error("Not used")
-
-          override fun getPersonalRootFiles(ownerId: String) = error("Not used")
 
           override fun getPersonalFolderFiles(folderId: String, ownerId: String) = error("Not used")
 
@@ -551,6 +554,21 @@ class GamePlayerViewModelTest {
 
           override suspend fun removeUserFromGroup(groupId: String, userId: String) =
               error("Not used")
+
+          override suspend fun createInvitation(
+              groupId: String,
+              gameMasterId: String,
+          ): Result<String> = error("Not used")
+
+          override suspend fun regenerateInvitation(
+              groupId: String,
+              gameMasterId: String,
+          ): Result<String> = error("Not used")
+
+          override suspend fun joinGroupWithCode(
+              code: String,
+              userId: String,
+          ): Result<CampaignGroup> = error("Not used")
 
           override fun getGroupFlow(groupId: String) = error("Not used")
 

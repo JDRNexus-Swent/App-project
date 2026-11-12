@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.viewmodel
 
 import androidx.lifecycle.ViewModel
@@ -670,6 +671,186 @@ class GameGMViewModelTest {
     assertEquals("Dice history unavailable", viewModel.uiState.value.error)
   }
 
+  @Test
+  fun enemyWithBlankIdIsRejected() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    viewModel.addEnemy(goblin.copy(id = " "))
+    advanceUntilIdle()
+
+    assertEquals("Enemy ID cannot be empty.", viewModel.uiState.value.error)
+    assertEquals(emptyList<CombatNPC>(), viewModel.uiState.value.enemies)
+    assertTrue(repository.savedSessions.isEmpty())
+  }
+
+  @Test
+  fun duplicateEnemyIsRejected() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    viewModel.addEnemy(goblin)
+    viewModel.addEnemy(goblin)
+    advanceUntilIdle()
+
+    assertEquals("Enemy already exists.", viewModel.uiState.value.error)
+    assertEquals(listOf(goblin), viewModel.uiState.value.enemies)
+    assertEquals(1, repository.savedSessions.size)
+  }
+
+  @Test
+  fun noOpCombatChangesAreNotSaved() = runTest {
+    repository.session.value = GameSessionSnapshot(enemies = listOf(goblin.toSnapshotEnemy()))
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    viewModel.updateEnemyHP("missing", -3)
+    viewModel.nextRound()
+    viewModel.endCombat()
+    advanceUntilIdle()
+
+    assertTrue(repository.savedSessions.isEmpty())
+    assertEquals("", viewModel.uiState.value.error)
+    assertEquals(1, viewModel.uiState.value.currentRound)
+    assertEquals(listOf(goblin), viewModel.uiState.value.enemies)
+  }
+
+  @Test
+  fun roundCannotAdvancePastMaximum() = runTest {
+    repository.session.value =
+        GameSessionSnapshot(isCombatActive = true, currentRound = Int.MAX_VALUE)
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    viewModel.nextRound()
+    advanceUntilIdle()
+
+    assertEquals("Combat round cannot be advanced further.", viewModel.uiState.value.error)
+    assertEquals(Int.MAX_VALUE, viewModel.uiState.value.currentRound)
+    assertTrue(repository.savedSessions.isEmpty())
+  }
+
+  @Test
+  fun activityObservationFailureIsExposedAndLoadingFinishes() = runTest {
+    repository.activityObservationFailure = IllegalStateException("Feed unavailable")
+
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    assertEquals("Feed unavailable", viewModel.uiState.value.error)
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun activityLoadExceptionIsCaughtAndExposed() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    repository.activityLoadException = IllegalStateException("Feed crashed")
+
+    viewModel.loadActivityFeed()
+    assertTrue(viewModel.uiState.value.isLoading)
+    advanceUntilIdle()
+
+    assertEquals("Feed crashed", viewModel.uiState.value.error)
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun errorsWithoutMessageUseFallbackText() = runTest {
+    val errors =
+        listOf(null, "", "   ").map { message ->
+          val viewModel = createViewModel()
+          advanceUntilIdle()
+          repository.sessionWriteFailure = IllegalStateException(message)
+
+          viewModel.startCombat()
+          advanceUntilIdle()
+          viewModel.uiState.value.error
+        }
+
+    assertEquals(List(3) { "Failed to save the campaign session." }, errors)
+  }
+
+  @Test
+  fun remoteLoreUpdateKeepsUnsavedEdits() = runTest {
+    repository.lore.value = listOf(crypt)
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    viewModel.selectLoreDocument(crypt.id)
+    viewModel.updateLoreTitle("Draft Crypt")
+
+    repository.lore.value = listOf(crypt.copy(lore = crypt.lore.copy(title = "Remote Crypt")))
+    advanceUntilIdle()
+
+    assertEquals("Draft Crypt", viewModel.uiState.value.selectedLoreDocument?.title)
+    assertTrue(viewModel.uiState.value.hasUnsavedLoreChanges)
+    assertEquals("Remote Crypt", viewModel.uiState.value.loreDocuments.single().title)
+  }
+
+  @Test
+  fun remoteLoreUpdateRefreshesUneditedSelection() = runTest {
+    repository.lore.value = listOf(crypt)
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    viewModel.selectLoreDocument(crypt.id)
+
+    repository.lore.value = listOf(crypt.copy(lore = crypt.lore.copy(title = "Remote Crypt")))
+    advanceUntilIdle()
+
+    assertEquals("Remote Crypt", viewModel.uiState.value.selectedLoreDocument?.title)
+    assertFalse(viewModel.uiState.value.hasUnsavedLoreChanges)
+  }
+
+  @Test
+  fun visibilityChangeOnlyAffectsThatDocument() = runTest {
+    val tower = GameLoreEntry("l2", LoreFile("The Tower", emptyList()), false)
+    repository.lore.value = listOf(crypt, tower)
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    viewModel.selectLoreDocument(tower.id)
+    viewModel.updateLoreTitle("Draft Tower")
+
+    viewModel.setLoreVisibility(crypt.id, true)
+    advanceUntilIdle()
+
+    assertEquals(
+        listOf(crypt.id to true, tower.id to false),
+        viewModel.uiState.value.loreDocuments.map { it.id to it.isShared },
+    )
+    assertEquals(
+        LoreDocument(tower.id, tower.lore.copy(title = "Draft Tower"), false),
+        viewModel.uiState.value.selectedLoreDocument,
+    )
+  }
+
+  @Test
+  fun removingUnknownLoreSectionIsRejected() = runTest {
+    repository.lore.value = listOf(crypt)
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    viewModel.selectLoreDocument(crypt.id)
+
+    viewModel.removeLoreSection("missing")
+
+    assertEquals("Lore section was not found.", viewModel.uiState.value.error)
+    assertFalse(viewModel.uiState.value.hasUnsavedLoreChanges)
+    assertEquals(crypt.lore.sections, viewModel.uiState.value.selectedLoreDocument?.lore?.sections)
+  }
+
+  private val goblin =
+      CombatNPC(
+          id = "e1",
+          character =
+              CharacterFile("Goblin", emptyList(), emptyList(), CharacterHealthPoints(10, 10)),
+      )
+
+  private val crypt =
+      GameLoreEntry(
+          "l1",
+          LoreFile("The Crypt", listOf(LoreSection("overview", "Overview", "Darkness"))),
+          false,
+      )
+
   private fun createViewModel() = GameViewModelGMViewModel(repository, groupId)
 
   private class FakeGameSessionRepository : GameSessionRepository {
@@ -684,6 +865,8 @@ class GameGMViewModelTest {
     var visibilityWriteException: Exception? = null
     var activityFailure: Throwable? = null
     var sessionObservationFailure: Throwable? = null
+    var activityObservationFailure: Throwable? = null
+    var activityLoadException: Exception? = null
     var activityHistory: List<GameActivityEntry> = emptyList()
 
     override fun observeSession(groupId: String): Flow<GameSessionSnapshot> =
@@ -730,11 +913,14 @@ class GameGMViewModelTest {
       return Result.success(Unit)
     }
 
-    override suspend fun loadActivities(groupId: String): Result<List<GameActivityEntry>> =
-        activityFailure?.let { Result.failure(it) } ?: Result.success(activityHistory)
+    override suspend fun loadActivities(groupId: String): Result<List<GameActivityEntry>> {
+      activityLoadException?.let { throw it }
+      return activityFailure?.let { Result.failure(it) } ?: Result.success(activityHistory)
+    }
 
     override fun observeActivities(groupId: String): Flow<List<GameActivityEntry>> =
-        activityEntries.asStateFlow()
+        activityObservationFailure?.let { failure -> flow { throw failure } }
+            ?: activityEntries.asStateFlow()
 
     override suspend fun recordActivity(
         groupId: String,
