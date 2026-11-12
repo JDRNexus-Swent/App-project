@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.edition
 
 import androidx.compose.foundation.layout.Arrangement
@@ -85,10 +86,9 @@ fun EditFileCharacter(
       onBack = onBack,
   ) {
     val character = state.character ?: return@EditFileScaffold
-    var newStatName by remember { mutableStateOf("") }
-    var newStatValue by remember { mutableStateOf("") }
-    var newActionName by remember { mutableStateOf("") }
-    var newActionDescription by remember { mutableStateOf("") }
+    val newStatNameError = state.fieldErrors[EditFileField.NewCharacterStatName]
+    val newStatValueError = state.fieldErrors[EditFileField.NewCharacterStatValue]
+    val newActionNameError = state.fieldErrors[EditFileField.NewCharacterActionName]
 
     LazyColumn(
         modifier =
@@ -184,32 +184,27 @@ fun EditFileCharacter(
               verticalAlignment = Alignment.CenterVertically,
           ) {
             OutlinedTextField(
-                value = newStatName,
-                onValueChange = { newStatName = it },
+                value = state.newStatName,
+                onValueChange = viewModel::onAddStatNameChange,
                 modifier = Modifier.weight(1f).testTag("add_entry_name"),
                 label = { Text(stringResource(R.string.edit_character_stat_name_label)) },
                 singleLine = true,
+                isError = newStatNameError != null,
+                supportingText = newStatNameError?.let { message -> ({ Text(message) }) },
             )
             OutlinedTextField(
-                value = newStatValue,
-                onValueChange = { newStatValue = it },
+                value = state.newStatValue,
+                onValueChange = viewModel::onAddStatValueChange,
                 modifier = Modifier.weight(0.6f).testTag("add_entry_value"),
                 label = { Text(stringResource(R.string.edit_character_value_label)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                isError = newStatValueError != null,
+                supportingText = newStatValueError?.let { message -> ({ Text(message) }) },
             )
           }
           OutlinedButton(
-              onClick = {
-                val name = newStatName.trim()
-                val value = newStatValue.toDoubleOrNull()
-                if (name.isBlank() || value == null || !value.isFinite()) {
-                  return@OutlinedButton
-                }
-                viewModel.addCharacterStat(name, value)
-                newStatName = ""
-                newStatValue = ""
-              },
+              onClick = viewModel::addCharacterStat,
               modifier = Modifier.fillMaxWidth().testTag("confirm_add_stat"),
               shape = RoundedCornerShape(8.dp),
           ) {
@@ -245,29 +240,23 @@ fun EditFileCharacter(
       item(key = "add-action") {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
           OutlinedTextField(
-              value = newActionName,
-              onValueChange = { newActionName = it },
+              value = state.newActionName,
+              onValueChange = viewModel::onAddActionNameChange,
               modifier = Modifier.fillMaxWidth().testTag("add_action_name"),
               label = { Text(stringResource(R.string.edit_character_action_name_label)) },
               singleLine = true,
+              isError = newActionNameError != null,
+              supportingText = newActionNameError?.let { message -> ({ Text(message) }) },
           )
           OutlinedTextField(
-              value = newActionDescription,
-              onValueChange = { newActionDescription = it },
+              value = state.newActionDescription,
+              onValueChange = viewModel::onAddActionDescriptionChange,
               modifier = Modifier.fillMaxWidth().testTag("add_action_description"),
               label = { Text(stringResource(R.string.edit_character_description_label)) },
               singleLine = true,
           )
           OutlinedButton(
-              onClick = {
-                val name = newActionName.trim()
-                if (name.isBlank()) {
-                  return@OutlinedButton
-                }
-                viewModel.addCharacterAction(name, newActionDescription)
-                newActionName = ""
-                newActionDescription = ""
-              },
+              onClick = viewModel::addCharacterAction,
               modifier = Modifier.fillMaxWidth().testTag("confirm_add_action"),
               shape = RoundedCornerShape(8.dp),
           ) {
