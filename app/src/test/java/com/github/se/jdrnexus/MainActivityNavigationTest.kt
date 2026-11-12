@@ -28,6 +28,7 @@ import com.github.se.jdrnexus.model.map.MapRepository
 import com.github.se.jdrnexus.model.map.MapRepositoryProvider
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.FileEdit
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
@@ -515,7 +516,7 @@ class MainActivityNavigationTest {
     override suspend fun getFile(fileId: String): Result<JDRFile?> =
         Result.success(file.takeIf { it.id == fileId })
 
-    override fun getPersonalRootFiles(ownerId: String) = flowOf(listOf(file))
+    override fun getPersonalFolderFiles(folderId: String, ownerId: String) = flowOf(listOf(file))
   }
 
   private companion object {
@@ -566,7 +567,7 @@ class MainActivityNavigationTest {
 
           override suspend fun createFile(file: JDRFile) = error("Not used")
 
-          override suspend fun updateFile(file: JDRFile) = error("Not used")
+          override suspend fun updateFile(edit: FileEdit) = error("Not used")
 
           override suspend fun deleteFile(fileId: String) = error("Not used")
 
@@ -575,7 +576,6 @@ class MainActivityNavigationTest {
           override suspend fun removeItemFromGroup(
               itemId: String,
               groupId: String,
-              parentFolderId: String,
           ) = error("Not used")
 
           override suspend fun addItemToGroup(
@@ -590,8 +590,6 @@ class MainActivityNavigationTest {
               error("Not used")
 
           override fun getFileFlow(fileId: String) = error("Not used")
-
-          override fun getPersonalRootFiles(ownerId: String) = error("Not used")
 
           override fun getPersonalFolderFiles(folderId: String, ownerId: String) = error("Not used")
 

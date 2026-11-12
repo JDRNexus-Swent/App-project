@@ -51,7 +51,7 @@ class GroupVisibilityTest {
   }
 
   @Test
-  fun player_doesNotSeeFilesHiddenInAnotherGroup() {
+  fun player_doesNotSeeFilesHiddenInTheGroupBeingViewed() {
     val result =
         listOf(hiddenElsewhere)
             .visibleInGroup("other-group", userId = "player", isGameMaster = false)

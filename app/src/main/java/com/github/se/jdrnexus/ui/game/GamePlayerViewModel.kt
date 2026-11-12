@@ -10,6 +10,7 @@ import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.personalSpace.isContainer
+import com.github.se.jdrnexus.model.personalSpace.toEdit
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -115,7 +116,7 @@ class GamePlayerViewModel(
     _uiState.update { it.copy(isSaving = true, error = null) }
     viewModelScope.launch {
       try {
-        workspaceRepository.updateFile(updatedFile).getOrThrow()
+        workspaceRepository.updateFile(updatedFile.toEdit()).getOrThrow()
         _uiState.update { current ->
           current.copy(
               isSaving = false,

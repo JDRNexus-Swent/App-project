@@ -15,6 +15,7 @@ lifecycleRuntimeKtx = "2.11.0"
 kaspresso = "1.6.1"
 mockk = "1.14.11"
 robolectric = "4.16.1"
+orgJson = "20250517"
 kotlinxCoroutines = "1.11.0"
 kotlinxSerialization = "1.9.0"
 sonar = "7.5.0.8588"
@@ -32,6 +33,8 @@ uiGraphics = "1.12.1"
 googleid = "1.2.1"
 navigationCompose = "2.10.2"
 mapsCompose = "6.4.1"
+# 3D rendering (Filament) for the dice roller.
+sceneview = "4.61.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -61,6 +64,7 @@ kaspresso-compose = { group = "com.kaspersky.android-components", name = "kaspre
 
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+org-json = { module = "org.json:json", version.ref = "orgJson" }
 androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics", version.ref = "uiGraphics" }
 
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
@@ -76,6 +80,7 @@ kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-t
 googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleid" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 google-maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "mapsCompose" }
+sceneview = { group = "io.github.sceneview", name = "sceneview", version.ref = "sceneview" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

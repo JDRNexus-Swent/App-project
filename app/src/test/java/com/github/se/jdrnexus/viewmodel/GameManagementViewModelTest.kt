@@ -310,6 +310,7 @@ class GameManagementViewModelTest {
         viewModel.uiState.value.createState,
     )
     assertTrue(repository.createdGroups.isEmpty())
+    assertEquals(0, repository.newGroupIdRequests)
   }
 
   @Test
@@ -422,13 +423,12 @@ class GameManagementViewModelTest {
   }
 
   @Test
-  fun playerCannotLoadOrRegenerateTheCode() = runTest {
+  fun playerCannotLoadTheCode() = runTest {
     val repository = InvitationGroupRepository(listOf(PLAYER_GROUP))
     val viewModel = createViewModel(repository, FakeAuthRepository(PLAYER))
     runCurrent()
 
     viewModel.loadInvitation(PLAYER_GROUP.id)
-    viewModel.regenerateInvitation(PLAYER_GROUP.id)
     runCurrent()
 
     assertEquals(
@@ -436,11 +436,26 @@ class GameManagementViewModelTest {
         viewModel.uiState.value.invitationState,
     )
     assertEquals(emptyList<Pair<String, String>>(), repository.createCalls)
+  }
+
+  @Test
+  fun playerCannotRegenerateTheCode() = runTest {
+    val repository = InvitationGroupRepository(listOf(PLAYER_GROUP))
+    val viewModel = createViewModel(repository, FakeAuthRepository(PLAYER))
+    runCurrent()
+
+    viewModel.regenerateInvitation(PLAYER_GROUP.id)
+    runCurrent()
+
+    assertEquals(
+        InvitationState.Error(InvitationError.NOT_GAME_MASTER),
+        viewModel.uiState.value.invitationState,
+    )
     assertEquals(emptyList<Pair<String, String>>(), repository.regenerateCalls)
   }
 
   @Test
-  fun groupMissingFromTheUsersListGivesNotGameMasterWithoutARequest() = runTest {
+  fun groupMissingFromTheUsersListIsCheckedByTheRepository() = runTest {
     val repository = InvitationGroupRepository(listOf(GM_GROUP))
     val viewModel = createViewModel(repository, FakeAuthRepository(GM))
     runCurrent()
@@ -449,10 +464,10 @@ class GameManagementViewModelTest {
     runCurrent()
 
     assertEquals(
-        InvitationState.Error(InvitationError.NOT_GAME_MASTER),
+        InvitationState.Error(InvitationError.GROUP_NOT_FOUND),
         viewModel.uiState.value.invitationState,
     )
-    assertEquals(emptyList<Pair<String, String>>(), repository.createCalls)
+    assertEquals(listOf("unknown-group" to GM.uid), repository.createCalls)
   }
 
   @Test
@@ -642,8 +657,11 @@ class GameManagementViewModelTest {
     val viewModel = createViewModel(repository, FakeAuthRepository(PLAYER))
     runCurrent()
 
-    // The card's two cases. The format rules themselves are tested in InvitationCodeTest.
+    // A blank code and a wrong-length code, the two cases named in issue #163. Every format rule
+    // is tested in InvitationCodeTest; this only checks that the ViewModel rejects them locally.
     for (code in listOf("   ", "ABC23")) {
+      // Start each code from Idle, so the error cannot be left over from the previous code.
+      viewModel.resetJoinState()
       viewModel.joinGroup(code)
       runCurrent()
 

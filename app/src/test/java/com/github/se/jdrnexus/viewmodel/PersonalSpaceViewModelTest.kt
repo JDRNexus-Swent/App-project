@@ -3,7 +3,9 @@ package com.github.se.jdrnexus.viewmodel
 
 import android.os.Looper
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.FileEdit
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.PERSONAL_ROOT_ID
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
@@ -69,14 +71,12 @@ class PersonalSpaceViewModelTest {
     }
 
     // ============ WorkspaceRepository overrides ============
-    /** Records root requests and emits the configured root contents. */
-    override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> {
-      requestedRootOwners.add(ownerId)
-      return gatedFlow(rootItemsFlow)
-    }
-
     /** Records the requested folder ID and emits only that folder's configured contents. */
     override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> {
+      if (folderId == PERSONAL_ROOT_ID) {
+        requestedRootOwners.add(ownerId)
+        return gatedFlow(rootItemsFlow)
+      }
       folderFetchRequests.add(folderId)
       return gatedFlow(MutableStateFlow(itemsByFolder[folderId].orEmpty()), folderFetchGate)
     }
@@ -119,7 +119,7 @@ class PersonalSpaceViewModelTest {
     ): Result<Unit> = error("Not used")
 
     /** These operations are unrelated to the tested list and folder-creation interactions. */
-    override suspend fun updateFile(file: JDRFile): Result<Unit> = Result.success(Unit)
+    override suspend fun updateFile(edit: FileEdit): Result<Unit> = Result.success(Unit)
 
     override suspend fun deleteFile(fileId: String): Result<Unit> = Result.success(Unit)
 
@@ -128,7 +128,6 @@ class PersonalSpaceViewModelTest {
     override suspend fun removeItemFromGroup(
         itemId: String,
         groupId: String,
-        parentFolderId: String,
     ): Result<Unit> {
       TODO("Not yet implemented")
     }

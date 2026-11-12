@@ -2,8 +2,9 @@
 package com.github.se.jdrnexus.ui.gameManagement
 
 /**
- * The invitation actions the game-management screen needs from its ViewModel. Their results are
- * shown through the screen's `inviteCode`, `invitationState` and `joinState`.
+ * The invitation actions the game-management screen needs from its ViewModel. These functions
+ * return nothing: their results appear in `GameManagementUiState` (`inviteCode`, `invitationState`,
+ * `joinState`), exposed by `GameManagementViewModel.uiState`.
  */
 interface GroupInvitationVM {
   /** Creates or loads the invite code of a group the user manages. */
