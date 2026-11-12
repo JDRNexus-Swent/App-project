@@ -1130,6 +1130,28 @@ class WorkspaceRepositoryFirestoreTest {
     assertEquals(sibling, getPersistedFile("sibling"))
   }
 
+  /** If the second pass fails, the folder is already hidden: the error must say so. */
+  @Test
+  fun setItemHidden_explainsWhenTheSecondPassFailsAfterTheFolderIsHidden() = runBlocking {
+    val folder = inGroup("folder", "group", "group", DocumentType.FOLDER)
+    persistFiles(groupRootOf("group"), folder)
+    val repositorySpy = spyk(WorkspaceRepositoryFirestore(firestore))
+    coEvery { repositorySpy.hideLateAdditions(any(), any()) } throws
+        IllegalStateException("late pass failed")
+
+    val result =
+        runAndPumpMainLooper("setItemHidden") {
+          repositorySpy.setItemHidden("folder", "group", true)
+        }
+
+    assertFailureWith(
+        result,
+        IllegalStateException::class.java,
+        "The folder is hidden, but some recently added items may still be visible. Try again.",
+    )
+    assertEquals(hiddenIn(folder, "group"), getPersistedFile("folder"))
+  }
+
   @Test
   fun setItemHidden_rejectsBlankIds() = runBlocking {
     assertFailureWith(

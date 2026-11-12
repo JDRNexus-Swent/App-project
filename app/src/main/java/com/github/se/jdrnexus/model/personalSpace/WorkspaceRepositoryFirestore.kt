@@ -5,6 +5,7 @@ import android.util.Log
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -252,7 +253,19 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
           }
         }
         .await()
-    if (isHidden) hideLateAdditions(item, groupId)
+    if (isHidden) {
+      try {
+        hideLateAdditions(item, groupId)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        throw IllegalStateException(
+            "The folder is hidden, but some recently added items may still be visible. " +
+                "Try again.",
+            e,
+        )
+      }
+    }
   }
 
   /**
