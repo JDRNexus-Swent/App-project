@@ -29,17 +29,15 @@ interface WorkspaceRepository {
   suspend fun createFile(file: JDRFile): Result<Unit>
 
   /**
-   * Updates an existing document in the database. This is used when a user or Game Master updates
-   * stats, triggering real-time sync across devices.
+   * Updates the editable fields of an existing document (see [FileEdit]). This is used when a user
+   * or Game Master updates stats, triggering real-time sync across devices.
    *
-   * Only the document's own fields are written. Group sharing ([JDRFile.placements] and
-   * [JDRFile.sharedGroupsIds]) is left untouched, so saving an edit made from an older snapshot
-   * cannot undo a share made in the meantime.
+   * Group sharing is not part of [FileEdit], so saving an edit made from an older snapshot cannot
+   * undo a share made in the meantime.
    *
-   * @param file The updated [JDRFile] object.
    * @return A [Result] indicating success or failure.
    */
-  suspend fun updateFile(file: JDRFile): Result<Unit>
+  suspend fun updateFile(edit: FileEdit): Result<Unit>
 
   /**
    * Permanently deletes a document from the database.
@@ -61,16 +59,12 @@ interface WorkspaceRepository {
   /**
    * Removes an item from a group workspace.
    *
-   * If the item is a folder, its descendants belonging to the group are also removed. The supplied
-   * [parentFolderId] identifies the selected item's placement; descendants are detached from their
-   * immediate parent in the removed subtree. Other parent references and Personal Space ownership
-   * are preserved, and the underlying documents are not deleted.
+   * The item's placement is read from the document. If the item is a folder, its descendants
+   * belonging to the group are also removed, and are detached from their immediate parent in the
+   * removed subtree. Other parent references and Personal Space ownership are preserved, and the
+   * underlying documents are not deleted.
    */
-  suspend fun removeItemFromGroup(
-      itemId: String,
-      groupId: String,
-      parentFolderId: String,
-  ): Result<Unit>
+  suspend fun removeItemFromGroup(itemId: String, groupId: String): Result<Unit>
 
   /**
    * Adds an existing item to a group workspace, inside [folderId].
@@ -114,15 +108,6 @@ interface WorkspaceRepository {
    * @return A [Flow] emitting the updated [JDRFile] whenever it changes in the database.
    */
   fun getFileFlow(fileId: String): Flow<JDRFile?>
-
-  /**
-   * Observes real-time changes to all documents (folders and files) located at the root of a user's
-   * personal space (where parentFolderIds is empty).
-   *
-   * @param ownerId The unique identifier of the user (Firebase Auth ID).
-   * @return A [Flow] emitting the list of root [JDRFile]s.
-   */
-  fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>>
 
   /**
    * Observes real-time changes to all documents (folders and files) located in a user's personal

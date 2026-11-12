@@ -71,7 +71,7 @@ Every campaign group has one root document, created with the group.
 - **Renaming:** `GroupRepository.updateGroup` updates the group and renames the root in the same batch. It fails if the root does not exist (a group without root is a broken state, better seen than hidden).
 - `sharedGroupsIds == [groupId]` so members can read it through the standard group read rule.
 - `placements` is empty. This is the single exception to the invariant "keys of `placements` == `sharedGroupsIds`" (see 4).
-- It has **no functional personal placement**: its `personalParentId` defaults to `""` to satisfy the no-null rule, but it never appears in a user's personal space because personal queries (`getPersonalRootFiles`, `getPersonalFolderFiles`) explicitly exclude `GROUP_ROOT` through a shared repository filter.
+- It has **no functional personal placement**: its `personalParentId` defaults to `""` to satisfy the no-null rule, but it never appears in a user's personal space because personal queries (`getPersonalFolderFiles`) explicitly exclude `GROUP_ROOT` through a shared repository filter.
 - Top-level items of a group have `placements[groupId].folderId == groupId`.
 - It is immutable for users: `addItemToGroup`, `setItemHidden`, `removeItemFromGroup` and `deleteFile` all refuse a `GROUP_ROOT`. Its name only changes with the group's.
 ---
@@ -291,7 +291,6 @@ Rules and batch behavior must be tested with the **Firebase emulator** (member /
 
 ## 12. Known gaps
 
-- `removeItemFromGroup` keeps a `parentFolderId` parameter that is no longer read. It will be removed in a separate PR.
 - `deleteGroup` and `removeUserFromGroup` do not apply the cascade rules (section 9).
 - `updateGroup` writes `participantIds` from the group it is given: a member added at the same moment can be overwritten (same problem `updateFile` used to have).
 - Tolerant reads (7.7) are not implemented yet.

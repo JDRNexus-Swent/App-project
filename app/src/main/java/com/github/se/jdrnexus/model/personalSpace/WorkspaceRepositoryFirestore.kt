@@ -32,16 +32,8 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     collection.document(file.id).set(file).await()
   }
 
-  override suspend fun updateFile(file: JDRFile): Result<Unit> = safeFirestoreRequest {
-    // `file` is usually a snapshot read earlier (e.g. by the editor).
-    // Writing every field would overwrite the document with that possibly stale copy,
-    // so a share or unshare made in the meantime would be silently undone.
-    // Group sharing is therefore excluded here: `placements`
-    // and `sharedGroupsIds` only change through dedicated repository operations (e.g.
-    // removeItemFromGroup), which update both fields together and leave the other fields
-    // untouched.
-    val fields = file.toMap() - FIELD_PLACEMENTS - FIELD_SHARED_GROUPS_IDS
-    collection.document(file.id).update(fields).await()
+  override suspend fun updateFile(edit: FileEdit): Result<Unit> = safeFirestoreRequest {
+    collection.document(edit.id).update(edit.toMap()).await()
   }
 
   override suspend fun deleteFile(fileId: String): Result<Unit> = safeFirestoreRequest {
@@ -103,7 +95,6 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
   override suspend fun removeItemFromGroup(
       itemId: String,
       groupId: String,
-      parentFolderId: String,
   ): Result<Unit> = safeFirestoreRequest {
     require(itemId.isNotBlank()) { "Item ID cannot be empty." }
     require(groupId.isNotBlank()) { "Group ID cannot be empty." }
@@ -408,11 +399,6 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     }
     awaitClose { listenerRegistration.remove() }
   }
-
-  override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> =
-      // we get the file at the root defined by ""
-      // we explicitly exclude DocumentType.GROUP_ROOT from appearing at the root
-      getPersonalFolderFiles("", ownerId)
 
   override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
       observeFilesQuery(

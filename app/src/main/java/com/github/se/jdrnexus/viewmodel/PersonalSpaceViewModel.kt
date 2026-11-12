@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.PERSONAL_ROOT_ID
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.model.personalSpace.isContainer
@@ -144,11 +145,10 @@ class PersonalSpaceViewModel(
     fetchJob = viewModelScope.launch {
       try {
         val files =
-            if (personalParentId.isEmpty()) {
-              repository.getPersonalRootFiles(requireUid())
-            } else {
-              repository.getPersonalFolderFiles(personalParentId, requireUid())
-            }
+            repository.getPersonalFolderFiles(
+                if (personalParentId.isEmpty()) PERSONAL_ROOT_ID else personalParentId,
+                requireUid(),
+            )
         files.collect { items ->
           _uiState.update { it.copy(items = items, loadState = LoadState.Success) }
         }

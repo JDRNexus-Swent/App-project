@@ -16,6 +16,7 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.FileEdit
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.ui.edition.EditFileCharacter
@@ -384,8 +385,8 @@ class EditFileCharacterTests {
 
     override suspend fun createFile(file: JDRFile): Result<Unit> = Result.success(Unit)
 
-    override suspend fun updateFile(file: JDRFile): Result<Unit> {
-      updatedFiles += file
+    override suspend fun updateFile(edit: FileEdit): Result<Unit> {
+      updatedFiles += file.copy(name = edit.name, content = edit.content)
       updateGate?.await()
       updateError?.let { throw IllegalStateException(it) }
       return Result.success(Unit)
@@ -401,12 +402,9 @@ class EditFileCharacterTests {
     override suspend fun removeItemFromGroup(
         itemId: String,
         groupId: String,
-        parentFolderId: String,
     ): Result<Unit> = Result.success(Unit)
 
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = emptyFlow()
-
-    override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = emptyFlow()
 
     override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
         emptyFlow()

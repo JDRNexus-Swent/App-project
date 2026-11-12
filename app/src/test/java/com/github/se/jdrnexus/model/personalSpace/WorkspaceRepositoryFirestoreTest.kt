@@ -84,12 +84,11 @@ class WorkspaceRepositoryFirestoreTest {
   private suspend fun removeItemFromGroupAndPumpMainLooper(
       itemId: String,
       groupId: String,
-      parentFolderId: String = groupId,
       targetRepository: WorkspaceRepository = repository,
   ): Result<Unit> {
     val operation =
         CoroutineScope(Dispatchers.Default).async {
-          targetRepository.removeItemFromGroup(itemId, groupId, parentFolderId)
+          targetRepository.removeItemFromGroup(itemId, groupId)
         }
     try {
       FirebaseEmulatorTestUtils.pumpMainLooperUntil(
@@ -179,7 +178,7 @@ class WorkspaceRepositoryFirestoreTest {
 
   @Test
   fun removeItemFromGroup_rejectsBlankItemId() = runBlocking {
-    val result = repository.removeItemFromGroup("", "group-${UUID.randomUUID()}", "")
+    val result = repository.removeItemFromGroup("", "group-${UUID.randomUUID()}")
 
     assertTrue(result.isFailure)
     assertEquals(IllegalArgumentException::class.java, result.exceptionOrNull()?.javaClass)
@@ -188,7 +187,7 @@ class WorkspaceRepositoryFirestoreTest {
 
   @Test
   fun removeItemFromGroup_rejectsBlankGroupId() = runBlocking {
-    val result = repository.removeItemFromGroup("item-${UUID.randomUUID()}", " ", "")
+    val result = repository.removeItemFromGroup("item-${UUID.randomUUID()}", " ")
 
     assertTrue(result.isFailure)
     assertEquals(IllegalArgumentException::class.java, result.exceptionOrNull()?.javaClass)
@@ -233,8 +232,7 @@ class WorkspaceRepositoryFirestoreTest {
     every { collectionMock.document(itemId) } returns documentMock
     every { documentMock.get() } returns Tasks.forException(IllegalStateException("read failed"))
 
-    val result =
-        WorkspaceRepositoryFirestore(firestoreMock).removeItemFromGroup(itemId, groupId, groupId)
+    val result = WorkspaceRepositoryFirestore(firestoreMock).removeItemFromGroup(itemId, groupId)
 
     assertTrue(result.isFailure)
     assertEquals(IllegalStateException::class.java, result.exceptionOrNull()?.javaClass)
@@ -255,7 +253,7 @@ class WorkspaceRepositoryFirestoreTest {
 
     val job = launch {
       val groupId = "group-${UUID.randomUUID()}"
-      mockRepository.removeItemFromGroup(itemId, groupId, groupId)
+      mockRepository.removeItemFromGroup(itemId, groupId)
     }
     yield()
     job.cancel()
@@ -318,8 +316,7 @@ class WorkspaceRepositoryFirestoreTest {
     every { batchMock.commit() } returns
         Tasks.forException(IllegalStateException("batch commit failed"))
 
-    val result =
-        WorkspaceRepositoryFirestore(firestoreMock).removeItemFromGroup(itemId, groupId, groupId)
+    val result = WorkspaceRepositoryFirestore(firestoreMock).removeItemFromGroup(itemId, groupId)
 
     assertTrue(result.isFailure)
     assertEquals(IllegalStateException::class.java, result.exceptionOrNull()?.javaClass)
@@ -1225,7 +1222,7 @@ class WorkspaceRepositoryFirestoreTest {
       repository.createFile(file)
 
       val updatedFile = file.copy(name = "Updated", content = "New Content")
-      val updateResult = repository.updateFile(updatedFile)
+      val updateResult = repository.updateFile(updatedFile.toEdit())
       assertTrue("updateFile should succeed", updateResult.isSuccess)
 
       val getResult = repository.getFile(fileId)
@@ -1245,13 +1242,46 @@ class WorkspaceRepositoryFirestoreTest {
       val shared = file.withPlacement(groupId, Placement(folderId = groupId))
       persistFiles(shared)
 
-      val result = repository.updateFile(file.copy(name = "Edited", content = "New content"))
+      val result =
+          repository.updateFile(file.copy(name = "Edited", content = "New content").toEdit())
 
       assertTrue(result.isSuccess)
       assertEquals(
           shared.copy(name = "Edited", content = "New content"),
           getPersistedFile(file.id),
       )
+    }
+  }
+
+  /** An edit from a stale snapshot changes name and content, and nothing else in the document. */
+  @Test
+  fun updateFile_changesOnlyNameAndContent() {
+    runBlocking {
+      val stored =
+          JDRFile(
+              id = "file",
+              name = "Original",
+              ownerId = "owner1",
+              content = "old",
+              personalParentId = "folder",
+              sharedGroupsIds = listOf("group"),
+              placements = mapOf("group" to Placement("group", isHidden = true)),
+          )
+      persistFiles(stored)
+      val stale =
+          stored.copy(
+              name = "Edited",
+              content = "new",
+              ownerId = "someone-else",
+              personalParentId = "old-folder",
+              sharedGroupsIds = emptyList(),
+              placements = emptyMap(),
+          )
+
+      val result = repository.updateFile(stale.toEdit())
+
+      assertTrue(result.isSuccess)
+      assertEquals(stored.copy(name = "Edited", content = "new"), getPersistedFile("file"))
     }
   }
 
@@ -1265,7 +1295,7 @@ class WorkspaceRepositoryFirestoreTest {
       val fileId = "non_existent_id_for_update"
       val file = JDRFile(id = fileId, name = "Ghost", ownerId = "owner1")
 
-      val result = repository.updateFile(file)
+      val result = repository.updateFile(file.toEdit())
       assertTrue("updateFile should fail when document does not exist", result.isFailure)
     }
   }
@@ -1275,7 +1305,7 @@ class WorkspaceRepositoryFirestoreTest {
   fun testUpdateFile_Exception() {
     runBlocking {
       val invalidFile = JDRFile(id = "", name = "Invalid")
-      val result = repository.updateFile(invalidFile)
+      val result = repository.updateFile(invalidFile.toEdit())
       assertTrue("updateFile should fail with empty ID", result.isFailure)
     }
   }
@@ -1348,7 +1378,7 @@ class WorkspaceRepositoryFirestoreTest {
       assertEquals("Initial name should be collected", "Initial", latestName.get())
 
       // Update the file
-      repository.updateFile(file.copy(name = "Updated"))
+      repository.updateFile(file.copy(name = "Updated").toEdit())
 
       FirebaseEmulatorTestUtils.pumpMainLooperUntil { latestName.get() == "Updated" }
       assertEquals("Updated name should be collected", "Updated", latestName.get())
@@ -1359,7 +1389,7 @@ class WorkspaceRepositoryFirestoreTest {
 
   /** Tests retrieving all documents at the root of a user's personal space (no parent folders). */
   @Test
-  fun testGetPersonalRootFiles() {
+  fun testGetPersonalFolderFiles_Root() {
     runBlocking {
       val ownerId = UUID.randomUUID().toString()
       val file1 =
@@ -1393,7 +1423,8 @@ class WorkspaceRepositoryFirestoreTest {
       repository.createFile(fileOtherOwner)
       repository.createFile(fileWithParent)
 
-      val files = repository.getPersonalRootFiles(ownerId).waitFor { it.size == 2 }
+      val files =
+          repository.getPersonalFolderFiles(PERSONAL_ROOT_ID, ownerId).waitFor { it.size == 2 }
 
       assertEquals("Should retrieve exactly 2 files for the owner at root", 2, files.size)
       assertTrue(files.contains(file1))
@@ -1403,10 +1434,11 @@ class WorkspaceRepositoryFirestoreTest {
 
   /** Ensures that an empty list is emitted if a user has no documents in their personal root. */
   @Test
-  fun testGetPersonalRootFiles_Empty() {
+  fun testGetPersonalFolderFiles_Root_Empty() {
     runBlocking {
       val emptyOwnerId = "empty_owner_id"
-      val files = repository.getPersonalRootFiles(emptyOwnerId).waitFor { it.isEmpty() }
+      val files =
+          repository.getPersonalFolderFiles(PERSONAL_ROOT_ID, emptyOwnerId).waitFor { it.isEmpty() }
       assertTrue("Should retrieve empty list when no root files exist", files.isEmpty())
     }
   }
@@ -1655,7 +1687,8 @@ class WorkspaceRepositoryFirestoreTest {
 
       // Listen to the corrupted folder. The catch block will log the error and ignore the file
       // instead of crashing the entire Flow.
-      val files = repository.getPersonalRootFiles("corrupted_owner").waitFor { true }
+      val files =
+          repository.getPersonalFolderFiles(PERSONAL_ROOT_ID, "corrupted_owner").waitFor { true }
 
       // Assert the list is empty because the only document was corrupted and thus ignored.
       assertTrue("List should be empty due to parsing failure", files.isEmpty())
@@ -1756,7 +1789,7 @@ class WorkspaceRepositoryFirestoreTest {
     // 2. Set up the default routing for the documents collection
     every { firestoreMock.collection("documents") } returns collectionMock
 
-    // Mocking the 'getPersonalRootFiles' query chain
+    // Mocking the 'getPersonalFolderFiles' query chain for root
     every { collectionMock.whereEqualTo("ownerId", "error_owner_test") } returns queryMock
     every { queryMock.whereEqualTo("personalParentId", "") } returns queryMock
 
@@ -1787,10 +1820,10 @@ class WorkspaceRepositoryFirestoreTest {
     // Initialize a separate repository instance injected with our mock
     val mockRepository = WorkspaceRepositoryFirestore(firestoreMock)
 
-    // 4. Assert that getPersonalRootFiles correctly catches and propagates the error
+    // 4. Assert that getPersonalFolderFiles correctly catches and propagates the error
     try {
-      mockRepository.getPersonalRootFiles("error_owner_test").collect {}
-      fail("getPersonalRootFiles should have thrown an exception")
+      mockRepository.getPersonalFolderFiles(PERSONAL_ROOT_ID, "error_owner_test").collect {}
+      fail("getPersonalFolderFiles should have thrown an exception")
     } catch (e: Exception) {
       assertTrue(e.message?.contains("Simulated Permission Denied") == true)
     }
