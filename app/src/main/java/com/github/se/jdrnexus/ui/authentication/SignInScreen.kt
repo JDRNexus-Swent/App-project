@@ -1,6 +1,8 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.authentication
 
+import android.util.Log
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +44,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +53,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -59,6 +63,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
@@ -66,6 +75,10 @@ import com.github.se.jdrnexus.resources.DivideWithDiamonds
 import com.github.se.jdrnexus.resources.JdrNexusLogo
 import com.github.se.jdrnexus.resources.darkFieldColors
 import com.github.se.jdrnexus.resources.showComingSoon
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 @Composable
 fun SignInScreen(
@@ -82,19 +95,22 @@ fun SignInScreen(
   val email = uiState.email
   val password = uiState.password
 
-  //  var isGooglePickerLoading by remember { mutableStateOf(false) }
+  val scope = rememberCoroutineScope()
+  var isGooglePickerLoading by remember { mutableStateOf(false) }
   var googleErrorMessage by remember { mutableStateOf<String?>(null) }
 
-  val isLoading = uiState.status is AuthStatus.Loading
+  val isLoading = isGooglePickerLoading || uiState.status is AuthStatus.Loading
   val isAuthenticationLocked = isLoading || uiState.status is AuthStatus.Success
   val errorMessage =
-      (uiState.status as? AuthStatus.Error)?.message?.takeUnless {
-        it == uiState.emailError || it == uiState.passwordError
-      }
+      googleErrorMessage
+          ?: (uiState.status as? AuthStatus.Error)?.message?.takeUnless {
+            it == uiState.emailError || it == uiState.passwordError
+          }
 
   // Keeps track of whether the password should be visible or masked.
   var passwordVisible by remember { mutableStateOf(false) }
   val context = LocalContext.current
+  val serverClientId = stringResource(R.string.default_web_client_id)
 
   LaunchedEffect(uiState.status) {
     if (uiState.status is AuthStatus.Success) {
@@ -322,7 +338,60 @@ fun SignInScreen(
 
       //  Sign in with Google for users who already have an account.
       GoogleSignInButton(
-          click = { signInViewModel.googleSignIn(context, credentialManager) },
+          click = {
+            if (!isAuthenticationLocked) {
+              isGooglePickerLoading = true
+              googleErrorMessage = null
+              scope.launch {
+                try {
+                  val googleOption =
+                      GetSignInWithGoogleOption.Builder(serverClientId = serverClientId).build()
+
+                  val request =
+                      GetCredentialRequest.Builder().addCredentialOption(googleOption).build()
+
+                  val credential =
+                      credentialManager
+                          .getCredential(
+                              context = context,
+                              request = request,
+                          )
+                          .credential
+
+                  if (
+                      credential is CustomCredential &&
+                          credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                  ) {
+                    val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                    signInViewModel.signInWithGoogle(googleCredential.idToken)
+                  } else {
+                    googleErrorMessage = "Unsupported Google credential. Please try again."
+                  }
+                } catch (e: GetCredentialCancellationException) {
+                  googleErrorMessage =
+                      "Google sign-in was cancelled or reauthentication failed. Please try again."
+                  Log.e(
+                      "SignInScreen",
+                      "Google sign-in cancelled or reauthentication failed: ${e.type}",
+                      e,
+                  )
+                } catch (e: NoCredentialException) {
+                  googleErrorMessage = "No available Google account was found."
+                  Log.e("SignInScreen", "No Google credential available", e)
+                } catch (e: GetCredentialException) {
+                  googleErrorMessage = "Unable to start Google sign-in. Please try again."
+                  Log.e("SignInScreen", "Credential Manager error: ${e.type}", e)
+                } catch (e: CancellationException) {
+                  throw e
+                } catch (e: Exception) {
+                  googleErrorMessage = "Google sign-in failed. Please try again."
+                  Log.e("SignInScreen", "Unexpected Google sign-in error", e)
+                } finally {
+                  isGooglePickerLoading = false
+                }
+              }
+            }
+          },
           border = colors.onSurface,
           logo = colors.primary,
           textColor = colors.onSecondary,

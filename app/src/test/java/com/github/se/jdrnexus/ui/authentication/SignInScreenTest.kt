@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.authentication
 
 import android.app.PendingIntent
@@ -35,7 +36,9 @@ import androidx.credentials.SignalCredentialStateRequest
 import androidx.credentials.SignalCredentialStateResponse
 import androidx.credentials.exceptions.ClearCredentialException
 import androidx.credentials.exceptions.CreateCredentialException
+import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import androidx.credentials.exceptions.publickeycredential.SignalCredentialStateException
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.repository.AuthError
@@ -145,9 +148,10 @@ class SignInScreenTest {
     }
   }
 
-  private class FakeCredentialManager(private val response: GetCredentialResponse) :
+  private class FakeCredentialManager(private val response: GetCredentialResponse? = null) :
       CredentialManager {
     var getCredentialCalls = 0
+    var failure: GetCredentialException? = null
 
     override fun getCredentialAsync(
         context: Context,
@@ -157,7 +161,10 @@ class SignInScreenTest {
         callback: CredentialManagerCallback<GetCredentialResponse, GetCredentialException>,
     ) {
       getCredentialCalls++
-      executor.execute { callback.onResult(response) }
+      executor.execute {
+        val error = failure
+        if (error != null) callback.onError(error) else callback.onResult(requireNotNull(response))
+      }
     }
 
     override fun getCredentialAsync(
@@ -212,6 +219,55 @@ class SignInScreenTest {
 
     override fun createSettingsPendingIntent(): PendingIntent =
         throw UnsupportedOperationException("Not used in authentication screen tests")
+  }
+
+  @Test
+  fun googleCancellationShowsFailureAndAllowsRetry() {
+    val repository = FakeAuthRepository()
+    val manager =
+        FakeCredentialManager().apply {
+          failure = GetCredentialCancellationException("Google reauthentication failed")
+        }
+    var navigationCalls = 0
+    showSignIn(repository, manager, onSignInSuccess = { navigationCalls++ })
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_google).performClick()
+    composeTestRule.waitForIdle()
+
+    composeTestRule
+        .onNodeWithText(
+            "Google sign-in was cancelled or reauthentication failed. Please try again."
+        )
+        .assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_google).assertIsEnabled()
+    assertEquals(0, repository.googleSignInCalls)
+    assertEquals(0, navigationCalls)
+
+    manager.failure = NoCredentialException("No account")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_google).performClick()
+    composeTestRule.waitForIdle()
+
+    composeTestRule.onNodeWithText("No available Google account was found.").assertIsDisplayed()
+    composeTestRule
+        .onAllNodesWithText(
+            "Google sign-in was cancelled or reauthentication failed. Please try again."
+        )
+        .assertCountEquals(0)
+    assertEquals(2, manager.getCredentialCalls)
+  }
+
+  @Test
+  fun googleCredentialFailureShowsErrorWithoutAuthenticating() {
+    val repository = FakeAuthRepository()
+    val manager = FakeCredentialManager().apply { failure = NoCredentialException("No account") }
+    showSignIn(repository, manager)
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_google).performClick()
+    composeTestRule.waitForIdle()
+
+    composeTestRule.onNodeWithText("No available Google account was found.").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_google).assertIsEnabled()
+    assertEquals(0, repository.googleSignInCalls)
   }
 
   /** the tests */
