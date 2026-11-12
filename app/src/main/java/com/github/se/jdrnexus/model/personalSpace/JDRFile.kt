@@ -10,6 +10,27 @@ data class Placement(
     @get:PropertyName("isHidden") val isHidden: Boolean = false,
 )
 
+/**
+ * The fields of a file that [WorkspaceRepository.updateFile] can change. Group sharing is not part
+ * of it on purpose: it only changes through [WorkspaceRepository.addItemToGroup],
+ * [WorkspaceRepository.removeItemFromGroup] and [WorkspaceRepository.setItemHidden]. Moving a file
+ * in the personal space is not editable here either, it will need its own operation. [id] only
+ * tells which document to update: [toMap] never writes it.
+ */
+data class FileEdit(
+    val id: String,
+    val name: String,
+    val content: String,
+) {
+  fun toMap(): Map<String, Any> =
+      mapOf(
+          "name" to name,
+          "content" to content,
+      )
+}
+
+const val PERSONAL_ROOT_ID = ""
+
 data class JDRFile(
     val id: String = "",
     val name: String = "",
@@ -19,7 +40,7 @@ data class JDRFile(
     val sharedGroupsIds: List<String> = emptyList(),
     // groupId -> placement of this file in that group (at most one per group)
     val placements: Map<String, Placement> = emptyMap(),
-    val personalParentId: String = "",
+    val personalParentId: String = PERSONAL_ROOT_ID,
     val type: DocumentType = DocumentType.TEXT,
     val content: String = "", // will be empty for a folder
 ) {
@@ -72,3 +93,6 @@ enum class DocumentType {
  * not mistake it for a stored property.
  */
 fun JDRFile.isContainer(): Boolean = type.isContainer()
+
+/** The editable part of this file, for [WorkspaceRepository.updateFile]. */
+fun JDRFile.toEdit() = FileEdit(id, name, content)

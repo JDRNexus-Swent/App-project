@@ -1,8 +1,10 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.authentication
 
 import android.app.PendingIntent
 import android.content.Context
 import android.os.CancellationSignal
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -37,6 +39,9 @@ import androidx.credentials.exceptions.ClearCredentialException
 import androidx.credentials.exceptions.CreateCredentialException
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.publickeycredential.SignalCredentialStateException
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
@@ -44,6 +49,8 @@ import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import com.github.se.jdrnexus.utils.TestScreenLifecycleOwner
+import com.github.se.jdrnexus.utils.tapInOneFrame
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import java.util.concurrent.Executor
 import kotlinx.coroutines.CompletableDeferred
@@ -67,29 +74,44 @@ class SignInScreenTest {
       onSignInSuccess: () -> Unit = {},
       onSignUp: () -> Unit = {},
       forgotPassword: () -> Unit = {},
+      lifecycleOwner: LifecycleOwner? = null,
   ) {
     val viewModel = AuthViewModel(repository)
     composeTestRule.setContent {
-      SampleAppTheme {
-        if (credentialManager == null) {
-          SignInScreen(
-              signInViewModel = viewModel,
-              onSignInSuccess = onSignInSuccess,
-              onSignUp = onSignUp,
-              forgotPassword = forgotPassword,
-          )
-        } else {
-          SignInScreen(
-              signInViewModel = viewModel,
-              credentialManager = credentialManager,
-              onSignInSuccess = onSignInSuccess,
-              onSignUp = onSignUp,
-              forgotPassword = forgotPassword,
-          )
+      CompositionLocalProvider(
+          LocalLifecycleOwner provides (lifecycleOwner ?: LocalLifecycleOwner.current)
+      ) {
+        SampleAppTheme {
+          if (credentialManager == null) {
+            SignInScreen(
+                signInViewModel = viewModel,
+                onSignInSuccess = onSignInSuccess,
+                onSignUp = onSignUp,
+                forgotPassword = forgotPassword,
+            )
+          } else {
+            SignInScreen(
+                signInViewModel = viewModel,
+                credentialManager = credentialManager,
+                onSignInSuccess = onSignInSuccess,
+                onSignUp = onSignUp,
+                forgotPassword = forgotPassword,
+            )
+          }
         }
       }
     }
   }
+
+  private fun fakeGoogleCredentialManager() =
+      FakeCredentialManager(
+          GetCredentialResponse(
+              GoogleIdTokenCredential.Builder()
+                  .setId("test-user")
+                  .setIdToken("eyJhbGciOiJub25lIn0.eyJzdWIiOiJ0ZXN0In0.c2lnbmF0dXJl")
+                  .build()
+          )
+      )
 
   private fun emailInput(tag: String) = composeTestRule.onNodeWithTag(tag)
 
@@ -291,7 +313,6 @@ class SignInScreenTest {
   fun signInScreen_showsEachValidationErrorOnItsOwnField() {
     showSignIn()
     emailInput(C.Tag.sign_in_email).performTextInput("invalid")
-    passwordInput(C.Tag.sign_in_password).performTextInput("short")
 
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
 
@@ -300,9 +321,7 @@ class SignInScreenTest {
         .assert(hasText(AuthError.INVALID_EMAIL.message))
     composeTestRule
         .onNodeWithTag(C.Tag.sign_in_password)
-        .assert(
-            hasText("Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters.")
-        )
+        .assert(hasText(AuthError.EMPTY_PASSWORD.message))
   }
 
   @Test
@@ -310,11 +329,10 @@ class SignInScreenTest {
     val repository = FakeAuthRepository()
     showSignIn(repository)
     emailInput(C.Tag.sign_in_email).performTextInput("invalid")
-    passwordInput(C.Tag.sign_in_password).performTextInput("short")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
 
     val emailError = AuthError.INVALID_EMAIL.message
-    val passwordError = "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters."
+    val passwordError = AuthError.EMPTY_PASSWORD.message
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).assert(hasText(emailError))
     composeTestRule.onNodeWithTag(C.Tag.sign_in_password).assert(hasText(passwordError))
 
@@ -330,34 +348,26 @@ class SignInScreenTest {
     composeTestRule.waitForIdle()
 
     assertEquals(1, repository.signInCalls)
-    assertEquals("invalid@example.com" to "short1", repository.lastSignInArguments)
+    assertEquals("invalid@example.com" to "1", repository.lastSignInArguments)
   }
 
   @Test
-  fun signInScreen_shortPasswordShowsValidationAndValidPasswordSubmits() {
+  fun signInScreen_shortPasswordIsSentWithoutLengthRule() {
     val repository = FakeAuthRepository()
     showSignIn(repository)
     emailInput(C.Tag.sign_in_email).performTextInput("hero@example.com")
     passwordInput(C.Tag.sign_in_password).performTextInput("12345")
 
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
-    composeTestRule
-        .onNodeWithText(
-            "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters."
-        )
-        .assertIsDisplayed()
-    assertEquals(0, repository.signInCalls)
+    composeTestRule.waitForIdle()
 
-    passwordInput(C.Tag.sign_in_password).performTextInput("6")
+    assertEquals(1, repository.signInCalls)
+    assertEquals("hero@example.com" to "12345", repository.lastSignInArguments)
     composeTestRule
         .onAllNodesWithText(
             "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters."
         )
         .assertCountEquals(0)
-    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
-    composeTestRule.waitForIdle()
-    assertEquals(1, repository.signInCalls)
-    assertEquals("hero@example.com" to "123456", repository.lastSignInArguments)
   }
 
   @Test
@@ -487,6 +497,75 @@ class SignInScreenTest {
 
     assertEquals(true, forgotPasswordRequested)
     assertEquals(true, signUpRequested)
+  }
+
+  @Test
+  fun signInScreen_signUpLinkClearsSignInErrors() {
+    var signUpRequested = false
+    showSignIn(onSignUp = { signUpRequested = true })
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    composeTestRule.onNodeWithText(AuthError.INVALID_EMAIL.message).assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performClick()
+
+    composeTestRule.onAllNodesWithText(AuthError.INVALID_EMAIL.message).assertCountEquals(0)
+    composeTestRule.onAllNodesWithText(AuthError.EMPTY_PASSWORD.message).assertCountEquals(0)
+    assertEquals(true, signUpRequested)
+  }
+
+  @Test
+  fun signInScreen_actionsTappedInTheSameFrameAsSignInAreIgnored() {
+    val repository = FakeAuthRepository().apply { signInResponse = CompletableDeferred() }
+    val credentialManager = fakeGoogleCredentialManager()
+    var signUpRequested = false
+    var forgotPasswordRequested = false
+    showSignIn(
+        repository,
+        credentialManager,
+        onSignUp = { signUpRequested = true },
+        forgotPassword = { forgotPasswordRequested = true },
+    )
+    enterSignInCredentials()
+
+    composeTestRule.tapInOneFrame(
+        C.Tag.sign_in_submit,
+        C.Tag.sign_in_sign_up,
+        C.Tag.sign_in_forgot_password,
+        C.Tag.sign_in_google,
+    )
+
+    assertEquals(1, repository.signInCalls)
+    assertEquals(false, signUpRequested)
+    assertEquals(false, forgotPasswordRequested)
+    assertEquals(0, credentialManager.getCredentialCalls)
+  }
+
+  @Test
+  fun signInScreen_actionsAreIgnoredOnceTheScreenIsLeft() {
+    val repository = FakeAuthRepository()
+    val credentialManager = fakeGoogleCredentialManager()
+    val lifecycleOwner = TestScreenLifecycleOwner()
+    var signUpRequested = false
+    var forgotPasswordRequested = false
+    showSignIn(
+        repository,
+        credentialManager,
+        onSignUp = { signUpRequested = true },
+        forgotPassword = { forgotPasswordRequested = true },
+        lifecycleOwner = lifecycleOwner,
+    )
+    enterSignInCredentials()
+
+    composeTestRule.runOnUiThread { lifecycleOwner.moveTo(Lifecycle.State.CREATED) }
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_google).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_forgot_password).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performClick()
+
+    assertEquals(0, repository.signInCalls)
+    assertEquals(0, credentialManager.getCredentialCalls)
+    assertEquals(false, forgotPasswordRequested)
+    assertEquals(false, signUpRequested)
   }
 
   @Test

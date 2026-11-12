@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.jdrfile
 
 import androidx.lifecycle.ViewModel
@@ -14,6 +15,7 @@ import com.github.se.jdrnexus.model.filerepresentation.LoreSection
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
+import com.github.se.jdrnexus.model.personalSpace.toEdit
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -82,13 +84,41 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
     mutateCharacter { it.copy(name = name) }
   }
 
+  override fun onAddStatNameChange(name: String) {
+    _uiState.update { it.copy(newStatName = name) }
+    val field = EditFileField.NewCharacterStatName
+    if (name.isBlank()) rejectField(field, STAT_NAME_ERROR)
+    else _uiState.update { it.copy(fieldErrors = it.fieldErrors - field) }
+  }
+
+  override fun onAddStatValueChange(value: String) {
+    _uiState.update { it.copy(newStatValue = value) }
+    val field = EditFileField.NewCharacterStatValue
+    if (value.toDoubleOrNull()?.isFinite() != true) rejectField(field, STAT_VALUE_ERROR)
+    else _uiState.update { it.copy(fieldErrors = it.fieldErrors - field) }
+  }
+
+  override fun onAddActionNameChange(name: String) {
+    _uiState.update { it.copy(newActionName = name) }
+    val field = EditFileField.NewCharacterActionName
+    if (name.isBlank()) rejectField(field, ACTION_NAME_ERROR)
+    else _uiState.update { it.copy(fieldErrors = it.fieldErrors - field) }
+  }
+
+  override fun onAddActionDescriptionChange(description: String) {
+    _uiState.update { it.copy(newActionDescription = description) }
+  }
+
   override fun updateCharacterCurrentHp(current: Int) {
     val hp = _uiState.value.character?.hp ?: return reportError(CHARACTER_REQUIRED_ERROR)
     when {
       current < 0 -> rejectField(EditFileField.CharacterCurrentHp, CURRENT_HP_ERROR)
       current > hp.max ->
           rejectField(EditFileField.CharacterCurrentHp, CURRENT_HP_EXCEEDS_MAX_ERROR)
-      else -> mutateCharacter { it.copy(hp = hp.copy(current = current)) }
+      else ->
+          mutateCharacter(clearFieldErrors = setOf(EditFileField.CharacterCurrentHp)) {
+            it.copy(hp = hp.copy(current = current))
+          }
     }
   }
 
@@ -97,28 +127,46 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
     when {
       max < 0 -> rejectField(EditFileField.CharacterMaxHp, MAX_HP_ERROR)
       else ->
-          mutateCharacter {
+          mutateCharacter(
+              clearFieldErrors =
+                  setOf(EditFileField.CharacterCurrentHp, EditFileField.CharacterMaxHp)
+          ) {
             it.copy(hp = CharacterHealthPoints(current = minOf(hp.current, max), max = max))
           }
     }
   }
 
-  override fun addCharacterStat(name: String, value: Double) {
-    val statID = UUID.randomUUID().toString()
-    mutateCharacter { character ->
-      when {
-        !value.isFinite() -> rejectField(EditFileField.CharacterStatValue(statID), STAT_VALUE_ERROR)
-        name.isBlank() -> rejectField(EditFileField.CharacterStatName(statID), STAT_NAME_ERROR)
-        else ->
-            character.copy(
-                stats = character.stats + CharacterStat(statID = statID, name = name, value = value)
-            )
-      }
+  override fun addCharacterStat() {
+    val state = _uiState.value
+    val name = state.newStatName.trim()
+    val value = state.newStatValue.toDoubleOrNull() ?: Double.NaN
+    val errors = buildMap {
+      if (name.isBlank()) put(EditFileField.NewCharacterStatName, STAT_NAME_ERROR)
+      if (!value.isFinite()) put(EditFileField.NewCharacterStatValue, STAT_VALUE_ERROR)
     }
+    if (errors.isNotEmpty()) {
+      _uiState.update {
+        it.copy(error = null, isSaved = false, fieldErrors = it.fieldErrors + errors)
+      }
+      return
+    }
+
+    if (state.character == null) return reportError(CHARACTER_REQUIRED_ERROR)
+    val statID = UUID.randomUUID().toString()
+    mutateCharacter(
+        clearFieldErrors =
+            setOf(EditFileField.NewCharacterStatName, EditFileField.NewCharacterStatValue)
+    ) { character ->
+      character.copy(
+          stats = character.stats + CharacterStat(statID = statID, name = name, value = value)
+      )
+    }
+    _uiState.update { it.copy(newStatName = "", newStatValue = "") }
   }
 
   override fun updateCharacterStatName(statID: String, name: String) {
-    mutateCharacter { character ->
+    mutateCharacter(clearFieldErrors = setOf(EditFileField.CharacterStatName(statID))) { character
+      ->
       when {
         character.stats.none { it.statID == statID } -> reject(STAT_NOT_FOUND_ERROR)
         name.isBlank() -> rejectField(EditFileField.CharacterStatName(statID), STAT_NAME_ERROR)
@@ -132,7 +180,8 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun updateCharacterStatValue(statID: String, value: Double) {
-    mutateCharacter { character ->
+    mutateCharacter(clearFieldErrors = setOf(EditFileField.CharacterStatValue(statID))) { character
+      ->
       when {
         !value.isFinite() -> rejectField(EditFileField.CharacterStatValue(statID), STAT_VALUE_ERROR)
         character.stats.none { it.statID == statID } -> reject(STAT_NOT_FOUND_ERROR)
@@ -146,28 +195,37 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun removeCharacterStat(statID: String) {
-    mutateCharacter { character ->
+    mutateCharacter(
+        clearFieldErrors =
+            setOf(
+                EditFileField.CharacterStatName(statID),
+                EditFileField.CharacterStatValue(statID),
+            )
+    ) { character ->
       if (character.stats.none { it.statID == statID }) reject(STAT_NOT_FOUND_ERROR)
       else character.copy(stats = character.stats.filterNot { it.statID == statID })
     }
   }
 
-  override fun addCharacterAction(name: String, description: String) {
-    val actionID = UUID.randomUUID().toString()
-    mutateCharacter { character ->
-      when {
-        name.isBlank() ->
-            rejectField(EditFileField.CharacterActionName(actionID), ACTION_NAME_ERROR)
-        else ->
-            character.copy(
-                actions = character.actions + CharacterAction(actionID, name, description)
-            )
-      }
+  override fun addCharacterAction() {
+    val state = _uiState.value
+    val name = state.newActionName.trim()
+    val description = state.newActionDescription
+    if (name.isBlank()) {
+      rejectField(EditFileField.NewCharacterActionName, ACTION_NAME_ERROR)
+      return
     }
+    if (state.character == null) return reportError(CHARACTER_REQUIRED_ERROR)
+    val actionID = UUID.randomUUID().toString()
+    mutateCharacter(clearFieldErrors = setOf(EditFileField.NewCharacterActionName)) { character ->
+      character.copy(actions = character.actions + CharacterAction(actionID, name, description))
+    }
+    _uiState.update { it.copy(newActionName = "", newActionDescription = "") }
   }
 
   override fun updateCharacterActionName(actionID: String, name: String) {
-    mutateCharacter { character ->
+    mutateCharacter(clearFieldErrors = setOf(EditFileField.CharacterActionName(actionID))) {
+        character ->
       when {
         character.actions.none { it.actionID == actionID } -> reject(ACTION_NOT_FOUND_ERROR)
         name.isBlank() ->
@@ -198,7 +256,8 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun removeCharacterAction(actionID: String) {
-    mutateCharacter { character ->
+    mutateCharacter(clearFieldErrors = setOf(EditFileField.CharacterActionName(actionID))) {
+        character ->
       if (character.actions.none { it.actionID == actionID }) reject(ACTION_NOT_FOUND_ERROR)
       else character.copy(actions = character.actions.filterNot { it.actionID == actionID })
     }
@@ -220,7 +279,9 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun updateLoreSectionTitle(sectionID: String, title: String) {
-    updateLoreSection(sectionID) { it.copy(title = title) }
+    updateLoreSection(sectionID, setOf(EditFileField.LoreSectionTitle(sectionID))) {
+      it.copy(title = title)
+    }
   }
 
   override fun updateLoreSectionDescription(sectionID: String, description: String) {
@@ -228,7 +289,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun removeLoreSection(sectionID: String) {
-    mutateLore { lore ->
+    mutateLore(clearFieldErrors = setOf(EditFileField.LoreSectionTitle(sectionID))) { lore ->
       if (lore.sections.none { it.sectionID == sectionID }) reject(SECTION_NOT_FOUND_ERROR)
       else lore.copy(sections = lore.sections.filterNot { it.sectionID == sectionID })
     }
@@ -243,7 +304,16 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
       reportError(generalValidationError)
       return
     }
-    val fieldErrors = collectFieldErrors(state) + state.fieldErrors
+    val fieldErrors =
+        collectFieldErrors(state) +
+            state.fieldErrors.filterKeys {
+              it !in
+                  setOf(
+                      EditFileField.NewCharacterStatName,
+                      EditFileField.NewCharacterStatValue,
+                      EditFileField.NewCharacterActionName,
+                  )
+            }
     if (fieldErrors.isNotEmpty()) {
       _uiState.update { it.copy(error = null, isSaved = false, fieldErrors = fieldErrors) }
       return
@@ -268,7 +338,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
     _uiState.update { it.copy(isSaving = true, isSaved = false, error = null) }
     viewModelScope.launch {
       try {
-        repository.updateFile(updatedFile).getOrThrow()
+        repository.updateFile(updatedFile.toEdit()).getOrThrow()
         _uiState.update { current ->
           current.copy(
               file = updatedFile,
@@ -303,8 +373,12 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
     }
   }
 
-  private fun updateLoreSection(sectionID: String, transform: (LoreSection) -> LoreSection) {
-    mutateLore { lore ->
+  private fun updateLoreSection(
+      sectionID: String,
+      clearFieldErrors: Set<EditFileField> = emptySet(),
+      transform: (LoreSection) -> LoreSection,
+  ) {
+    mutateLore(clearFieldErrors = clearFieldErrors) { lore ->
       val sectionIndex = lore.sections.indexOfFirst { it.sectionID == sectionID }
       if (sectionIndex < 0) reject(SECTION_NOT_FOUND_ERROR)
       else {
@@ -318,20 +392,32 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
     }
   }
 
-  private fun mutateCharacter(transform: (CharacterFile) -> CharacterFile?) {
+  private fun mutateCharacter(
+      clearFieldErrors: Set<EditFileField> = emptySet(),
+      transform: (CharacterFile) -> CharacterFile?,
+  ) {
     val state = _uiState.value
     val character = state.character ?: return reportError(CHARACTER_REQUIRED_ERROR)
     val updated = transform(character) ?: return
     val newState = state.copy(character = updated, isSaved = false, error = null)
-    _uiState.value = newState.copy(fieldErrors = collectFieldErrors(newState))
+    _uiState.value =
+        newState.copy(
+            fieldErrors = (state.fieldErrors - clearFieldErrors) + collectFieldErrors(newState),
+        )
   }
 
-  private fun mutateLore(transform: (LoreFile) -> LoreFile?) {
+  private fun mutateLore(
+      clearFieldErrors: Set<EditFileField> = emptySet(),
+      transform: (LoreFile) -> LoreFile?,
+  ) {
     val state = _uiState.value
     val lore = state.lore ?: return reportError(LORE_REQUIRED_ERROR)
     val updated = transform(lore) ?: return
     val newState = state.copy(lore = updated, isSaved = false, error = null)
-    _uiState.value = newState.copy(fieldErrors = collectFieldErrors(newState))
+    _uiState.value =
+        newState.copy(
+            fieldErrors = (state.fieldErrors - clearFieldErrors) + collectFieldErrors(newState),
+        )
   }
 
   private fun reject(message: String): Nothing? {
@@ -344,7 +430,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
       current.copy(
           error = null,
           isSaved = false,
-          fieldErrors = mapOf(field to message),
+          fieldErrors = current.fieldErrors + (field to message),
       )
     }
     return null

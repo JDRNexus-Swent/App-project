@@ -3,6 +3,7 @@ package com.github.se.jdrnexus.utils
 
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.FileEdit
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
@@ -57,7 +58,7 @@ class NavigationWorkspaceRepository(
 
   override suspend fun createFile(file: JDRFile): Result<Unit> = error("Not used")
 
-  override suspend fun updateFile(file: JDRFile): Result<Unit> = error("Not used")
+  override suspend fun updateFile(edit: FileEdit): Result<Unit> = error("Not used")
 
   override suspend fun deleteFile(fileId: String): Result<Unit> = error("Not used")
 
@@ -67,7 +68,6 @@ class NavigationWorkspaceRepository(
   override suspend fun removeItemFromGroup(
       itemId: String,
       groupId: String,
-      parentFolderId: String,
   ): Result<Unit> = error("Not used")
 
   override suspend fun addItemToGroup(
@@ -86,9 +86,6 @@ class NavigationWorkspaceRepository(
 
   override fun getFileFlow(fileId: String): Flow<JDRFile?> =
       flowOf(files.firstOrNull { it.id == fileId })
-
-  override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> =
-      flowOf(files.filter { it.ownerId == ownerId && it.personalParentId.isEmpty() })
 
   override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
       flowOf(files.filter { it.ownerId == ownerId && it.personalParentId == folderId })

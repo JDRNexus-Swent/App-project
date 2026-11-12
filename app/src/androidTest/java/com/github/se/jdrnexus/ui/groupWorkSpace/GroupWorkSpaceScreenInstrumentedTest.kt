@@ -22,6 +22,7 @@ import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.FileEdit
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.Placement
@@ -724,8 +725,9 @@ class GroupWorkSpaceScreenInstrumentedTest {
       state.value += file.id to file
     }
 
-    override suspend fun updateFile(file: JDRFile): Result<Unit> = runOperation {
-      state.value += file.id to file
+    override suspend fun updateFile(edit: FileEdit): Result<Unit> = runOperation {
+      val file = state.value.getValue(edit.id)
+      state.value += edit.id to file.copy(name = edit.name, content = edit.content)
     }
 
     override suspend fun deleteFile(fileId: String): Result<Unit> = runOperation {
@@ -737,7 +739,6 @@ class GroupWorkSpaceScreenInstrumentedTest {
     override suspend fun removeItemFromGroup(
         itemId: String,
         groupId: String,
-        parentFolderId: String,
     ) = runOperation {
       val item = state.value.getValue(itemId)
       state.value +=
@@ -796,10 +797,6 @@ class GroupWorkSpaceScreenInstrumentedTest {
                 rootFailure?.let { throw IllegalStateException(it) }
               }
             }
-
-    override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = state.map { files ->
-      files.values.filter { it.ownerId == ownerId && it.sharedGroupsIds.isEmpty() }
-    }
 
     private suspend fun runOperation(block: () -> Unit): Result<Unit> =
         try {

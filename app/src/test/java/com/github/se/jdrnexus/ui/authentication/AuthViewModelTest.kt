@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.authentication
 
 import com.github.se.jdrnexus.model.repository.AuthError
@@ -273,20 +274,79 @@ class AuthViewModelTest {
   }
 
   @Test
-  fun signInRejectsShortPasswordWithoutCallingRepository() = runTest {
-    val repository = FakeAuthRepository()
+  fun signInSendsShortPasswordToRepositoryAndShowsItsError() = runTest {
+    val repository =
+        FakeAuthRepository().apply {
+          signInResponse = AuthResult.Failure(AuthError.INVALID_CREDENTIALS)
+        }
     val viewModel = AuthViewModel(repository)
     fillForm(viewModel, password = "12345")
 
     viewModel.signIn()
+    runCurrent()
 
+    assertEquals("player@example.com" to "12345", repository.lastSignInArguments)
     assertEquals(
-        AuthStatus.Error(
-            "Password must be at least ${AuthViewModel.MIN_PASSWORD_LENGTH} characters."
-        ),
+        AuthStatus.Error(AuthError.INVALID_CREDENTIALS.message),
         viewModel.uiState.value.status,
     )
+    assertEquals(null, viewModel.uiState.value.passwordError)
+  }
+
+  @Test
+  fun signInRejectsEmptyPasswordWithoutCallingRepository() = runTest {
+    val repository = FakeAuthRepository()
+    val viewModel = AuthViewModel(repository)
+    fillForm(viewModel, password = "")
+
+    viewModel.signIn()
+
+    assertEquals(
+        AuthStatus.Error(AuthError.EMPTY_PASSWORD.message),
+        viewModel.uiState.value.status,
+    )
+    assertEquals(AuthError.EMPTY_PASSWORD.message, viewModel.uiState.value.passwordError)
     assertEquals(0, repository.signInCalls)
+  }
+
+  @Test
+  fun emptyPasswordErrorStaysUntilOneCharacterIsTyped() {
+    val viewModel = AuthViewModel(FakeAuthRepository())
+    fillForm(viewModel, password = "")
+    viewModel.signIn()
+
+    viewModel.onEmailChange("other@example.com")
+    assertEquals(AuthError.EMPTY_PASSWORD.message, viewModel.uiState.value.passwordError)
+
+    viewModel.onPasswordChange("a")
+    assertEquals(null, viewModel.uiState.value.passwordError)
+  }
+
+  @Test
+  fun clearErrorsRemovesErrorsAndKeepsTypedValues() {
+    val viewModel = AuthViewModel(FakeAuthRepository())
+    fillForm(viewModel, email = "invalid", password = "123", username = " ")
+    viewModel.signUp()
+
+    viewModel.clearErrors()
+
+    assertEquals(
+        AuthUiState(email = "invalid", password = "123", username = " "),
+        viewModel.uiState.value,
+    )
+  }
+
+  @Test
+  fun clearErrorsLeavesRunningRequestAlone() = runTest {
+    val repository = FakeAuthRepository().apply { signInGate = CompletableDeferred() }
+    val viewModel = AuthViewModel(repository)
+    fillForm(viewModel)
+    viewModel.signIn()
+    runCurrent()
+
+    viewModel.clearErrors()
+
+    assertEquals(AuthStatus.Loading, viewModel.uiState.value.status)
   }
 
   @Test

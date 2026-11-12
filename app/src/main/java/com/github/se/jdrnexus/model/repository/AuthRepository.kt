@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.repository
 
 import kotlinx.coroutines.flow.Flow
@@ -16,6 +17,7 @@ enum class AuthError(val message: String) {
   ),
   WEAK_PASSWORD("Choose a stronger password."),
   INVALID_USERNAME("Enter a username."),
+  EMPTY_PASSWORD("Enter your password."),
   SESSION_NOT_FOUND("The signed-in account is no longer available."),
   INVALID_GOOGLE_CREDENTIAL("Google sign-in could not be verified. Try again."),
   NETWORK_ERROR("Couldn't connect. Check your internet connection and try again."),

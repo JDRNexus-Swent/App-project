@@ -1,8 +1,10 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.authentication
 
 import android.app.PendingIntent
 import android.content.Context
 import android.os.CancellationSignal
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -36,6 +38,9 @@ import androidx.credentials.exceptions.ClearCredentialException
 import androidx.credentials.exceptions.CreateCredentialException
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.publickeycredential.SignalCredentialStateException
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
@@ -43,6 +48,7 @@ import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import com.github.se.jdrnexus.utils.TestScreenLifecycleOwner
 import java.util.concurrent.Executor
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
@@ -334,19 +340,58 @@ class SignUpScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsDisplayed()
   }
 
+  @Test
+  fun signUpScreen_logInLinkClearsSignUpErrors() {
+    var signInRequested = false
+    showSignUp(onSignInScreen = { signInRequested = true })
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
+    composeTestRule.onNodeWithText(AuthError.INVALID_USERNAME.message).assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).performClick()
+
+    composeTestRule.onAllNodesWithText(AuthError.INVALID_USERNAME.message).assertCountEquals(0)
+    composeTestRule.onAllNodesWithText(AuthError.INVALID_EMAIL.message).assertCountEquals(0)
+    assertEquals(true, signInRequested)
+  }
+
+  @Test
+  fun signUpScreen_actionsAreIgnoredOnceTheScreenIsLeft() {
+    val repository = FakeAuthRepository()
+    val lifecycleOwner = TestScreenLifecycleOwner()
+    var signInRequested = false
+    showSignUp(
+        repository,
+        onSignInScreen = { signInRequested = true },
+        lifecycleOwner = lifecycleOwner,
+    )
+    enterSignUpCredentials()
+
+    composeTestRule.runOnUiThread { lifecycleOwner.moveTo(Lifecycle.State.CREATED) }
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).performClick()
+
+    assertEquals(0, repository.signUpCalls)
+    assertEquals(false, signInRequested)
+  }
+
   private fun showSignUp(
       repository: FakeAuthRepository = FakeAuthRepository(),
       onRegister: () -> Unit = {},
       onSignInScreen: () -> Unit = {},
+      lifecycleOwner: LifecycleOwner? = null,
   ) {
     val viewModel = AuthViewModel(repository)
     composeTestRule.setContent {
-      SampleAppTheme {
-        SignUpScreen(
-            signUpViewModel = viewModel,
-            onRegister = onRegister,
-            onSignInScreen = onSignInScreen,
-        )
+      CompositionLocalProvider(
+          LocalLifecycleOwner provides (lifecycleOwner ?: LocalLifecycleOwner.current)
+      ) {
+        SampleAppTheme {
+          SignUpScreen(
+              signUpViewModel = viewModel,
+              onRegister = onRegister,
+              onSignInScreen = onSignInScreen,
+          )
+        }
       }
     }
   }

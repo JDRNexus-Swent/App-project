@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.authentication
 
 import androidx.compose.foundation.BorderStroke
@@ -59,6 +60,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
@@ -95,6 +98,8 @@ fun SignInScreen(
   // Keeps track of whether the password should be visible or masked.
   var passwordVisible by remember { mutableStateOf(false) }
   val context = LocalContext.current
+
+  val canAct = authActionGuard(signInViewModel)
 
   LaunchedEffect(uiState.status) {
     if (uiState.status is AuthStatus.Success) {
@@ -258,7 +263,11 @@ fun SignInScreen(
 
       // button in case of forgotten password
       TextButton(
-          onClick = { forgotPassword?.invoke() ?: showComingSoon(context, "Password recovery") },
+          onClick = {
+            if (canAct()) {
+              forgotPassword?.invoke() ?: showComingSoon(context, "Password recovery")
+            }
+          },
           enabled = !isAuthenticationLocked,
           modifier = Modifier.align(Alignment.End).testTag(C.Tag.sign_in_forgot_password),
       ) {
@@ -271,8 +280,10 @@ fun SignInScreen(
       // Sign-in button to sign in to the app .
       Button(
           onClick = {
-            googleErrorMessage = null
-            signInViewModel.signIn()
+            if (canAct()) {
+              googleErrorMessage = null
+              signInViewModel.signIn()
+            }
           },
           enabled = !isAuthenticationLocked,
           modifier = Modifier.fillMaxWidth().height(54.dp).testTag(C.Tag.sign_in_submit),
@@ -322,7 +333,11 @@ fun SignInScreen(
 
       //  Sign in with Google for users who already have an account.
       GoogleSignInButton(
-          click = { signInViewModel.googleSignIn(context, credentialManager) },
+          click = {
+            if (canAct()) {
+              signInViewModel.googleSignIn(context, credentialManager)
+            }
+          },
           border = colors.onSurface,
           logo = colors.primary,
           textColor = colors.onSecondary,
@@ -339,7 +354,12 @@ fun SignInScreen(
         )
 
         TextButton(
-            onClick = onSignUp,
+            onClick = {
+              if (canAct()) {
+                signInViewModel.clearErrors()
+                onSignUp()
+              }
+            },
             enabled = !isAuthenticationLocked,
             modifier = Modifier.testTag(C.Tag.sign_in_sign_up),
             contentPadding = PaddingValues(2.dp),
@@ -352,6 +372,27 @@ fun SignInScreen(
         }
       }
     }
+  }
+}
+
+/**
+ * Returns the check that [SignInScreen] and [SignUpScreen] run at the start of every button action:
+ * true only while this screen is at least STARTED and [viewModel] has no request running or
+ * finished.
+ *
+ * The buttons' `enabled` flag is not enough: two buttons tapped in the same frame both run before
+ * recomposition disables the other one. When the first tap starts a request, [viewModel] is locked
+ * at once; when it navigates, the NavController moves this screen to CREATED at once. Either way
+ * the second tap is ignored. A first tap that does neither, such as "Forgot password" showing a
+ * message, blocks nothing. The screen being opened is STARTED during its enter animation, so it
+ * accepts taps right away.
+ */
+@Composable
+internal fun authActionGuard(viewModel: AuthViewModel): () -> Boolean {
+  val lifecycleOwner = LocalLifecycleOwner.current
+  return {
+    lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
+        !viewModel.isAuthenticationLocked()
   }
 }
 
