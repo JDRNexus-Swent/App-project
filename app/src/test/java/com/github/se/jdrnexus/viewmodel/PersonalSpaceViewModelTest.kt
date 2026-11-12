@@ -349,17 +349,18 @@ class PersonalSpaceViewModelTest {
         repository.folderFetchRequests,
     )
   }
+
   /** Verifies a second folder tap is ignored while the first folder is still opening. */
   @Test
   fun secondFolderTapWhileOneIsOpeningIsIgnored() {
     val otherFolder = JDRFile("folder-3", "Other folder", type = DocumentType.FOLDER)
     val folderFetchGate = CompletableDeferred<Unit>()
     val repository =
-      FakePersonalSpaceRepository(
-        rootItems = listOf(rootFolder, otherFolder),
-        itemsByFolder = mapOf(rootFolder.id to listOf(nestedFile)),
-        folderFetchGate = folderFetchGate,
-      )
+        FakePersonalSpaceRepository(
+            rootItems = listOf(rootFolder, otherFolder),
+            itemsByFolder = mapOf(rootFolder.id to listOf(nestedFile)),
+            folderFetchGate = folderFetchGate,
+        )
     val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
     idleMainLooper()
 
@@ -516,6 +517,7 @@ class PersonalSpaceViewModelTest {
     assertTrue(viewModel.uiState.value.isNewFolderDialogOpen)
     assertFalse(viewModel.uiState.value.isCreatingFolder)
   }
+
   /** Verifies a double tap on "Create" saves one folder and the flag is cleared afterwards. */
   @Test
   fun doubleTapOnCreateCreatesOnlyOneFolder() {
