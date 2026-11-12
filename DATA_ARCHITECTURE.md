@@ -86,7 +86,7 @@ The repository does not authenticate: the caller passes the user id (like `addUs
 | `joinGroupWithCode(code, userId)` | `WriteBatch`: create `redemptions/{uid}`, `arrayUnion(uid)` on `participantIds`, `arrayUnion(groupId)` on `users/{uid}.groupIds` (merge). Only the current user is added, never a whole list. |
 
 - **"Already a member" is checked before writing**, on `users/{uid}.groupIds`: a non-member cannot read the group, and this is the list the rules trust (1.6). The GM is detected the same way.
-- A revoked code and a code that never existed both give `UNKNOWN_CODE`. A group that does not exist gives `GROUP_NOT_FOUND`. If the group was deleted but its invitation survives, the join batch fails on the group update and nothing is written.
+- A revoked code and a code that never existed both give `UNKNOWN_CODE`. A group that does not exist gives `GROUP_NOT_FOUND`. If the group was deleted but its invitation survives, nothing is written. Under the security rules the join batch is refused (`PERMISSION_DENIED`, because the redemption rule cannot read the missing group), which `joinGroupWithCode` reports as `NETWORK`. Without the rules (repository tests), the group update fails and the call returns `GROUP_NOT_FOUND`.
 - If the join batch succeeds but the final read of the group fails, the call returns `NETWORK` although the user is a member, and a retry returns `ALREADY_MEMBER`. Callers should rely on `getUserGroups` to know whether the user joined.
 
 #### Security rules
@@ -357,7 +357,7 @@ Rules and batch behavior must be tested with the **Firebase emulator** (member /
 - The invitation rules (1.7) have no rules tests yet: the repository tests run on the emulator without the security rules. Rules tests that load `firestore.rules` with signed-in users come with the test refactor. Until then, the "denied" cases (listing, old code, adding another user, another field, non-GM) are not verified automatically.
 - The join makes about 6 to 8 document-access calls in the rules (limit: 20 per batched write). The emulator does not apply the limit: to check once on a real Firestore project.
 - Deleting or regenerating an invitation does not delete its `redemptions` subcollection (Firestore never cascades): the documents stay as harmless orphans. To handle with the group lifecycle (9).
-- `deleteGroup` does not delete the group's invitation: the code stays known but points to nothing (`joinGroupWithCode` returns `GROUP_NOT_FOUND`).
+- `deleteGroup` does not delete the group's invitation: the code stays known but points to nothing. Under the security rules, a join with that code is refused (`PERMISSION_DENIED`) and reported as `NETWORK`, not `GROUP_NOT_FOUND`. `deleteGroup` could delete the invitation in its own batch (the delete rule allows it, since the group still exists before the batch), so the code really stops existing.
 - `regenerateInvitation` checks that the new code is free with a plain read, not atomically (the collision probability is negligible). Two simultaneous regenerations can leave one valid invitation that the group no longer knows.
 - A refused write (`PERMISSION_DENIED`) during an invitation operation is mapped to a generic error (`NETWORK` for a join, `NOT_GAME_MASTER` for create and regenerate), because the real cause is not known to the client.
 ---
