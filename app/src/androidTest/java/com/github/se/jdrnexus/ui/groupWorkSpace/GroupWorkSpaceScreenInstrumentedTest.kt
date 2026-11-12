@@ -614,6 +614,29 @@ class GroupWorkSpaceScreenInstrumentedTest {
     composeTestRule.waitUntil(5_000) { viewModel.uiState.value.errorMessage.isEmpty() }
   }
 
+  @Test
+  fun characterCardNeverShowsItsRawJson() {
+    val json = """{"version":1,"type":"character","character":{"name":"Hero"}}"""
+    composeTestRule.setContent {
+      WorkspaceCard(
+          file = JDRFile(id = "hero", name = "Hero", type = DocumentType.CHARACTER, content = json),
+          canEdit = false,
+          canRemove = false,
+          isHidden = false,
+          canChangeVisibility = false,
+          operationInProgress = false,
+          onOpen = {},
+          onEdit = {},
+          onRemove = {},
+          onToggleVisibility = {},
+      )
+    }
+
+    composeTestRule.onNodeWithText("Hero").assertIsDisplayed()
+    composeTestRule.onNodeWithText("\"version\"", substring = true).assertDoesNotExist()
+    composeTestRule.onNodeWithText("{", substring = true).assertDoesNotExist()
+  }
+
   private fun openActions() {
     composeTestRule.onNodeWithTag(C.Tag.workspace_actions_fab, true).performClick()
   }

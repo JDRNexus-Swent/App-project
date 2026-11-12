@@ -284,6 +284,8 @@ fun FolderItem(
     borderColor: Color = MaterialTheme.colorScheme.outline,
     accentColor: Color = MaterialTheme.colorScheme.primary,
 ) {
+  // A character's content is its saved JSON: never show it.
+  val description = if (folder.type == DocumentType.CHARACTER) "" else folder.content
   Card(
       onClick = onFolderClicked,
       modifier = modifier.fillMaxWidth().height(96.dp),
@@ -341,14 +343,16 @@ fun FolderItem(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 4.dp),
         )
-        Text(
-            text = folder.content,
-            color = secondaryText,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 3.dp),
-        )
+        if (description.isNotBlank()) {
+          Text(
+              text = description,
+              color = secondaryText,
+              fontSize = 12.sp,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis,
+              modifier = Modifier.padding(top = 3.dp),
+          )
+        }
       }
 
       if (folder.isContainer()) {

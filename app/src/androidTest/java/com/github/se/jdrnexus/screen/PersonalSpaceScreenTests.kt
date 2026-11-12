@@ -394,6 +394,19 @@ class PersonalSpaceScreenTests {
   }
 
   @Test
+  fun characterRowShowsItsTypeAndNeverItsRawJson() {
+    val json = """{"version":1,"type":"character","character":{"name":"Hero"}}"""
+    val character =
+        JDRFile(id = "hero", name = "Hero", type = DocumentType.CHARACTER, content = json)
+    setScreen(viewModel(listOf(character)))
+
+    composeTestRule.onNodeWithText("Hero").assertIsDisplayed()
+    composeTestRule.onNodeWithText("CHARACTER SHEET").assertIsDisplayed()
+    composeTestRule.onNodeWithText("\"version\"", substring = true).assertDoesNotExist()
+    composeTestRule.onNodeWithText("{", substring = true).assertDoesNotExist()
+  }
+
+  @Test
   fun bothThemesShowTheFiles() {
     val viewModel = viewModel()
     var night by mutableStateOf(true)
