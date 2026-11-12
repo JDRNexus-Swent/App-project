@@ -188,6 +188,7 @@ class CampaignGroupWorkspaceE2ETest {
     composeRule.onNodeWithTag(C.Tag.workspace_actions_fab).performClick()
     composeRule.onNodeWithTag(C.Tag.workspace_add_file).performClick()
     composeRule.onNodeWithTag(C.Tag.workspace_add_files_dialog).assertIsDisplayed()
+    waitForText(fileName)
     composeRule.onNodeWithText(fileName).assertIsDisplayed().performClick()
 
     waitForTag(C.Tag.workspaceItem(fileId))
