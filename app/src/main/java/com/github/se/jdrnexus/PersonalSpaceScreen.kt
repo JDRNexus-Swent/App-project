@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -56,6 +57,7 @@ import com.github.se.jdrnexus.model.personalSpace.isContainer
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
+import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.LoadState
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 
@@ -82,7 +84,7 @@ fun PersonalSpaceScreen(
       containerColor = themeColors.background,
       topBar = {
         AppTopBar(
-            title = uiState.newFolderName.ifEmpty { "Personal Space" },
+            title = uiState.folderPath.lastOrNull() ?: "Personal Space",
             onBack = {
               if (uiState.canNavigateUp) {
                 personalSpaceViewModel.onNavigateUp()
@@ -128,8 +130,17 @@ fun PersonalSpaceScreen(
     Column(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
       Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
         Spacer(modifier = Modifier.height(8.dp))
+          if (uiState.folderPath.isNotEmpty()) {
+              Text(
+                  text = (listOf("My Space") + uiState.folderPath.dropLast(1)).joinToString(" / "),
+                  color = secondaryText,
+                  fontSize = 12.sp,
+                  maxLines = 1,
+                  overflow = TextOverflow.Ellipsis,
+              )
+          }
         Text(
-            text = uiState.newFolderName.ifEmpty { "My Space" },
+            text = uiState.folderPath.lastOrNull() ?: "My Space",
             color = primaryText,
             fontFamily = FontFamily.Serif,
             fontSize = 30.sp,

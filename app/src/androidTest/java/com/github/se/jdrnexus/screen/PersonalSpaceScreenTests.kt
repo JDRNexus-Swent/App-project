@@ -267,6 +267,25 @@ class PersonalSpaceScreenTests {
     assertEquals("", viewModel.uiState.value.currentFolderId)
     composeTestRule.onNodeWithText("The Ashen Realms").assertIsDisplayed()
   }
+    @Test
+    fun insideFolderHeaderAndHeadingShowFolderNameAndPath() {
+        setScreen()
+
+        composeTestRule.onNodeWithText("The Ashen Realms").performClick()
+        composeTestRule.waitForIdle()
+
+        // Top bar title + heading both show the folder name.
+        composeTestRule.onAllNodesWithText("The Ashen Realms").assertCountEquals(2)
+        // The path above the heading is only "My Space" for a folder at the root.
+        composeTestRule.onNodeWithText("My Space").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Personal Space").assertDoesNotExist()
+
+        composeTestRule.onNodeWithContentDescription("Back").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("Personal Space").assertIsDisplayed()
+        composeTestRule.onNodeWithText("My Space").assertIsDisplayed()
+    }
 
   @Test
   fun viewModelFilesShowTheirVisibleLabelsAndIcons() {
@@ -320,15 +339,22 @@ class PersonalSpaceScreenTests {
     composeTestRule.onNodeWithText("The Ashen Realms").assertIsDisplayed()
   }
 
-  @Test
-  fun headerShowsDraftFolderNameWhenSet() {
-    val viewModel = viewModel()
-    viewModel.onNewFolderNameChanged("Campaign")
-    setScreen(viewModel)
+    @Test
+    fun headerAndHeadingDoNotChangeWhileTypingFolderName() {
+        val viewModel = viewModel()
+        setScreen(viewModel)
 
-    composeTestRule.onAllNodesWithText("Campaign").assertCountEquals(2)
-    composeTestRule.onNodeWithText("Personal Space").assertDoesNotExist()
-  }
+        composeTestRule.onNodeWithContentDescription("Add item").performClick()
+        composeTestRule.onNodeWithText("New folder").performClick()
+        composeTestRule.onNode(hasSetTextAction()).performTextInput("Campaign")
+        composeTestRule.waitForIdle()
+
+        assertEquals("Campaign", viewModel.uiState.value.newFolderName)
+        composeTestRule.onNodeWithText("Personal Space").assertIsDisplayed()
+        composeTestRule.onNodeWithText("My Space").assertIsDisplayed()
+        // The typed text only lives in the dialog field.
+        composeTestRule.onAllNodesWithText("Campaign").assertCountEquals(1)
+    }
 
   @Test
   fun emptyPersonalSpaceShowsEmptyStateWithoutItems() {
@@ -410,7 +436,8 @@ class PersonalSpaceScreenTests {
     composeTestRule.runOnIdle { viewModel.onAddMenuDismissed() }
     composeTestRule.runOnIdle { viewModel.onNewFolderNameChanged("Campaign") }
 
-    composeTestRule.onAllNodesWithText("Campaign").assertCountEquals(2)
+      composeTestRule.onNodeWithText("Campaign").assertDoesNotExist()
+      composeTestRule.onNodeWithText("Personal Space").assertIsDisplayed()
     composeTestRule.onNodeWithContentDescription("Back").performClick()
     assertTrue(backButtonClicked)
   }
