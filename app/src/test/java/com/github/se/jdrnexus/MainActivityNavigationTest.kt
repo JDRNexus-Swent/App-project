@@ -718,9 +718,6 @@ class MainActivityNavigationTest {
     override suspend fun getFile(fileId: String): Result<JDRFile?> =
         Result.success(files.firstOrNull { it.id == fileId })
 
-    override fun getPersonalRootFiles(ownerId: String) =
-        flowOf(files.filter { it.ownerId == ownerId && it.personalParentId.isEmpty() })
-
     override fun getPersonalFolderFiles(folderId: String, ownerId: String) =
         flowOf(files.filter { it.ownerId == ownerId && it.personalParentId == folderId })
   }
@@ -782,8 +779,6 @@ class MainActivityNavigationTest {
               error("Not used")
 
           override fun getFileFlow(fileId: String) = error("Not used")
-
-          override fun getPersonalRootFiles(ownerId: String) = error("Not used")
 
           override fun getPersonalFolderFiles(folderId: String, ownerId: String) = error("Not used")
 
