@@ -672,18 +672,27 @@ class GameGMViewModelTest {
   }
 
   @Test
-  fun blankAndDuplicateEnemiesAreRejected() = runTest {
+  fun enemyWithBlankIdIsRejected() = runTest {
     val viewModel = createViewModel()
     advanceUntilIdle()
 
     viewModel.addEnemy(goblin.copy(id = " "))
     advanceUntilIdle()
-    val blankIdError = viewModel.uiState.value.error
+
+    assertEquals("Enemy ID cannot be empty.", viewModel.uiState.value.error)
+    assertEquals(emptyList<CombatNPC>(), viewModel.uiState.value.enemies)
+    assertTrue(repository.savedSessions.isEmpty())
+  }
+
+  @Test
+  fun duplicateEnemyIsRejected() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
     viewModel.addEnemy(goblin)
     viewModel.addEnemy(goblin)
     advanceUntilIdle()
 
-    assertEquals("Enemy ID cannot be empty.", blankIdError)
     assertEquals("Enemy already exists.", viewModel.uiState.value.error)
     assertEquals(listOf(goblin), viewModel.uiState.value.enemies)
     assertEquals(1, repository.savedSessions.size)
@@ -739,6 +748,7 @@ class GameGMViewModelTest {
     repository.activityLoadException = IllegalStateException("Feed crashed")
 
     viewModel.loadActivityFeed()
+    assertTrue(viewModel.uiState.value.isLoading)
     advanceUntilIdle()
 
     assertEquals("Feed crashed", viewModel.uiState.value.error)
@@ -747,14 +757,18 @@ class GameGMViewModelTest {
 
   @Test
   fun errorsWithoutMessageUseFallbackText() = runTest {
-    val viewModel = createViewModel()
-    advanceUntilIdle()
-    repository.sessionWriteFailure = IllegalStateException()
+    val errors =
+        listOf(null, "", "   ").map { message ->
+          val viewModel = createViewModel()
+          advanceUntilIdle()
+          repository.sessionWriteFailure = IllegalStateException(message)
 
-    viewModel.startCombat()
-    advanceUntilIdle()
+          viewModel.startCombat()
+          advanceUntilIdle()
+          viewModel.uiState.value.error
+        }
 
-    assertEquals("Failed to save the campaign session.", viewModel.uiState.value.error)
+    assertEquals(List(3) { "Failed to save the campaign session." }, errors)
   }
 
   @Test
