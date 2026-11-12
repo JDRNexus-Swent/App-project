@@ -74,6 +74,7 @@ class Die3DTest {
   fun rotationProviderIsReadAgainWhenFacingValueChanges() {
     setDie()
     waitUntilSelected(DiceType.D20)
+    composeTestRule.waitUntil(MODEL_TIMEOUT_MILLIS) { rotationReads > 0 }
     val readsBefore = rotationReads
 
     facingValue = NEXT_FACING_VALUE
