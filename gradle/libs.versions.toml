@@ -15,6 +15,7 @@ lifecycleRuntimeKtx = "2.11.0"
 kaspresso = "1.6.1"
 mockk = "1.14.11"
 robolectric = "4.16.1"
+orgJson = "20250517"
 kotlinxCoroutines = "1.11.0"
 kotlinxSerialization = "1.9.0"
 sonar = "7.5.0.8588"
@@ -63,6 +64,7 @@ kaspresso-compose = { group = "com.kaspersky.android-components", name = "kaspre
 
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+org-json = { module = "org.json:json", version.ref = "orgJson" }
 androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics", version.ref = "uiGraphics" }
 
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }

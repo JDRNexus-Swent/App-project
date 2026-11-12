@@ -150,6 +150,8 @@ dependencies {
   implementation(platform(libs.compose.bom))
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
+  // Real org.json for plain JVM tests (android.jar only ships stubs)
+  testImplementation(libs.org.json)
   globalTestImplementation(libs.androidx.junit)
   globalTestImplementation(libs.androidx.espresso.core)
 
