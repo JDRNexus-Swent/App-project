@@ -134,18 +134,30 @@ class EditFileCharacterTests {
       )
     }
     composeTestRule.onNodeWithTag(EditFileCharacterTestTags.STATS_LIST).assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(EditFileCharacterTestTags.LIST)
+        .performScrollToKey("actions-heading")
     composeTestRule.onNodeWithTag(EditFileCharacterTestTags.ACTIONS_LIST).assertIsDisplayed()
 
+    composeTestRule
+        .onNodeWithTag(EditFileCharacterTestTags.LIST)
+        .performScrollToKey("character-name")
     composeTestRule.onNodeWithTag("edit_character_name").performTextClearance()
     composeTestRule.onNodeWithTag("edit_character_name").performTextInput("Elara Starwhisper")
     composeTestRule.onNodeWithTag(EditFileCharacterTestTags.CURRENT_HP).performTextClearance()
     composeTestRule.onNodeWithTag(EditFileCharacterTestTags.CURRENT_HP).performTextInput("20")
     composeTestRule.onNodeWithTag(EditFileCharacterTestTags.MAX_HP).performTextClearance()
     composeTestRule.onNodeWithTag(EditFileCharacterTestTags.MAX_HP).performTextInput("30")
+    composeTestRule
+        .onNodeWithTag(EditFileCharacterTestTags.LIST)
+        .performScrollToKey("stat-strength")
     composeTestRule.onNodeWithTag("stat_name_strength").performTextClearance()
     composeTestRule.onNodeWithTag("stat_name_strength").performTextInput("Wisdom")
     composeTestRule.onNodeWithTag("stat_value_strength").performTextClearance()
     composeTestRule.onNodeWithTag("stat_value_strength").performTextInput("18")
+    composeTestRule
+        .onNodeWithTag(EditFileCharacterTestTags.LIST)
+        .performScrollToKey("action-longbow")
     composeTestRule.onNodeWithTag("action_name_longbow").performTextClearance()
     composeTestRule.onNodeWithTag("action_name_longbow").performTextInput("Arcane Longbow")
     composeTestRule.onNodeWithTag("action_description_longbow").performTextClearance()
@@ -182,6 +194,7 @@ class EditFileCharacterTests {
     composeTestRule.onNodeWithText("Dexterity").assertIsNotDisplayed()
     composeTestRule.onNodeWithText("Arcane Longbow").assertIsNotDisplayed()
 
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.LIST).performScrollToKey("save")
     composeTestRule.onNodeWithTag("edit_character_save").performScrollTo().performClick()
     composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
       repository.updatedFiles.isNotEmpty()
@@ -341,6 +354,7 @@ class EditFileCharacterTests {
     composeTestRule.onNodeWithText(EditFileViewModel.STAT_VALUE_ERROR).assertDoesNotExist()
     composeTestRule.onNodeWithTag("add_entry_name").assertTextEquals("New stat name", "")
     composeTestRule.onNodeWithTag("add_entry_value").assertTextEquals("New stat value", "")
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.LIST).performScrollToKey("add-action")
     composeTestRule.onNodeWithTag("add_action_name").performScrollTo().performClick()
     composeTestRule.onNodeWithTag("confirm_add_action").performScrollTo().performClick()
     assertEquals(0, viewModel.uiState.value.character!!.actions.size)

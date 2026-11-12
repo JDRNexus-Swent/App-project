@@ -337,7 +337,7 @@ private fun StatRow(
   Row(
       modifier = Modifier.fillMaxWidth(),
       horizontalArrangement = Arrangement.spacedBy(6.dp),
-      verticalAlignment = Alignment.CenterVertically,
+      verticalAlignment = Alignment.Top,
   ) {
     EditableTextField(
         value = stat.name,
