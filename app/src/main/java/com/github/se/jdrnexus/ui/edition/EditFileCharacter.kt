@@ -2,10 +2,12 @@
 package com.github.se.jdrnexus.ui.edition
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -177,47 +179,62 @@ fun EditFileCharacter(
         )
       }
       item(key = "add-stat") {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-          Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.spacedBy(6.dp),
-              verticalAlignment = Alignment.CenterVertically,
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(10.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            tonalElevation = 1.dp,
+        ) {
+          Column(
+              modifier = Modifier.fillMaxWidth().padding(8.dp),
+              verticalArrangement = Arrangement.spacedBy(4.dp),
           ) {
-            OutlinedTextField(
-                value = newStatName,
-                onValueChange = { newStatName = it },
-                modifier = Modifier.weight(1f).testTag("add_entry_name"),
-                label = { Text(stringResource(R.string.edit_character_stat_name_label)) },
-                singleLine = true,
-            )
-            OutlinedTextField(
-                value = newStatValue,
-                onValueChange = { newStatValue = it },
-                modifier = Modifier.weight(0.6f).testTag("add_entry_value"),
-                label = { Text(stringResource(R.string.edit_character_value_label)) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            )
-          }
-          OutlinedButton(
-              onClick = {
-                val name = newStatName.trim()
-                val value = newStatValue.toDoubleOrNull()
-                if (name.isBlank() || value == null || !value.isFinite()) {
-                  return@OutlinedButton
-                }
-                viewModel.addCharacterStat(name, value)
-                newStatName = ""
-                newStatValue = ""
-              },
-              modifier = Modifier.fillMaxWidth().testTag("confirm_add_stat"),
-              shape = RoundedCornerShape(8.dp),
-          ) {
-            Icon(Icons.Default.Add, contentDescription = null)
             Text(
-                stringResource(R.string.edit_character_add_stat),
-                modifier = Modifier.padding(start = 6.dp),
+                text = stringResource(R.string.edit_character_new_stat),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+              OutlinedTextField(
+                  value = newStatName,
+                  onValueChange = { newStatName = it },
+                  modifier = Modifier.weight(1f).testTag("add_entry_name"),
+                  label = { Text(stringResource(R.string.edit_character_new_stat_name)) },
+                  singleLine = true,
+              )
+              OutlinedTextField(
+                  value = newStatValue,
+                  onValueChange = { newStatValue = it },
+                  modifier = Modifier.weight(0.6f).testTag("add_entry_value"),
+                  label = { Text(stringResource(R.string.edit_character_new_stat_value)) },
+                  singleLine = true,
+                  keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+              )
+            }
+            OutlinedButton(
+                onClick = {
+                  val name = newStatName.trim()
+                  val value = newStatValue.toDoubleOrNull()
+                  if (name.isBlank() || value == null || !value.isFinite()) {
+                    return@OutlinedButton
+                  }
+                  viewModel.addCharacterStat(name, value)
+                  newStatName = ""
+                  newStatValue = ""
+                },
+                modifier = Modifier.fillMaxWidth().testTag("confirm_add_stat"),
+                shape = RoundedCornerShape(8.dp),
+            ) {
+              Icon(Icons.Default.Add, contentDescription = null)
+              Text(
+                  stringResource(R.string.edit_character_add_stat),
+                  modifier = Modifier.padding(start = 6.dp),
+              )
+            }
           }
         }
       }
@@ -243,39 +260,54 @@ fun EditFileCharacter(
         )
       }
       item(key = "add-action") {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-          OutlinedTextField(
-              value = newActionName,
-              onValueChange = { newActionName = it },
-              modifier = Modifier.fillMaxWidth().testTag("add_action_name"),
-              label = { Text(stringResource(R.string.edit_character_action_name_label)) },
-              singleLine = true,
-          )
-          OutlinedTextField(
-              value = newActionDescription,
-              onValueChange = { newActionDescription = it },
-              modifier = Modifier.fillMaxWidth().testTag("add_action_description"),
-              label = { Text(stringResource(R.string.edit_character_description_label)) },
-              singleLine = true,
-          )
-          OutlinedButton(
-              onClick = {
-                val name = newActionName.trim()
-                if (name.isBlank()) {
-                  return@OutlinedButton
-                }
-                viewModel.addCharacterAction(name, newActionDescription)
-                newActionName = ""
-                newActionDescription = ""
-              },
-              modifier = Modifier.fillMaxWidth().testTag("confirm_add_action"),
-              shape = RoundedCornerShape(8.dp),
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(10.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            tonalElevation = 1.dp,
+        ) {
+          Column(
+              modifier = Modifier.fillMaxWidth().padding(8.dp),
+              verticalArrangement = Arrangement.spacedBy(4.dp),
           ) {
-            Icon(Icons.Default.Add, contentDescription = null)
             Text(
-                stringResource(R.string.edit_character_add_action),
-                modifier = Modifier.padding(start = 6.dp),
+                text = stringResource(R.string.edit_character_new_action),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
             )
+            OutlinedTextField(
+                value = newActionName,
+                onValueChange = { newActionName = it },
+                modifier = Modifier.fillMaxWidth().testTag("add_action_name"),
+                label = { Text(stringResource(R.string.edit_character_new_action_name)) },
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = newActionDescription,
+                onValueChange = { newActionDescription = it },
+                modifier = Modifier.fillMaxWidth().testTag("add_action_description"),
+                label = { Text(stringResource(R.string.edit_character_new_action_description)) },
+                singleLine = true,
+            )
+            OutlinedButton(
+                onClick = {
+                  val name = newActionName.trim()
+                  if (name.isBlank()) {
+                    return@OutlinedButton
+                  }
+                  viewModel.addCharacterAction(name, newActionDescription)
+                  newActionName = ""
+                  newActionDescription = ""
+                },
+                modifier = Modifier.fillMaxWidth().testTag("confirm_add_action"),
+                shape = RoundedCornerShape(8.dp),
+            ) {
+              Icon(Icons.Default.Add, contentDescription = null)
+              Text(
+                  stringResource(R.string.edit_character_add_action),
+                  modifier = Modifier.padding(start = 6.dp),
+              )
+            }
           }
         }
       }
@@ -364,7 +396,7 @@ private fun ActionRow(
   Surface(
       modifier = Modifier.fillMaxWidth(),
       shape = RoundedCornerShape(10.dp),
-      color = MaterialTheme.colorScheme.surfaceVariant,
+      color = MaterialTheme.colorScheme.surface,
       tonalElevation = 1.dp,
   ) {
     Column(modifier = Modifier.padding(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -435,7 +467,7 @@ private fun NumberField(
       singleLine = true,
       isError = error != null,
       keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-      supportingText = error?.let { message -> ({ Text(message) }) },
+      supportingText = { Box(Modifier.heightIn(min = 48.dp)) { error?.let { Text(it) } } },
   )
 }
 
@@ -474,6 +506,6 @@ private fun EditableTextField(
       singleLine = singleLine,
       minLines = minLines,
       isError = isError,
-      supportingText = supportingText,
+      supportingText = { Box(Modifier.heightIn(min = 48.dp)) { supportingText?.invoke() } },
   )
 }

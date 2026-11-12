@@ -20,6 +20,7 @@ import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.ui.edition.EditFileCharacter
 import com.github.se.jdrnexus.ui.edition.EditFileCharacterTestTags
+import com.github.se.jdrnexus.ui.jdrfile.EditFileField
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
@@ -323,7 +324,7 @@ class EditFileCharacterTests {
     composeTestRule.onNodeWithTag("add_entry_value").performTextInput("invalid")
     composeTestRule.onNodeWithTag("confirm_add_stat").performScrollTo().performClick()
     assertEquals(0, viewModel.uiState.value.character!!.stats.size)
-    composeTestRule.onNodeWithTag("add_entry_name").assertTextEquals("Stat name", "Stealth")
+    composeTestRule.onNodeWithTag("add_entry_name").assertTextEquals("New stat name", "Stealth")
 
     composeTestRule.onNodeWithTag("add_entry_value").performTextClearance()
     composeTestRule.onNodeWithTag("add_entry_value").performTextInput("14")
@@ -336,6 +337,96 @@ class EditFileCharacterTests {
     composeTestRule.onNodeWithTag("add_action_description").performTextInput("Protect an ally")
     composeTestRule.onNodeWithTag("confirm_add_action").performScrollTo().performClick()
     assertEquals("Guard", viewModel.uiState.value.character!!.actions.single().name)
+  }
+
+  @Test
+  fun outlinedFieldsKeepTheirPositionWhenValidationErrorsAppear() {
+    val file =
+        JDRFile(
+            id = "character-field-errors",
+            name = "Elara Moonwhisper",
+            type = DocumentType.CHARACTER,
+            content =
+                """{"version":1,"type":"character","character":{"name":"Elara Moonwhisper","stats":[{"statID":"strength","name":"Strength","value":16}],"actions":[{"actionID":"longbow","name":"Longbow","description":"Ranged attack"}],"hp":{"current":18,"max":24}}}""",
+        )
+    val viewModel = EditFileViewModel(FakeWorkspaceRepository(file))
+    viewModel.loadFile(file.id)
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      viewModel.uiState.value.character != null
+    }
+
+    composeTestRule.setContent {
+      EditFileCharacter(viewModel = viewModel, onBack = {}, onSaved = {})
+    }
+
+    val currentHpField = composeTestRule.onNodeWithTag(EditFileCharacterTestTags.CURRENT_HP)
+    val maxHpField = composeTestRule.onNodeWithTag(EditFileCharacterTestTags.MAX_HP)
+    val currentHpTop = currentHpField.fetchSemanticsNode().boundsInRoot.top
+    val maxHpTop = maxHpField.fetchSemanticsNode().boundsInRoot.top
+    viewModel.updateCharacterCurrentHp(-1)
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      viewModel.uiState.value.fieldErrors[EditFileField.CharacterCurrentHp] != null
+    }
+    composeTestRule.waitForIdle()
+    assertEquals(currentHpTop, currentHpField.fetchSemanticsNode().boundsInRoot.top, 1f)
+    assertEquals(maxHpTop, maxHpField.fetchSemanticsNode().boundsInRoot.top, 1f)
+
+    viewModel.updateCharacterCurrentHp(18)
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      viewModel.uiState.value.fieldErrors.isEmpty()
+    }
+
+    composeTestRule
+        .onNodeWithTag(EditFileCharacterTestTags.LIST)
+        .performScrollToKey("stat-strength")
+    val nameField = composeTestRule.onNodeWithTag("stat_name_strength")
+    val valueField = composeTestRule.onNodeWithTag("stat_value_strength")
+    val nameTop = nameField.fetchSemanticsNode().boundsInRoot.top
+    val valueTop = valueField.fetchSemanticsNode().boundsInRoot.top
+
+    viewModel.updateCharacterStatName("strength", "")
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      viewModel.uiState.value.fieldErrors[EditFileField.CharacterStatName("strength")] != null
+    }
+    composeTestRule.waitForIdle()
+    assertEquals(nameTop, nameField.fetchSemanticsNode().boundsInRoot.top, 1f)
+    assertEquals(valueTop, valueField.fetchSemanticsNode().boundsInRoot.top, 1f)
+
+    viewModel.updateCharacterStatName("strength", "Strength")
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      viewModel.uiState.value.fieldErrors.isEmpty()
+    }
+    viewModel.updateCharacterStatValue("strength", Double.NaN)
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      viewModel.uiState.value.fieldErrors[EditFileField.CharacterStatValue("strength")] != null
+    }
+    composeTestRule.waitForIdle()
+    assertEquals(nameTop, nameField.fetchSemanticsNode().boundsInRoot.top, 1f)
+    assertEquals(valueTop, valueField.fetchSemanticsNode().boundsInRoot.top, 1f)
+
+    viewModel.updateCharacterStatValue("strength", 16.0)
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      viewModel.uiState.value.fieldErrors.isEmpty()
+    }
+    composeTestRule
+        .onNodeWithTag(EditFileCharacterTestTags.LIST)
+        .performScrollToKey("action-longbow")
+    val actionNameField = composeTestRule.onNodeWithTag("action_name_longbow")
+    val actionDescriptionField = composeTestRule.onNodeWithTag("action_description_longbow")
+    val actionNameTop = actionNameField.fetchSemanticsNode().boundsInRoot.top
+    val actionDescriptionTop = actionDescriptionField.fetchSemanticsNode().boundsInRoot.top
+
+    viewModel.updateCharacterActionName("longbow", "")
+    composeTestRule.waitUntil(timeoutMillis = timeOutConstant) {
+      viewModel.uiState.value.fieldErrors[EditFileField.CharacterActionName("longbow")] != null
+    }
+    composeTestRule.waitForIdle()
+    assertEquals(actionNameTop, actionNameField.fetchSemanticsNode().boundsInRoot.top, 1f)
+    assertEquals(
+        actionDescriptionTop,
+        actionDescriptionField.fetchSemanticsNode().boundsInRoot.top,
+        1f,
+    )
   }
 
   @Test
