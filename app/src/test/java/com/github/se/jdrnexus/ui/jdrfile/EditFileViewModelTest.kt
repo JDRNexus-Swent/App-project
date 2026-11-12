@@ -10,6 +10,7 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.FileEdit
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
@@ -506,8 +507,9 @@ class EditFileViewModelTest {
 
     override suspend fun createFile(file: JDRFile): Result<Unit> = Result.success(Unit)
 
-    override suspend fun updateFile(file: JDRFile): Result<Unit> {
-      updatedFiles.add(file)
+    override suspend fun updateFile(edit: FileEdit): Result<Unit> {
+      val existing = file?.takeIf { it.id == edit.id } ?: JDRFile(id = edit.id)
+      updatedFiles.add(existing.copy(name = edit.name, content = edit.content))
       updateFileGate?.await()
       return updateFailure?.let { Result.failure(it) } ?: Result.success(Unit)
     }
@@ -524,14 +526,11 @@ class EditFileViewModelTest {
     override suspend fun removeItemFromGroup(
         itemId: String,
         groupId: String,
-        parentFolderId: String,
     ): Result<Unit> {
       TODO("Not yet implemented")
     }
 
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = emptyFlow()
-
-    override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> = emptyFlow()
 
     override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
         emptyFlow()

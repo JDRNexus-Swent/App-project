@@ -14,6 +14,7 @@ import com.github.se.jdrnexus.model.filerepresentation.LoreSection
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
+import com.github.se.jdrnexus.model.personalSpace.toEdit
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -268,7 +269,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
     _uiState.update { it.copy(isSaving = true, isSaved = false, error = null) }
     viewModelScope.launch {
       try {
-        repository.updateFile(updatedFile).getOrThrow()
+        repository.updateFile(updatedFile.toEdit()).getOrThrow()
         _uiState.update { current ->
           current.copy(
               file = updatedFile,

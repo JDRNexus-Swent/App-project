@@ -4,8 +4,10 @@ package com.github.se.jdrnexus.ui.search
 import android.os.Looper
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.FileEdit
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.PERSONAL_ROOT_ID
 import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
@@ -371,7 +373,7 @@ class DocumentSearchViewModelTest {
 
     override suspend fun createFile(file: JDRFile): Result<Unit> = Result.success(Unit)
 
-    override suspend fun updateFile(file: JDRFile): Result<Unit> = Result.success(Unit)
+    override suspend fun updateFile(edit: FileEdit): Result<Unit> = Result.success(Unit)
 
     override suspend fun deleteFile(fileId: String): Result<Unit> = Result.success(Unit)
 
@@ -380,7 +382,6 @@ class DocumentSearchViewModelTest {
     override suspend fun removeItemFromGroup(
         itemId: String,
         groupId: String,
-        parentFolderId: String,
     ): Result<Unit> = Result.success(Unit)
 
     override suspend fun addItemToGroup(
@@ -399,13 +400,13 @@ class DocumentSearchViewModelTest {
 
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = flowOf(null)
 
-    override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> {
-      personalRootRequests++
-      return rootFailure?.let { failure -> flow { throw failure } } ?: flowOf(rootItems)
+    override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> {
+      if (folderId == PERSONAL_ROOT_ID) {
+        personalRootRequests++
+        return rootFailure?.let { failure -> flow { throw failure } } ?: flowOf(rootItems)
+      }
+      return flowOf(itemsByFolder[folderId].orEmpty())
     }
-
-    override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
-        flowOf(itemsByFolder[folderId].orEmpty())
 
     override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
         flowOf(groupItems[folderId].orEmpty())
