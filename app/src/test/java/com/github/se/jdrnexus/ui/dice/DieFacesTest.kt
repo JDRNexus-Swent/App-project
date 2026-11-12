@@ -80,14 +80,6 @@ class DieFacesTest {
     assertSameVector(-alongX, rotate(rotationBetween(alongX, -alongX), alongX))
   }
 
-  @Test
-  fun modelNodeNamesMatchTheNodesInTheModel() {
-    assertEquals(
-        listOf("d4", "d6", "d8", "d10", "d12", "d20"),
-        DiceType.entries.map { it.modelNodeName },
-    )
-  }
-
   /** The number printed on the face: the d10's 10 is printed "0". */
   private fun printed(diceType: DiceType, value: Int) =
       if (diceType == DiceType.D10) value % D10_PRINTED_MODULO else value

@@ -5,8 +5,17 @@ import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Quaternion
 import org.junit.Assert.assertEquals
 
-/** Tolerance for directions and rotations computed in floats. */
+/**
+ * Tolerance on each component of a unit vector computed in floats: about 0.06° between two
+ * directions.
+ */
 internal const val VECTOR_EPSILON = 1e-3f
+
+/**
+ * Above this cosine, two unit directions count as the same: within about 2.6°. A cosine near 1
+ * moves with the square of the angle, so this is far looser than [VECTOR_EPSILON] per component.
+ */
+private const val SAME_DIRECTION_COSINE = 0.999f
 
 /** The three axes: a rotation is fully known once we know where it sends them. */
 private val AXES = listOf(Float3(x = 1f), Float3(y = 1f), Float3(z = 1f))
@@ -26,7 +35,7 @@ internal fun assertSameRotation(expected: Quaternion, actual: Quaternion, messag
   AXES.forEach { axis -> assertSameVector(rotate(expected, axis), rotate(actual, axis), message) }
 }
 
-/** Whether [a] and [b] turn the die the same way, within [VECTOR_EPSILON]. */
-internal fun sameRotation(a: Quaternion, b: Quaternion): Boolean =
-    // Unit vectors at a tiny angle have a cosine just below 1.
-    AXES.all { axis -> dotProduct(rotate(a, axis), rotate(b, axis)) > 1f - VECTOR_EPSILON }
+/** Whether [a] and [b] turn the die the same way, within [SAME_DIRECTION_COSINE]. */
+internal fun sameRotation(a: Quaternion, b: Quaternion): Boolean = AXES.all { axis ->
+  dotProduct(rotate(a, axis), rotate(b, axis)) > SAME_DIRECTION_COSINE
+}

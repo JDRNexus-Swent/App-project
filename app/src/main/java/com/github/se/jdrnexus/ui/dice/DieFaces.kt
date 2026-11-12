@@ -23,6 +23,12 @@ internal val TOWARDS_VIEWER = Float3(0f, 0f, 1f)
 private const val OPPOSITE_COSINE = -0.9999f
 
 /**
+ * Above this cosine with an axis, a direction counts as lying along it: crossing them would give
+ * too short a vector to normalise reliably.
+ */
+private const val ALONG_AXIS_COSINE = 0.9f
+
+/**
  * Outward normal, in the model's coordinates, of the face showing each value, value 1 first. The d4
  * is read at a corner instead (each corner shows the same number on its three faces), so its
  * vectors point from the centre to the corners.
@@ -114,8 +120,10 @@ private val FACE_DIRECTIONS: Map<DiceType, List<Float3>> =
     )
 
 /** Outward direction, in the model's coordinates, of the face (corner on a d4) showing [value]. */
-internal fun faceDirection(diceType: DiceType, value: Int): Float3 =
-    normalize(FACE_DIRECTIONS.getValue(diceType)[value - 1])
+internal fun faceDirection(diceType: DiceType, value: Int): Float3 {
+  require(value in 1..diceType.maxValue) { "$value is not a face of a $diceType" }
+  return normalize(FACE_DIRECTIONS.getValue(diceType)[value - 1])
+}
 
 /** Rotation of a die resting with [value] turned towards the viewer. */
 internal fun landingRotation(diceType: DiceType, value: Int): Quaternion =
@@ -127,7 +135,7 @@ internal fun rotationBetween(from: Float3, to: Float3): Quaternion {
   val cosine = dotProduct(from, to)
   if (cosine < OPPOSITE_COSINE) {
     // Half a turn, around any axis perpendicular to [from]: x, unless [from] lies along x.
-    val helper = if (abs(from.x) < abs(OPPOSITE_COSINE)) Float3(x = 1f) else Float3(y = 1f)
+    val helper = if (abs(from.x) < ALONG_AXIS_COSINE) Float3(x = 1f) else Float3(y = 1f)
     return Quaternion(normalize(crossProduct(from, helper)), 0f)
   }
   // A quaternion turns by twice its own angle: (cross, 1 + cos), once normalised, holds exactly
