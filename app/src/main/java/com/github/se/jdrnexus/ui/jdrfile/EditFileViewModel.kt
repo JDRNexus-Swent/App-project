@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.jdrfile
 
 import androidx.lifecycle.ViewModel
@@ -83,21 +84,28 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun onAddStatNameChange(name: String) {
+    _uiState.update { it.copy(newStatName = name) }
     val field = EditFileField.NewCharacterStatName
     if (name.isBlank()) rejectField(field, STAT_NAME_ERROR)
     else _uiState.update { it.copy(fieldErrors = it.fieldErrors - field) }
   }
 
   override fun onAddStatValueChange(value: String) {
+    _uiState.update { it.copy(newStatValue = value) }
     val field = EditFileField.NewCharacterStatValue
     if (value.toDoubleOrNull()?.isFinite() != true) rejectField(field, STAT_VALUE_ERROR)
     else _uiState.update { it.copy(fieldErrors = it.fieldErrors - field) }
   }
 
   override fun onAddActionNameChange(name: String) {
+    _uiState.update { it.copy(newActionName = name) }
     val field = EditFileField.NewCharacterActionName
     if (name.isBlank()) rejectField(field, ACTION_NAME_ERROR)
     else _uiState.update { it.copy(fieldErrors = it.fieldErrors - field) }
+  }
+
+  override fun onAddActionDescriptionChange(description: String) {
+    _uiState.update { it.copy(newActionDescription = description) }
   }
 
   override fun updateCharacterCurrentHp(current: Int) {
@@ -127,7 +135,10 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
     }
   }
 
-  override fun addCharacterStat(name: String, value: Double) {
+  override fun addCharacterStat() {
+    val state = _uiState.value
+    val name = state.newStatName.trim()
+    val value = state.newStatValue.toDoubleOrNull() ?: Double.NaN
     val errors = buildMap {
       if (name.isBlank()) put(EditFileField.NewCharacterStatName, STAT_NAME_ERROR)
       if (!value.isFinite()) put(EditFileField.NewCharacterStatValue, STAT_VALUE_ERROR)
@@ -139,6 +150,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
       return
     }
 
+    if (state.character == null) return reportError(CHARACTER_REQUIRED_ERROR)
     val statID = UUID.randomUUID().toString()
     mutateCharacter(
         clearFieldErrors =
@@ -148,6 +160,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
           stats = character.stats + CharacterStat(statID = statID, name = name, value = value)
       )
     }
+    _uiState.update { it.copy(newStatName = "", newStatValue = "") }
   }
 
   override fun updateCharacterStatName(statID: String, name: String) {
@@ -193,15 +206,20 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
     }
   }
 
-  override fun addCharacterAction(name: String, description: String) {
+  override fun addCharacterAction() {
+    val state = _uiState.value
+    val name = state.newActionName.trim()
+    val description = state.newActionDescription
     if (name.isBlank()) {
       rejectField(EditFileField.NewCharacterActionName, ACTION_NAME_ERROR)
       return
     }
+    if (state.character == null) return reportError(CHARACTER_REQUIRED_ERROR)
     val actionID = UUID.randomUUID().toString()
     mutateCharacter(clearFieldErrors = setOf(EditFileField.NewCharacterActionName)) { character ->
       character.copy(actions = character.actions + CharacterAction(actionID, name, description))
     }
+    _uiState.update { it.copy(newActionName = "", newActionDescription = "") }
   }
 
   override fun updateCharacterActionName(actionID: String, name: String) {
