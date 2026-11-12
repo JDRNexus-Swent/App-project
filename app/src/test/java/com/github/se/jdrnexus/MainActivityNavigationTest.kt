@@ -510,10 +510,10 @@ class MainActivityNavigationTest {
 
     composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
 
-    // The header stays "My Space", so verify the folder contents rather than a folder-name title.
-    // If Back returned to the root, the folder row would be shown instead of its lore document.
+    // The lore document only shows inside the folder, and the top bar title and the heading both
+    // show the folder name. At the root, the folder name would appear once, as a row.
     composeTestRule.onNodeWithText(loreFile.name).assertIsDisplayed()
-    composeTestRule.onNodeWithText(folder.name).assertIsNotDisplayed()
+    composeTestRule.onAllNodesWithText(folder.name).assertCountEquals(2)
   }
 
   @Test
@@ -588,9 +588,9 @@ class MainActivityNavigationTest {
 
     Espresso.pressBack()
 
-    // The header stays "My Space"; the nested file proves the folder state was restored.
+    // The nested file proves the folder was restored, and its name is now in the title and heading.
     composeTestRule.onNodeWithText(personalLore.name).assertIsDisplayed()
-    composeTestRule.onNodeWithText(folder.name).assertIsNotDisplayed()
+    composeTestRule.onAllNodesWithText(folder.name).assertCountEquals(2)
   }
 
   private class NoGamesMapRepository : MapRepository {
