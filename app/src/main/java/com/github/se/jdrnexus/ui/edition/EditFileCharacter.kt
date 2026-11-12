@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.edition
 
 import androidx.compose.foundation.layout.Arrangement
@@ -369,7 +370,8 @@ private fun StatRow(
     )
     IconButton(
         onClick = onRemove,
-        modifier = Modifier.size(40.dp).testTag("remove_stat_${stat.statID}"),
+        modifier =
+            Modifier.padding(bottom = 48.dp).size(40.dp).testTag("remove_stat_${stat.statID}"),
     ) {
       Icon(Icons.Default.Close, contentDescription = "Remove ${stat.name}")
     }
@@ -415,7 +417,10 @@ private fun ActionRow(
         )
         IconButton(
             onClick = onRemove,
-            modifier = Modifier.size(40.dp).testTag("remove_action_${action.actionID}"),
+            modifier =
+                Modifier.padding(bottom = 48.dp)
+                    .size(40.dp)
+                    .testTag("remove_action_${action.actionID}"),
         ) {
           Icon(Icons.Default.Close, contentDescription = "Remove ${action.name}")
         }
