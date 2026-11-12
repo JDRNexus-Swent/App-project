@@ -22,6 +22,10 @@ object C {
     const val shared_top_bar = "shared_top_bar"
     const val shared_back_button = "shared_back_button"
     const val shared_bottom_bar = "shared_bottom_bar"
+    const val search_open = "document_search_open"
+    const val search_query = "document_search_query"
+    const val search_clear = "document_search_clear"
+    const val search_loading = "document_search_loading"
 
     const val sign_in_email = "auth_sign_in_email"
     const val sign_in_password = "auth_sign_in_password"
@@ -167,5 +171,8 @@ object C {
 
     /** Tag of the button restoring the hidden GM dashboard section [key]. */
     fun gameGmRestore(key: String) = "game_gm_restore_$key"
+
+    /** Tag of the search result item with [fileId]. */
+    fun searchResult(fileId: String) = "document_search_result_$fileId"
   }
 }
