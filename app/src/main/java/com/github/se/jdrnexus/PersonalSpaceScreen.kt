@@ -1,6 +1,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -78,18 +79,21 @@ fun PersonalSpaceScreen(
   val borderColor = themeColors.outline
   val accentColor = themeColors.accent
 
+  val handleBack = {
+    if (personalSpaceViewModel.uiState.value.canNavigateUp) {
+      personalSpaceViewModel.onNavigateUp()
+    } else {
+      onBackButton()
+    }
+  }
+  BackHandler(onBack = handleBack)
+
   Scaffold(
       containerColor = themeColors.background,
       topBar = {
         AppTopBar(
             title = uiState.folderPath.lastOrNull() ?: "Personal Space",
-            onBack = {
-              if (uiState.canNavigateUp) {
-                personalSpaceViewModel.onNavigateUp()
-              } else {
-                onBackButton()
-              }
-            },
+            onBack = handleBack,
         )
       },
       bottomBar = { ScreenBottomBar(selectedTab = "Files", onTabSelected = onTabSelected) },

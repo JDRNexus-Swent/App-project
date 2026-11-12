@@ -3,6 +3,7 @@
 package com.github.se.jdrnexus.screen
 
 import android.content.res.Configuration
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Composer
@@ -23,7 +24,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -61,7 +62,7 @@ import org.junit.runner.RunWith
 @OptIn(InternalComposeTracingApi::class)
 @RunWith(AndroidJUnit4::class)
 class PersonalSpaceScreenTests {
-  @get:Rule val composeTestRule = createComposeRule()
+  @get:Rule val composeTestRule = createAndroidComposeRule<ComponentActivity>()
 
   /**
    * The Compose compiler wraps every composable in `if (isTraceInProgress()) trace...` checks. This
@@ -144,6 +145,13 @@ class PersonalSpaceScreenTests {
             onTabSelected = onTabSelected,
         )
       }
+    }
+  }
+
+  /** Sends the system back button [times] times in a row, with no recomposition in between. */
+  private fun pressSystemBack(times: Int = 1) {
+    composeTestRule.runOnIdle {
+      repeat(times) { composeTestRule.activity.onBackPressedDispatcher.onBackPressed() }
     }
   }
 
@@ -266,6 +274,78 @@ class PersonalSpaceScreenTests {
     assertFalse(backButtonClicked)
     assertEquals("", viewModel.uiState.value.currentFolderId)
     composeTestRule.onNodeWithText("The Ashen Realms").assertIsDisplayed()
+  }
+
+  @Test
+  fun systemBackAtRootInvokesCallback() {
+    var backButtonClicked = false
+    setScreen(onBackButton = { backButtonClicked = true })
+
+    pressSystemBack()
+
+    assertTrue(backButtonClicked)
+  }
+
+  @Test
+  fun systemBackInsideFolderGoesUpInsteadOfLeaving() {
+    val viewModel = viewModel()
+    var backButtonClicked = false
+    setScreen(viewModel, onBackButton = { backButtonClicked = true })
+
+    composeTestRule.onNodeWithText("The Ashen Realms").performClick()
+    composeTestRule.onNodeWithText("This folder is empty.").assertIsDisplayed()
+
+    pressSystemBack()
+    composeTestRule.waitForIdle()
+
+    assertFalse(backButtonClicked)
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    composeTestRule.onNodeWithText("The Ashen Realms").assertIsDisplayed()
+  }
+
+  @Test
+  fun systemBackInNestedFolderGoesUpOneLevelAtATime() {
+    val viewModel = viewModel()
+    var backButtonClicked = false
+    setScreen(viewModel, onBackButton = { backButtonClicked = true })
+
+    composeTestRule.runOnIdle {
+      viewModel.onItemClicked(files[0]) {}
+      viewModel.onItemClicked(files[3]) {}
+    }
+    composeTestRule.waitForIdle()
+    assertEquals("silver-covenant", viewModel.uiState.value.currentFolderId)
+
+    pressSystemBack()
+    assertEquals("ashen-realms", viewModel.uiState.value.currentFolderId)
+    assertFalse(backButtonClicked)
+
+    pressSystemBack()
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertFalse(backButtonClicked)
+
+    pressSystemBack()
+    assertTrue(backButtonClicked)
+  }
+
+  @Test
+  fun fastRepeatedSystemBackNeverSkipsALevel() {
+    val viewModel = viewModel()
+    var backCount = 0
+    setScreen(viewModel, onBackButton = { backCount++ })
+
+    composeTestRule.runOnIdle {
+      viewModel.onItemClicked(files[0]) {}
+      viewModel.onItemClicked(files[3]) {}
+    }
+    composeTestRule.waitForIdle()
+
+    // Three backs in the same frame, with no recomposition in between:
+    // two levels up, then leave the screen exactly once.
+    pressSystemBack(times = 3)
+
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertEquals(1, backCount)
   }
 
   @Test
