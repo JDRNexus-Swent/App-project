@@ -204,8 +204,9 @@ fun EditFileCharacter(
                   onValueChange = viewModel::onAddStatNameChange,
                   modifier = Modifier.weight(1f).testTag("add_entry_name"),
                   label = { Text(stringResource(R.string.edit_character_new_stat_name)) },
-                  singleLine = true,isError = newStatNameError != null,
-                supportingText = newStatNameError?.let { message -> ({ Text(message) }) },
+                  singleLine = true,
+                  isError = newStatNameError != null,
+                  supportingText = newStatNameError?.let { message -> ({ Text(message) }) },
               )
               OutlinedTextField(
                   value = state.newStatValue,
@@ -214,13 +215,12 @@ fun EditFileCharacter(
                   label = { Text(stringResource(R.string.edit_character_new_stat_value)) },
                   singleLine = true,
                   keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-              isError = newStatValueError != null,
-            supportingText = newStatValueError?.let { message -> ({ Text(message) }) },
-            )
-                }
-                  OutlinedButton(
-                  onClick =
-                  viewModel::addCharacterStat,
+                  isError = newStatValueError != null,
+                  supportingText = newStatValueError?.let { message -> ({ Text(message) }) },
+              )
+            }
+            OutlinedButton(
+                onClick = viewModel::addCharacterStat,
                 modifier = Modifier.fillMaxWidth().testTag("confirm_add_stat"),
                 shape = RoundedCornerShape(8.dp),
             ) {
@@ -275,8 +275,9 @@ fun EditFileCharacter(
                 onValueChange = viewModel::onAddActionNameChange,
                 modifier = Modifier.fillMaxWidth().testTag("add_action_name"),
                 label = { Text(stringResource(R.string.edit_character_new_action_name)) },
-                singleLine = true,isError = newActionNameError != null,
-              supportingText = newActionNameError?.let { message -> ({ Text(message) }) },
+                singleLine = true,
+                isError = newActionNameError != null,
+                supportingText = newActionNameError?.let { message -> ({ Text(message) }) },
             )
             OutlinedTextField(
                 value = state.newActionDescription,
@@ -286,8 +287,7 @@ fun EditFileCharacter(
                 singleLine = true,
             )
             OutlinedButton(
-                onClick =
-                  viewModel::addCharacterAction,
+                onClick = viewModel::addCharacterAction,
                 modifier = Modifier.fillMaxWidth().testTag("confirm_add_action"),
                 shape = RoundedCornerShape(8.dp),
             ) {
