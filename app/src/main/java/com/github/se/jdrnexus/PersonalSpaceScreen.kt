@@ -33,6 +33,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -96,7 +97,7 @@ fun PersonalSpaceScreen(
               }
             },
             trailingContent = {
-              androidx.compose.material3.IconButton(
+              IconButton(
                   onClick = onSearchClicked,
                   modifier = Modifier.testTag(C.Tag.search_open),
               ) {
