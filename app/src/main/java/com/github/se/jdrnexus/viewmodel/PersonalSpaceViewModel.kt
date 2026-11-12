@@ -70,7 +70,7 @@ class PersonalSpaceViewModel(
 
   /** Folders visited before the current one, used to go back up. "" = Root. */
   private val navigationPath = ArrayDeque<String>()
-    private val folderNames = ArrayDeque<String>()
+  private val folderNames = ArrayDeque<String>()
 
   /**
    * The fetch currently running. It is cancelled when a new fetch starts, so a slow response for a
@@ -109,7 +109,7 @@ class PersonalSpaceViewModel(
             cancelActions()
             fetchJob?.cancel()
             navigationPath.clear()
-              folderNames.clear()
+            folderNames.clear()
             val message = failure.message?.takeIf(String::isNotBlank) ?: "Unable to load items."
             _uiState.value = PersonalSpaceUiState(loadState = LoadState.Error(message))
           }
@@ -117,7 +117,7 @@ class PersonalSpaceViewModel(
             cancelActions()
             fetchJob?.cancel()
             navigationPath.clear()
-              folderNames.clear()
+            folderNames.clear()
             if (userId == null) {
               fetchJob = null
               _uiState.value = PersonalSpaceUiState(loadState = LoadState.SignedOut)
@@ -172,8 +172,8 @@ class PersonalSpaceViewModel(
   fun onItemClicked(item: JDRFile, navigateToDocument: (document: JDRFile) -> Unit) {
     if (item.isContainer()) {
       navigationPath.addLast(_uiState.value.currentFolderId)
-        folderNames.addLast(item.name)
-        fetchItems(personalParentId = item.id)
+      folderNames.addLast(item.name)
+      fetchItems(personalParentId = item.id)
     } else {
       navigateToDocument(item)
     }
@@ -185,7 +185,7 @@ class PersonalSpaceViewModel(
    */
   fun onNavigateUp() {
     if (navigationPath.isEmpty()) return
-      folderNames.removeLast()
+    folderNames.removeLast()
     fetchItems(personalParentId = navigationPath.removeLast())
   }
 
