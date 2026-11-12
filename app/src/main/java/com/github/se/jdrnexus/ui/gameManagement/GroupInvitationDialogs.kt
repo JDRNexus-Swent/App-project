@@ -86,6 +86,16 @@ internal fun invitationErrorMessage(error: InvitationError): Int =
     }
 
 /**
+ * The text shown in the join dialog for each failure. A NETWORK error there can come after the
+ * membership was written (`GameManagementViewModel.joinGroup` reads the group back afterwards), so
+ * its text asks the player to check their groups list before retrying.
+ */
+@StringRes
+internal fun joinErrorMessage(error: InvitationError): Int =
+    if (error == InvitationError.NETWORK) R.string.join_error_network
+    else invitationErrorMessage(error)
+
+/**
  * Uppercases [input] and keeps only characters a code can contain, up to the length of a generated
  * code. Characters like `0`, `O`, `1`, `I` or `L` are never in a code, so they are dropped as the
  * user types.
@@ -297,7 +307,7 @@ internal fun JoinGroupDialog(
         modifier = Modifier.fillMaxWidth().testTag(C.Tag.join_code_field),
     )
     if (error != null) {
-      ErrorLine(stringResource(invitationErrorMessage(error)), C.Tag.join_error)
+      ErrorLine(stringResource(joinErrorMessage(error)), C.Tag.join_error)
     }
     Button(
         onClick = { onJoin(code) },

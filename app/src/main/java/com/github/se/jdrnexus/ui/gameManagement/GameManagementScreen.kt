@@ -305,6 +305,10 @@ internal fun GameManagementScreenContent(
   }
 
   val invitedGroup = uiState.groups.firstOrNull { it.group.id == inviteGroupId }?.group
+  // Forgets a group that left the list, so the dialog doesn't reopen by itself if it comes back.
+  LaunchedEffect(inviteGroupId, invitedGroup == null) {
+    if (invitedGroup == null) inviteGroupId = null
+  }
   if (invitedGroup != null) {
     InviteDialog(
         groupName = invitedGroup.name,

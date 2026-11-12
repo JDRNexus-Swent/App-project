@@ -1,3 +1,4 @@
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
 <resources>
     <string name="app_name">JDRNexus</string>
     <string name="edit_lore_title">LORE NOTE</string>
@@ -156,8 +157,9 @@
     <string name="invitation_error_not_signed_in">Sign in again to continue.</string>
     <string name="invitation_error_group_not_found">This group no longer exists.</string>
     <string name="invitation_error_not_game_master">Only the GameMaster can invite players.</string>
-    <string name="invitation_error_invalid_code">Codes are 6 to 8 letters and numbers.</string>
+    <string name="invitation_error_invalid_code">Codes are 8 letters and numbers.</string>
     <string name="invitation_error_unknown_code">This code doesn\'t exist or has been replaced.</string>
     <string name="invitation_error_already_member">You\'re already in this group.</string>
     <string name="invitation_error_network">Something went wrong. Check your connection and try again.</string>
+    <string name="join_error_network">Something went wrong. You may already have joined: check your groups list before trying again.</string>
 </resources>

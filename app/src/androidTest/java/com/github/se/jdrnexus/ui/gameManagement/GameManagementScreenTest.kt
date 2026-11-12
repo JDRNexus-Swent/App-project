@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -25,6 +26,7 @@ import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
+import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementUiState
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
@@ -58,7 +60,7 @@ class GameManagementScreenTest {
     )
 
     composeTestRule.onNodeWithText("Manage group").assertIsDisplayed()
-    composeTestRule.onNodeWithText("Invite").assertIsDisplayed().assertIsEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.invite_button).assertIsDisplayed().assertIsEnabled()
   }
 
   @Test
@@ -97,7 +99,7 @@ class GameManagementScreenTest {
 
     composeTestRule.onNodeWithText("Enter workspace").assertIsDisplayed().assertIsEnabled()
     composeTestRule.onAllNodesWithText("Manage group").assertCountEquals(0)
-    composeTestRule.onAllNodesWithText("Invite").assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(C.Tag.invite_button).assertCountEquals(0)
   }
 
   @Test

@@ -273,6 +273,18 @@ class GroupInvitationDialogsTest {
   }
 
   @Test
+  fun inviteDialogStaysClosedWhenItsGroupComesBack() {
+    openInviteDialog()
+    composeTestRule.onNodeWithTag(C.Tag.invite_dialog).assertIsDisplayed()
+    uiState.update { it.copy(groups = emptyList()) }
+    composeTestRule.onAllNodesWithTag(C.Tag.invite_dialog).assertCountEquals(0)
+
+    uiState.update { it.copy(groups = listOf(gameMasterGroup())) }
+
+    composeTestRule.onAllNodesWithTag(C.Tag.invite_dialog).assertCountEquals(0)
+  }
+
+  @Test
   fun regenerateConfirmationIsGoneWhenTheDialogIsReopened() {
     openInviteDialog()
     composeTestRule.onNodeWithTag(C.Tag.invite_regenerate).performClick()
@@ -420,6 +432,17 @@ class GroupInvitationDialogsTest {
     composeTestRule.onAllNodesWithTag(C.Tag.invite_dialog).assertCountEquals(0)
   }
 
+  @Test
+  fun joinNetworkErrorTellsThePlayerToCheckTheirGroupsBeforeRetrying() {
+    openJoinDialog()
+
+    uiState.update { it.copy(joinState = JoinState.Error(InvitationError.NETWORK)) }
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.join_error, useUnmergedTree = true)
+        .assertTextEquals(string(R.string.join_error_network))
+  }
+
   // --- Error texts ---
 
   @Test
@@ -449,6 +472,14 @@ class GroupInvitationDialogsTest {
         invitationErrorMessage(InvitationError.ALREADY_MEMBER),
     )
     assertEquals(R.string.invitation_error_network, invitationErrorMessage(InvitationError.NETWORK))
+  }
+
+  @Test
+  fun joinErrorsUseTheSharedTextsExceptNetwork() {
+    InvitationError.entries
+        .filter { it != InvitationError.NETWORK }
+        .forEach { assertEquals(invitationErrorMessage(it), joinErrorMessage(it)) }
+    assertEquals(R.string.join_error_network, joinErrorMessage(InvitationError.NETWORK))
   }
 
   // --- Helpers ---
