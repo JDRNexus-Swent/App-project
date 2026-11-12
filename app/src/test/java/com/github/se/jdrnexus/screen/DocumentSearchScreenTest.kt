@@ -1,9 +1,11 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.screen
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -53,10 +55,12 @@ class DocumentSearchScreenTest {
         )
     setScreen(viewModel)
 
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(result.file.id)).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.search_clear).performClick()
 
     assertEquals("", viewModel.uiState.value.query)
     assertEquals(DocumentSearchStatus.Blank, viewModel.uiState.value.status)
+    composeTestRule.onAllNodesWithTag(C.Tag.searchResult(result.file.id)).assertCountEquals(0)
     composeTestRule.onNodeWithText("Enter a document name to search.").assertIsDisplayed()
   }
 

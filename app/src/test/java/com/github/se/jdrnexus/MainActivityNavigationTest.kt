@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.StateRestorationTester
@@ -46,6 +47,7 @@ import com.github.se.jdrnexus.ui.search.DocumentSearchInterfaceVM
 import com.github.se.jdrnexus.ui.search.DocumentSearchResult
 import com.github.se.jdrnexus.ui.search.DocumentSearchStatus
 import com.github.se.jdrnexus.ui.search.DocumentSearchUiState
+import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
 import com.github.se.jdrnexus.utils.NavigationGroupRepository
 import com.github.se.jdrnexus.utils.NavigationWorkspaceRepository
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
@@ -429,6 +431,118 @@ class MainActivityNavigationTest {
     waitForText(loreFile.name)
   }
 
+  @Test
+  fun searchBackRestoresThePersonalSpaceFolder() {
+    // The folder is the root entry; its lore document appears only inside that folder.
+    val folder =
+        JDRFile(
+            id = "campaign",
+            name = "Campaign",
+            ownerId = "user-1",
+            type = DocumentType.FOLDER,
+        )
+    val loreFile =
+        JDRFile(
+            id = "nested-lore",
+            name = "The Kingdom",
+            ownerId = "user-1",
+            personalParentId = folder.id,
+            type = DocumentType.TEXT,
+        )
+    val searchViewModel = FakeSearchViewModel(loreFile)
+    showAuthenticatedApp(searchViewModel, personalFolder = folder)
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    waitForText(folder.name)
+    composeTestRule.onNodeWithText(folder.name).performClick()
+    waitForText(loreFile.name)
+    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Kingdom")
+    waitForTag(C.Tag.searchResult(loreFile.id))
+
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    // The header stays "My Space", so verify the folder contents rather than a folder-name title.
+    // If Back returned to the root, the folder row would be shown instead of its lore document.
+    composeTestRule.onNodeWithText(loreFile.name).assertIsDisplayed()
+    composeTestRule.onNodeWithText(folder.name).assertIsNotDisplayed()
+  }
+
+  @Test
+  fun searchQuerySurvivesActivityRecreation() {
+    val restorationTester = StateRestorationTester(composeTestRule)
+    val authRepository = FakeAuthRepository()
+    val workspaceRepository = FakeWorkspaceRepository(emptyList())
+    val groupRepository = FakeGroupRepository()
+    val authViewModel = AuthViewModel(authRepository)
+    val searchViewModel =
+        DocumentSearchViewModel(
+            repository = workspaceRepository,
+            authRepository = authRepository,
+        )
+
+    // Rotation recreates the UI but retains its ViewModels; this emulates that save/restore cycle.
+    restorationTester.setContent {
+      JDRNexusApp(
+          authViewModel = authViewModel,
+          personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, authRepository),
+          editFileViewModel = EditFileViewModel(workspaceRepository),
+          authRepository = authRepository,
+          groupRepository = groupRepository,
+          workspaceRepository = workspaceRepository,
+          documentSearchViewModel = searchViewModel,
+      )
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Dragon")
+
+    restorationTester.emulateSavedInstanceStateRestore()
+
+    composeTestRule.onNodeWithTag(C.Tag.search_query).assertTextContains("Dragon")
+  }
+
+  @Test
+  fun systemBackFromSearchRestoresThePersonalSpaceFolder() {
+    // The folder is the root entry; its lore document appears only inside that folder.
+    val folder =
+        JDRFile(
+            id = "system-back-campaign",
+            name = "System Back Campaign",
+            ownerId = "user-1",
+            type = DocumentType.FOLDER,
+        )
+    val searchResult =
+        JDRFile(
+            id = "system-back-lore",
+            name = "System Back Lore",
+            ownerId = "user-1",
+            personalParentId = folder.id,
+            type = DocumentType.TEXT,
+        )
+    val searchViewModel = FakeSearchViewModel(searchResult)
+    val personalLore = showAuthenticatedApp(searchViewModel, personalFolder = folder)
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    waitForText(folder.name)
+    composeTestRule.onNodeWithText(folder.name).performClick()
+    waitForText(personalLore.name)
+    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("System Back")
+    waitForTag(C.Tag.searchResult(searchResult.id))
+
+    Espresso.pressBack()
+
+    // The header stays "My Space"; the nested file proves the folder state was restored.
+    composeTestRule.onNodeWithText(personalLore.name).assertIsDisplayed()
+    composeTestRule.onNodeWithText(folder.name).assertIsNotDisplayed()
+  }
+
   private class NoGamesMapRepository : MapRepository {
     override suspend fun loadGamesNear(location: MapLocation?): List<MapGame> = emptyList()
   }
@@ -484,18 +598,21 @@ class MainActivityNavigationTest {
   }
 
   private fun showAuthenticatedApp(
-      documentSearchViewModel: DocumentSearchInterfaceVM? = null
+      documentSearchViewModel: DocumentSearchInterfaceVM? = null,
+      personalFolder: JDRFile? = null,
   ): JDRFile {
     val repository = FakeAuthRepository()
     val loreFile =
         JDRFile(
             id = "lore-1",
             name = "The Kingdom",
+            ownerId = "user-1",
+            personalParentId = personalFolder?.id.orEmpty(),
             type = DocumentType.TEXT,
             content =
                 """{"version":1,"type":"lore","title":"The Kingdom","sections":[{"sectionID":"history","title":"History","content":"Founded long ago."}]}""",
         )
-    val workspaceRepository = FakeWorkspaceRepository(loreFile)
+    val workspaceRepository = FakeWorkspaceRepository(listOfNotNull(personalFolder, loreFile))
     val groupRepository = FakeGroupRepository()
     val authViewModel = AuthViewModel(repository)
     val personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, repository)
@@ -594,12 +711,16 @@ class MainActivityNavigationTest {
     override fun getUserGroups(userId: String) = flowOf(emptyList<CampaignGroup>())
   }
 
-  private class FakeWorkspaceRepository(private val file: JDRFile) :
+  private class FakeWorkspaceRepository(private val files: List<JDRFile>) :
       WorkspaceRepository by UnusedWorkspaceRepository {
     override suspend fun getFile(fileId: String): Result<JDRFile?> =
-        Result.success(file.takeIf { it.id == fileId })
+        Result.success(files.firstOrNull { it.id == fileId })
 
-    override fun getPersonalRootFiles(ownerId: String) = flowOf(listOf(file))
+    override fun getPersonalRootFiles(ownerId: String) =
+        flowOf(files.filter { it.ownerId == ownerId && it.personalParentId.isEmpty() })
+
+    override fun getPersonalFolderFiles(folderId: String, ownerId: String) =
+        flowOf(files.filter { it.ownerId == ownerId && it.personalParentId == folderId })
   }
 
   private companion object {
