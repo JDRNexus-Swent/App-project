@@ -1,3 +1,4 @@
+<!-- Co-authored-by: Codex <noreply@openai.com> -->
 <!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
 <resources>
     <string name="app_name">JDRNexus</string>
@@ -22,11 +23,16 @@
     <string name="edit_character_stat_plural">stats</string>
     <string name="edit_character_stat_name_label">Stat name</string>
     <string name="edit_character_value_label">Value</string>
+    <string name="edit_character_new_stat">New stat</string>
+    <string name="edit_character_new_stat_name">New stat name</string>
+    <string name="edit_character_new_stat_value">New stat value</string>
     <string name="edit_character_add_stat">Add stat</string>
     <string name="edit_character_actions_title">Actions</string>
     <string name="edit_character_action_singular">action</string>
     <string name="edit_character_action_plural">actions</string>
-    <string name="edit_character_action_name_label">Action name</string>
+    <string name="edit_character_new_action">New action</string>
+    <string name="edit_character_new_action_name">New action name</string>
+    <string name="edit_character_new_action_description">New action description</string>
     <string name="edit_character_description_label">Description</string>
     <string name="edit_character_add_action">Add action</string>
     <string name="edit_character_action_label">Action</string>

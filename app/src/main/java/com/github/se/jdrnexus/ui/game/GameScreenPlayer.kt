@@ -140,6 +140,7 @@ private fun GameScreenPlayerContent(
   var selectedTab by rememberSaveable { mutableStateOf("Campaigns") }
 
   Scaffold(
+      contentColor = MaterialTheme.colorScheme.onSurface,
       bottomBar = {
         PlayerBottomBar(
             selectedTab,
@@ -148,7 +149,7 @@ private fun GameScreenPlayerContent(
               onTabSelected(tab)
             },
         )
-      }
+      },
   ) { contentPadding ->
     LazyColumn(
         modifier = Modifier.fillMaxSize().imePadding().padding(contentPadding),
