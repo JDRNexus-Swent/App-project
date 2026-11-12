@@ -4,8 +4,10 @@ package com.github.se.jdrnexus.ui.groupWorkSpace
 
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.FileEdit
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.PERSONAL_ROOT_ID
 import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
@@ -1081,7 +1083,7 @@ class GroupWorkSpaceViewModelTest {
     runCurrent()
 
     assertEquals(
-        listOf(RemovalRequest(folder.id, GROUP_ID, GROUP_ID)),
+        listOf(RemovalRequest(folder.id, GROUP_ID)),
         repository.removeRequests,
     )
     assertEquals(listOf(OTHER_GROUP_ID), repository.files.getValue(folder.id).sharedGroupsIds)
@@ -1363,7 +1365,6 @@ class GroupWorkSpaceViewModelTest {
   private data class RemovalRequest(
       val itemId: String,
       val groupId: String,
-      val parentFolderId: String,
   )
 
   private class FakeWorkspaceRepository(
@@ -1400,14 +1401,13 @@ class GroupWorkSpaceViewModelTest {
       return Result.success(Unit)
     }
 
-    override suspend fun updateFile(file: JDRFile): Result<Unit> {
+    override suspend fun updateFile(edit: FileEdit): Result<Unit> {
       updateFailure?.let {
         return Result.failure(it)
       }
       val existing =
-          files[file.id] ?: return Result.failure(IllegalStateException("Document not found"))
-      files[file.id] =
-          file.copy(sharedGroupsIds = existing.sharedGroupsIds, placements = existing.placements)
+          files[edit.id] ?: return Result.failure(IllegalStateException("Document not found"))
+      files[edit.id] = existing.copy(name = edit.name, content = edit.content)
       refresh()
       return Result.success(Unit)
     }
@@ -1431,9 +1431,8 @@ class GroupWorkSpaceViewModelTest {
     override suspend fun removeItemFromGroup(
         itemId: String,
         groupId: String,
-        parentFolderId: String,
     ): Result<Unit> = runCatching {
-      removeRequests += RemovalRequest(itemId, groupId, parentFolderId)
+      removeRequests += RemovalRequest(itemId, groupId)
       val item = requireNotNull(files[itemId])
       files[itemId] = item.withoutPlacement(groupId)
       refresh()
@@ -1481,24 +1480,25 @@ class GroupWorkSpaceViewModelTest {
     override fun getFileFlow(fileId: String): Flow<JDRFile?> =
         fileFlows.getOrPut(fileId) { MutableStateFlow(files[fileId]) }.asStateFlow()
 
-    override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> {
-      personalRootLoads++
-      return personalRootFailure?.let { failure -> flow { throw failure } }
-          ?: getPersonalFolderFiles("", ownerId)
+    override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> {
+      if (folderId == PERSONAL_ROOT_ID) {
+        personalRootLoads++
+        personalRootFailure?.let { failure ->
+          return flow { throw failure }
+        }
+      }
+      return personalFlows
+          .getOrPut(folderId to ownerId) {
+            MutableStateFlow(
+                files.values.filter {
+                  it.ownerId == ownerId &&
+                      it.personalParentId == folderId &&
+                      it.type != DocumentType.GROUP_ROOT
+                }
+            )
+          }
+          .asStateFlow()
     }
-
-    override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
-        personalFlows
-            .getOrPut(folderId to ownerId) {
-              MutableStateFlow(
-                  files.values.filter {
-                    it.ownerId == ownerId &&
-                        it.personalParentId == folderId &&
-                        it.type != DocumentType.GROUP_ROOT
-                  }
-              )
-            }
-            .asStateFlow()
 
     override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> {
       if (folderId == groupId) groupRootLoads++
@@ -1592,6 +1592,21 @@ class GroupWorkSpaceViewModelTest {
 
           override suspend fun removeUserFromGroup(groupId: String, userId: String) =
               error("Not used")
+
+          override suspend fun createInvitation(
+              groupId: String,
+              gameMasterId: String,
+          ): Result<String> = error("Not used")
+
+          override suspend fun regenerateInvitation(
+              groupId: String,
+              gameMasterId: String,
+          ): Result<String> = error("Not used")
+
+          override suspend fun joinGroupWithCode(
+              code: String,
+              userId: String,
+          ): Result<CampaignGroup> = error("Not used")
 
           override fun getGroupFlow(groupId: String) = error("Not used")
 

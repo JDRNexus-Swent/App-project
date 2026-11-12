@@ -6,10 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.PERSONAL_ROOT_ID
 import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.model.personalSpace.isContainer
+import com.github.se.jdrnexus.model.personalSpace.toEdit
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryProvider
 import com.github.se.jdrnexus.viewmodel.LoadState
@@ -372,7 +374,7 @@ class GroupWorkspaceViewModel(
    * Personal Space traversal when that API is available.
    */
   private fun personalFilesFlow(uid: String) =
-      repository.getPersonalRootFiles(uid).map { roots ->
+      repository.getPersonalFolderFiles(PERSONAL_ROOT_ID, uid).map { roots ->
         val files = mutableListOf<JDRFile>()
         val visited = mutableSetOf<String>()
 
@@ -635,7 +637,6 @@ class GroupWorkspaceViewModel(
             .removeItemFromGroup(
                 itemId = existing.id,
                 groupId = groupId,
-                parentFolderId = parentId.ifEmpty { groupId },
             )
             .getOrThrow()
         refreshPersonalFiles(uid)
@@ -661,10 +662,12 @@ class GroupWorkspaceViewModel(
 
         repository
             .updateFile(
-                existing.copy(
-                    name = updatedItem.name.trim(),
-                    content = updatedItem.content,
-                )
+                existing
+                    .copy(
+                        name = updatedItem.name.trim(),
+                        content = updatedItem.content,
+                    )
+                    .toEdit()
             )
             .getOrThrow()
       }

@@ -8,6 +8,11 @@ rules_version = '2';
 //   users/{userId}             { groupIds }: the groups a user belongs to. Rules read it to know
 //                              the caller's groups (a query "array-contains G" cannot tell them
 //                              otherwise). It is kept consistent with campaign_groups below.
+//   invitations/{code}         { groupId, createdBy }: invite codes that let a signed-in user join a
+//                              group. The code is the document id. A user knowing a code can get it
+//                              but nobody can list them. Its sub-collection redemptions/{uid} holds
+//                              the proof ({ groupId }) that a user joined with the code, written in
+//                              the same batch as their addition to participantIds.
 //   map_sessions/{sessionId}   public session listings shown on the map (read-only for clients)
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -25,6 +30,12 @@ service cloud.firestore {
     }
     function userPath(userId) {
       return /databases/$(database)/documents/users/$(userId);
+    }
+    function invitationPath(code) {
+      return /databases/$(database)/documents/invitations/$(code);
+    }
+    function redemptionPath(code, userId) {
+      return /databases/$(database)/documents/invitations/$(code)/redemptions/$(userId);
     }
 
     // Fields whose value differs between the stored document and the one being written.
@@ -248,6 +259,17 @@ service cloud.firestore {
         && getAfter(docPath(groupId)).data.name == request.resource.data.name;
     }
 
+    // The GM sets or replaces the invitation code of the group. Nothing else changes.
+    // The invitation itself is written in the same batch (createInvitation / regenerateInvitation).
+    function isInviteCodeEdit(groupId) {
+      let code = request.resource.data.get('inviteCode', '');
+      return resource.data.gameMasterId == uid()
+        && changedKeys().hasOnly(['inviteCode'])
+        && code is string
+        && code.size() > 0
+        && getAfter(invitationPath(code)).data.groupId == groupId;
+    }
+
     // The GM adds a participant. The participant's users document is updated in the same batch.
     function isParticipantAdded(groupId) {
       let ids = request.resource.data.participantIds;
@@ -271,6 +293,19 @@ service cloud.firestore {
         && (uid() == userId || uid() == resource.data.gameMasterId)
         && !(groupId in getAfter(userPath(userId)).data.get('groupIds', []));
     }
+    // A user joins the group by adding THEIR OWN uid to participantIds, with an invitation.
+    // Same batch as the join: the redemption ticket and the user's groupIds (see isGroupAdded).
+    function isSelfJoin(groupId) {
+      let ids = request.resource.data.participantIds;
+      let code = resource.data.get('inviteCode', '');
+      return changedKeys().hasOnly(['participantIds'])
+        && ids.size() == resource.data.participantIds.size() + 1
+        && ids.hasAll(resource.data.participantIds)
+        && ids[ids.size() - 1] == uid()
+        && code.size() > 0
+        && existsAfter(redemptionPath(code, uid()))
+        && groupId in getAfter(userPath(uid())).data.get('groupIds', []);
+    }
 
     match /campaign_groups/{groupId} {
       // Membership is part of the query used by GroupRepositoryFirestore.getUserGroups:
@@ -278,9 +313,11 @@ service cloud.firestore {
       allow read: if signedIn() && uid() in resource.data.participantIds;
       allow create: if signedIn() && validNewGroup(groupId);
       allow update: if signedIn()
-        && (isGroupMetadataEdit(groupId)
-            || isParticipantAdded(groupId)
-            || isParticipantRemoved(groupId));
+          && (isGroupMetadataEdit(groupId)
+              || isInviteCodeEdit(groupId)
+              || isParticipantAdded(groupId)
+              || isSelfJoin(groupId)
+              || isParticipantRemoved(groupId));
       allow delete: if signedIn() && resource.data.gameMasterId == uid();
 
       // -- Sub-collection rules
@@ -373,6 +410,43 @@ service cloud.firestore {
     // clients cannot write them; add write rules when that feature lands.
     match /map_sessions/{sessionId} {
       allow read: if signedIn();
+    }
+
+
+    // ------------------------------------------------------------------ invitations
+
+    // invitations/{code} = { groupId, createdBy }. The code is the document id.
+    // Only the GM of the group writes it; any signed-in user may fetch one code (get) but nobody
+    // can list them, so a code cannot be discovered, only used by someone who already knows it.
+    match /invitations/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['groupId', 'createdBy'])
+        && request.resource.data.keys().hasAll(['groupId', 'createdBy'])
+        && request.resource.data.groupId is string
+        && request.resource.data.groupId.size() > 0
+        && request.resource.data.createdBy == uid()
+        && isGm(request.resource.data.groupId)
+        && getAfter(groupPath(request.resource.data.groupId)).data.get('inviteCode', '') == code;
+
+      allow delete: if signedIn() && isGm(resource.data.groupId);
+
+      allow update: if false;
+            // invitations/{code}/redemptions/{userId} = { groupId }
+            // The proof that a user joined with this code. It is written in the same batch as the
+            // user's addition to participantIds (see isSelfJoin on campaign_groups).
+            match /redemptions/{userId} {
+              allow create, update: if signedIn()
+                && userId == uid()
+                && request.resource.data.keys().hasOnly(['groupId'])
+                && request.resource.data.groupId is string
+                && request.resource.data.groupId == get(invitationPath(code)).data.groupId
+                && get(groupPath(request.resource.data.groupId)).data.get('inviteCode', '') == code;
+
+              allow read, delete: if false;
+            }
     }
 
     // ------------------------------------------------------------------ everything else

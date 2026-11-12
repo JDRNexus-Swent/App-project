@@ -34,7 +34,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.FolderItem
 import com.github.se.jdrnexus.PersonalSpaceScreen
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.FileEdit
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.PERSONAL_ROOT_ID
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
@@ -492,7 +494,7 @@ class PersonalSpaceScreenTests {
 
     override suspend fun createFile(file: JDRFile): Result<Unit> = Result.success(Unit)
 
-    override suspend fun updateFile(file: JDRFile): Result<Unit> = Result.success(Unit)
+    override suspend fun updateFile(edit: FileEdit): Result<Unit> = Result.success(Unit)
 
     override suspend fun deleteFile(fileId: String): Result<Unit> = Result.success(Unit)
 
@@ -501,20 +503,19 @@ class PersonalSpaceScreenTests {
     override suspend fun removeItemFromGroup(
         itemId: String,
         groupId: String,
-        parentFolderId: String,
     ): Result<Unit> {
       TODO("Not yet implemented")
     }
 
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = flowOf(null)
 
-    override fun getPersonalRootFiles(ownerId: String): Flow<List<JDRFile>> {
-      rootFetchCount++
-      return rootFiles
+    override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> {
+      if (folderId == PERSONAL_ROOT_ID) {
+        rootFetchCount++
+        return rootFiles
+      }
+      return flowOf(emptyList())
     }
-
-    override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
-        flowOf(emptyList())
 
     override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
         flowOf(emptyList())
