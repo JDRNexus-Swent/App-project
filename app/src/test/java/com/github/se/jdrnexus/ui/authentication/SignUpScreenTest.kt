@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.os.CancellationSignal
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -81,6 +82,14 @@ class SignUpScreenTest {
     passwordInput(C.Tag.sign_up_password).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsDisplayed()
+  }
+
+  @Test
+  fun signUpScreen_passwordFieldUsesPasswordKeyboardSoTheKeyboardDoesNotCacheIt() {
+    showSignUp()
+
+    passwordInput(C.Tag.sign_up_password)
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentType, ContentType.Password))
   }
 
   @Test
