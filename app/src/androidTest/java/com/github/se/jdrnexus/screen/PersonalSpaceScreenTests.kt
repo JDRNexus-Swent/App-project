@@ -3,6 +3,7 @@
 package com.github.se.jdrnexus.screen
 
 import android.content.res.Configuration
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Composer
@@ -23,7 +24,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -61,7 +62,7 @@ import org.junit.runner.RunWith
 @OptIn(InternalComposeTracingApi::class)
 @RunWith(AndroidJUnit4::class)
 class PersonalSpaceScreenTests {
-  @get:Rule val composeTestRule = createComposeRule()
+  @get:Rule val composeTestRule = createAndroidComposeRule<ComponentActivity>()
 
   /**
    * The Compose compiler wraps every composable in `if (isTraceInProgress()) trace...` checks. This
@@ -144,6 +145,13 @@ class PersonalSpaceScreenTests {
             onTabSelected = onTabSelected,
         )
       }
+    }
+  }
+
+  /** Sends the system back button [times] times in a row, with no recomposition in between. */
+  private fun pressSystemBack(times: Int = 1) {
+    composeTestRule.runOnIdle {
+      repeat(times) { composeTestRule.activity.onBackPressedDispatcher.onBackPressed() }
     }
   }
 
@@ -269,6 +277,98 @@ class PersonalSpaceScreenTests {
   }
 
   @Test
+  fun systemBackAtRootInvokesCallback() {
+    var backButtonClicked = false
+    setScreen(onBackButton = { backButtonClicked = true })
+
+    pressSystemBack()
+
+    assertTrue(backButtonClicked)
+  }
+
+  @Test
+  fun systemBackInsideFolderGoesUpInsteadOfLeaving() {
+    val viewModel = viewModel()
+    var backButtonClicked = false
+    setScreen(viewModel, onBackButton = { backButtonClicked = true })
+
+    composeTestRule.onNodeWithText("The Ashen Realms").performClick()
+    composeTestRule.onNodeWithText("This folder is empty.").assertIsDisplayed()
+
+    pressSystemBack()
+    composeTestRule.waitForIdle()
+
+    assertFalse(backButtonClicked)
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    composeTestRule.onNodeWithText("The Ashen Realms").assertIsDisplayed()
+  }
+
+  @Test
+  fun systemBackInNestedFolderGoesUpOneLevelAtATime() {
+    val viewModel = viewModel()
+    var backButtonClicked = false
+    setScreen(viewModel, onBackButton = { backButtonClicked = true })
+
+    composeTestRule.runOnIdle {
+      viewModel.onItemClicked(files[0]) {}
+      viewModel.onItemClicked(files[3]) {}
+    }
+    composeTestRule.waitForIdle()
+    assertEquals("silver-covenant", viewModel.uiState.value.currentFolderId)
+
+    pressSystemBack()
+    assertEquals("ashen-realms", viewModel.uiState.value.currentFolderId)
+    assertFalse(backButtonClicked)
+
+    pressSystemBack()
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertFalse(backButtonClicked)
+
+    pressSystemBack()
+    assertTrue(backButtonClicked)
+  }
+
+  @Test
+  fun fastRepeatedSystemBackNeverSkipsALevel() {
+    val viewModel = viewModel()
+    var backCount = 0
+    setScreen(viewModel, onBackButton = { backCount++ })
+
+    composeTestRule.runOnIdle {
+      viewModel.onItemClicked(files[0]) {}
+      viewModel.onItemClicked(files[3]) {}
+    }
+    composeTestRule.waitForIdle()
+
+    // Three backs in the same frame, with no recomposition in between:
+    // two levels up, then leave the screen exactly once.
+    pressSystemBack(times = 3)
+
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertEquals(1, backCount)
+  }
+
+  @Test
+  fun insideFolderHeaderAndHeadingShowFolderNameAndPath() {
+    setScreen()
+
+    composeTestRule.onNodeWithText("The Ashen Realms").performClick()
+    composeTestRule.waitForIdle()
+
+    // Top bar title + heading both show the folder name.
+    composeTestRule.onAllNodesWithText("The Ashen Realms").assertCountEquals(2)
+    // The path above the heading is only "My Space" for a folder at the root.
+    composeTestRule.onNodeWithText("My Space").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Personal Space").assertDoesNotExist()
+
+    composeTestRule.onNodeWithContentDescription("Back").performClick()
+    composeTestRule.waitForIdle()
+
+    composeTestRule.onNodeWithText("Personal Space").assertIsDisplayed()
+    composeTestRule.onNodeWithText("My Space").assertIsDisplayed()
+  }
+
+  @Test
   fun viewModelFilesShowTheirVisibleLabelsAndIcons() {
     setScreen()
 
@@ -291,6 +391,19 @@ class PersonalSpaceScreenTests {
     composeTestRule
         .onNodeWithContentDescription("Text document", useUnmergedTree = true)
         .assertIsDisplayed()
+  }
+
+  @Test
+  fun characterRowShowsItsTypeAndNeverItsRawJson() {
+    val json = """{"version":1,"type":"character","character":{"name":"Hero"}}"""
+    val character =
+        JDRFile(id = "hero", name = "Hero", type = DocumentType.CHARACTER, content = json)
+    setScreen(viewModel(listOf(character)))
+
+    composeTestRule.onNodeWithText("Hero").assertIsDisplayed()
+    composeTestRule.onNodeWithText("CHARACTER SHEET").assertIsDisplayed()
+    composeTestRule.onNodeWithText("\"version\"", substring = true).assertDoesNotExist()
+    composeTestRule.onNodeWithText("{", substring = true).assertDoesNotExist()
   }
 
   @Test
@@ -321,13 +434,20 @@ class PersonalSpaceScreenTests {
   }
 
   @Test
-  fun headerShowsDraftFolderNameWhenSet() {
+  fun headerAndHeadingDoNotChangeWhileTypingFolderName() {
     val viewModel = viewModel()
-    viewModel.onNewFolderNameChanged("Campaign")
     setScreen(viewModel)
 
-    composeTestRule.onAllNodesWithText("Campaign").assertCountEquals(2)
-    composeTestRule.onNodeWithText("Personal Space").assertDoesNotExist()
+    composeTestRule.onNodeWithContentDescription("Add item").performClick()
+    composeTestRule.onNodeWithText("New folder").performClick()
+    composeTestRule.onNode(hasSetTextAction()).performTextInput("Campaign")
+    composeTestRule.waitForIdle()
+
+    assertEquals("Campaign", viewModel.uiState.value.newFolderName)
+    composeTestRule.onNodeWithText("Personal Space").assertIsDisplayed()
+    composeTestRule.onNodeWithText("My Space").assertIsDisplayed()
+    // The typed text only lives in the dialog field.
+    composeTestRule.onAllNodesWithText("Campaign").assertCountEquals(1)
   }
 
   @Test
@@ -410,7 +530,8 @@ class PersonalSpaceScreenTests {
     composeTestRule.runOnIdle { viewModel.onAddMenuDismissed() }
     composeTestRule.runOnIdle { viewModel.onNewFolderNameChanged("Campaign") }
 
-    composeTestRule.onAllNodesWithText("Campaign").assertCountEquals(2)
+    composeTestRule.onNodeWithText("Campaign").assertDoesNotExist()
+    composeTestRule.onNodeWithText("Personal Space").assertIsDisplayed()
     composeTestRule.onNodeWithContentDescription("Back").performClick()
     assertTrue(backButtonClicked)
   }

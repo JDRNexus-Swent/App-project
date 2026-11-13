@@ -49,12 +49,14 @@ sealed interface LoadState {
 data class PersonalSpaceUiState(
     val items: List<JDRFile> = emptyList(),
     val currentFolderId: String = "",
+    val folderPath: List<String> = emptyList(),
     val loadState: LoadState = LoadState.Loading,
     val canNavigateUp: Boolean = false,
     val isAddMenuExpanded: Boolean = false,
     val isNewFolderDialogOpen: Boolean = false,
     val newFolderName: String = "",
     val newFolderError: String = "",
+    val isCreatingFolder: Boolean = false,
 )
 
 // ============ Definition of the ViewModel ============
@@ -69,6 +71,7 @@ class PersonalSpaceViewModel(
 
   /** Folders visited before the current one, used to go back up. "" = Root. */
   private val navigationPath = ArrayDeque<String>()
+  private val folderNames = ArrayDeque<String>()
 
   /**
    * The fetch currently running. It is cancelled when a new fetch starts, so a slow response for a
@@ -107,6 +110,7 @@ class PersonalSpaceViewModel(
             cancelActions()
             fetchJob?.cancel()
             navigationPath.clear()
+            folderNames.clear()
             val message = failure.message?.takeIf(String::isNotBlank) ?: "Unable to load items."
             _uiState.value = PersonalSpaceUiState(loadState = LoadState.Error(message))
           }
@@ -114,6 +118,7 @@ class PersonalSpaceViewModel(
             cancelActions()
             fetchJob?.cancel()
             navigationPath.clear()
+            folderNames.clear()
             if (userId == null) {
               fetchJob = null
               _uiState.value = PersonalSpaceUiState(loadState = LoadState.SignedOut)
@@ -139,6 +144,7 @@ class PersonalSpaceViewModel(
           currentFolderId = personalParentId,
           loadState = LoadState.Loading,
           canNavigateUp = navigationPath.isNotEmpty(),
+          folderPath = folderNames.toList(),
       )
     }
 
@@ -166,7 +172,9 @@ class PersonalSpaceViewModel(
   /** Folders open in this screen; every other JDR file is opened as a document. */
   fun onItemClicked(item: JDRFile, navigateToDocument: (document: JDRFile) -> Unit) {
     if (item.isContainer()) {
+      if (_uiState.value.loadState == LoadState.Loading) return
       navigationPath.addLast(_uiState.value.currentFolderId)
+      folderNames.addLast(item.name)
       fetchItems(personalParentId = item.id)
     } else {
       navigateToDocument(item)
@@ -179,7 +187,7 @@ class PersonalSpaceViewModel(
    */
   fun onNavigateUp() {
     if (navigationPath.isEmpty()) return
-
+    folderNames.removeLast()
     fetchItems(personalParentId = navigationPath.removeLast())
   }
 
@@ -245,11 +253,13 @@ class PersonalSpaceViewModel(
    */
   fun createFolder() {
     val state = _uiState.value
+    if (state.isCreatingFolder) return
     val name = state.newFolderName.trim()
     if (name.isEmpty()) {
       _uiState.update { it.copy(newFolderError = "Folder name cannot be empty.") }
       return
     }
+    _uiState.update { it.copy(isCreatingFolder = true) }
 
     launchAction {
       try {
@@ -273,6 +283,8 @@ class PersonalSpaceViewModel(
         currentCoroutineContext().ensureActive()
         val message = e.message?.takeIf(String::isNotBlank) ?: "Unable to create the folder."
         _uiState.update { it.copy(newFolderError = message) }
+      } finally {
+        _uiState.update { it.copy(isCreatingFolder = false) }
       }
     }
   }

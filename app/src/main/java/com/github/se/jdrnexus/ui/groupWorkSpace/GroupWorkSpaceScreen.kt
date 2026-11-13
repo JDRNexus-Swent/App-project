@@ -687,9 +687,11 @@ fun WorkspaceCard(
             color = color().onSecondary,
         )
 
+        // A character's content is its saved JSON: never show it.
+        val description = if (file.type == DocumentType.CHARACTER) "" else file.content
         Text(
             text =
-                file.content.replace("\n", " ").ifBlank {
+                description.replace("\n", " ").ifBlank {
                   if (isFolder) {
                     stringResource(R.string.workspace_open_folder_description)
                   } else {

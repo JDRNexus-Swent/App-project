@@ -1,6 +1,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -84,18 +85,21 @@ fun PersonalSpaceScreen(
   val borderColor = themeColors.outline
   val accentColor = themeColors.accent
 
+  val handleBack = {
+    if (personalSpaceViewModel.uiState.value.canNavigateUp) {
+      personalSpaceViewModel.onNavigateUp()
+    } else {
+      onBackButton()
+    }
+  }
+  BackHandler(onBack = handleBack)
+
   Scaffold(
       containerColor = themeColors.background,
       topBar = {
         AppTopBar(
-            title = uiState.newFolderName.ifEmpty { "Personal Space" },
-            onBack = {
-              if (uiState.canNavigateUp) {
-                personalSpaceViewModel.onNavigateUp()
-              } else {
-                onBackButton()
-              }
-            },
+            title = uiState.folderPath.lastOrNull() ?: "Personal Space",
+            onBack = handleBack,
             trailingContent = {
               IconButton(
                   onClick = onSearchClicked,
@@ -145,8 +149,17 @@ fun PersonalSpaceScreen(
     Column(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
       Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
         Spacer(modifier = Modifier.height(8.dp))
+        if (uiState.folderPath.isNotEmpty()) {
+          Text(
+              text = (listOf("My Space") + uiState.folderPath.dropLast(1)).joinToString(" / "),
+              color = secondaryText,
+              fontSize = 12.sp,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis,
+          )
+        }
         Text(
-            text = uiState.newFolderName.ifEmpty { "My Space" },
+            text = uiState.folderPath.lastOrNull() ?: "My Space",
             color = primaryText,
             fontFamily = FontFamily.Serif,
             fontSize = 30.sp,
@@ -260,7 +273,12 @@ fun PersonalSpaceScreen(
           }
         },
         confirmButton = {
-          TextButton(onClick = personalSpaceViewModel::createFolder) { Text("Create") }
+          TextButton(
+              onClick = personalSpaceViewModel::createFolder,
+              enabled = !uiState.isCreatingFolder,
+          ) {
+            Text("Create")
+          }
         },
         dismissButton = {
           TextButton(onClick = personalSpaceViewModel::onNewFolderDialogDismissed) {
@@ -283,6 +301,8 @@ fun FolderItem(
     borderColor: Color = MaterialTheme.colorScheme.outline,
     accentColor: Color = MaterialTheme.colorScheme.primary,
 ) {
+  // A character's content is its saved JSON: never show it.
+  val description = if (folder.type == DocumentType.CHARACTER) "" else folder.content
   Card(
       onClick = onFolderClicked,
       modifier = modifier.fillMaxWidth().height(96.dp),
@@ -340,14 +360,16 @@ fun FolderItem(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 4.dp),
         )
-        Text(
-            text = folder.content,
-            color = secondaryText,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 3.dp),
-        )
+        if (description.isNotBlank()) {
+          Text(
+              text = description,
+              color = secondaryText,
+              fontSize = 12.sp,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis,
+              modifier = Modifier.padding(top = 3.dp),
+          )
+        }
       }
 
       if (folder.isContainer()) {
