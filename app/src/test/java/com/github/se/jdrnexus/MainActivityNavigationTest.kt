@@ -364,6 +364,107 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun playerCanNavigateToHomeFromGroupWorkspace() {
+    openGroupWorkspaceAsPlayer()
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+
+    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
+  }
+
+  @Test
+  fun playerCanNavigateToGroupManagementFromGroupWorkspace() {
+    openGroupWorkspaceAsPlayer()
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+
+    // The group management screen should display the available workspace.
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).assertIsDisplayed()
+  }
+
+  @Test
+  fun playerCanNavigateToPersonalSpaceFromGroupWorkspace() {
+    openGroupWorkspaceAsPlayer()
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+
+    waitForText("My Space")
+
+    composeTestRule.onNodeWithText("My Space").assertIsDisplayed()
+  }
+
+  @Test
+  fun playerCanNavigateToMapFromGroupWorkspace() {
+    val previousRepository = MapRepositoryProvider.mapRepository
+    MapRepositoryProvider.mapRepository = NoGamesMapRepository()
+
+    try {
+      openGroupWorkspaceAsPlayer()
+
+      composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
+
+      composeTestRule.onNodeWithTag(C.Tag.map_screen).assertIsDisplayed()
+    } finally {
+      MapRepositoryProvider.mapRepository = previousRepository
+    }
+  }
+
+  @Test
+  fun groupWorkspaceFileClickOpensLoreEditor() {
+    val loreFile =
+        JDRFile(
+            id = "shared-lore",
+            name = "Dragon Lore",
+            ownerId = "user-1",
+            type = DocumentType.TEXT,
+            content =
+                """
+                {
+                    "version": 1,
+                    "type": "lore",
+                    "title": "Dragon Lore",
+                    "sections": [
+                        {
+                            "sectionID": "history",
+                            "title": "History",
+                            "content": "A dragon."
+                        }
+                    ]
+                }
+                """
+                    .trimIndent(),
+            sharedGroupsIds = listOf("group-1"),
+            placements =
+                mapOf(
+                    "group-1" to
+                        Placement(
+                            folderId = "group-1",
+                            isHidden = false,
+                        )
+                ),
+        )
+
+    showApp(
+        groupRepository = navigationGroupRepository(),
+        workspaceRepository = NavigationWorkspaceRepository(listOf(loreFile)),
+    )
+    signInAndOpenCampaigns()
+
+    // Open Group Workspace.
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
+
+    waitForText("Dragon Lore")
+
+    // Click the file in the workspace.
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem(loreFile.id)).performClick()
+
+    // Verify that the lore editor opens.
+    waitForTag(EditFileLoreTestTags.LIST)
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).assertIsDisplayed()
+  }
+
+  @Test
   fun backFromLoreReturnsToPersonalSpace() {
     val loreFile = showAuthenticatedApp()
 
@@ -750,6 +851,26 @@ class MainActivityNavigationTest {
   private fun scrollToTag(containerTag: String, targetTag: String) {
     composeTestRule.onNodeWithTag(containerTag).performScrollToNode(hasTestTag(targetTag))
   }
+
+  private fun openGroupWorkspaceAsPlayer() {
+    showApp(groupRepository = playerGroupRepository())
+    signInAndOpenCampaigns()
+
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
+
+    waitForText("The Sunken Crown")
+  }
+
+  private fun playerGroupRepository(): NavigationGroupRepository =
+      NavigationGroupRepository(
+          CampaignGroup(
+              id = "group-1",
+              name = "The Sunken Crown",
+              gameMasterId = "gm-1",
+              participantIds = listOf("user-1"),
+          )
+      )
 
   private class FakeAuthRepository : AuthRepository {
     private val mutableAuthState = MutableStateFlow<AuthUser?>(null)
