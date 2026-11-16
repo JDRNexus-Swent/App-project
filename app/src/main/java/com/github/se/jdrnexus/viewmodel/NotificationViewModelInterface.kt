@@ -1,7 +1,36 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.viewmodel
 
+import com.github.se.jdrnexus.model.notification.Notification
 import kotlinx.coroutines.flow.StateFlow
+
+/** Describes the result of subscribing to the current user's notifications. */
+sealed interface NotificationLoadState {
+  /** The subscription has not emitted its first value yet. */
+  data object Loading : NotificationLoadState
+
+  /** No authenticated user is available. */
+  data object SignedOut : NotificationLoadState
+
+  /** At least one notification is available. */
+  data object Success : NotificationLoadState
+
+  /** The authenticated user has no notifications. */
+  data object Empty : NotificationLoadState
+
+  /** The subscription failed and can be retried. */
+  data class Error(val message: String) : NotificationLoadState
+}
+
+/** Immutable state rendered by notification screens. */
+data class NotificationUiState(
+    /** Notifications belonging to the authenticated user, newest first. */
+    val notifications: List<Notification> = emptyList(),
+    /** State of the active notification subscription. */
+    val loadState: NotificationLoadState = NotificationLoadState.Loading,
+    /** Error from the latest notification mutation, if one occurred. */
+    val actionError: String? = null,
+)
 
 /**
  * Public contract exposed by the notification screen's ViewModel.
@@ -12,7 +41,7 @@ import kotlinx.coroutines.flow.StateFlow
  */
 interface NotificationViewModelInterface {
   /** Current notification list and the state of its latest repository operation. */
-  val uiState: StateFlow<NotificationUiState>
+  val notificationUiState: StateFlow<NotificationUiState>
 
   /** Marks one notification as read for the signed-in user. */
   fun markAsRead(notificationId: String)
