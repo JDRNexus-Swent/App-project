@@ -312,6 +312,58 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun groupWorkspaceSearchOpensEditorAndReturnsToWorkspace() {
+    val groupRepository = navigationGroupRepository()
+    val loreFile =
+        JDRFile(
+            id = "shared-lore",
+            name = "Dragon Lore",
+            ownerId = "user-1",
+            type = DocumentType.TEXT,
+            content =
+                """{"version":1,"type":"lore","title":"Dragon Lore","sections":[{"sectionID":"history","title":"History","content":"A dragon."}]}""",
+            sharedGroupsIds = listOf("group-1"),
+            placements =
+                mapOf(
+                    "group-1" to
+                        Placement(
+                            folderId = "group-1",
+                            isHidden = false,
+                        )
+                ),
+        )
+
+    showApp(
+        groupRepository = groupRepository,
+        workspaceRepository = NavigationWorkspaceRepository(listOf(loreFile)),
+    )
+    signInAndOpenCampaigns()
+
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
+    waitForText("The Sunken Crown")
+
+    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Dragon")
+    waitForTag(C.Tag.searchResult(loreFile.id))
+
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(loreFile.id)).performClick()
+
+    // The selected file must open in the existing lore editor.
+    waitForTag(EditFileLoreTestTags.LIST)
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).assertIsDisplayed()
+
+    // Returning from the editor should restore Group Search.
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.BACK).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).assertIsDisplayed()
+
+    // Returning from Group Search should restore Group Workspace.
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+    waitForText("The Sunken Crown")
+    composeTestRule.onNodeWithTag(C.Tag.search_open).assertIsDisplayed()
+  }
+
+  @Test
   fun backFromLoreReturnsToPersonalSpace() {
     val loreFile = showAuthenticatedApp()
 
@@ -540,7 +592,8 @@ class MainActivityNavigationTest {
           authRepository = authRepository,
           groupRepository = groupRepository,
           workspaceRepository = workspaceRepository,
-          documentSearchViewModel = searchViewModel,
+          personalSearchViewModel = searchViewModel,
+          groupSearchViewModel = searchViewModel,
       )
     }
 
@@ -607,6 +660,7 @@ class MainActivityNavigationTest {
       checkNotNull(FirebaseApp.initializeApp(context))
     }
     val viewModel = AuthViewModel(repository)
+    val editFileViewModel = EditFileViewModel(workspaceRepository)
     composeTestRule.setContent {
       // The 3D die cannot render under Robolectric: the dice screen draws the flat one instead.
       CompositionLocalProvider(LocalDieView provides FlatDieView) {
@@ -615,6 +669,7 @@ class MainActivityNavigationTest {
             authRepository = repository,
             groupRepository = groupRepository,
             workspaceRepository = workspaceRepository,
+            editFileViewModel = editFileViewModel,
         )
       }
     }
@@ -680,7 +735,8 @@ class MainActivityNavigationTest {
           authRepository = repository,
           groupRepository = groupRepository,
           workspaceRepository = workspaceRepository,
-          documentSearchViewModel = documentSearchViewModel,
+          personalSearchViewModel = documentSearchViewModel,
+          groupSearchViewModel = documentSearchViewModel,
       )
     }
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")

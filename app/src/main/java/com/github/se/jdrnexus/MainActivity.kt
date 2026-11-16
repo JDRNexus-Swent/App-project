@@ -121,7 +121,8 @@ fun JDRNexusApp(
     workspaceRepository: WorkspaceRepository? = null,
     authRepository: AuthRepository? = null,
     groupRepository: GroupRepository? = null,
-    documentSearchViewModel: DocumentSearchInterfaceVM? = null,
+    personalSearchViewModel: DocumentSearchInterfaceVM? = null,
+    groupSearchViewModel: DocumentSearchInterfaceVM? = null,
 ) {
   val activeAuthViewModel = authViewModel ?: viewModel(factory = AuthViewModel.Factory)
   val activeAuthRepository = authRepository ?: AuthRepositoryFirebase()
@@ -244,7 +245,7 @@ fun JDRNexusApp(
         DocumentSearchScreen(
             onBack = { navigation.popBackStack() },
             onDocumentClicked = openDocument,
-            searchViewModel = documentSearchViewModel ?: viewModel<DocumentSearchViewModel>(),
+            searchViewModel = personalSearchViewModel ?: viewModel<DocumentSearchViewModel>(),
         )
       }
 
@@ -309,12 +310,17 @@ fun JDRNexusApp(
             groupName = uiState.groupName,
             personalItems = uiState.personalFiles,
             onBack = { navController.popBackStack() },
+            onItemClicked = { file, canEdit ->
+              if (canEdit) {
+                openDocument(file)
+              }
+            },
             onTabSelected = { tab ->
               when (tab) {
-                "Home" -> navController.popBackStack(AllRoutes.Home.name, false)
-                "Campaigns" -> navController.popBackStack()
-                "Files" -> navController.navigate(AllRoutes.PersoSpace.name)
-                "Map" -> showComingSoon(context, "Map")
+                "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
+                "Campaigns" -> navigation.popBackStack()
+                "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
+                "Map" -> navigation.navigate(AllRoutes.Map.name)
               }
             },
             onSearchClicked = {
@@ -336,8 +342,8 @@ fun JDRNexusApp(
             requireNotNull(
                 backStackEntry.arguments?.getString(GroupDocumentSearchRoute.groupIdArgument)
             )
-        val groupSearchViewModel =
-            documentSearchViewModel
+        val activeGroupSearchViewModel =
+            groupSearchViewModel
                 ?: viewModel<DocumentSearchViewModel>(
                     factory =
                         viewModelFactory {
@@ -354,7 +360,7 @@ fun JDRNexusApp(
         DocumentSearchScreen(
             onBack = { navigation.popBackStack() },
             onDocumentClicked = openDocument,
-            searchViewModel = groupSearchViewModel,
+            searchViewModel = activeGroupSearchViewModel,
         )
       }
 

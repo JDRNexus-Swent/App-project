@@ -118,7 +118,6 @@ fun GroupWorkSpaceScreen(
 
   var folderName by rememberSaveable { mutableStateOf("") }
   var editedName by rememberSaveable { mutableStateOf("") }
-  var editedContent by rememberSaveable { mutableStateOf("") }
   val isDialogOpen =
       showCreateFolderDialog ||
           showAddFilesDialog ||
@@ -210,6 +209,7 @@ fun GroupWorkSpaceScreen(
                 gwViewModel.openFolder(file.id)
               } else {
                 val canEdit = uiState.canEditItems || file.ownerId == uiState.currentUserId
+
                 if (onItemClicked != null) {
                   onItemClicked(file, canEdit)
                 } else {
@@ -221,7 +221,6 @@ fun GroupWorkSpaceScreen(
               gwViewModel.clearError()
               itemToEditId = it.id
               editedName = it.name
-              editedContent = it.content
             },
             onRemove = {
               gwViewModel.clearError()
@@ -439,19 +438,6 @@ fun GroupWorkSpaceScreen(
                         }
                       },
                   )
-
-                  if (file.type != DocumentType.FOLDER) {
-                    OutlinedTextField(
-                        modifier = Modifier.testTag(C.Tag.workspace_edit_item_content_input),
-                        value = editedContent,
-                        onValueChange = { editedContent = it },
-                        label = {
-                          Text(stringResource(R.string.workspace_content), color = color().primary)
-                        },
-                        enabled = !uiState.isOperationInProgress,
-                        colors = workspaceFieldColors(),
-                    )
-                  }
                 }
               },
               confirmButton = {
@@ -466,7 +452,6 @@ fun GroupWorkSpaceScreen(
                             gwViewModel.editItem(
                                 file.copy(
                                     name = editedName.trim(),
-                                    content = editedContent,
                                 )
                             )
 
