@@ -70,6 +70,8 @@ class CampaignGroupWorkspaceE2ETest {
               withTimeout(5_000) {
                 firestore
                     .collection("campaign_groups")
+                    // The rules only allow queries on the groups the user is a participant of.
+                    .whereArrayContains("participantIds", user.uid)
                     .whereEqualTo("gameMasterId", user.uid)
                     .get()
                     .await()
@@ -260,10 +262,13 @@ class CampaignGroupWorkspaceE2ETest {
 
   private fun findCreatedGroupId(groupName: String): String {
     return runBlocking {
+      val uid = requireNotNull(FirebaseAuth.getInstance().currentUser).uid
       FirebaseFirestore.getInstance()
           .collection("campaign_groups")
+          // The rules only allow queries on the groups the user is a participant of.
+          .whereArrayContains("participantIds", uid)
           .whereEqualTo("name", groupName)
-          .whereEqualTo("gameMasterId", requireNotNull(FirebaseAuth.getInstance().currentUser).uid)
+          .whereEqualTo("gameMasterId", uid)
           .get()
           .await()
           .documents

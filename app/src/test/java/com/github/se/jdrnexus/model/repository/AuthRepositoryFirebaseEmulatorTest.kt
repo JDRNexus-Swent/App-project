@@ -18,7 +18,7 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * Runs [AuthRepositoryFirebase] against the Auth emulator, to check how real Firebase errors are
- * translated. Needs the emulator started with: firebase emulators:exec --config firebase.test.json
+ * translated. Needs the emulator started with: firebase emulators:exec --only auth,firestore
  */
 @RunWith(RobolectricTestRunner::class)
 class AuthRepositoryFirebaseEmulatorTest {

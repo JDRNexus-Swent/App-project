@@ -1,4 +1,5 @@
 /** Co-authored-by: Claude Sonnet 5.5 */
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.personalSpace
 
 import android.util.Log
@@ -68,12 +69,14 @@ class GroupRepositoryFirestore(private val firestore: FirebaseFirestore) : Group
   }
 
   override suspend fun deleteGroup(groupId: String): Result<Unit> = safeFirestoreRequest {
-    val group =
-        groupsCollection.document(groupId).get().await().toObject(CampaignGroup::class.java)
-            ?: return@safeFirestoreRequest
+    val snapshot = groupsCollection.document(groupId).get().await()
+    val group = snapshot.toObject(CampaignGroup::class.java) ?: return@safeFirestoreRequest
     val batch = firestore.batch()
     batch.delete(groupsCollection.document(groupId))
     batch.delete(documentsCollection.document(groupId)) // the group's root folder
+    // The invitation goes with the group, so its code is then unknown instead of leading nowhere.
+    val inviteCode = snapshot.getString(INVITE_CODE_FIELD)
+    if (!inviteCode.isNullOrBlank()) batch.delete(invitationRef(inviteCode))
 
     group.participantIds.forEach { userId ->
       batch.update(

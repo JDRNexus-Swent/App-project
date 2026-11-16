@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Sonnet 5.5
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.personalSpace
 
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
@@ -16,7 +17,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -28,7 +28,7 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * Invitation part of [GroupRepositoryFirestore], against the Firestore emulator. Start it with
- * "firebase emulators:exec --config firebase.test.json".
+ * "firebase emulators:exec --only auth,firestore".
  */
 @RunWith(RobolectricTestRunner::class)
 class GroupRepositoryInvitationFirestoreTest {
@@ -42,15 +42,19 @@ class GroupRepositoryInvitationFirestoreTest {
   }
 
   private lateinit var firestore: FirebaseFirestore
+  // Signed in as the game master.
   private lateinit var repository: GroupRepository
+  // Signed in as PLAYER_ID: the user who joins with a code.
+  private lateinit var playerRepository: GroupRepository
 
   // Codes whose "redemptions" subcollection must be cleaned (deleting a parent keeps it).
   private val usedCodes = mutableListOf<String>()
 
   @Before
   fun setUp() {
-    firestore = FirebaseEmulatorTestUtils.getFirestore()
+    firestore = FirebaseEmulatorTestUtils.signInAs(GM_ID)
     repository = GroupRepositoryFirestore(firestore)
+    playerRepository = GroupRepositoryFirestore(FirebaseEmulatorTestUtils.signInAs(PLAYER_ID))
   }
 
   @After
@@ -107,24 +111,29 @@ class GroupRepositoryInvitationFirestoreTest {
   private suspend fun invitationData(code: String): Map<String, Any>? =
       firestore.collection("invitations").document(code).get().await().data
 
+  // No client may list invitations, so the check bypasses the rules.
   private suspend fun invitationCount(): Int =
-      firestore.collection("invitations").get().await().size()
+      FirebaseEmulatorTestUtils.documentIdsBypassingRules(firestore, "invitations").size
 
-  private suspend fun redemptionData(code: String, userId: String): Map<String, Any>? =
-      firestore
-          .collection("invitations")
-          .document(code)
-          .collection("redemptions")
-          .document(userId)
-          .get()
-          .await()
-          .data
+  // Users who redeemed [code]. No client may read redemptions, so the check bypasses the rules.
+  // Their content ({groupId}) is checked by the rules: a wrong one makes the whole join fail.
+  private suspend fun redeemers(code: String): List<String> =
+      FirebaseEmulatorTestUtils.documentIdsBypassingRules(
+          firestore,
+          "invitations/$code/redemptions",
+      )
 
   private suspend fun participantIds(groupId: String): List<String> =
       repository.getGroup(groupId).getOrThrow().participantIds
 
+  // Read as the user themselves: nobody else may read their users document.
   private suspend fun userGroupIds(userId: String): Any? =
-      firestore.collection("users").document(userId).get().await().get("groupIds")
+      FirebaseEmulatorTestUtils.signInAs(userId)
+          .collection("users")
+          .document(userId)
+          .get()
+          .await()
+          .get("groupIds")
 
   /** A repository whose first read of an invitation fails with [error]. No emulator involved. */
   private fun repositoryFailingOnInvitationRead(error: Exception): GroupRepository {
@@ -193,7 +202,7 @@ class GroupRepositoryInvitationFirestoreTest {
   fun createInvitationFailsWithNotGameMasterForAnotherUser() = runBlocking {
     val groupId = createGroup()
 
-    val result = repository.createInvitation(groupId, PLAYER_ID)
+    val result = playerRepository.createInvitation(groupId, PLAYER_ID)
 
     assertEquals(InvitationError.NOT_GAME_MASTER, result.invitationError())
     assertEquals(0, invitationCount())
@@ -251,8 +260,8 @@ class GroupRepositoryInvitationFirestoreTest {
     val newCode = repository.regenerateInvitation(groupId, GM_ID).getOrThrow()
     usedCodes += newCode
 
-    val withOld = repository.joinGroupWithCode(oldCode, PLAYER_ID)
-    val withNew = repository.joinGroupWithCode(newCode, PLAYER_ID)
+    val withOld = playerRepository.joinGroupWithCode(oldCode, PLAYER_ID)
+    val withNew = playerRepository.joinGroupWithCode(newCode, PLAYER_ID)
 
     assertEquals(InvitationError.UNKNOWN_CODE, withOld.invitationError())
     assertTrue("the new code should work", withNew.isSuccess)
@@ -276,7 +285,7 @@ class GroupRepositoryInvitationFirestoreTest {
   fun regenerateInvitationFailsWithNotGameMasterAndKeepsTheOldCode() = runBlocking {
     val (groupId, oldCode) = createGroupWithCode()
 
-    val result = repository.regenerateInvitation(groupId, PLAYER_ID)
+    val result = playerRepository.regenerateInvitation(groupId, PLAYER_ID)
 
     assertEquals(InvitationError.NOT_GAME_MASTER, result.invitationError())
     assertEquals(oldCode, storedInviteCode(groupId))
@@ -317,24 +326,24 @@ class GroupRepositoryInvitationFirestoreTest {
   fun joinGroupWithCodeAddsTheUserEverywhereAndReturnsTheGroup() = runBlocking {
     val (groupId, code) = createGroupWithCode()
 
-    val result = repository.joinGroupWithCode(code, PLAYER_ID)
+    val result = playerRepository.joinGroupWithCode(code, PLAYER_ID)
 
     assertTrue("joinGroupWithCode should succeed", result.isSuccess)
     assertEquals(groupId, result.getOrThrow().id)
     assertEquals(listOf(GM_ID, PLAYER_ID), result.getOrThrow().participantIds)
     assertEquals(listOf(GM_ID, PLAYER_ID), participantIds(groupId))
     assertEquals(listOf(groupId), userGroupIds(PLAYER_ID))
-    assertEquals(mapOf("groupId" to groupId), redemptionData(code, PLAYER_ID))
+    assertEquals(listOf(PLAYER_ID), redeemers(code))
   }
 
   @Test
   fun joinedGroupAppearsInGetUserGroups() = runBlocking {
     val (groupId, code) = createGroupWithCode()
 
-    repository.joinGroupWithCode(code, PLAYER_ID)
+    assertTrue(playerRepository.joinGroupWithCode(code, PLAYER_ID).isSuccess)
 
     val groups =
-        repository.getUserGroups(PLAYER_ID).waitFor { list -> list.any { it.id == groupId } }
+        playerRepository.getUserGroups(PLAYER_ID).waitFor { list -> list.any { it.id == groupId } }
     assertEquals(listOf(groupId), groups.map { it.id })
   }
 
@@ -342,7 +351,7 @@ class GroupRepositoryInvitationFirestoreTest {
   fun joinGroupWithCodeIgnoresCaseAndSurroundingSpaces() = runBlocking {
     val (groupId, code) = createGroupWithCode()
 
-    val result = repository.joinGroupWithCode("  ${code.lowercase()} ", PLAYER_ID)
+    val result = playerRepository.joinGroupWithCode("  ${code.lowercase()} ", PLAYER_ID)
 
     assertTrue(result.isSuccess)
     assertEquals(listOf(GM_ID, PLAYER_ID), participantIds(groupId))
@@ -352,12 +361,12 @@ class GroupRepositoryInvitationFirestoreTest {
   fun twoUsersJoiningKeepEachOther() = runBlocking {
     val (groupId, code) = createGroupWithCode()
 
-    repository.joinGroupWithCode(code, PLAYER_ID)
-    repository.joinGroupWithCode(code, OTHER_PLAYER_ID)
+    playerRepository.joinGroupWithCode(code, PLAYER_ID)
+    GroupRepositoryFirestore(FirebaseEmulatorTestUtils.signInAs(OTHER_PLAYER_ID))
+        .joinGroupWithCode(code, OTHER_PLAYER_ID)
 
     assertEquals(listOf(GM_ID, PLAYER_ID, OTHER_PLAYER_ID), participantIds(groupId))
-    assertEquals(mapOf("groupId" to groupId), redemptionData(code, PLAYER_ID))
-    assertEquals(mapOf("groupId" to groupId), redemptionData(code, OTHER_PLAYER_ID))
+    assertEquals(listOf(PLAYER_ID, OTHER_PLAYER_ID), redeemers(code))
   }
 
   @Test
@@ -375,7 +384,7 @@ class GroupRepositoryInvitationFirestoreTest {
     val (groupId, _) = createGroupWithCode()
 
     for (bad in listOf("", "ABC", "K7M2QXP0", "ABCDEFGHIJ")) {
-      val result = repository.joinGroupWithCode(bad, PLAYER_ID)
+      val result = playerRepository.joinGroupWithCode(bad, PLAYER_ID)
 
       assertEquals("code '$bad'", InvitationError.INVALID_CODE, result.invitationError())
     }
@@ -387,7 +396,7 @@ class GroupRepositoryInvitationFirestoreTest {
   fun joinGroupWithCodeFailsWithUnknownCodeForUnusedCode() = runBlocking {
     val (groupId, _) = createGroupWithCode()
 
-    val result = repository.joinGroupWithCode(UNUSED_CODE, PLAYER_ID)
+    val result = playerRepository.joinGroupWithCode(UNUSED_CODE, PLAYER_ID)
 
     assertEquals(InvitationError.UNKNOWN_CODE, result.invitationError())
     assertEquals(listOf(GM_ID), participantIds(groupId))
@@ -402,15 +411,15 @@ class GroupRepositoryInvitationFirestoreTest {
 
     assertEquals(InvitationError.ALREADY_MEMBER, result.invitationError())
     assertEquals(listOf(GM_ID), participantIds(groupId))
-    assertNull("no redemption must be written", redemptionData(code, GM_ID))
+    assertEquals("no redemption must be written", emptyList<String>(), redeemers(code))
   }
 
   @Test
   fun joinGroupWithCodeFailsWithAlreadyMemberOnSecondJoin() = runBlocking {
     val (groupId, code) = createGroupWithCode()
-    repository.joinGroupWithCode(code, PLAYER_ID)
+    playerRepository.joinGroupWithCode(code, PLAYER_ID)
 
-    val result = repository.joinGroupWithCode(code, PLAYER_ID)
+    val result = playerRepository.joinGroupWithCode(code, PLAYER_ID)
 
     assertEquals(InvitationError.ALREADY_MEMBER, result.invitationError())
     assertEquals(listOf(GM_ID, PLAYER_ID), participantIds(groupId))
@@ -418,30 +427,31 @@ class GroupRepositoryInvitationFirestoreTest {
   }
 
   @Test
-  fun joinGroupWithCodeFailsWithGroupNotFoundAndWritesNothingWhenGroupWasDeleted() = runBlocking {
+  fun joinGroupWithCodeFailsWithUnknownCodeAndWritesNothingWhenGroupWasDeleted() = runBlocking {
     val (groupId, code) = createGroupWithCode()
-    // Deleted directly: deleteGroup does not touch the invitation either.
-    firestore.collection("campaign_groups").document(groupId).delete().await()
+    assertEquals(Result.success(Unit), repository.deleteGroup(groupId))
 
-    val result = repository.joinGroupWithCode(code, PLAYER_ID)
+    val result = playerRepository.joinGroupWithCode(code, PLAYER_ID)
 
-    assertEquals(InvitationError.GROUP_NOT_FOUND, result.invitationError())
-    assertNull("no redemption must be written", redemptionData(code, PLAYER_ID))
-    assertFalse(firestore.collection("users").document(PLAYER_ID).get().await().exists())
+    // deleteGroup deleted the invitation with the group.
+    assertNull(invitationData(code))
+    assertEquals(InvitationError.UNKNOWN_CODE, result.invitationError())
+    assertEquals("no redemption must be written", emptyList<String>(), redeemers(code))
+    assertNull(userGroupIds(PLAYER_ID))
   }
 
   @Test
   fun joinGroupWithCodeFailsWithUnknownCodeWhenInvitationHasNoGroupId() = runBlocking {
     val groupId = createGroup()
-    // A malformed invitation, written directly: no groupId.
-    firestore
-        .collection("invitations")
-        .document(UNUSED_CODE)
-        .set(mapOf("createdBy" to GM_ID))
-        .await()
+    // A malformed invitation (no groupId): the rules refuse it, so it is written bypassing them.
+    FirebaseEmulatorTestUtils.writeBypassingRules(
+        firestore,
+        "invitations/$UNUSED_CODE",
+        mapOf("createdBy" to GM_ID),
+    )
     usedCodes += UNUSED_CODE
 
-    val result = repository.joinGroupWithCode(UNUSED_CODE, PLAYER_ID)
+    val result = playerRepository.joinGroupWithCode(UNUSED_CODE, PLAYER_ID)
 
     assertEquals(InvitationError.UNKNOWN_CODE, result.invitationError())
     assertEquals(listOf(GM_ID), participantIds(groupId))
@@ -449,7 +459,7 @@ class GroupRepositoryInvitationFirestoreTest {
   }
 
   // ==========================================
-  // ERROR MAPPING (mockk: the emulator without rules cannot produce these errors)
+  // ERROR MAPPING (mockk: the emulator cannot produce each of these errors on demand)
   // ==========================================
 
   @Test
