@@ -65,12 +65,14 @@ class WorkspaceRepositoryFirestoreTest {
     // The repository acts as USER_ID, the owner of the files the tests act on.
     firestore = FirebaseEmulatorTestUtils.signInAs(USER_ID)
     repository = WorkspaceRepositoryFirestore(firestore)
-    // USER_ID is a member of the groups the tests use (the rules read users/{uid}.groupIds).
+    // USER_ID is a member of the groups the tests use.
     runBlocking {
-      FirebaseEmulatorTestUtils.writeBypassingRules(
+      FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(
           firestore,
-          "users/$USER_ID",
-          mapOf("groupIds" to listOf("group", "other-group", "other")),
+          USER_ID,
+          "group",
+          "other-group",
+          "other",
       )
     }
   }
@@ -290,12 +292,7 @@ class WorkspaceRepositoryFirestoreTest {
             type = DocumentType.FOLDER,
         )
     persistFiles(folder)
-    // USER_ID is a member of this group (the rules read users/{uid}.groupIds).
-    FirebaseEmulatorTestUtils.writeBypassingRules(
-        firestore,
-        "users/$USER_ID",
-        mapOf("groupIds" to listOf(groupId)),
-    )
+    FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, USER_ID, groupId)
 
     val failingRepository = spyk(WorkspaceRepositoryFirestore(firestore))
     every { failingRepository.getGroupFolderFiles(folder.id, groupId) } returns
@@ -497,12 +494,7 @@ class WorkspaceRepositoryFirestoreTest {
             type = DocumentType.GROUP_ROOT,
         )
     persistFiles(groupRoot)
-    // USER_ID is a member of this group (the rules read users/{uid}.groupIds).
-    FirebaseEmulatorTestUtils.writeBypassingRules(
-        firestore,
-        "users/$USER_ID",
-        mapOf("groupIds" to listOf(groupId)),
-    )
+    FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, USER_ID, groupId)
 
     val result = removeItemFromGroupAndPumpMainLooper(groupRoot.id, groupId)
 
@@ -1510,12 +1502,7 @@ class WorkspaceRepositoryFirestoreTest {
 
       // The query is under test, not the creation: written as stored, bypassing the rules.
       persistFiles(file1, file2, fileOtherGroup, fileWithParent, parentFolder)
-      // USER_ID is a member of this group (the rules read users/{uid}.groupIds).
-      FirebaseEmulatorTestUtils.writeBypassingRules(
-          firestore,
-          "users/$USER_ID",
-          mapOf("groupIds" to listOf(groupId)),
-      )
+      FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, USER_ID, groupId)
 
       val files = repository.getGroupFolderFiles(groupId, groupId).waitFor { it.size == 3 }
 
@@ -1532,12 +1519,7 @@ class WorkspaceRepositoryFirestoreTest {
   fun testGetGroupRootFiles_Empty() {
     runBlocking {
       val emptyGroupId = "empty_group_id"
-      // USER_ID is a member of this group (the rules read users/{uid}.groupIds).
-      FirebaseEmulatorTestUtils.writeBypassingRules(
-          firestore,
-          "users/$USER_ID",
-          mapOf("groupIds" to listOf(emptyGroupId)),
-      )
+      FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, USER_ID, emptyGroupId)
       val files =
           repository.getGroupFolderFiles(emptyGroupId, emptyGroupId).waitFor { it.isEmpty() }
       assertTrue("Should retrieve empty list when no group root files exist", files.isEmpty())
@@ -1585,12 +1567,7 @@ class WorkspaceRepositoryFirestoreTest {
 
       // The query is under test, not the creation: written as stored, bypassing the rules.
       persistFiles(file1, file2, fileOtherFolder, fileRoot)
-      // USER_ID is a member of this group (the rules read users/{uid}.groupIds).
-      FirebaseEmulatorTestUtils.writeBypassingRules(
-          firestore,
-          "users/$USER_ID",
-          mapOf("groupIds" to listOf(groupId)),
-      )
+      FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, USER_ID, groupId)
 
       val files = repository.getGroupFolderFiles(folderId, groupId).waitFor { it.size == 2 }
 
@@ -1606,12 +1583,7 @@ class WorkspaceRepositoryFirestoreTest {
     runBlocking {
       val emptyFolderId = "empty_folder_id"
       val emptyGroupId = "empty_group_id"
-      // USER_ID is a member of this group (the rules read users/{uid}.groupIds).
-      FirebaseEmulatorTestUtils.writeBypassingRules(
-          firestore,
-          "users/$USER_ID",
-          mapOf("groupIds" to listOf(emptyGroupId)),
-      )
+      FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, USER_ID, emptyGroupId)
       val files =
           repository.getGroupFolderFiles(emptyFolderId, emptyGroupId).waitFor { it.isEmpty() }
       assertTrue("Should retrieve empty list when no documents in folder", files.isEmpty())
@@ -1636,12 +1608,7 @@ class WorkspaceRepositoryFirestoreTest {
           )
       // The listener is under test: the files are written as stored, bypassing the rules.
       persistFiles(file1)
-      // USER_ID is a member of this group (the rules read users/{uid}.groupIds).
-      FirebaseEmulatorTestUtils.writeBypassingRules(
-          firestore,
-          "users/$USER_ID",
-          mapOf("groupIds" to listOf(groupId)),
-      )
+      FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, USER_ID, groupId)
 
       val latestList = AtomicReference(emptyList<JDRFile>())
       val hasEmitted = AtomicBoolean(false)

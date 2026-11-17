@@ -55,11 +55,7 @@ class GameSessionRepositoryFirestoreTest {
           ),
       )
       for (userId in listOf(GM_ID, PLAYER_ID)) {
-        FirebaseEmulatorTestUtils.writeBypassingRules(
-            firestore,
-            "users/$userId",
-            mapOf("groupIds" to listOf(groupId)),
-        )
+        FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, userId, groupId)
       }
     }
     diceRepository = mockk()

@@ -42,10 +42,10 @@ class DiceRepositoryFirestoreTest {
     // The rules check that the roll is written by the signed-in user, who must belong to the group.
     firestore = FirebaseEmulatorTestUtils.signInAs(testUser.uid)
     runBlocking {
-      FirebaseEmulatorTestUtils.writeBypassingRules(
+      FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(
           firestore,
-          "users/${testUser.uid}",
-          mapOf("groupIds" to listOf(testGroupId)),
+          testUser.uid,
+          testGroupId,
       )
     }
 

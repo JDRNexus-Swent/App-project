@@ -333,15 +333,7 @@ class GroupRepositoryFirestoreTest {
 
     assertTrue("deleteGroup should succeed", result.isSuccess)
     for (userId in listOf("gm1", "player1")) {
-      assertEquals(
-          emptyList<String>(),
-          FirebaseEmulatorTestUtils.signInAs(userId)
-              .collection("users")
-              .document(userId)
-              .get()
-              .await()
-              .get("groupIds"),
-      )
+      assertEquals(emptyList<String>(), FirebaseEmulatorTestUtils.userGroupIds(userId))
     }
     assertFalse(firestore.collection("documents").document(groupId).get().await().exists())
   }
@@ -363,29 +355,13 @@ class GroupRepositoryFirestoreTest {
     val addResult = repository.addUserToGroup(groupId, "player1")
     assertTrue("addUserToGroup should succeed", addResult.isSuccess)
     assertEquals(listOf(GM_ID, "player1"), repository.getGroup(groupId).getOrNull()?.participantIds)
-    assertEquals(
-        listOf(groupId),
-        FirebaseEmulatorTestUtils.signInAs("player1")
-            .collection("users")
-            .document("player1")
-            .get()
-            .await()
-            .get("groupIds"),
-    )
+    assertEquals(listOf(groupId), FirebaseEmulatorTestUtils.userGroupIds("player1"))
 
     // Remove user: both lists lose them, the game master stays.
     val removeResult = repository.removeUserFromGroup(groupId, "player1")
     assertTrue("removeUserFromGroup should succeed", removeResult.isSuccess)
     assertEquals(listOf(GM_ID), repository.getGroup(groupId).getOrNull()?.participantIds)
-    assertEquals(
-        emptyList<String>(),
-        FirebaseEmulatorTestUtils.signInAs("player1")
-            .collection("users")
-            .document("player1")
-            .get()
-            .await()
-            .get("groupIds"),
-    )
+    assertEquals(emptyList<String>(), FirebaseEmulatorTestUtils.userGroupIds("player1"))
   }
 
   /** Tests real-time updates for a single campaign group. */
@@ -666,11 +642,7 @@ class GroupRepositoryFirestoreTest {
     // Starting state: the user is in group1 only, and their users document says so.
     FirebaseEmulatorTestUtils.writeBypassingRules(firestore, "campaign_groups/${group1.id}", group1)
     FirebaseEmulatorTestUtils.writeBypassingRules(firestore, "campaign_groups/${group2.id}", group2)
-    FirebaseEmulatorTestUtils.writeBypassingRules(
-        firestore,
-        "users/$userId",
-        mapOf("groupIds" to listOf(group1.id)),
-    )
+    FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, userId, group1.id)
 
     val latestList = AtomicReference(emptyList<CampaignGroup>())
     val hasEmitted = AtomicBoolean(false)
