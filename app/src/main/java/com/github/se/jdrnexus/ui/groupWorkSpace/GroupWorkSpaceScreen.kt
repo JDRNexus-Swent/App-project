@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -309,8 +310,8 @@ fun GroupWorkSpaceScreen(
   // Add existing personnel files
   if (showAddFilesDialog) {
 
-    val availableFiles =
-        availableFilesToAdd(
+    val availableItems =
+        availableItemsToShare(
             personalItems = personalItems,
             groupId = groupId,
             ownerId = uiState.currentUserId,
@@ -325,7 +326,7 @@ fun GroupWorkSpaceScreen(
           }
         },
         title = {
-          Text(stringResource(R.string.workspace_add_files_title), color = color().tertiary)
+          Text(stringResource(R.string.workspace_share_item_title), color = color().tertiary)
         },
         text = {
           Column {
@@ -338,8 +339,8 @@ fun GroupWorkSpaceScreen(
               )
             }
 
-            if (availableFiles.isEmpty()) {
-              Text(stringResource(R.string.workspace_no_personal_files))
+            if (availableItems.isEmpty()) {
+              Text(stringResource(R.string.workspace_no_personal_items))
             } else {
               LazyColumn(
                   modifier =
@@ -349,7 +350,7 @@ fun GroupWorkSpaceScreen(
                           )
                           .testTag(C.Tag.workspace_add_files_list)
               ) {
-                items(availableFiles, key = { it.id }) { file ->
+                items(availableItems, key = { it.id }) { item ->
                   Row(
                       modifier =
                           Modifier.fillMaxWidth()
@@ -357,7 +358,7 @@ fun GroupWorkSpaceScreen(
                                 gwViewModel.clearError()
 
                                 scope.launch {
-                                  val job = gwViewModel.addFile(file.id)
+                                  val job = gwViewModel.shareItem(item.id)
                                   job?.join()
 
                                   if (gwViewModel.uiState.value.errorMessage.isEmpty()) {
@@ -370,10 +371,17 @@ fun GroupWorkSpaceScreen(
                       horizontalArrangement = Arrangement.spacedBy(12.dp),
                   ) {
                     Icon(
-                        Icons.Default.Description,
+                        imageVector =
+                            when (item.type) {
+                              DocumentType.FOLDER -> Icons.Default.Folder
+                              DocumentType.TEXT -> Icons.Default.Description
+                              DocumentType.CHARACTER -> Icons.Default.People
+                              DocumentType.GROUP_ROOT -> Icons.Default.Folder
+                            },
                         contentDescription = null,
+                        tint = color().primary,
                     )
-                    Text(file.name)
+                    Text(item.name)
                   }
                 }
               }
@@ -1070,11 +1078,11 @@ fun WorkspaceFab(
         ExtendedFloatingActionButton(
             containerColor = color().surface,
             text = {
-              Text(stringResource(R.string.workspace_file_action), color = color().primary)
+              Text(stringResource(R.string.workspace_share_item_action), color = color().primary)
             },
             icon = {
               Icon(
-                  Icons.Default.Description,
+                  Icons.Default.Share,
                   null,
                   tint = color().primary,
               )
@@ -1119,19 +1127,21 @@ private fun workspaceFieldColors(): TextFieldColors =
     )
 
 /**
- * Returns personal files that can be added to the specified group.
+ * Returns personal items that can be shared with the specified group.
  *
- * @param personalItems Personal files to filter.
+ * @param personalItems Personal items to filter.
  * @param groupId Group identifier whose existing shares should be excluded.
  * @param ownerId Required owner identifier.
  */
-fun availableFilesToAdd(
+fun availableItemsToShare(
     personalItems: List<JDRFile>,
     groupId: String,
     ownerId: String,
 ): List<JDRFile> {
-  return personalItems.filter { file ->
-    file.ownerId == ownerId && file.type != DocumentType.FOLDER && groupId !in file.sharedGroupsIds
+  return personalItems.filter { item ->
+    item.ownerId == ownerId &&
+        item.type != DocumentType.GROUP_ROOT &&
+        groupId !in item.sharedGroupsIds
   }
 }
 
