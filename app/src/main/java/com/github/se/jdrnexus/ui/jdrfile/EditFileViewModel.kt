@@ -13,28 +13,37 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.model.personalSpace.toEdit
+import com.github.se.jdrnexus.model.repository.AuthRepository
+import com.github.se.jdrnexus.model.repository.AuthRepositoryProvider
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
-    ViewModel(), EditFileInterfaceVM {
+class EditFileViewModel(
+    workspaceRepository: WorkspaceRepository? = null,
+    private val groupRepository: GroupRepository? = null,
+    private val authRepository: AuthRepository? = null,
+) : ViewModel(), EditFileInterfaceVM {
   private val repository by lazy { workspaceRepository ?: WorkspaceRepositoryProvider.repository }
+  private val groups by lazy { groupRepository }
+  private val auth by lazy { authRepository ?: AuthRepositoryProvider.repository }
 
   private val _uiState = MutableStateFlow(EditFileUiState())
   override val uiState: StateFlow<EditFileUiState> = _uiState.asStateFlow()
 
   private var loadJob: Job? = null
 
-  override fun loadFile(fileId: String) {
+  override fun loadFile(fileId: String, groupId: String?) {
     loadJob?.cancel()
     _uiState.value = EditFileUiState(isLoading = true)
     loadJob = viewModelScope.launch {
@@ -62,7 +71,13 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
               DocumentType.FOLDER,
               DocumentType.GROUP_ROOT -> throw IllegalArgumentException(FOLDER_ERROR)
             }
-        val loadedState = EditFileUiState(file = file, character = character, lore = lore)
+        val loadedState =
+            EditFileUiState(
+                file = file,
+                character = character,
+                lore = lore,
+                isReadOnly = groupId != null && !canEditInGroup(file, groupId),
+            )
         _uiState.value = loadedState.copy(fieldErrors = collectFieldErrors(loadedState))
       } catch (e: CancellationException) {
         throw e
@@ -81,10 +96,12 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun updateCharacterName(name: String) {
+    if (!ensureEditable()) return
     mutateCharacter { it.copy(name = name) }
   }
 
   override fun onAddStatNameChange(name: String) {
+    if (!ensureEditable()) return
     _uiState.update { it.copy(newStatName = name) }
     val field = EditFileField.NewCharacterStatName
     if (name.isBlank()) rejectField(field, STAT_NAME_ERROR)
@@ -92,6 +109,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun onAddStatValueChange(value: String) {
+    if (!ensureEditable()) return
     _uiState.update { it.copy(newStatValue = value) }
     val field = EditFileField.NewCharacterStatValue
     if (value.toDoubleOrNull()?.isFinite() != true) rejectField(field, STAT_VALUE_ERROR)
@@ -99,6 +117,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun onAddActionNameChange(name: String) {
+    if (!ensureEditable()) return
     _uiState.update { it.copy(newActionName = name) }
     val field = EditFileField.NewCharacterActionName
     if (name.isBlank()) rejectField(field, ACTION_NAME_ERROR)
@@ -106,10 +125,12 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun onAddActionDescriptionChange(description: String) {
+    if (!ensureEditable()) return
     _uiState.update { it.copy(newActionDescription = description) }
   }
 
   override fun updateCharacterCurrentHp(current: Int) {
+    if (!ensureEditable()) return
     val hp = _uiState.value.character?.hp ?: return reportError(CHARACTER_REQUIRED_ERROR)
     when {
       current < 0 -> rejectField(EditFileField.CharacterCurrentHp, CURRENT_HP_ERROR)
@@ -123,6 +144,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun updateCharacterMaxHp(max: Int) {
+    if (!ensureEditable()) return
     val hp = _uiState.value.character?.hp ?: return reportError(CHARACTER_REQUIRED_ERROR)
     when {
       max < 0 -> rejectField(EditFileField.CharacterMaxHp, MAX_HP_ERROR)
@@ -137,6 +159,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun addCharacterStat() {
+    if (!ensureEditable()) return
     val state = _uiState.value
     val name = state.newStatName.trim()
     val value = state.newStatValue.toDoubleOrNull() ?: Double.NaN
@@ -165,6 +188,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun updateCharacterStatName(statID: String, name: String) {
+    if (!ensureEditable()) return
     mutateCharacter(clearFieldErrors = setOf(EditFileField.CharacterStatName(statID))) { character
       ->
       when {
@@ -180,6 +204,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun updateCharacterStatValue(statID: String, value: Double) {
+    if (!ensureEditable()) return
     mutateCharacter(clearFieldErrors = setOf(EditFileField.CharacterStatValue(statID))) { character
       ->
       when {
@@ -195,6 +220,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun removeCharacterStat(statID: String) {
+    if (!ensureEditable()) return
     mutateCharacter(
         clearFieldErrors =
             setOf(
@@ -208,6 +234,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun addCharacterAction() {
+    if (!ensureEditable()) return
     val state = _uiState.value
     val name = state.newActionName.trim()
     val description = state.newActionDescription
@@ -224,6 +251,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun updateCharacterActionName(actionID: String, name: String) {
+    if (!ensureEditable()) return
     mutateCharacter(clearFieldErrors = setOf(EditFileField.CharacterActionName(actionID))) {
         character ->
       when {
@@ -242,6 +270,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun updateCharacterActionDescription(actionID: String, description: String) {
+    if (!ensureEditable()) return
     mutateCharacter { character ->
       if (character.actions.none { it.actionID == actionID }) reject(ACTION_NOT_FOUND_ERROR)
       else {
@@ -256,6 +285,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun removeCharacterAction(actionID: String) {
+    if (!ensureEditable()) return
     mutateCharacter(clearFieldErrors = setOf(EditFileField.CharacterActionName(actionID))) {
         character ->
       if (character.actions.none { it.actionID == actionID }) reject(ACTION_NOT_FOUND_ERROR)
@@ -264,10 +294,12 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun updateLoreTitle(title: String) {
+    if (!ensureEditable()) return
     mutateLore { it.copy(title = title) }
   }
 
   override fun addLoreSection(title: String, description: String) {
+    if (!ensureEditable()) return
     val sectionID = UUID.randomUUID().toString()
     mutateLore { lore ->
       when {
@@ -279,16 +311,19 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
   }
 
   override fun updateLoreSectionTitle(sectionID: String, title: String) {
+    if (!ensureEditable()) return
     updateLoreSection(sectionID, setOf(EditFileField.LoreSectionTitle(sectionID))) {
       it.copy(title = title)
     }
   }
 
   override fun updateLoreSectionDescription(sectionID: String, description: String) {
+    if (!ensureEditable()) return
     updateLoreSection(sectionID) { it.copy(description = description) }
   }
 
   override fun removeLoreSection(sectionID: String) {
+    if (!ensureEditable()) return
     mutateLore(clearFieldErrors = setOf(EditFileField.LoreSectionTitle(sectionID))) { lore ->
       if (lore.sections.none { it.sectionID == sectionID }) reject(SECTION_NOT_FOUND_ERROR)
       else lore.copy(sections = lore.sections.filterNot { it.sectionID == sectionID })
@@ -297,6 +332,10 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
 
   override fun saveJDRfile() {
     val state = _uiState.value
+    if (state.isReadOnly) {
+      reportError(READ_ONLY_ERROR)
+      return
+    }
     if (state.isSaving) return
 
     val generalValidationError = validateForSave(state)
@@ -484,6 +523,22 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
     _uiState.update { it.copy(error = message, isSaved = false) }
   }
 
+  private fun ensureEditable(): Boolean {
+    if (!_uiState.value.isReadOnly) return true
+    reportError(READ_ONLY_ERROR)
+    return false
+  }
+
+  private suspend fun canEditInGroup(
+      file: com.github.se.jdrnexus.model.personalSpace.JDRFile,
+      groupId: String,
+  ): Boolean {
+    val userId = auth.authState.first()?.uid ?: return false
+    val group = groups?.getGroupFlow(groupId)?.first() ?: return false
+    val isMember = group.gameMasterId == userId || userId in group.participantIds
+    return isMember && (group.gameMasterId == userId || file.ownerId == userId)
+  }
+
   internal companion object {
     const val ACTION_NOT_FOUND_ERROR = "Action not found."
     const val ACTION_NAME_ERROR = "Action name cannot be empty."
@@ -498,6 +553,7 @@ class EditFileViewModel(workspaceRepository: WorkspaceRepository? = null) :
     const val LORE_REQUIRED_ERROR = "Load a lore file before editing."
     const val MAX_HP_ERROR = "Maximum HP must be a non-negative number."
     const val SAVE_ERROR = "Unable to save this file."
+    const val READ_ONLY_ERROR = "You cannot edit a file you do not own."
     const val SECTION_NOT_FOUND_ERROR = "Section not found."
     const val SECTION_TITLE_ERROR = "Section title cannot be empty."
     const val STAT_NOT_FOUND_ERROR = "Stat not found."

@@ -134,10 +134,23 @@ fun JDRNexusApp(
   val navController = rememberNavController()
   val navigation = rememberNavigationHelper(navController)
 
-  // Create an editFileViewModel to be able to retreive the file for the edition screens
-  val activeEditFileViewModel = editFileViewModel ?: viewModel()
-  val openDocument: (JDRFile) -> Unit = { document ->
-    activeEditFileViewModel.loadFile(document.id)
+  // Create an editFileViewModel to be able to retrieve the file for the edition screens
+  val activeEditFileViewModel =
+      editFileViewModel
+          ?: viewModel(
+              factory =
+                  viewModelFactory {
+                    initializer {
+                      EditFileViewModel(
+                          workspaceRepository = activeWorkspaceRepository,
+                          groupRepository = activeGroupRepository,
+                          authRepository = activeAuthRepository,
+                      )
+                    }
+                  }
+          )
+  val openDocument: (JDRFile, String?) -> Unit = { document, groupId ->
+    activeEditFileViewModel.loadFile(document.id, groupId)
     when (document.type) {
       DocumentType.CHARACTER -> navigation.navigate(AllRoutes.EditChar.name)
       DocumentType.TEXT -> navigation.navigate(AllRoutes.EditLore.name)
@@ -224,7 +237,7 @@ fun JDRNexusApp(
         PersonalSpaceScreen(
             onBackButton = { navigation.popBackStack() },
             personalSpaceViewModel = personalSpaceViewModel ?: viewModel(),
-            onDocumentClicked = openDocument,
+            onDocumentClicked = { document -> openDocument(document, null) },
             onCreateFile = { fileId ->
               activeEditFileViewModel.loadFile(fileId)
               navigation.navigate(AllRoutes.EditChar.name)
@@ -244,7 +257,7 @@ fun JDRNexusApp(
       composable(route = AllRoutes.Search.name) {
         DocumentSearchScreen(
             onBack = { navigation.popBackStack() },
-            onDocumentClicked = openDocument,
+            onDocumentClicked = { file -> openDocument(file, null) },
             searchViewModel = personalSearchViewModel ?: viewModel<DocumentSearchViewModel>(),
         )
       }
@@ -310,11 +323,7 @@ fun JDRNexusApp(
             groupName = uiState.groupName,
             personalItems = uiState.personalFiles,
             onBack = { navController.popBackStack() },
-            onItemClicked = { file, canEdit ->
-              if (canEdit) {
-                openDocument(file)
-              }
-            },
+            onItemClicked = { file, _ -> openDocument(file, groupId) },
             onTabSelected = { tab ->
               when (tab) {
                 "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
@@ -359,7 +368,7 @@ fun JDRNexusApp(
                 )
         DocumentSearchScreen(
             onBack = { navigation.popBackStack() },
-            onDocumentClicked = openDocument,
+            onDocumentClicked = { file -> openDocument(file, groupId) },
             searchViewModel = activeGroupSearchViewModel,
         )
       }

@@ -10,16 +10,23 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
+import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.FileEdit
+import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import com.github.se.jdrnexus.model.repository.AuthRepository
+import com.github.se.jdrnexus.model.repository.AuthResult
+import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.utils.MainDispatcherRule
+import com.github.se.jdrnexus.utils.NavigationGroupRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -76,6 +83,77 @@ class EditFileViewModelTest {
     assertNull(viewModel.uiState.value.lore)
     assertFalse(viewModel.uiState.value.isLoading)
     assertNull(viewModel.uiState.value.error)
+  }
+
+  @Test
+  fun playerCanReadAnotherMembersFileButCannotChangeOrSaveIt() = runTest {
+    val file =
+        JDRFile(
+            id = "shared",
+            ownerId = "other",
+            type = DocumentType.CHARACTER,
+            content = characterJson,
+        )
+    val repository = FakeRepository(file)
+    val viewModel =
+        loadedViewModel(
+            file,
+            repository,
+            groupRepository =
+                NavigationGroupRepository(
+                    CampaignGroup(
+                        "group",
+                        gameMasterId = "gm",
+                        participantIds = listOf("player", "other"),
+                    )
+                ),
+            authRepository = FakeAuthRepository("player"),
+            groupId = "group",
+        )
+    val original = viewModel.uiState.value.character
+
+    viewModel.updateCharacterName("Changed")
+    viewModel.saveJDRfile()
+    runCurrent()
+
+    assertTrue(viewModel.uiState.value.isReadOnly)
+    assertEquals(original, viewModel.uiState.value.character)
+    assertEquals(EditFileViewModel.READ_ONLY_ERROR, viewModel.uiState.value.error)
+    assertTrue(repository.updatedFiles.isEmpty())
+  }
+
+  @Test
+  fun groupOwnerAndGameMasterCanStillEditFiles() = runTest {
+    val file =
+        JDRFile(
+            id = "shared",
+            ownerId = "owner",
+            type = DocumentType.CHARACTER,
+            content = characterJson,
+        )
+    val group = CampaignGroup("group", gameMasterId = "gm", participantIds = listOf("owner"))
+
+    val owner =
+        loadedViewModel(
+            file,
+            groupRepository = NavigationGroupRepository(group),
+            authRepository = FakeAuthRepository("owner"),
+            groupId = "group",
+        )
+    owner.updateCharacterName("Owner edit")
+    assertEquals("Owner edit", owner.uiState.value.character?.name)
+    assertFalse(owner.uiState.value.isReadOnly)
+
+    val gameMaster =
+        loadedViewModel(
+            file,
+            groupRepository = NavigationGroupRepository(group),
+            authRepository = FakeAuthRepository("gm"),
+            groupId = "group",
+        )
+    gameMaster.updateCharacterName("GM edit")
+    assertEquals("GM edit", gameMaster.uiState.value.character?.name)
+    assertFalse(gameMaster.uiState.value.isReadOnly)
   }
 
   @Test
@@ -1013,11 +1091,29 @@ class EditFileViewModelTest {
   private fun TestScope.loadedViewModel(
       file: JDRFile,
       repository: FakeRepository = FakeRepository(file),
+      groupRepository: GroupRepository? = null,
+      authRepository: AuthRepository? = null,
+      groupId: String? = null,
   ): EditFileViewModel {
-    val viewModel = EditFileViewModel(repository)
-    viewModel.loadFile(file.id)
+    val viewModel = EditFileViewModel(repository, groupRepository, authRepository)
+    viewModel.loadFile(file.id, groupId)
     runCurrent()
     return viewModel
+  }
+
+  private class FakeAuthRepository(uid: String) : AuthRepository {
+    override val authState = MutableStateFlow<AuthUser?>(AuthUser(uid, null, null))
+
+    override suspend fun signUpWithEmail(email: String, password: String, username: String) =
+        AuthResult.Failure(com.github.se.jdrnexus.model.repository.AuthError.UNKNOWN)
+
+    override suspend fun signInWithEmail(email: String, password: String) =
+        AuthResult.Failure(com.github.se.jdrnexus.model.repository.AuthError.UNKNOWN)
+
+    override suspend fun signInWithGoogle(idToken: String) =
+        AuthResult.Failure(com.github.se.jdrnexus.model.repository.AuthError.UNKNOWN)
+
+    override suspend fun signOut() = AuthResult.Success(Unit)
   }
 
   private class FakeRepository(

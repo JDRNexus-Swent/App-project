@@ -313,39 +313,8 @@ class MainActivityNavigationTest {
 
   @Test
   fun groupWorkspaceSearchOpensEditorAndReturnsToWorkspace() {
-    val groupRepository = navigationGroupRepository()
-    val loreFile =
-        JDRFile(
-            id = "shared-lore",
-            name = "Dragon Lore",
-            ownerId = "user-1",
-            type = DocumentType.TEXT,
-            content =
-                """{"version":1,"type":"lore","title":"Dragon Lore","sections":[{"sectionID":"history","title":"History","content":"A dragon."}]}""",
-            sharedGroupsIds = listOf("group-1"),
-            placements =
-                mapOf(
-                    "group-1" to
-                        Placement(
-                            folderId = "group-1",
-                            isHidden = false,
-                        )
-                ),
-        )
-
-    showApp(
-        groupRepository = groupRepository,
-        workspaceRepository = NavigationWorkspaceRepository(listOf(loreFile)),
-    )
-    signInAndOpenCampaigns()
-
-    waitForTag(C.Tag.enter_workspace_button)
-    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
-    waitForText("The Sunken Crown")
-
-    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Dragon")
-    waitForTag(C.Tag.searchResult(loreFile.id))
+    val loreFile = loreFile()
+    groupWorkspaceSearchStart(loreFile)
 
     composeTestRule.onNodeWithTag(C.Tag.searchResult(loreFile.id)).performClick()
 
@@ -361,6 +330,18 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
     waitForText("The Sunken Crown")
     composeTestRule.onNodeWithTag(C.Tag.search_open).assertIsDisplayed()
+  }
+
+  @Test
+  fun groupSearchOpensAnotherMembersFileReadOnly() {
+    val loreFile = loreFile().copy(ownerId = "another-player")
+    groupWorkspaceSearchStart(loreFile)
+
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(loreFile.id)).performClick()
+
+    waitForTag(EditFileLoreTestTags.LIST)
+    composeTestRule.onNodeWithTag("edit_lore_save").assertIsNotEnabled()
+    composeTestRule.onNodeWithTag("edit_lore_title").assertTextContains("Dragon Lore")
   }
 
   @Test
@@ -445,7 +426,7 @@ class MainActivityNavigationTest {
         )
 
     showApp(
-        groupRepository = navigationGroupRepository(),
+        groupRepository = playerGroupRepository("user-1"),
         workspaceRepository = NavigationWorkspaceRepository(listOf(loreFile)),
     )
     signInAndOpenCampaigns()
@@ -506,7 +487,7 @@ class MainActivityNavigationTest {
 
   @Test
   fun campaignsNavigateToWorkspaceAndBack() {
-    val groupRepository = navigationGroupRepository()
+    val groupRepository = playerGroupRepository("user-1")
     showApp(groupRepository = groupRepository)
     signInAndOpenCampaigns()
 
@@ -520,37 +501,14 @@ class MainActivityNavigationTest {
 
   @Test
   fun groupWorkspaceSearchShowsGroupFilesAndBackReturnsToWorkspace() {
-    val groupRepository = navigationGroupRepository()
-    val loreFile =
-        JDRFile(
-            id = "shared-lore",
-            name = "Dragon Lore",
-            ownerId = "user-1",
-            type = DocumentType.TEXT,
-            content =
-                """{"version":1,"type":"lore","title":"Dragon Lore","sections":[{"sectionID":"history","title":"History","content":"A dragon."}]}""",
-            sharedGroupsIds = listOf("group-1"),
-            placements = mapOf("group-1" to Placement(folderId = "group-1", isHidden = false)),
-        )
-    showApp(
-        groupRepository = groupRepository,
-        workspaceRepository = NavigationWorkspaceRepository(listOf(loreFile)),
-    )
-    signInAndOpenCampaigns()
-
-    waitForTag(C.Tag.enter_workspace_button)
-    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
-    waitForText("The Sunken Crown")
-    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Dragon")
-    waitForTag(C.Tag.searchResult(loreFile.id))
+    groupWorkspaceSearchStart(loreFile())
     composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
     waitForText("The Sunken Crown")
   }
 
   @Test
   fun systemBackFromWorkspaceReturnsToCampaigns() {
-    val groupRepository = navigationGroupRepository()
+    val groupRepository = playerGroupRepository("user-1")
     showApp(groupRepository = groupRepository)
     signInAndOpenCampaigns()
 
@@ -565,7 +523,7 @@ class MainActivityNavigationTest {
 
   @Test
   fun rapidWorkspaceTapsCreateOneDestinationAndOneViewModel() {
-    val groupRepository = navigationGroupRepository()
+    val groupRepository = playerGroupRepository("user-1")
     showApp(groupRepository = groupRepository)
     signInAndOpenCampaigns()
 
@@ -581,7 +539,7 @@ class MainActivityNavigationTest {
 
   @Test
   fun workspaceGroupIdSurvivesSavedStateRestoration() {
-    val groupRepository = navigationGroupRepository()
+    val groupRepository = playerGroupRepository("user-1")
     val authRepository = FakeAuthRepository()
     val restorationTester = StateRestorationTester(composeTestRule)
     val authViewModel = AuthViewModel(authRepository)
@@ -751,6 +709,43 @@ class MainActivityNavigationTest {
     override suspend fun loadGamesNear(location: MapLocation?): List<MapGame> = emptyList()
   }
 
+  private fun loreFile(): JDRFile =
+      JDRFile(
+          id = "shared-lore",
+          name = "Dragon Lore",
+          ownerId = "user-1",
+          type = DocumentType.TEXT,
+          content =
+              """{"version":1,"type":"lore","title":"Dragon Lore","sections":[{"sectionID":"history","title":"History","content":"A dragon."}]}""",
+          sharedGroupsIds = listOf("group-1"),
+          placements =
+              mapOf(
+                  "group-1" to
+                      Placement(
+                          folderId = "group-1",
+                          isHidden = false,
+                      )
+              ),
+      )
+
+  private fun groupWorkspaceSearchStart(loreFile: JDRFile) {
+    val groupRepository = playerGroupRepository()
+
+    showApp(
+        groupRepository = groupRepository,
+        workspaceRepository = NavigationWorkspaceRepository(listOf(loreFile)),
+    )
+    signInAndOpenCampaigns()
+
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
+    waitForText("The Sunken Crown")
+
+    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Dragon")
+    waitForTag(C.Tag.searchResult(loreFile.id))
+  }
+
   private fun showApp(
       repository: FakeAuthRepository = FakeAuthRepository(),
       groupRepository: NavigationGroupRepository? = null,
@@ -783,16 +778,6 @@ class MainActivityNavigationTest {
     waitForTag(TestTags.GROUPMANAGEMENTBUTTON)
     composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
   }
-
-  private fun navigationGroupRepository() =
-      NavigationGroupRepository(
-          CampaignGroup(
-              id = "group-1",
-              name = "The Sunken Crown",
-              gameMasterId = "user-1",
-              participantIds = listOf("user-1"),
-          )
-      )
 
   private fun waitForTag(tag: String) {
     composeTestRule.waitUntil(5_000) {
@@ -862,13 +847,18 @@ class MainActivityNavigationTest {
     waitForText("The Sunken Crown")
   }
 
-  private fun playerGroupRepository(): NavigationGroupRepository =
+  private fun playerGroupRepository(gameMasterId: String = "gm-1") =
       NavigationGroupRepository(
           CampaignGroup(
               id = "group-1",
               name = "The Sunken Crown",
-              gameMasterId = "gm-1",
-              participantIds = listOf("user-1"),
+              gameMasterId = gameMasterId,
+              participantIds =
+                  if (gameMasterId == "user-1") {
+                    listOf("user-1")
+                  } else {
+                    listOf(gameMasterId, "user-1")
+                  },
           )
       )
 

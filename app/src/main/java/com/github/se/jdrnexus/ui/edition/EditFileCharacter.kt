@@ -88,6 +88,7 @@ fun EditFileCharacter(
       onBack = onBack,
   ) {
     val character = state.character ?: return@EditFileScaffold
+    val enabled = !state.isReadOnly
     val newStatNameError = state.fieldErrors[EditFileField.NewCharacterStatName]
     val newStatValueError = state.fieldErrors[EditFileField.NewCharacterStatValue]
     val newActionNameError = state.fieldErrors[EditFileField.NewCharacterActionName]
@@ -114,6 +115,7 @@ fun EditFileCharacter(
             modifier = Modifier.fillMaxWidth().testTag("edit_character_name"),
             label = { Text(stringResource(R.string.edit_character_name_label)) },
             singleLine = true,
+            enabled = enabled,
         )
       }
       item(key = "character-hp") {
@@ -129,6 +131,7 @@ fun EditFileCharacter(
               error = state.fieldErrors[EditFileField.CharacterCurrentHp],
               modifier = Modifier.weight(1f).testTag(EditFileCharacterTestTags.CURRENT_HP),
               keyboardType = KeyboardType.Number,
+              enabled = enabled,
               onValueChange = { value ->
                 val parsed = value.toIntOrNull()
                 if (parsed == null) {
@@ -144,6 +147,7 @@ fun EditFileCharacter(
               error = state.fieldErrors[EditFileField.CharacterMaxHp],
               modifier = Modifier.weight(1f).testTag(EditFileCharacterTestTags.MAX_HP),
               keyboardType = KeyboardType.Number,
+              enabled = enabled,
               onValueChange = { value ->
                 val parsed = value.toIntOrNull()
                 if (parsed == null) {
@@ -176,6 +180,7 @@ fun EditFileCharacter(
               )
             },
             onRemove = { viewModel.removeCharacterStat(stat.statID) },
+            enabled = enabled,
         )
       }
       item(key = "add-stat") {
@@ -207,6 +212,7 @@ fun EditFileCharacter(
                   singleLine = true,
                   isError = newStatNameError != null,
                   supportingText = newStatNameError?.let { message -> ({ Text(message) }) },
+                  enabled = enabled,
               )
               OutlinedTextField(
                   value = state.newStatValue,
@@ -217,10 +223,12 @@ fun EditFileCharacter(
                   keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                   isError = newStatValueError != null,
                   supportingText = newStatValueError?.let { message -> ({ Text(message) }) },
+                  enabled = enabled,
               )
             }
             OutlinedButton(
                 onClick = viewModel::addCharacterStat,
+                enabled = enabled,
                 modifier = Modifier.fillMaxWidth().testTag("confirm_add_stat"),
                 shape = RoundedCornerShape(8.dp),
             ) {
@@ -252,6 +260,7 @@ fun EditFileCharacter(
               viewModel.updateCharacterActionDescription(action.actionID, it)
             },
             onRemove = { viewModel.removeCharacterAction(action.actionID) },
+            enabled = enabled,
         )
       }
       item(key = "add-action") {
@@ -278,6 +287,7 @@ fun EditFileCharacter(
                 singleLine = true,
                 isError = newActionNameError != null,
                 supportingText = newActionNameError?.let { message -> ({ Text(message) }) },
+                enabled = enabled,
             )
             OutlinedTextField(
                 value = state.newActionDescription,
@@ -285,9 +295,11 @@ fun EditFileCharacter(
                 modifier = Modifier.fillMaxWidth().testTag("add_action_description"),
                 label = { Text(stringResource(R.string.edit_character_new_action_description)) },
                 singleLine = true,
+                enabled = enabled,
             )
             OutlinedButton(
                 onClick = viewModel::addCharacterAction,
+                enabled = enabled,
                 modifier = Modifier.fillMaxWidth().testTag("confirm_add_action"),
                 shape = RoundedCornerShape(8.dp),
             ) {
@@ -309,6 +321,7 @@ fun EditFileCharacter(
             isSaved = state.isSaved,
             testTag = "edit_character_save",
             onSave = viewModel::saveJDRfile,
+            enabled = enabled,
         )
       }
     }
@@ -333,6 +346,7 @@ private fun StatRow(
     onNameChange: (String) -> Unit,
     onValueChange: (String) -> Unit,
     onRemove: () -> Unit,
+    enabled: Boolean,
 ) {
   Row(
       modifier = Modifier.fillMaxWidth(),
@@ -347,6 +361,7 @@ private fun StatRow(
         singleLine = true,
         isError = nameError != null,
         supportingText = nameError?.let { message -> ({ Text(message) }) },
+        enabled = enabled,
     )
     NumberField(
         label = stringResource(R.string.edit_character_value_label),
@@ -354,10 +369,12 @@ private fun StatRow(
         stateKey = stat.statID,
         error = valueError,
         modifier = Modifier.weight(0.55f).testTag("stat_value_${stat.statID}"),
+        enabled = enabled,
         onValueChange = onValueChange,
     )
     IconButton(
         onClick = onRemove,
+        enabled = enabled,
         modifier =
             Modifier.padding(bottom = 48.dp).size(40.dp).testTag("remove_stat_${stat.statID}"),
     ) {
@@ -382,6 +399,7 @@ private fun ActionRow(
     onNameChange: (String) -> Unit,
     onDescriptionChange: (String) -> Unit,
     onRemove: () -> Unit,
+    enabled: Boolean,
 ) {
   Surface(
       modifier = Modifier.fillMaxWidth(),
@@ -402,9 +420,11 @@ private fun ActionRow(
             singleLine = true,
             isError = nameError != null,
             supportingText = nameError?.let { message -> ({ Text(message) }) },
+            enabled = enabled,
         )
         IconButton(
             onClick = onRemove,
+            enabled = enabled,
             modifier =
                 Modifier.padding(bottom = 48.dp)
                     .size(40.dp)
@@ -419,6 +439,7 @@ private fun ActionRow(
           modifier = Modifier.fillMaxWidth().testTag("action_description_${action.actionID}"),
           label = { Text(stringResource(R.string.edit_character_description_label)) },
           minLines = 2,
+          enabled = enabled,
       )
     }
   }
@@ -444,6 +465,7 @@ private fun NumberField(
     modifier: Modifier = Modifier,
     keyboardType: KeyboardType = KeyboardType.Decimal,
     onValueChange: (String) -> Unit,
+    enabled: Boolean = true,
 ) {
   var draft by remember(stateKey) { mutableStateOf(value) }
   var isFocused by remember(stateKey) { mutableStateOf(false) }
@@ -460,6 +482,7 @@ private fun NumberField(
       singleLine = true,
       isError = error != null,
       keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+      enabled = enabled,
       supportingText = { Box(Modifier.heightIn(min = 48.dp)) { error?.let { Text(it) } } },
   )
 }
@@ -486,6 +509,7 @@ private fun EditableTextField(
     minLines: Int = 1,
     isError: Boolean = false,
     supportingText: (@Composable () -> Unit)? = null,
+    enabled: Boolean = true,
 ) {
   var draft by remember(value) { mutableStateOf(value) }
   OutlinedTextField(
@@ -499,6 +523,7 @@ private fun EditableTextField(
       singleLine = singleLine,
       minLines = minLines,
       isError = isError,
+      enabled = enabled,
       supportingText = { Box(Modifier.heightIn(min = 48.dp)) { supportingText?.invoke() } },
   )
 }

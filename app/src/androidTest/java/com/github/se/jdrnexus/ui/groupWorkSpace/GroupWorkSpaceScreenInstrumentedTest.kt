@@ -450,9 +450,9 @@ class GroupWorkSpaceScreenInstrumentedTest {
     }
   }
 
-  // verifies a player can read a file on read only mode
+  // Verifies that clicking another member's file as a player reports read-only permission.
   @Test
-  fun playerCanOpenAnotherMembersFileInReadOnlyMode() {
+  fun playerClickingAnotherMembersFileReceivesReadOnlyPermission() {
     val foreignFile =
         file(
             "foreign",

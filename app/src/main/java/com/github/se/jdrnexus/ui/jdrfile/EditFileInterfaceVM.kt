@@ -33,6 +33,7 @@ data class EditFileUiState(
     val file: JDRFile? = null,
     val character: CharacterFile? = null,
     val lore: LoreFile? = null,
+    val isReadOnly: Boolean = false,
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,
     val isSaved: Boolean = false,
@@ -50,7 +51,7 @@ interface EditFileInterfaceVM {
   val uiState: StateFlow<EditFileUiState>
 
   /** Loads [fileId] and selects the editor model from its repository document type. */
-  fun loadFile(fileId: String)
+  fun loadFile(fileId: String, groupId: String? = null)
 
   /** Replaces the character's display name. */
   fun updateCharacterName(name: String)

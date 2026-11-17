@@ -175,6 +175,7 @@ internal fun EditFileSaveButton(
     isSaving: Boolean,
     isSaved: Boolean,
     testTag: String,
+    enabled: Boolean = true,
     onSave: () -> Unit,
 ) {
   if (isSaving) {
@@ -188,6 +189,7 @@ internal fun EditFileSaveButton(
   } else {
     Button(
         onClick = onSave,
+        enabled = enabled,
         modifier = Modifier.fillMaxWidth().testTag(testTag),
     ) {
       Text(if (isSaved) "Saved" else "Save")
