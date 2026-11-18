@@ -32,6 +32,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -336,6 +337,52 @@ class GroupRepositoryFirestoreTest {
       assertEquals(emptyList<String>(), FirebaseEmulatorTestUtils.userGroupIds(userId))
     }
     assertFalse(firestore.collection("documents").document(groupId).get().await().exists())
+  }
+
+  /** Deleting a group that does not exist (e.g. already deleted) succeeds and does nothing. */
+  @Test
+  fun deleteGroupSucceedsWhenTheGroupDoesNotExist() = runBlocking {
+    val result = repository.deleteGroup(UUID.randomUUID().toString())
+
+    assertEquals(Result.success(Unit), result)
+  }
+
+  /** A blank stored invite code is not an invitation: the group is still deleted. */
+  @Test
+  fun deleteGroupSucceedsWhenTheStoredInviteCodeIsBlank() = runBlocking {
+    val groupId = UUID.randomUUID().toString()
+    val group =
+        CampaignGroup(
+            id = groupId,
+            name = "Blank code",
+            gameMasterId = GM_ID,
+            participantIds = listOf(GM_ID),
+        )
+    assertEquals(Result.success(Unit), repository.createGroup(group))
+    // Corrupted invite code the app never writes, so it is written bypassing the rules.
+    FirebaseEmulatorTestUtils.writeBypassingRules(
+        firestore,
+        "campaign_groups/$groupId",
+        mapOf(
+            "name" to group.name,
+            "description" to group.description,
+            "gameMasterId" to GM_ID,
+            "participantIds" to listOf(GM_ID),
+            "inviteCode" to "",
+        ),
+    )
+
+    val result = repository.deleteGroup(groupId)
+
+    assertEquals(Result.success(Unit), result)
+    assertNull(
+        FirebaseEmulatorTestUtils.readBypassingRules(
+            firestore,
+            "campaign_groups/$groupId",
+            Map::class.java,
+        )
+    )
+    assertEquals(emptyList<String>(), FirebaseEmulatorTestUtils.userGroupIds(GM_ID))
   }
 
   /** Tests adding and removing users from a campaign group using the specific methods. */
