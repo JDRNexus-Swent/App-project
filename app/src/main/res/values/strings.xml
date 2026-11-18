@@ -83,8 +83,8 @@
     <string name="workspace_folder_name">Folder name</string>
     <string name="workspace_create">Create</string>
     <string name="workspace_cancel">Cancel</string>
-    <string name="workspace_add_files_title">Add files to workspace</string>
-    <string name="workspace_no_personal_files">No personal files available to add.</string>
+    <string name="workspace_share_item_title">Share an item to the group</string>
+    <string name="workspace_no_personal_items">No personal items available to share.</string>
     <string name="workspace_done">Done</string>
     <string name="workspace_edit_folder">Edit folder</string>
     <string name="workspace_edit_file">Edit file</string>
@@ -117,7 +117,7 @@
     <string name="workspace_empty_title">No files yet</string>
     <string name="workspace_empty_message">Add files to share them with the group.</string>
     <string name="workspace_folder_action">Folder</string>
-    <string name="workspace_file_action">File</string>
+    <string name="workspace_share_item_action">Item</string>
     <string name="workspace_character_action">Character</string>
     <string name="workspace_text_action">Text</string>
     <string name="workspace_coming_soon">Coming soon</string>

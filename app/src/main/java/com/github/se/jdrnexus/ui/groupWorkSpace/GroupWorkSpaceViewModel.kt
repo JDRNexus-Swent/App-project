@@ -367,6 +367,8 @@ class GroupWorkspaceViewModel(
   }
 
   /**
+   * Lists every personal item of [uid], folders included, each folder before its content.
+   *
    * Keeps the traversal behind one repository-facing helper so it can be replaced by the shared
    * Personal Space traversal when that API is available.
    */
@@ -376,7 +378,10 @@ class GroupWorkspaceViewModel(
         val visited = mutableSetOf<String>()
 
         suspend fun collectFolder(folder: JDRFile) {
-          if (!visited.add(folder.id)) return
+          if (!visited.add(folder.id)) {
+            return
+          }
+          files += folder
           repository.getPersonalFolderFiles(folder.id, uid).first().forEach { child ->
             if (child.type == DocumentType.FOLDER) {
               collectFolder(child)
@@ -611,8 +616,11 @@ class GroupWorkspaceViewModel(
     return itemId
   }
 
-  /** Shares an existing, user-owned Personal Space file into the selected group folder. */
-  fun addFile(fileId: String): Job? {
+  /**
+   * Shares an existing, user-owned Personal Space item into the selected group folder. A folder is
+   * shared with all its personal content, keeping the same structure.
+   */
+  fun shareItem(fileId: String): Job? {
     if (fileId.isBlank()) {
       showError("File ID cannot be empty.")
       return null
@@ -629,13 +637,11 @@ class GroupWorkspaceViewModel(
           requireAccessibleFolder(parentId, uid)
         }
 
-        val file = getItem(fileId, "File not found")
+        val file = getItem(fileId, "Item not found")
 
-        check(file.type != DocumentType.GROUP_ROOT) { "Only files can be added here." }
-        // Todo: remove the check below when the add of folder is implemented
-        check(file.type != DocumentType.FOLDER) { "Adding folders is not supported yet." }
-        check(file.ownerId == uid) { "You can only add files that you own." }
-        check(groupId !in file.sharedGroupsIds) { "This file is already in the group." }
+        check(file.type != DocumentType.GROUP_ROOT) { "A group root cannot be added here." }
+        check(file.ownerId == uid) { "You can only share items that you own." }
+        check(groupId !in file.sharedGroupsIds) { "This item is already in the group." }
         repository
             .addItemToGroup(
                 itemId = file.id,
