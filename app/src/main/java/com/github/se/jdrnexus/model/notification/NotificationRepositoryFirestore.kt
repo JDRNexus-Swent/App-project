@@ -6,7 +6,7 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
+import java.util.Date
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -55,12 +55,15 @@ class NotificationRepositoryFirestore(private val firestore: FirebaseFirestore) 
     val registration =
         notifications
             .whereEqualTo("userId", userId)
-            .orderBy("createdAt", Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, error ->
               if (error != null) {
                 close(error)
               } else if (snapshot != null) {
-                trySend(snapshot.documents.mapNotNull(::toNotification))
+                trySend(
+                    snapshot.documents
+                        .mapNotNull(::toNotification)
+                        .sortedByDescending { it.createdAt ?: Date(0) }
+                )
               }
             }
     awaitClose { registration.remove() }

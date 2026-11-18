@@ -73,7 +73,6 @@ class NotificationRepositoryFirestoreTest {
     every { firestoreMock.collection(NotificationRepositoryFirestore.COLLECTION_PATH) } returns
         notificationsMock
     every { notificationsMock.whereEqualTo("userId", "target") } returns queryMock
-    every { queryMock.orderBy("createdAt", Query.Direction.DESCENDING) } returns queryMock
     every { queryMock.addSnapshotListener(any()) } answers
         {
           val listener = firstArg<EventListener<QuerySnapshot>>()
@@ -99,7 +98,6 @@ class NotificationRepositoryFirestoreTest {
     every { firestoreMock.collection(NotificationRepositoryFirestore.COLLECTION_PATH) } returns
         notificationsMock
     every { notificationsMock.whereEqualTo("userId", "target") } returns queryMock
-    every { queryMock.orderBy("createdAt", Query.Direction.DESCENDING) } returns queryMock
     every { queryMock.addSnapshotListener(any()) } answers
         {
           val listener = firstArg<EventListener<QuerySnapshot>>()
