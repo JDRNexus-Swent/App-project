@@ -195,7 +195,7 @@ fun GroupWorkSpaceScreen(
             onSearchClicked = onSearchClicked,
             roleLabel =
                 if (uiState.loadState == LoadState.Success) {
-                  if (uiState.canCreateFolder) {
+                  if (uiState.isGameMaster) {
                     stringResource(R.string.workspace_role_game_master)
                   } else {
                     stringResource(R.string.workspace_role_player)
@@ -242,7 +242,6 @@ fun GroupWorkSpaceScreen(
   // Choose the type of item to create
   if (showCreateItemDialog) {
     CreateItemDialog(
-        canCreateFolder = uiState.canCreateFolder,
         isOperationInProgress = uiState.isOperationInProgress,
         onFolderSelected = {
           showCreateItemDialog = false
@@ -952,9 +951,9 @@ private fun WorkspaceContent(
                 key = { it.id },
             ) { file ->
               val isHidden = file.placements[groupId]?.isHidden ?: false
-              val canChangeVisibility = uiState.canCreateFolder || currentUserId == file.ownerId
+              val canChangeVisibility = uiState.isGameMaster || currentUserId == file.ownerId
               val canEdit = file.ownerId == currentUserId
-              val canRemove = canEdit || uiState.canCreateFolder
+              val canRemove = canEdit || uiState.isGameMaster
 
               WorkspaceCard(
                   file = file,
@@ -1036,7 +1035,6 @@ fun EmptyWorkspace() {
 /**
  * Lets the user choose the type of item to create in the current workspace.
  *
- * @param canCreateFolder Whether the folder option is offered.
  * @param isOperationInProgress Whether a workspace operation is running, disabling the options.
  * @param onFolderSelected Called when the folder option is selected.
  * @param onCharacterSelected Called when the character option is selected.
@@ -1044,7 +1042,6 @@ fun EmptyWorkspace() {
  */
 @Composable
 private fun CreateItemDialog(
-    canCreateFolder: Boolean,
     isOperationInProgress: Boolean,
     onFolderSelected: () -> Unit,
     onCharacterSelected: () -> Unit,
@@ -1066,15 +1063,13 @@ private fun CreateItemDialog(
               stringResource(R.string.workspace_create_item_description),
               color = color().onSecondary,
           )
-          if (canCreateFolder) {
-            CreateItemOption(
-                label = stringResource(R.string.workspace_folder_action),
-                icon = Icons.Filled.Folder,
-                enabled = !isOperationInProgress,
-                onClick = onFolderSelected,
-                modifier = Modifier.testTag(C.Tag.workspace_create_item_folder),
-            )
-          }
+          CreateItemOption(
+              label = stringResource(R.string.workspace_folder_action),
+              icon = Icons.Filled.Folder,
+              enabled = !isOperationInProgress,
+              onClick = onFolderSelected,
+              modifier = Modifier.testTag(C.Tag.workspace_create_item_folder),
+          )
           CreateItemOption(
               label = stringResource(R.string.workspace_character_action),
               icon = Icons.Default.People,

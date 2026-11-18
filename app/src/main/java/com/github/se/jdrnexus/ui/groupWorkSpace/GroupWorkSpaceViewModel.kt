@@ -45,7 +45,7 @@ data class GroupWorkspaceUiState(
     val loadState: LoadState = LoadState.Loading,
     val isOperationInProgress: Boolean = false,
     val errorMessage: String = "",
-    val canCreateFolder: Boolean = false,
+    val isGameMaster: Boolean = false,
     val canEditItems: Boolean = false,
     val currentFolderName: String = "",
     val folderHistory: List<String> = emptyList(),
@@ -87,15 +87,9 @@ class GroupWorkspaceViewModel(
   private suspend fun requireUid(): String =
       authRepository.authState.first()?.uid ?: throw IllegalStateException("You must be signed in.")
 
-  /**
-   * Ensures that the current user has the Game Master role.
-   *
-   * Used to restrict privileged workspace operations to the Game Master.
-   */
-  private fun requireGameMaster() {
-    check(role == GroupWorkspaceRole.GAME_MASTER) {
-      "Only the GameMaster can perform this operation."
-    }
+  /** Ensures that the current user is the Game Master or a player of this group. */
+  private fun requireMember() {
+    check(role != null) { "You are not a member of this group." }
   }
 
   /**
@@ -109,7 +103,7 @@ class GroupWorkspaceViewModel(
 
   /** Ensures that the user is allowed to edit the specified item. */
   private fun requireCanEdit(item: JDRFile, uid: String) {
-    check(role != null) { "You are not a member of this group." }
+    requireMember()
     check(item.ownerId == uid) { "You cannot edit an item that you do not own." }
   }
 
@@ -289,7 +283,7 @@ class GroupWorkspaceViewModel(
                 currentFolderId = "",
                 currentFolderName = "",
                 folderHistory = emptyList(),
-                canCreateFolder = false,
+                isGameMaster = false,
                 canEditItems = false,
                 loadState = LoadState.Error("You are no longer a member of this group."),
                 groupId = "",
@@ -306,7 +300,7 @@ class GroupWorkspaceViewModel(
 
         _uiState.update {
           it.copy(
-              canCreateFolder = newRole == GroupWorkspaceRole.GAME_MASTER,
+              isGameMaster = newRole == GroupWorkspaceRole.GAME_MASTER,
               canEditItems = newRole == GroupWorkspaceRole.GAME_MASTER,
               groupId = groupId,
               groupName = group?.name.orEmpty(),
@@ -334,7 +328,7 @@ class GroupWorkspaceViewModel(
             currentFolderId = "",
             currentFolderName = "",
             folderHistory = emptyList(),
-            canCreateFolder = false,
+            isGameMaster = false,
             canEditItems = false,
             loadState = LoadState.Error(e.message ?: "Unable to verify group membership."),
         )
@@ -544,7 +538,7 @@ class GroupWorkspaceViewModel(
     }
   }
 
-  /** Creates a folder in the currently displayed folder. Only the GameMaster may create folders. */
+  /** Creates a folder in the currently displayed folder. Any group member may create one. */
   fun createFolder(name: String): Job? {
     val folderName = name.trim()
     if (folderName.isEmpty()) {
@@ -554,10 +548,7 @@ class GroupWorkspaceViewModel(
 
     val parentId = _uiState.value.currentFolderId
     return viewModelScope.launch {
-      performOperation {
-        requireGameMaster()
-        createItemInFolder(parentId, folderName, DocumentType.FOLDER)
-      }
+      performOperation { createItemInFolder(parentId, folderName, DocumentType.FOLDER) }
     }
   }
 
@@ -571,7 +562,6 @@ class GroupWorkspaceViewModel(
     return viewModelScope.launch {
       var createdId: String? = null
       performOperation {
-        check(role != null) { "You are not a member of this group." }
         createdId =
             createItemInFolder(
                 parentId = parentId,
@@ -585,8 +575,8 @@ class GroupWorkspaceViewModel(
   }
 
   /**
-   * Creates an item owned by the current user directly in this group, inheriting the hidden state
-   * of its parent folder, and returns its ID.
+   * Creates an item owned by the current user directly in this group and returns its ID. The parent
+   * folder must be accessible to the user, and its hidden state is inherited.
    */
   private suspend fun createItemInFolder(
       parentId: String,
@@ -594,6 +584,7 @@ class GroupWorkspaceViewModel(
       type: DocumentType,
       content: String = "",
   ): String {
+    requireMember()
     val uid = requireUid()
     val parent =
         if (parentId.isNotEmpty()) {
@@ -610,7 +601,7 @@ class GroupWorkspaceViewModel(
                 name = name,
                 ownerId = uid,
                 sharedGroupsIds = listOf(groupId),
-                personalParentId = "",
+                personalParentId = PERSONAL_ROOT_ID,
                 type = type,
                 content = content,
             )
