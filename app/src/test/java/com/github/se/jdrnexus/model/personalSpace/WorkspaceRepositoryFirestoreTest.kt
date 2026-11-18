@@ -828,6 +828,22 @@ class WorkspaceRepositoryFirestoreTest {
   }
 
   @Test
+  fun addItemToGroup_withContent_addsAnEmptyFolderAlone() = runBlocking {
+    val folder = JDRFile(id = "folder", ownerId = "owner", type = DocumentType.FOLDER)
+    val sibling = JDRFile(id = "sibling", ownerId = "owner")
+    persistFiles(groupRootOf("group"), folder, sibling)
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repository.addItemToGroup("folder", "group", "group", includeContent = true)
+        }
+
+    assertTrue(result.isSuccess)
+    assertEquals(folder.withPlacement("group", Placement("group")), getPersistedFile("folder"))
+    assertEquals(sibling, getPersistedFile("sibling"))
+  }
+
+  @Test
   fun addItemToGroup_withContent_refusesToAddMoreItemsThanOneBatchCanWrite() = runBlocking {
     val folder = JDRFile(id = "folder", ownerId = "A", type = DocumentType.FOLDER)
     persistFiles(groupRootOf("group"), folder)

@@ -23,7 +23,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
@@ -114,7 +113,7 @@ class GroupWorkSpaceViewModelTest {
   }
 
   @Test
-  fun exposesGroupNameAndAllNonFolderPersonalFiles() = runTest {
+  fun exposesGroupNameAndAllPersonalItemsWithEachFolderBeforeItsContent() = runTest {
     val rootFile = JDRFile(id = "root-file", ownerId = OWNER_ID)
     val folder = JDRFile(id = "personal-folder", ownerId = OWNER_ID, type = DocumentType.FOLDER)
     val secondFolder =
@@ -171,7 +170,14 @@ class GroupWorkSpaceViewModelTest {
 
     assertEquals("The Sunken Crown", viewModel.uiState.value.groupName)
     assertEquals(
-        listOf(rootFile.id, nestedFile.id, secondNestedFile.id),
+        listOf(
+            rootFile.id,
+            folder.id,
+            nestedFolder.id,
+            nestedFile.id,
+            secondFolder.id,
+            secondNestedFile.id,
+        ),
         viewModel.uiState.value.personalFiles.map { it.id },
     )
     assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
@@ -673,7 +679,7 @@ class GroupWorkSpaceViewModelTest {
     assertEquals("", player.uiState.value.errorMessage)
   }
 
-  // A suspended older request is cancelled, and its later folder emissions cannot replace current
+  // A suspended older request is canceled, and its later folder emissions cannot replace current
   // content.
   @Test
   fun loadsCancelStaleRequestsAndKeepCurrentFolderItems() = runTest {
@@ -701,7 +707,7 @@ class GroupWorkSpaceViewModelTest {
     assertTrue(fastFolder.id in repository.folderRequests)
     assertEquals(listOf(fast), viewModel.uiState.value.items)
 
-    // The old collection has been cancelled, but its repository flow remains independently
+    // The old collection has been canceled, but its repository flow remains independently
     // writable.
     slowGate.complete(Unit)
     repository.emitFolderItems(
@@ -756,7 +762,7 @@ class GroupWorkSpaceViewModelTest {
     player.loadWorkspace(hiddenParent.id)
     runCurrent()
 
-    player.addFile(file.id)
+    player.shareItem(file.id)
     runCurrent()
 
     assertEquals(
@@ -789,7 +795,7 @@ class GroupWorkSpaceViewModelTest {
     val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
     runCurrent()
 
-    gm.addFile(owned.id)
+    gm.shareItem(owned.id)
     runCurrent()
     assertEquals(
         Placement(GROUP_ID, false),
@@ -797,9 +803,9 @@ class GroupWorkSpaceViewModelTest {
     )
     assertEquals("", gm.uiState.value.errorMessage)
 
-    gm.addFile(foreign.id)
+    gm.shareItem(foreign.id)
     runCurrent()
-    assertEquals("You can only add files that you own.", gm.uiState.value.errorMessage)
+    assertEquals("You can only share items that you own.", gm.uiState.value.errorMessage)
     assertTrue(GROUP_ID !in repository.files.getValue(foreign.id).sharedGroupsIds)
     assertEquals(
         listOf(AddRequest(owned.id, GROUP_ID, GROUP_ID, isHidden = false)),
@@ -823,16 +829,16 @@ class GroupWorkSpaceViewModelTest {
     val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
     runCurrent()
 
-    player.addFile(foreign.id)
+    player.shareItem(foreign.id)
     runCurrent()
-    assertEquals("You can only add files that you own.", player.uiState.value.errorMessage)
+    assertEquals("You can only share items that you own.", player.uiState.value.errorMessage)
     assertTrue(GROUP_ID !in repository.files.getValue(foreign.id).sharedGroupsIds)
     assertTrue(repository.addRequests.isEmpty())
 
     player.clearError()
-    player.addFile(alreadyShared.id)
+    player.shareItem(alreadyShared.id)
     runCurrent()
-    assertEquals("This file is already in the group.", player.uiState.value.errorMessage)
+    assertEquals("This item is already in the group.", player.uiState.value.errorMessage)
     assertEquals(alreadyShared, repository.files.getValue(alreadyShared.id))
     assertTrue(repository.addRequests.isEmpty())
   }
@@ -1148,7 +1154,7 @@ class GroupWorkSpaceViewModelTest {
 
     assertEquals(null, gm.createFolder("   "))
     assertEquals("Folder name cannot be empty.", gm.uiState.value.errorMessage)
-    assertEquals(null, gm.addFile(" "))
+    assertEquals(null, gm.shareItem(" "))
     assertEquals("File ID cannot be empty.", gm.uiState.value.errorMessage)
     assertEquals(null, gm.editItem(file.copy(name = " ")))
     assertEquals("The item name cannot be blank.", gm.uiState.value.errorMessage)
@@ -1228,25 +1234,77 @@ class GroupWorkSpaceViewModelTest {
     )
   }
 
-  // Group roots, folders and missing files cannot be added to the workspace.
+  // Group roots and missing items cannot be shared to the workspace.
   @Test
-  fun addFileRejectsGroupRootsFoldersAndMissingFiles() = runTest {
+  fun shareItemRejectsGroupRootsAndMissingItems() = runTest {
     val root = JDRFile(id = "root", ownerId = OWNER_ID, type = DocumentType.GROUP_ROOT)
-    val folder = JDRFile(id = "folder", ownerId = OWNER_ID, type = DocumentType.FOLDER)
-    val repository = FakeWorkspaceRepository(listOf(root, folder))
+    val repository = FakeWorkspaceRepository(listOf(root))
     val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
     runCurrent()
 
-    gm.addFile(root.id)
+    gm.shareItem(root.id)
     runCurrent()
-    assertEquals("Only files can be added here.", gm.uiState.value.errorMessage)
-    gm.addFile(folder.id)
-    runCurrent()
-    assertEquals("Adding folders is not supported yet.", gm.uiState.value.errorMessage)
-    gm.addFile("missing")
+    assertEquals("A group root cannot be added here.", gm.uiState.value.errorMessage)
+    gm.shareItem("missing")
     runCurrent()
     assertEquals("Document not found in Firestore", gm.uiState.value.errorMessage)
     assertTrue(repository.addRequests.isEmpty())
+  }
+
+  // A folder is shared into the current folder and asks the repository to include its content.
+  @Test
+  fun shareItemSharesAFolderWithItsContentInTheCurrentFolder() = runTest {
+    val destination = groupFolder("destination")
+    val folder = JDRFile(id = "personal-folder", ownerId = OWNER_ID, type = DocumentType.FOLDER)
+    val child = JDRFile(id = "child", ownerId = OWNER_ID, personalParentId = folder.id)
+    val repository = FakeWorkspaceRepository(listOf(destination, folder, child))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+    gm.loadWorkspace(destination.id)
+    runCurrent()
+
+    gm.shareItem(folder.id)
+    runCurrent()
+
+    assertEquals("", gm.uiState.value.errorMessage)
+    assertEquals(
+        listOf(
+            AddRequest(
+                folder.id,
+                GROUP_ID,
+                destination.id,
+                isHidden = false,
+                includeContent = true,
+            )
+        ),
+        repository.addRequests,
+    )
+  }
+
+  // A repository failure is shown and the item stays out of the group.
+  @Test
+  fun shareItemShowsTheRepositoryFailure() = runTest {
+    val groupRoot =
+        JDRFile(
+            id = GROUP_ID,
+            ownerId = OWNER_ID,
+            type = DocumentType.GROUP_ROOT,
+            sharedGroupsIds = listOf(GROUP_ID),
+        )
+    val folder = JDRFile(id = "personal-folder", ownerId = OWNER_ID, type = DocumentType.FOLDER)
+    val repository = FakeWorkspaceRepository(listOf(groupRoot, folder))
+    repository.addFailure = IllegalStateException("Too many items to add at once (maximum 500).")
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    gm.shareItem(folder.id)
+    runCurrent()
+
+    assertEquals(
+        "Too many items to add at once (maximum 500).",
+        gm.uiState.value.errorMessage,
+    )
+    assertEquals(folder, repository.files.getValue(folder.id))
   }
 
   // Deleting the selected folder sends the user back to the group root.
@@ -1400,6 +1458,7 @@ class GroupWorkSpaceViewModelTest {
     private var nextId = 0
     var updateFailure: Exception? = null
     var hiddenFailure: Exception? = null
+    var addFailure: Exception? = null
     var groupRootLoads = 0
     var personalRootLoads = 0
     val addRequests = mutableListOf<AddRequest>()
@@ -1465,6 +1524,7 @@ class GroupWorkSpaceViewModelTest {
         includeContent: Boolean,
     ): Result<Unit> = runCatching {
       addRequests += AddRequest(itemId, groupId, folderId, isHidden, includeContent)
+      addFailure?.let { throw it }
       val item = requireNotNull(files[itemId])
       val folder = requireNotNull(files[folderId])
       check(folder.type == DocumentType.GROUP_ROOT || folder.type == DocumentType.FOLDER)
