@@ -1,11 +1,11 @@
 // Co-authored-by: Claude Sonnet 5.5
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.personalSpace
 
-import android.content.Context
 import android.os.Looper
-import androidx.test.core.app.ApplicationProvider
+import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
+import com.github.se.jdrnexus.utils.waitFor
 import com.google.android.gms.tasks.Tasks
-import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.EventListener
@@ -23,10 +23,8 @@ import io.mockk.verify
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
@@ -34,6 +32,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -43,8 +42,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 
 /**
- * Those test use firebase emulator WITH TEST SETTING, make sure to activate it with "firebase
- * emulators:exec --config firebase.test.json"
+ * Those tests use the Firestore emulator with the project security rules; start it with "firebase
+ * emulators:exec --only auth,firestore"
  */
 @RunWith(RobolectricTestRunner::class)
 class GroupRepositoryFirestoreTest {
@@ -54,126 +53,22 @@ class GroupRepositoryFirestoreTest {
 
   companion object {
     // Defines the maximum time to wait for asynchronous Firebase operations in tests
-    private const val DEFAULT_TIMEOUT_MS = 5000L
+    private const val DEFAULT_TIMEOUT_MS = FirebaseEmulatorTestUtils.DEFAULT_TIMEOUT_MS
 
-    private const val EMULATOR_APP_NAME = "EmulatorApp"
-    private const val EMULATOR_HOST = "127.0.0.1"
-    private const val EMULATOR_PORT = 8080
+    // The game master who creates the groups: the repository of most tests is signed in as them.
+    private const val GM_ID = "gm1"
   }
 
   @Before
   fun setUp() {
-    val context = ApplicationProvider.getApplicationContext<Context>()
-
-    // Make sure the default Firebase app exists, we need its options to clone it
-    if (FirebaseApp.getApps(context).isEmpty()) {
-      FirebaseApp.initializeApp(context)
-    }
-
-    val emulatorApp =
-        FirebaseApp.getApps(context).firstOrNull { it.name == EMULATOR_APP_NAME }
-            ?: FirebaseApp.initializeApp(
-                context,
-                FirebaseApp.getInstance().options,
-                EMULATOR_APP_NAME,
-            )
-
-    firestore = FirebaseFirestore.getInstance(emulatorApp)
-
-    // The FirebaseApp (and its Firestore) is shared by every test class in the JVM,
-    // so the second class to run will hit an IllegalStateException here.
-    // It is safe to ignore: this instance is only ever used with the emulator,
-    // so it is necessarily already pointing to it.
-    try {
-      firestore.useEmulator(EMULATOR_HOST, EMULATOR_PORT)
-    } catch (e: IllegalStateException) {
-      // Already configured by a previous test class
-    }
-
+    firestore = FirebaseEmulatorTestUtils.signInAs(GM_ID)
     repository = GroupRepositoryFirestore(firestore)
   }
 
   @After
   fun tearDown() {
     runBlocking {
-      // Re-enable network in case it was disabled during tests
-      try {
-        firestore.enableNetwork().await()
-      } catch (e: Exception) {
-        // ignore
-      }
-
-      // Clean up the database for the next test to ensure a clean state
-      for (collectionName in listOf("campaign_groups", "documents", "users")) {
-        try {
-          val snapshot = firestore.collection(collectionName).get().await()
-          for (doc in snapshot.documents) {
-            doc.reference.delete().await()
-          }
-        } catch (e: Exception) {
-          // ignore
-        }
-      }
-    }
-  }
-
-  /**
-   * Helper function to collect a Flow in a background coroutine while actively pumping the
-   * Robolectric MainLooper. This is required because Firebase SDK callbacks (including snapshot
-   * listeners) dispatch to the Android Main thread, which gets blocked in typical runBlocking
-   * tests.
-   *
-   * It uses thread-safe Atomic properties to guarantee memory visibility across Dispatchers.
-   */
-  private suspend fun <T> Flow<T>.waitFor(
-      timeoutMs: Long = DEFAULT_TIMEOUT_MS,
-      condition: (T) -> Boolean,
-  ): T {
-    // use of atomic value allows the real storage in memory (not in cache)
-    val latestValue = AtomicReference<T?>(null)
-    val hasValue = AtomicBoolean(false)
-    val isReady = AtomicBoolean(false)
-    val errorRef = AtomicReference<Throwable?>(null) // Capture any exceptions thrown by Flow
-
-    val job =
-        CoroutineScope(Dispatchers.Default).launch {
-          try {
-            this@waitFor.collect {
-              latestValue.set(it)
-              hasValue.set(true)
-              if (condition(it)) {
-                isReady.set(true)
-              }
-            }
-          } catch (e: Throwable) {
-            errorRef.set(e)
-          }
-        }
-    try {
-      val startTime = System.currentTimeMillis()
-      while (System.currentTimeMillis() - startTime < timeoutMs) {
-        // Pump Robolectric's main looper so Firebase callbacks can run!
-        shadowOf(Looper.getMainLooper()).idle()
-
-        // If the flow threw an error (like PERMISSION_DENIED), rethrow it immediately
-        val flowError = errorRef.get()
-        if (flowError != null) {
-          job.cancel()
-          throw flowError
-        }
-
-        if (isReady.get()) {
-          job.cancel()
-          @Suppress("UNCHECKED_CAST")
-          return latestValue.get() as T
-        }
-        delay(50)
-      }
-      throw AssertionError(
-          "Timeout waiting for condition. Last value emitted: ${latestValue.get()}, emitted at all: ${hasValue.get()}"
-      )
-    } finally {
-      job.cancel()
+      FirebaseEmulatorTestUtils.tearDown(firestore, "campaign_groups", "documents", "users")
     }
   }
 
@@ -196,8 +91,9 @@ class GroupRepositoryFirestoreTest {
             id = groupId,
             name = "Test Campaign",
             description = "Epic Adventure",
-            gameMasterId = "gm123",
-            participantIds = listOf("player1", "player2"),
+            gameMasterId = GM_ID,
+            // A new group has its game master as only participant (security rules).
+            participantIds = listOf(GM_ID),
         )
 
     val createResult = repository.createGroup(group)
@@ -220,7 +116,13 @@ class GroupRepositoryFirestoreTest {
   @Test
   fun testUpdateGroup() = runBlocking {
     val groupId = UUID.randomUUID().toString()
-    val group = CampaignGroup(id = groupId, name = "Old Name", gameMasterId = "gm1")
+    val group =
+        CampaignGroup(
+            id = groupId,
+            name = "Old Name",
+            gameMasterId = GM_ID,
+            participantIds = listOf(GM_ID),
+        )
     repository.createGroup(group)
 
     val updatedGroup = group.copy(name = "New Name", description = "New Desc")
@@ -273,7 +175,12 @@ class GroupRepositoryFirestoreTest {
   @Test
   fun testUpdateGroup_alsoRenamesItsRootFile() = runBlocking {
     val group =
-        CampaignGroup(id = UUID.randomUUID().toString(), name = "Old Name", gameMasterId = "gm1")
+        CampaignGroup(
+            id = UUID.randomUUID().toString(),
+            name = "Old Name",
+            gameMasterId = GM_ID,
+            participantIds = listOf(GM_ID),
+        )
     repository.createGroup(group)
 
     val result = repository.updateGroup(group.copy(name = "New Name"))
@@ -294,9 +201,14 @@ class GroupRepositoryFirestoreTest {
   @Test
   fun testUpdateGroup_withoutRootFile_changesNothing() = runBlocking {
     val group =
-        CampaignGroup(id = UUID.randomUUID().toString(), name = "Old Name", gameMasterId = "gm1")
+        CampaignGroup(
+            id = UUID.randomUUID().toString(),
+            name = "Old Name",
+            gameMasterId = GM_ID,
+            participantIds = listOf(GM_ID),
+        )
     // Written directly, without the root folder that createGroup would have added.
-    firestore.collection("campaign_groups").document(group.id).set(group).await()
+    FirebaseEmulatorTestUtils.writeBypassingRules(firestore, "campaign_groups/${group.id}", group)
 
     val result = repository.updateGroup(group.copy(name = "New Name"))
 
@@ -387,14 +299,21 @@ class GroupRepositoryFirestoreTest {
   @Test
   fun testDeleteGroup() = runBlocking {
     val groupId = UUID.randomUUID().toString()
-    val group = CampaignGroup(id = groupId, name = "To Delete", gameMasterId = "gm1")
+    val group =
+        CampaignGroup(
+            id = groupId,
+            name = "To Delete",
+            gameMasterId = GM_ID,
+            participantIds = listOf(GM_ID),
+        )
     repository.createGroup(group)
 
     val deleteResult = repository.deleteGroup(groupId)
     assertTrue("deleteGroup should succeed", deleteResult.isSuccess)
 
     val getResult = repository.getGroup(groupId)
-    assertTrue("getGroup should fail after deletion", getResult.isFailure)
+    // The group is gone, not merely unreadable.
+    assertEquals("CampaignGroup not found in Firestore", getResult.exceptionOrNull()?.message)
   }
 
   /** Deleting a group removes it from the groupIds of every member, and deletes its root. */
@@ -409,16 +328,61 @@ class GroupRepositoryFirestoreTest {
             participantIds = listOf("gm1"),
         )
     )
-    repository.addUserToGroup(groupId, "player1")
+    assertEquals(Result.success(Unit), repository.addUserToGroup(groupId, "player1"))
 
     val result = repository.deleteGroup(groupId)
 
     assertTrue("deleteGroup should succeed", result.isSuccess)
     for (userId in listOf("gm1", "player1")) {
-      val groupIds = firestore.collection("users").document(userId).get().await().get("groupIds")
-      assertEquals(emptyList<String>(), groupIds)
+      assertEquals(emptyList<String>(), FirebaseEmulatorTestUtils.userGroupIds(userId))
     }
     assertFalse(firestore.collection("documents").document(groupId).get().await().exists())
+  }
+
+  /** Deleting a group that does not exist (e.g. already deleted) succeeds and does nothing. */
+  @Test
+  fun deleteGroupSucceedsWhenTheGroupDoesNotExist() = runBlocking {
+    val result = repository.deleteGroup(UUID.randomUUID().toString())
+
+    assertEquals(Result.success(Unit), result)
+  }
+
+  /** A blank stored invite code is not an invitation: the group is still deleted. */
+  @Test
+  fun deleteGroupSucceedsWhenTheStoredInviteCodeIsBlank() = runBlocking {
+    val groupId = UUID.randomUUID().toString()
+    val group =
+        CampaignGroup(
+            id = groupId,
+            name = "Blank code",
+            gameMasterId = GM_ID,
+            participantIds = listOf(GM_ID),
+        )
+    assertEquals(Result.success(Unit), repository.createGroup(group))
+    // Corrupted invite code the app never writes, so it is written bypassing the rules.
+    FirebaseEmulatorTestUtils.writeBypassingRules(
+        firestore,
+        "campaign_groups/$groupId",
+        mapOf(
+            "name" to group.name,
+            "description" to group.description,
+            "gameMasterId" to GM_ID,
+            "participantIds" to listOf(GM_ID),
+            "inviteCode" to "",
+        ),
+    )
+
+    val result = repository.deleteGroup(groupId)
+
+    assertEquals(Result.success(Unit), result)
+    assertNull(
+        FirebaseEmulatorTestUtils.readBypassingRules(
+            firestore,
+            "campaign_groups/$groupId",
+            Map::class.java,
+        )
+    )
+    assertEquals(emptyList<String>(), FirebaseEmulatorTestUtils.userGroupIds(GM_ID))
   }
 
   /** Tests adding and removing users from a campaign group using the specific methods. */
@@ -429,44 +393,35 @@ class GroupRepositoryFirestoreTest {
         CampaignGroup(
             id = groupId,
             name = "Party",
-            gameMasterId = "gm1",
-            participantIds = listOf("player1"),
+            gameMasterId = GM_ID,
+            participantIds = listOf(GM_ID),
         )
     repository.createGroup(group)
 
-    // Add user
-    val addResult = repository.addUserToGroup(groupId, "player2")
+    // Add user: the group and the user's own list of groups change together.
+    val addResult = repository.addUserToGroup(groupId, "player1")
     assertTrue("addUserToGroup should succeed", addResult.isSuccess)
+    assertEquals(listOf(GM_ID, "player1"), repository.getGroup(groupId).getOrNull()?.participantIds)
+    assertEquals(listOf(groupId), FirebaseEmulatorTestUtils.userGroupIds("player1"))
 
-    var fetchedGroup = repository.getGroup(groupId).getOrNull()
-    assertTrue(
-        "player2 should be in participantIds",
-        fetchedGroup?.participantIds?.contains("player2") == true,
-    )
-    assertTrue(
-        "player1 should still be in participantIds",
-        fetchedGroup?.participantIds?.contains("player1") == true,
-    )
-    assertEquals("Should have exactly 2 participants", 2, fetchedGroup?.participantIds?.size)
-
-    // Remove user
+    // Remove user: both lists lose them, the game master stays.
     val removeResult = repository.removeUserFromGroup(groupId, "player1")
     assertTrue("removeUserFromGroup should succeed", removeResult.isSuccess)
-
-    fetchedGroup = repository.getGroup(groupId).getOrNull()
-    assertTrue(
-        "player1 should be removed",
-        fetchedGroup?.participantIds?.contains("player1") == false,
-    )
-    assertTrue("player2 should remain", fetchedGroup?.participantIds?.contains("player2") == true)
-    assertEquals("Should have exactly 1 participant", 1, fetchedGroup?.participantIds?.size)
+    assertEquals(listOf(GM_ID), repository.getGroup(groupId).getOrNull()?.participantIds)
+    assertEquals(emptyList<String>(), FirebaseEmulatorTestUtils.userGroupIds("player1"))
   }
 
   /** Tests real-time updates for a single campaign group. */
   @Test
   fun testGetGroupFlow() = runBlocking {
     val groupId = UUID.randomUUID().toString()
-    val group = CampaignGroup(id = groupId, name = "Flow Group", gameMasterId = "gm1")
+    val group =
+        CampaignGroup(
+            id = groupId,
+            name = "Flow Group",
+            gameMasterId = GM_ID,
+            participantIds = listOf(GM_ID),
+        )
     repository.createGroup(group)
 
     val emittedGroup = repository.getGroupFlow(groupId).waitFor { it != null }
@@ -500,27 +455,38 @@ class GroupRepositoryFirestoreTest {
             participantIds = listOf("other"),
         )
 
-    repository.createGroup(group1)
-    repository.createGroup(group2)
-    repository.createGroup(groupOther)
+    // getUserGroups is under test, not the creation: the groups are written as they are stored.
+    listOf(group1, group2, groupOther).forEach {
+      FirebaseEmulatorTestUtils.writeBypassingRules(firestore, "campaign_groups/${it.id}", it)
+    }
 
-    val userGroups = repository.getUserGroups(userId).waitFor { it.size == 2 }
+    val userGroups =
+        GroupRepositoryFirestore(FirebaseEmulatorTestUtils.signInAs(userId))
+            .getUserGroups(userId)
+            .waitFor { it.size == 2 }
 
-    assertEquals("Should retrieve exactly 2 groups for the user", 2, userGroups.size)
-    assertTrue(userGroups.contains(group1))
-    assertTrue(userGroups.contains(group2))
+    assertEquals(setOf(group1, group2), userGroups.toSet())
   }
 
   /** Ensures that an empty list is emitted if a user has no active campaign groups. */
   @Test
   fun testGetUserGroups_Empty() = runBlocking {
-    // Insert a dummy to avoid Null value error in Firestore Emulator rules on completely empty
-    // collections
-    repository.createGroup(CampaignGroup(id = "dummy", name = "dummy", gameMasterId = "gm1"))
+    // Another user's group exists: the query must not return it.
+    val dummy =
+        CampaignGroup(
+            id = "dummy",
+            name = "dummy",
+            gameMasterId = GM_ID,
+            participantIds = listOf(GM_ID),
+        )
+    FirebaseEmulatorTestUtils.writeBypassingRules(firestore, "campaign_groups/${dummy.id}", dummy)
 
     val emptyUserId = "empty_user_id"
-    val userGroups = repository.getUserGroups(emptyUserId).waitFor { it.isEmpty() }
-    assertTrue("Should retrieve empty list when user has no groups", userGroups.isEmpty())
+    val userGroups =
+        GroupRepositoryFirestore(FirebaseEmulatorTestUtils.signInAs(emptyUserId))
+            .getUserGroups(emptyUserId)
+            .waitFor { true }
+    assertEquals(emptyList<CampaignGroup>(), userGroups)
   }
 
   // ==========================================
@@ -535,28 +501,32 @@ class GroupRepositoryFirestoreTest {
   fun testCreateGroup_Exception() = runBlocking {
     // Empty ID throws IllegalArgumentException in Firebase
     val result = repository.createGroup(CampaignGroup(id = ""))
-    assertTrue("createGroup should fail with empty ID", result.isFailure)
+    // The failure is the invalid path, not any other error (e.g. a security rule).
+    assertEquals(IllegalArgumentException::class.java, result.exceptionOrNull()?.javaClass)
   }
 
   /** Verifies that updating a group with an invalid ID returns a failure correctly. */
   @Test
   fun testUpdateGroup_Exception() = runBlocking {
     val result = repository.updateGroup(CampaignGroup(id = ""))
-    assertTrue("updateGroup should fail with empty ID", result.isFailure)
+    // The failure is the invalid path, not any other error (e.g. a security rule).
+    assertEquals(IllegalArgumentException::class.java, result.exceptionOrNull()?.javaClass)
   }
 
   /** Verifies that attempting to delete a group with an invalid ID is caught properly. */
   @Test
   fun testDeleteGroup_Exception() = runBlocking {
     val result = repository.deleteGroup("")
-    assertTrue("deleteGroup should fail with empty ID", result.isFailure)
+    // The failure is the invalid path, not any other error (e.g. a security rule).
+    assertEquals(IllegalArgumentException::class.java, result.exceptionOrNull()?.javaClass)
   }
 
   /** Verifies that attempting to fetch a group with an invalid ID is caught properly. */
   @Test
   fun testGetGroup_Exception() = runBlocking {
     val result = repository.getGroup("")
-    assertTrue("getGroup should fail with empty ID", result.isFailure)
+    // The failure is the invalid path, not any other error (e.g. a security rule).
+    assertEquals(IllegalArgumentException::class.java, result.exceptionOrNull()?.javaClass)
   }
 
   /**
@@ -565,7 +535,8 @@ class GroupRepositoryFirestoreTest {
   @Test
   fun testAddUserToGroup_Exception() = runBlocking {
     val result = repository.addUserToGroup("", "user1")
-    assertTrue("addUserToGroup should fail with empty group ID", result.isFailure)
+    // The failure is the invalid path, not any other error (e.g. a security rule).
+    assertEquals(IllegalArgumentException::class.java, result.exceptionOrNull()?.javaClass)
   }
 
   /**
@@ -575,7 +546,8 @@ class GroupRepositoryFirestoreTest {
   @Test
   fun testRemoveUserFromGroup_Exception() = runBlocking {
     val result = repository.removeUserFromGroup("", "user1")
-    assertTrue("removeUserFromGroup should fail with empty group ID", result.isFailure)
+    // The failure is the invalid path, not any other error (e.g. a security rule).
+    assertEquals(IllegalArgumentException::class.java, result.exceptionOrNull()?.javaClass)
   }
 
   /**
@@ -589,15 +561,20 @@ class GroupRepositoryFirestoreTest {
             "name" to mapOf("invalid" to "type"), // Name should be a String, not a Map
             "participantIds" to listOf("corrupted_user"),
         )
-    firestore.collection("campaign_groups").document("corrupted_group").set(corruptedData).await()
+    // A client can no longer write such a document (security rules): it stands for old data.
+    FirebaseEmulatorTestUtils.writeBypassingRules(
+        firestore,
+        "campaign_groups/corrupted_group",
+        corruptedData,
+    )
 
     // Listen to the groups. The catch block will log the error and ignore the corrupt group.
-    val groups = repository.getUserGroups("corrupted_user").waitFor { true }
+    val groups =
+        GroupRepositoryFirestore(FirebaseEmulatorTestUtils.signInAs("corrupted_user"))
+            .getUserGroups("corrupted_user")
+            .waitFor { true }
 
-    assertTrue(
-        "List should be empty due to parsing failure of the corrupt group",
-        groups.isEmpty(),
-    )
+    assertEquals(emptyList<CampaignGroup>(), groups)
   }
 
   /**
@@ -698,28 +675,30 @@ class GroupRepositoryFirestoreTest {
         CampaignGroup(
             id = UUID.randomUUID().toString(),
             name = "Initial Campaign",
-            gameMasterId = "gm1",
-            participantIds = listOf(userId),
+            gameMasterId = GM_ID,
+            participantIds = listOf(GM_ID, userId),
         )
-    repository.createGroup(group1)
-
     val group2Id = UUID.randomUUID().toString()
     val group2 =
         CampaignGroup(
             id = group2Id,
             name = "Secret Campaign",
-            gameMasterId = "gm1",
-            participantIds = listOf("game_master_only"),
+            gameMasterId = GM_ID,
+            participantIds = listOf(GM_ID),
         )
-    repository.createGroup(group2)
+    // Starting state: the user is in group1 only, and their users document says so.
+    FirebaseEmulatorTestUtils.writeBypassingRules(firestore, "campaign_groups/${group1.id}", group1)
+    FirebaseEmulatorTestUtils.writeBypassingRules(firestore, "campaign_groups/${group2.id}", group2)
+    FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, userId, group1.id)
 
     val latestList = AtomicReference(emptyList<CampaignGroup>())
     val hasEmitted = AtomicBoolean(false)
 
-    // 2. Start collecting the flow in a background job
+    // 2. Start collecting the flow in a background job, as the user whose groups change
+    val userRepository = GroupRepositoryFirestore(FirebaseEmulatorTestUtils.signInAs(userId))
     val job =
         launch(Dispatchers.Default) {
-          repository.getUserGroups(userId).collect {
+          userRepository.getUserGroups(userId).collect {
             latestList.set(it)
             hasEmitted.set(true)
           }
@@ -737,8 +716,8 @@ class GroupRepositoryFirestoreTest {
     assertEquals("List should initially contain 1 group", 1, latestList.get().size)
     assertEquals("The group should be group1", group1.id, latestList.get().first().id)
 
-    // 3. Action: Add the user to the second group
-    repository.addUserToGroup(group2Id, userId)
+    // 3. Action: the game master adds the user to the second group
+    assertEquals(Result.success(Unit), repository.addUserToGroup(group2Id, userId))
 
     // Wait for the flow to react and emit the new list of size 2
     startTime = System.currentTimeMillis()
@@ -751,8 +730,8 @@ class GroupRepositoryFirestoreTest {
     assertEquals("List should update to contain 2 groups", 2, latestList.get().size)
     assertTrue("Group 2 should now be present", latestList.get().any { it.id == group2Id })
 
-    // 4. Action: Remove the user from the first group
-    repository.removeUserFromGroup(group1.id, userId)
+    // 4. Action: the game master removes the user from the first group
+    assertEquals(Result.success(Unit), repository.removeUserFromGroup(group1.id, userId))
 
     // Wait for the flow to react and emit the list of size 1 (only group2 remaining)
     startTime = System.currentTimeMillis()

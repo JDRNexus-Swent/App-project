@@ -10,16 +10,23 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
+import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.FileEdit
+import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import com.github.se.jdrnexus.model.repository.AuthRepository
+import com.github.se.jdrnexus.model.repository.AuthResult
+import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.utils.MainDispatcherRule
+import com.github.se.jdrnexus.utils.NavigationGroupRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -79,6 +86,108 @@ class EditFileViewModelTest {
   }
 
   @Test
+  fun playerCanReadAnotherMembersFileButCannotChangeOrSaveIt() = runTest {
+    val file =
+        JDRFile(
+            id = "shared",
+            ownerId = "other",
+            type = DocumentType.CHARACTER,
+            content = characterJson,
+        )
+    val repository = FakeRepository(file)
+    val viewModel =
+        loadedViewModel(
+            file,
+            repository,
+            groupRepository =
+                NavigationGroupRepository(
+                    CampaignGroup(
+                        "group",
+                        gameMasterId = "gm",
+                        participantIds = listOf("player", "other"),
+                    )
+                ),
+            authRepository = FakeAuthRepository("player"),
+            groupId = "group",
+        )
+    val original = viewModel.uiState.value.character
+
+    viewModel.updateCharacterName("Changed")
+    viewModel.saveJDRfile()
+    runCurrent()
+
+    assertTrue(viewModel.uiState.value.isReadOnly)
+    assertEquals(original, viewModel.uiState.value.character)
+    assertEquals(EditFileViewModel.READ_ONLY_ERROR, viewModel.uiState.value.error)
+    assertTrue(repository.updatedFiles.isEmpty())
+  }
+
+  @Test
+  fun groupOwnerCanEditOwnFile() = runTest {
+    val file =
+        JDRFile(
+            id = "shared",
+            ownerId = "owner",
+            type = DocumentType.CHARACTER,
+            content = characterJson,
+        )
+
+    val group =
+        CampaignGroup(
+            "group",
+            gameMasterId = "gm",
+            participantIds = listOf("owner"),
+        )
+
+    val owner =
+        loadedViewModel(
+            file,
+            groupRepository = NavigationGroupRepository(group),
+            authRepository = FakeAuthRepository("owner"),
+            groupId = "group",
+        )
+
+    owner.updateCharacterName("Owner edit")
+
+    assertEquals("Owner edit", owner.uiState.value.character?.name)
+    assertFalse(owner.uiState.value.isReadOnly)
+  }
+
+  @Test
+  fun groupGameMasterCannotEditAnotherMembersFile() = runTest {
+    val file =
+        JDRFile(
+            id = "shared",
+            ownerId = "owner",
+            type = DocumentType.CHARACTER,
+            content = characterJson,
+        )
+
+    val group =
+        CampaignGroup(
+            "group",
+            gameMasterId = "gm",
+            participantIds = listOf("owner"),
+        )
+
+    val gameMaster =
+        loadedViewModel(
+            file,
+            groupRepository = NavigationGroupRepository(group),
+            authRepository = FakeAuthRepository("gm"),
+            groupId = "group",
+        )
+
+    gameMaster.updateCharacterName("GM edit")
+
+    assertEquals(
+        "Jean-claude",
+        gameMaster.uiState.value.character?.name,
+    )
+    assertTrue(gameMaster.uiState.value.isReadOnly)
+  }
+
+  @Test
   fun loadingAndSavingFlagsReflectPendingRepositoryOperations() = runTest {
     val file = JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
     val loadGate = CompletableDeferred<Unit>()
@@ -108,6 +217,67 @@ class EditFileViewModelTest {
     runCurrent()
     assertFalse(savingViewModel.uiState.value.isSaving)
     assertTrue(savingViewModel.uiState.value.isSaved)
+  }
+
+  @Test
+  fun everyCharacterEditIsIgnoredWhenReadOnly() = runTest {
+    val file =
+        JDRFile(
+            id = "shared",
+            ownerId = "other",
+            type = DocumentType.CHARACTER,
+            content = characterJson,
+        )
+    val edits: Map<String, (EditFileViewModel) -> Unit> =
+        mapOf(
+            "updateCharacterName" to { it.updateCharacterName("Changed") },
+            "onAddStatNameChange" to { it.onAddStatNameChange("Luck") },
+            "onAddStatValueChange" to { it.onAddStatValueChange("3.0") },
+            "onAddActionNameChange" to { it.onAddActionNameChange("Dodge") },
+            "onAddActionDescriptionChange" to { it.onAddActionDescriptionChange("Evade") },
+            "updateCharacterCurrentHp" to { it.updateCharacterCurrentHp(5) },
+            "updateCharacterMaxHp" to { it.updateCharacterMaxHp(30) },
+            "addCharacterStat" to { it.addCharacterStat() },
+            "updateCharacterStatName" to { it.updateCharacterStatName("strength", "Might") },
+            "updateCharacterStatValue" to { it.updateCharacterStatValue("strength", 20.0) },
+            "removeCharacterStat" to { it.removeCharacterStat("strength") },
+            "addCharacterAction" to { it.addCharacterAction() },
+            "updateCharacterActionName" to
+                {
+                  it.updateCharacterActionName("sword_attack", "Slash")
+                },
+            "updateCharacterActionDescription" to
+                {
+                  it.updateCharacterActionDescription("sword_attack", "A precise cut")
+                },
+            "removeCharacterAction" to { it.removeCharacterAction("sword_attack") },
+        )
+
+    edits.forEach { (name, edit) -> assertEditIgnoredWhenReadOnly(name, file, edit) }
+  }
+
+  @Test
+  fun everyLoreEditIsIgnoredWhenReadOnly() = runTest {
+    val file =
+        JDRFile(
+            id = "shared",
+            ownerId = "other",
+            type = DocumentType.TEXT,
+            content = loreJson,
+        )
+    val edits: Map<String, (EditFileViewModel) -> Unit> =
+        mapOf(
+            "updateLoreTitle" to { it.updateLoreTitle("Changed") },
+            "addLoreSection" to { it.addLoreSection("Geography", "Mountainous") },
+            "updateLoreSectionTitle" to { it.updateLoreSectionTitle("history", "Origins") },
+            "updateLoreSectionDescription" to
+                {
+                  it.updateLoreSectionDescription("history", "A distant past.")
+                },
+            "removeLoreSection" to { it.removeLoreSection("history") },
+        )
+
+    edits.forEach { (name, edit) -> assertEditIgnoredWhenReadOnly(name, file, edit) }
   }
 
   @Test
@@ -1013,11 +1183,66 @@ class EditFileViewModelTest {
   private fun TestScope.loadedViewModel(
       file: JDRFile,
       repository: FakeRepository = FakeRepository(file),
+      groupRepository: GroupRepository? = null,
+      authRepository: AuthRepository? = null,
+      groupId: String? = null,
   ): EditFileViewModel {
-    val viewModel = EditFileViewModel(repository)
-    viewModel.loadFile(file.id)
+    val viewModel = EditFileViewModel(repository, groupRepository, authRepository)
+    viewModel.loadFile(file.id, groupId)
     runCurrent()
     return viewModel
+  }
+
+  /**
+   * Loads [file] as a player who does not own it, applies [edit], and checks that the only state
+   * change is the read-only error. Each edit gets a fresh view model so they cannot mask each
+   * other.
+   */
+  private fun TestScope.assertEditIgnoredWhenReadOnly(
+      name: String,
+      file: JDRFile,
+      edit: (EditFileViewModel) -> Unit,
+  ) {
+    val viewModel =
+        loadedViewModel(
+            file,
+            groupRepository =
+                NavigationGroupRepository(
+                    CampaignGroup(
+                        "group",
+                        gameMasterId = "gm",
+                        participantIds = listOf("player", "other"),
+                    )
+                ),
+            authRepository = FakeAuthRepository("player"),
+            groupId = "group",
+        )
+    val before = viewModel.uiState.value
+    assertTrue("$name: precondition isReadOnly", before.isReadOnly)
+    assertNull("$name: precondition error", before.error)
+
+    edit(viewModel)
+
+    assertEquals(
+        "$name should not change state when read-only",
+        before.copy(error = EditFileViewModel.READ_ONLY_ERROR, isSaved = false),
+        viewModel.uiState.value,
+    )
+  }
+
+  private class FakeAuthRepository(uid: String) : AuthRepository {
+    override val authState = MutableStateFlow<AuthUser?>(AuthUser(uid, null, null))
+
+    override suspend fun signUpWithEmail(email: String, password: String, username: String) =
+        AuthResult.Failure(com.github.se.jdrnexus.model.repository.AuthError.UNKNOWN)
+
+    override suspend fun signInWithEmail(email: String, password: String) =
+        AuthResult.Failure(com.github.se.jdrnexus.model.repository.AuthError.UNKNOWN)
+
+    override suspend fun signInWithGoogle(idToken: String) =
+        AuthResult.Failure(com.github.se.jdrnexus.model.repository.AuthError.UNKNOWN)
+
+    override suspend fun signOut() = AuthResult.Success(Unit)
   }
 
   private class FakeRepository(

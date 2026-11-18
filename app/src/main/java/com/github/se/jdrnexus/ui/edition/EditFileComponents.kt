@@ -168,6 +168,7 @@ internal fun EditFileErrorMessage(error: String, testTag: String) {
  * @param isSaving whether a save operation is in progress.
  * @param isSaved whether the current content has been saved.
  * @param testTag test tag applied to the save button when it is displayed.
+ * @param enabled whether a player can edit a file or not
  * @param onSave called when the save button is pressed.
  */
 @Composable
@@ -175,6 +176,7 @@ internal fun EditFileSaveButton(
     isSaving: Boolean,
     isSaved: Boolean,
     testTag: String,
+    enabled: Boolean = true,
     onSave: () -> Unit,
 ) {
   if (isSaving) {
@@ -188,6 +190,7 @@ internal fun EditFileSaveButton(
   } else {
     Button(
         onClick = onSave,
+        enabled = enabled,
         modifier = Modifier.fillMaxWidth().testTag(testTag),
     ) {
       Text(if (isSaved) "Saved" else "Save")

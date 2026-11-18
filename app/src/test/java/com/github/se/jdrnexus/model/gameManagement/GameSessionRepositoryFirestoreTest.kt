@@ -39,7 +39,25 @@ class GameSessionRepositoryFirestoreTest {
 
   @Before
   fun setUp() {
-    firestore = FirebaseEmulatorTestUtils.getFirestore()
+    // The repository of most tests is the game master's: the rules let only them write.
+    firestore = FirebaseEmulatorTestUtils.signInAs(GM_ID)
+    // Starting state: a group with its GM and one player, mirrored in their users documents
+    // (the rules read them to decide who is a member).
+    runBlocking {
+      FirebaseEmulatorTestUtils.writeBypassingRules(
+          firestore,
+          "campaign_groups/$groupId",
+          CampaignGroup(
+              id = groupId,
+              name = "Quest",
+              gameMasterId = GM_ID,
+              participantIds = listOf(GM_ID, PLAYER_ID),
+          ),
+      )
+      for (userId in listOf(GM_ID, PLAYER_ID)) {
+        FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, userId, groupId)
+      }
+    }
     diceRepository = mockk()
     coEvery { diceRepository.getDiceRollsHistory(any()) } returns Result.success(emptyList())
     every { diceRepository.getDiceRollsStream(any()) } returns flowOf(emptyList())
@@ -54,6 +72,8 @@ class GameSessionRepositoryFirestoreTest {
           "campaign_groups/$groupId/gm_data",
           "campaign_groups/$groupId/gm_lore",
           "campaign_groups/$groupId/activities",
+          "campaign_groups",
+          "users",
       )
     }
   }
@@ -142,6 +162,21 @@ class GameSessionRepositoryFirestoreTest {
     assertEquals("Group ID cannot be empty.", invalidGroup.exceptionOrNull()?.message)
   }
 
+  // A player of the group sees the session the game master saved.
+  @Test
+  fun observeSession_isReadableByAPlayerOfTheGroup() = runBlocking {
+    val session = GameSessionSnapshot(isCombatActive = true, currentRound = 2)
+    assertEquals(Result.success(Unit), repository.saveSession(groupId, session))
+
+    val playerRepository =
+        GameSessionRepositoryFirestore(
+            FirebaseEmulatorTestUtils.signInAs(PLAYER_ID),
+            diceRepository,
+        )
+
+    assertEquals(session, playerRepository.observeSession(groupId).waitFor { it == session })
+  }
+
   @Test
   fun observeSession_emitsDefaultsForMissingDocument() = runBlocking {
     assertEquals(GameSessionSnapshot(), repository.observeSession(groupId).waitFor { true })
@@ -200,23 +235,15 @@ class GameSessionRepositoryFirestoreTest {
 
   @Test
   fun recordActivity_loadsAndObservesPlayerActivity() = runBlocking {
-    firestore
-        .collection("campaign_groups")
-        .document(groupId)
-        .set(
-            CampaignGroup(
-                id = groupId,
-                name = "Quest",
-                gameMasterId = "gm-1",
-                participantIds = listOf("player-1"),
-            )
+    // The player records their own action (the rules require userId == the signed-in user).
+    val playerRepository =
+        GameSessionRepositoryFirestore(
+            FirebaseEmulatorTestUtils.signInAs(PLAYER_ID),
+            diceRepository,
         )
-        .await()
-
-    assertTrue(
-        repository
-            .recordActivity(groupId, "player-1", "Ari", "Opened the door", "D20: 17")
-            .isSuccess
+    assertEquals(
+        Result.success(Unit),
+        playerRepository.recordActivity(groupId, PLAYER_ID, "Ari", "Opened the door", "D20: 17"),
     )
 
     val activity = repository.loadActivities(groupId).getOrThrow().single()
@@ -251,19 +278,6 @@ class GameSessionRepositoryFirestoreTest {
         repository.recordActivity(groupId, "player", "Name", " ").exceptionOrNull()?.message,
     )
 
-    firestore
-        .collection("campaign_groups")
-        .document(groupId)
-        .set(
-            CampaignGroup(
-                id = groupId,
-                name = "Quest",
-                gameMasterId = "gm-1",
-                participantIds = listOf("player-1"),
-            )
-        )
-        .await()
-
     assertEquals(
         "User is not a member of this campaign group.",
         repository.recordActivity(groupId, "outsider", "Name", "Action").exceptionOrNull()?.message,
@@ -279,42 +293,23 @@ class GameSessionRepositoryFirestoreTest {
 
   @Test
   fun activityFeed_ignoresCorruptedDocuments() = runBlocking {
-    firestore
-        .collection("campaign_groups")
-        .document(groupId)
-        .set(
-            CampaignGroup(
-                id = groupId,
-                name = "Quest",
-                gameMasterId = "gm-1",
-                participantIds = listOf("player-1"),
-            )
-        )
-        .await()
-
-    firestore
-        .collection("campaign_groups")
-        .document(groupId)
-        .collection("activities")
-        .document("broken")
-        .set(mapOf("playerName" to "Broken"))
-        .await()
-
-    firestore
-        .collection("campaign_groups")
-        .document(groupId)
-        .collection("activities")
-        .document("valid")
-        .set(
-            mapOf(
-                "userId" to "player-1",
-                "playerName" to "Ari",
-                "action" to "Opened the door",
-                "diceResult" to "D20: 17",
-                "timestamp" to Date(2000),
-            )
-        )
-        .await()
+    // The rules refuse a corrupted activity and a client-chosen timestamp: written bypassing them.
+    FirebaseEmulatorTestUtils.writeBypassingRules(
+        firestore,
+        "campaign_groups/$groupId/activities/broken",
+        mapOf("playerName" to "Broken"),
+    )
+    FirebaseEmulatorTestUtils.writeBypassingRules(
+        firestore,
+        "campaign_groups/$groupId/activities/valid",
+        mapOf(
+            "userId" to PLAYER_ID,
+            "playerName" to "Ari",
+            "action" to "Opened the door",
+            "diceResult" to "D20: 17",
+            "timestamp" to Date(2000),
+        ),
+    )
 
     assertEquals(
         listOf("player-1"),
@@ -416,22 +411,22 @@ class GameSessionRepositoryFirestoreTest {
 
   @Test
   fun activityWithoutTimestampIsShownFirst() = runBlocking {
-    val activities = firestore.collection("campaign_groups/$groupId/activities")
-    activities
-        .document("older")
-        .set(
-            mapOf(
-                "userId" to "player-1",
-                "playerName" to "Ari",
-                "action" to "Opened the door",
-                "timestamp" to Date(2000),
-            )
-        )
-        .await()
-    activities
-        .document("pending")
-        .set(mapOf("userId" to "player-1", "playerName" to "Ari", "action" to "Drew a sword"))
-        .await()
+    // The rules require a server timestamp: these states are written bypassing them.
+    FirebaseEmulatorTestUtils.writeBypassingRules(
+        firestore,
+        "campaign_groups/$groupId/activities/older",
+        mapOf(
+            "userId" to PLAYER_ID,
+            "playerName" to "Ari",
+            "action" to "Opened the door",
+            "timestamp" to Date(2000),
+        ),
+    )
+    FirebaseEmulatorTestUtils.writeBypassingRules(
+        firestore,
+        "campaign_groups/$groupId/activities/pending",
+        mapOf("userId" to PLAYER_ID, "playerName" to "Ari", "action" to "Drew a sword"),
+    )
 
     val loaded = repository.loadActivities(groupId).getOrThrow()
     val observed = repository.observeActivities(groupId).waitFor { it.size == 2 }
@@ -442,17 +437,11 @@ class GameSessionRepositoryFirestoreTest {
 
   @Test
   fun gameMasterCanRecordActivityWithoutDice() = runBlocking {
-    firestore
-        .collection("campaign_groups")
-        .document(groupId)
-        .set(CampaignGroup(id = groupId, name = "Quest", gameMasterId = "gm-1"))
-        .await()
+    val result = repository.recordActivity(groupId, GM_ID, "Mira", "Started combat")
 
-    val result = repository.recordActivity(groupId, "gm-1", "Mira", "Started combat")
-
-    assertTrue(result.isSuccess)
+    assertEquals(Result.success(Unit), result)
     val activity = repository.loadActivities(groupId).getOrThrow().single()
-    assertEquals("gm-1", activity.userId)
+    assertEquals(GM_ID, activity.userId)
     assertEquals(null, activity.diceResult)
   }
 
@@ -465,5 +454,10 @@ class GameSessionRepositoryFirestoreTest {
     return runCatching { repository.observeSession(groupId).waitFor { true } }
         .exceptionOrNull()
         ?.message
+  }
+
+  private companion object {
+    const val GM_ID = "gm-1"
+    const val PLAYER_ID = "player-1"
   }
 }

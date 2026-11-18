@@ -89,7 +89,6 @@
     <string name="workspace_edit_folder">Edit folder</string>
     <string name="workspace_edit_file">Edit file</string>
     <string name="workspace_name">Name</string>
-    <string name="workspace_content">Content</string>
     <string name="workspace_save">Save</string>
     <string name="workspace_remove_title">Remove from workspace?</string>
     <string name="workspace_remove_message">%1$s will be removed from this group. The underlying personal file remains owned by its owner.</string>
