@@ -70,9 +70,11 @@ How we test, for the team and for AI agents. Every PR that adds or changes code 
 ### 4.2 Repositories (`model/`, `*Firestore` / `*Firebase`)
 
 - **Firestore behavior is tested on the emulator**, not with mocks: queries, batches, security rules, `arrayUnion`. A mock reproduces what you think Firestore does, the emulator what it does.
-- Use `utils/FirebaseEmulatorTestUtils`:
-    - `@Before`: `firestore = FirebaseEmulatorTestUtils.getFirestore()`, then build the repository with it.
-    - `@After`: `runBlocking { tearDown(firestore, "documents", "campaign_groups") }`, listing every collection the test writes.
+- The emulator runs the real security rules (`firebase.json`), so every test acts as a signed-in user. Use `utils/FirebaseEmulatorTestUtils`:
+    - `@Before`: `firestore = FirebaseEmulatorTestUtils.signInAs(uid)` for the user the test acts as (the owner, the GM…), then build the repository with it. Another `signInAs(otherUid)` gives a second user in the same test.
+    - Starting state the test does not test (a group, corrupted data): `writeBypassingRules(firestore, path, data)`; a user's group membership, which the rules read: `writeUserGroupIdsBypassingRules(firestore, uid, groupId…)`. The code under test always goes through a `signInAs` instance.
+    - Checks on what is stored, whoever may read it: `readBypassingRules(firestore, path, Type::class.java)`; on collections no client may list: `documentIdsBypassingRules`; a user's `groupIds`, read as that user: `userGroupIds(uid)`.
+    - `@After`: `runBlocking { tearDown(firestore, "documents", "campaign_groups") }`, listing every collection the test writes. It also empties the cache of the test clients.
     - Wait on listeners with `flow.waitFor { condition }` and on callbacks with `pumpMainLooperUntil { … }`.
 - After every write operation, **read the documents back** and assert the stored fields and invariants (e.g. `placements.keys == sharedGroupsIds`), not only that the call returned success.
 - Test each documented failure (`"Reveal the parent folder first."`, item not in group, above 500 writes) by asserting the error **and** that nothing was written.
@@ -111,7 +113,7 @@ How we test, for the team and for AI agents. Every PR that adds or changes code 
 
 - Use readable constants (`GROUP_ID`, `GM_ID`, `"The Sunken Crown"`) declared once in the class or its companion.
 - Emulator tests generate unique ids or emails (`UUID.randomUUID()`) so they never collide, and clean every collection they touch.
-- Never point a test at the real Firebase project. `getFirestore()` refuses to run if the instance is not the emulator: do not bypass it.
+- Never point a test at the real Firebase project. `signInAs()`, `getAuth()` and `getFirestore()` refuse to run if the instance is not the emulator: do not bypass them.
 
 ---
 
@@ -119,7 +121,7 @@ How we test, for the team and for AI agents. Every PR that adds or changes code 
 
 ```bash
 ./gradlew ktfmtFormat
-firebase emulators:exec --config firebase.test.json --only auth,firestore './gradlew check' --project demo-jdrnexus
+firebase emulators:exec --only auth,firestore './gradlew check' --project demo-jdrnexus
 ```
 
 Checklist:

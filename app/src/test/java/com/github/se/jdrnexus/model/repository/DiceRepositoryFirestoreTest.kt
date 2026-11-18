@@ -1,4 +1,5 @@
 // Co-authored-by: AI Agent
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.repository
 
 import com.github.se.jdrnexus.ui.dice.DiceRollResult
@@ -12,7 +13,6 @@ import io.mockk.mockk
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -39,7 +39,15 @@ class DiceRepositoryFirestoreTest {
   @Before
   fun setUp() {
     testGroupId = UUID.randomUUID().toString()
-    firestore = FirebaseEmulatorTestUtils.getFirestore()
+    // The rules check that the roll is written by the signed-in user, who must belong to the group.
+    firestore = FirebaseEmulatorTestUtils.signInAs(testUser.uid)
+    runBlocking {
+      FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(
+          firestore,
+          testUser.uid,
+          testGroupId,
+      )
+    }
 
     authRepository = mockk()
     every { authRepository.authState } returns flowOf(testUser)
@@ -49,7 +57,11 @@ class DiceRepositoryFirestoreTest {
   @After
   fun tearDown() {
     runBlocking {
-      FirebaseEmulatorTestUtils.tearDown(firestore, "campaign_groups/$testGroupId/dice_rolls")
+      FirebaseEmulatorTestUtils.tearDown(
+          firestore,
+          "campaign_groups/$testGroupId/dice_rolls",
+          "users",
+      )
     }
   }
 
@@ -87,28 +99,32 @@ class DiceRepositoryFirestoreTest {
       val result = repository.saveRollResult(testGroupId, rollResult)
       assertTrue("saveRollResult should fail when unauthenticated", result.isFailure)
       assertEquals("User is not authenticated", result.exceptionOrNull()?.message)
+      // Nothing was written.
+      assertEquals(
+          emptyList<DiceRollEntity>(),
+          repository.getDiceRollsHistory(testGroupId).getOrThrow(),
+      )
     }
   }
 
   @Test
   fun testGetDiceRollsHistory_emptyCollection() {
     runBlocking {
-      val groupId = UUID.randomUUID().toString()
-      val historyResult = repository.getDiceRollsHistory(groupId)
+      val historyResult = repository.getDiceRollsHistory(testGroupId)
       assertTrue("getDiceRollsHistory should succeed on empty collection", historyResult.isSuccess)
-      assertTrue("List should be empty", historyResult.getOrThrow().isEmpty())
+      assertEquals(emptyList<DiceRollEntity>(), historyResult.getOrThrow())
     }
   }
 
   @Test
   fun testOfflineBehavior() {
     runBlocking {
-      val groupId = UUID.randomUUID().toString()
+      val groupId = testGroupId
       val rollResult =
           DiceRollResult(diceType = DiceType.D20, rawValue = 10, modifier = 1, totalValue = 11)
 
       firestore.enableNetwork().await()
-      repository.saveRollResult(groupId, rollResult)
+      assertEquals(Result.success(Unit), repository.saveRollResult(groupId, rollResult))
 
       // Wait until Firestore has persisted the document and the local cache is updated.
       FirebaseEmulatorTestUtils.pumpMainLooperUntil {
@@ -145,10 +161,8 @@ class DiceRepositoryFirestoreTest {
 
       // Empty group ID causes Firestore to throw an exception when creating document path
       val result = repository.saveRollResult("", rollResult)
-      assertTrue(
-          "saveRollResult should fail and catch exception for invalid path",
-          result.isFailure,
-      )
+      // The failure is the invalid path, not any other error (e.g. a security rule).
+      assertEquals(IllegalArgumentException::class.java, result.exceptionOrNull()?.javaClass)
     }
   }
 
@@ -157,10 +171,8 @@ class DiceRepositoryFirestoreTest {
     runBlocking {
       // Empty group ID causes Firestore to throw an exception when creating document path
       val result = repository.getDiceRollsHistory("")
-      assertTrue(
-          "getDiceRollsHistory should fail and catch exception for invalid path",
-          result.isFailure,
-      )
+      // The failure is the invalid path, not any other error (e.g. a security rule).
+      assertEquals(IllegalArgumentException::class.java, result.exceptionOrNull()?.javaClass)
     }
   }
 
@@ -183,8 +195,6 @@ class DiceRepositoryFirestoreTest {
           }
       try {
         FirebaseEmulatorTestUtils.pumpMainLooperUntil { latestList.get().size == 1 }
-        // add delay to be sure both roll are not register with the same timestamp
-        delay(10)
 
         // Now save a second roll
         val rollResult2 =
