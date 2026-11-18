@@ -105,15 +105,16 @@ class GroupWorkspaceViewModel(
     return repository.getFile(folderId).getOrThrow() ?: throw IllegalStateException(error)
   }
 
-  /**
-   * Ensures that the user is allowed to edit the specified item.
-   *
-   * The Game Master can edit any item, while players can edit only their own items.
-   */
+  /** Ensures that the user is allowed to edit the specified item. */
   private fun requireCanEdit(item: JDRFile, uid: String) {
     check(role != null) { "You are not a member of this group." }
+    check(item.ownerId == uid) { "You cannot edit an item that you do not own." }
+  }
+
+  /** ensure that only the owner or the game master can perform a certain operation */
+  private fun requireOwnerOrGameMaster(item: JDRFile, uid: String) {
     check(role == GroupWorkspaceRole.GAME_MASTER || item.ownerId == uid) {
-      "You cannot edit an item that you do not own."
+      "You are not allowed to perform this operation."
     }
   }
 
@@ -631,7 +632,7 @@ class GroupWorkspaceViewModel(
         val existing = getItem(item.id, "Item no longer exists.")
 
         requireItemInCurrentWorkspace(existing, parentId)
-        requireCanEdit(existing, uid)
+        requireOwnerOrGameMaster(existing, uid)
 
         repository
             .removeItemFromGroup(
@@ -682,7 +683,7 @@ class GroupWorkspaceViewModel(
         val uid = requireUid()
         val existing = getItem(item.id, "Item no longer exists.")
         requireItemInCurrentWorkspace(existing, folderId)
-        requireCanEdit(existing, uid)
+        requireOwnerOrGameMaster(existing, uid)
         repository.setItemHidden(existing.id, groupId, isHidden).getOrThrow()
       }
     }

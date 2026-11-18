@@ -909,13 +909,19 @@ class GroupWorkSpaceViewModelTest {
 
     player.setItemHidden(item, true)
     runCurrent()
-    assertEquals("You cannot edit an item that you do not own.", player.uiState.value.errorMessage)
+    assertEquals(
+        "You are not allowed to perform this operation.",
+        player.uiState.value.errorMessage,
+    )
     assertFalse(repository.files.getValue(item.id).placements.getValue(GROUP_ID).isHidden)
 
     player.clearError()
     player.setItemHidden(item, false)
     runCurrent()
-    assertEquals("You cannot edit an item that you do not own.", player.uiState.value.errorMessage)
+    assertEquals(
+        "You are not allowed to perform this operation.",
+        player.uiState.value.errorMessage,
+    )
     assertFalse(repository.files.getValue(item.id).placements.getValue(GROUP_ID).isHidden)
 
     player.clearError()
@@ -1020,7 +1026,10 @@ class GroupWorkSpaceViewModelTest {
     player.clearError()
     player.removeItem(foreign)
     runCurrent()
-    assertEquals("You cannot edit an item that you do not own.", player.uiState.value.errorMessage)
+    assertEquals(
+        "You are not allowed to perform this operation.",
+        player.uiState.value.errorMessage,
+    )
     assertEquals(foreign, repository.files.getValue(foreign.id))
 
     player.clearError()
@@ -1036,19 +1045,27 @@ class GroupWorkSpaceViewModelTest {
     assertTrue(GROUP_ID in repository.files.getValue(foreign.id).sharedGroupsIds)
   }
 
-  // Game Masters may edit another member's item, while players may not.
+  // Game Masters and players can edit only the items they own.
   @Test
-  fun gameMasterCanEditForeignItemsButPlayersCannotEditForeignItems() = runTest {
+  fun gameMastersAndPlayersCanEditOnlyTheirOwnItems() = runTest {
     val folder = groupFolder("folder")
     val file = groupFile("file", parentId = folder.id)
-    val repository = FakeWorkspaceRepository(listOf(folder, file))
+    val gmFile = groupFile("gm-file", parentId = folder.id, ownerId = OWNER_ID)
+    val repository = FakeWorkspaceRepository(listOf(folder, file, gmFile))
     val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
     runCurrent()
     gm.loadWorkspace(folder.id)
     runCurrent()
     gm.editItem(file.copy(name = "Updated"))
     runCurrent()
-    assertEquals("Updated", repository.files.getValue(file.id).name)
+    assertEquals("You cannot edit an item that you do not own.", gm.uiState.value.errorMessage)
+    assertEquals(file, repository.files.getValue(file.id))
+
+    gm.clearError()
+    gm.editItem(gmFile.copy(name = "GM updated"))
+    runCurrent()
+    assertEquals("", gm.uiState.value.errorMessage)
+    assertEquals("GM updated", repository.files.getValue(gmFile.id).name)
 
     val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
     runCurrent()
@@ -1057,7 +1074,7 @@ class GroupWorkSpaceViewModelTest {
     player.editItem(file.copy(name = "Not allowed"))
     runCurrent()
     assertEquals("You cannot edit an item that you do not own.", player.uiState.value.errorMessage)
-    assertEquals("Updated", repository.files.getValue(file.id).name)
+    assertEquals(file, repository.files.getValue(file.id))
   }
 
   // Folder removal is delegated with the selected parent and group; repository tests cover subtree
@@ -1104,7 +1121,8 @@ class GroupWorkSpaceViewModelTest {
   @Test
   fun operationErrorsDoNotMutateItemsAndOperationStateRecovers() = runTest {
     val folder = groupFolder("folder")
-    val file = groupFile("file", parentId = folder.id)
+    // The GM owns the file, so the edit passes the ownership check and reaches the repository.
+    val file = groupFile("file", parentId = folder.id, ownerId = OWNER_ID)
     val repository = FakeWorkspaceRepository(listOf(folder, file))
     repository.updateFailure = IllegalStateException("write failed")
     val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
@@ -1312,7 +1330,8 @@ class GroupWorkSpaceViewModelTest {
   // A failure without a message falls back to a generic operation error.
   @Test
   fun operationFailureWithoutMessageUsesFallbackError() = runTest {
-    val file = groupFile("file")
+    // The GM owns the file, so the edit passes the ownership check and reaches the repository.
+    val file = groupFile("file", ownerId = OWNER_ID)
     val repository = FakeWorkspaceRepository(listOf(file))
     repository.updateFailure = IllegalStateException()
     val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)

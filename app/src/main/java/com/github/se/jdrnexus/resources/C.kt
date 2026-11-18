@@ -109,7 +109,6 @@ object C {
     const val workspace_create_folder_cancel = "create_folder_cancel"
     const val workspace_edit_item_dialog = "edit_item_dialog"
     const val workspace_edit_item_name_input = "edit_item_name_input"
-    const val workspace_edit_item_content_input = "edit_item_content_input"
     const val workspace_edit_item_save = "edit_item_save"
     const val workspace_edit_item_progress = "edit_item_progress"
     const val workspace_edit_item_cancel = "edit_item_cancel"
