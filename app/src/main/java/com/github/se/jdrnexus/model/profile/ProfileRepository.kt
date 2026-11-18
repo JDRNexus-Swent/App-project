@@ -5,7 +5,8 @@ import android.net.Uri
 
 /**
  * Reads and updates user profiles. Every failure (blank id, network, permission denied) is returned
- * as a [Result.failure], never thrown.
+ * as a [Result.failure], never thrown with one exception: [CancellationException] is always
+ * rethrown so that coroutine cancellation keeps propagating.
  */
 interface ProfileRepository {
   /**
