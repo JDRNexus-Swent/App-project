@@ -324,6 +324,10 @@ fun JDRNexusApp(
             personalItems = uiState.personalFiles,
             onBack = { navController.popBackStack() },
             onItemClicked = { file, _ -> openDocument(file, groupId) },
+            onCharacterCreated = { fileId ->
+              activeEditFileViewModel.loadFile(fileId, groupId)
+              navigation.navigate(AllRoutes.EditChar.name)
+            },
             onTabSelected = { tab ->
               when (tab) {
                 "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)

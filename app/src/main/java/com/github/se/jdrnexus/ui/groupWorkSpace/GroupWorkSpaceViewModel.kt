@@ -1,8 +1,10 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.se.jdrnexus.codec.JDRFileJsonCodec
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
@@ -554,32 +556,68 @@ class GroupWorkspaceViewModel(
     return viewModelScope.launch {
       performOperation {
         requireGameMaster()
-        val uid = requireUid()
-        val parent =
-            if (parentId.isNotEmpty()) {
-              requireAccessibleFolder(parentId, uid)
-            } else {
-              null
-            }
-
-        val folderId = repository.getNewUid()
-
-        val isHidden = parent?.placements?.get(groupId)?.isHidden == true
-        val folder =
-            JDRFile(
-                    id = folderId,
-                    name = folderName,
-                    ownerId = uid,
-                    sharedGroupsIds = listOf(groupId),
-                    personalParentId = "",
-                    type = DocumentType.FOLDER,
-                    content = "",
-                )
-                .withPlacement(groupId, Placement(parentId.ifEmpty { groupId }, isHidden))
-
-        repository.createFile(folder).getOrThrow()
+        createItemInFolder(parentId, folderName, DocumentType.FOLDER)
       }
     }
+  }
+
+  /**
+   * Creates an empty character in the currently displayed folder. Any group member may create one.
+   *
+   * @param onCreated Called with the new file's ID, only when the creation succeeds.
+   */
+  fun createCharacter(onCreated: (fileId: String) -> Unit): Job {
+    val parentId = _uiState.value.currentFolderId
+    return viewModelScope.launch {
+      var createdId: String? = null
+      performOperation {
+        check(role != null) { "You are not a member of this group." }
+        createdId =
+            createItemInFolder(
+                parentId = parentId,
+                name = "New character",
+                type = DocumentType.CHARACTER,
+                content = JDRFileJsonCodec.serializeCharacter(null),
+            )
+      }
+      createdId?.let(onCreated)
+    }
+  }
+
+  /**
+   * Creates an item owned by the current user directly in this group, inheriting the hidden state
+   * of its parent folder, and returns its ID.
+   */
+  private suspend fun createItemInFolder(
+      parentId: String,
+      name: String,
+      type: DocumentType,
+      content: String = "",
+  ): String {
+    val uid = requireUid()
+    val parent =
+        if (parentId.isNotEmpty()) {
+          requireAccessibleFolder(parentId, uid)
+        } else {
+          null
+        }
+
+    val itemId = repository.getNewUid()
+    val isHidden = parent?.placements?.get(groupId)?.isHidden == true
+    val item =
+        JDRFile(
+                id = itemId,
+                name = name,
+                ownerId = uid,
+                sharedGroupsIds = listOf(groupId),
+                personalParentId = "",
+                type = type,
+                content = content,
+            )
+            .withPlacement(groupId, Placement(parentId.ifEmpty { groupId }, isHidden))
+
+    repository.createFile(item).getOrThrow()
+    return itemId
   }
 
   /** Shares an existing, user-owned Personal Space file into the selected group folder. */

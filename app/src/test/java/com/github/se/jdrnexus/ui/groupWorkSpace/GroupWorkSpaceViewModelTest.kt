@@ -2,6 +2,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
+import com.github.se.jdrnexus.codec.JDRFileJsonCodec
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.FileEdit
@@ -1228,6 +1229,64 @@ class GroupWorkSpaceViewModelTest {
     )
   }
 
+  // A player can create a character at the group root and receives its ID.
+  @Test
+  fun playerCreatesCharacterInGroupRootAndReceivesItsId() = runTest {
+    val repository = FakeWorkspaceRepository()
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    val createdIds = mutableListOf<String>()
+    runCurrent()
+
+    player.createCharacter { createdIds += it }
+    runCurrent()
+
+    val created = repository.files.getValue("new-folder-1")
+    assertEquals(listOf("new-folder-1"), createdIds)
+    assertEquals("New character", created.name)
+    assertEquals(DocumentType.CHARACTER, created.type)
+    assertEquals(OWNER_ID, created.ownerId)
+    assertEquals(JDRFileJsonCodec.serializeCharacter(null), created.content)
+    assertEquals(listOf(GROUP_ID), created.sharedGroupsIds)
+    assertEquals(Placement(GROUP_ID, false), created.placements[GROUP_ID])
+    assertEquals(listOf(created), player.uiState.value.items)
+  }
+
+  // A character created in a hidden folder is hidden too.
+  @Test
+  fun createdCharacterInheritsCurrentHiddenFolder() = runTest {
+    val hiddenParent = groupFolder("hidden-parent", hidden = true)
+    val repository = FakeWorkspaceRepository(listOf(hiddenParent))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+    gm.loadWorkspace(hiddenParent.id)
+    runCurrent()
+
+    gm.createCharacter {}
+    runCurrent()
+
+    assertEquals(
+        Placement(hiddenParent.id, true),
+        repository.files.getValue("new-folder-1").placements[GROUP_ID],
+    )
+  }
+
+  // A failed creation exposes the error, stores nothing and skips the callback.
+  @Test
+  fun failedCharacterCreationReportsErrorWithoutCallback() = runTest {
+    val repository = FakeWorkspaceRepository().apply { createFailure = Exception("Create denied") }
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    val createdIds = mutableListOf<String>()
+    runCurrent()
+
+    gm.createCharacter { createdIds += it }
+    runCurrent()
+
+    assertEquals(emptyList<String>(), createdIds)
+    assertEquals("Create denied", gm.uiState.value.errorMessage)
+    assertFalse(gm.uiState.value.isOperationInProgress)
+    assertEquals(emptyMap<String, JDRFile>(), repository.files.toMap())
+  }
+
   // Group roots, folders and missing files cannot be added to the workspace.
   @Test
   fun addFileRejectsGroupRootsFoldersAndMissingFiles() = runTest {
@@ -1398,6 +1457,7 @@ class GroupWorkSpaceViewModelTest {
     private val personalFlows =
         mutableMapOf<Pair<String, String>, MutableStateFlow<List<JDRFile>>>()
     private var nextId = 0
+    var createFailure: Exception? = null
     var updateFailure: Exception? = null
     var hiddenFailure: Exception? = null
     var groupRootLoads = 0
@@ -1413,6 +1473,9 @@ class GroupWorkSpaceViewModelTest {
     override fun getNewUid(): String = "new-folder-${++nextId}"
 
     override suspend fun createFile(file: JDRFile): Result<Unit> {
+      createFailure?.let {
+        return Result.failure(it)
+      }
       if (file.id in files)
           return Result.failure(IllegalStateException("A document with this ID already exists."))
       files[file.id] = file
