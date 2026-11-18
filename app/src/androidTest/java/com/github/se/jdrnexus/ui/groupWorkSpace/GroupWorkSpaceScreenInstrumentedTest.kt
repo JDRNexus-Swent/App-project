@@ -427,6 +427,9 @@ class GroupWorkSpaceScreenInstrumentedTest {
     showScreen(repository, Role.GAME_MASTER)
 
     composeTestRule.onNodeWithTag(C.Tag.workspaceVisibility("foreign-hidden"), true).performClick()
+    composeTestRule
+        .onAllNodesWithTag(C.Tag.workspaceEdit("foreign-hidden"), true)
+        .assertCountEquals(0)
     composeTestRule.waitUntil(5_000) {
       repository.files.getValue("foreign-hidden").placements.getValue(GROUP).isHidden
     }

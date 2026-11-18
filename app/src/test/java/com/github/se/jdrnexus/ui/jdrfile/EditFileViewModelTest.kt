@@ -220,6 +220,67 @@ class EditFileViewModelTest {
   }
 
   @Test
+  fun everyCharacterEditIsIgnoredWhenReadOnly() = runTest {
+    val file =
+        JDRFile(
+            id = "shared",
+            ownerId = "other",
+            type = DocumentType.CHARACTER,
+            content = characterJson,
+        )
+    val edits: Map<String, (EditFileViewModel) -> Unit> =
+        mapOf(
+            "updateCharacterName" to { it.updateCharacterName("Changed") },
+            "onAddStatNameChange" to { it.onAddStatNameChange("Luck") },
+            "onAddStatValueChange" to { it.onAddStatValueChange("3.0") },
+            "onAddActionNameChange" to { it.onAddActionNameChange("Dodge") },
+            "onAddActionDescriptionChange" to { it.onAddActionDescriptionChange("Evade") },
+            "updateCharacterCurrentHp" to { it.updateCharacterCurrentHp(5) },
+            "updateCharacterMaxHp" to { it.updateCharacterMaxHp(30) },
+            "addCharacterStat" to { it.addCharacterStat() },
+            "updateCharacterStatName" to { it.updateCharacterStatName("strength", "Might") },
+            "updateCharacterStatValue" to { it.updateCharacterStatValue("strength", 20.0) },
+            "removeCharacterStat" to { it.removeCharacterStat("strength") },
+            "addCharacterAction" to { it.addCharacterAction() },
+            "updateCharacterActionName" to
+                {
+                  it.updateCharacterActionName("sword_attack", "Slash")
+                },
+            "updateCharacterActionDescription" to
+                {
+                  it.updateCharacterActionDescription("sword_attack", "A precise cut")
+                },
+            "removeCharacterAction" to { it.removeCharacterAction("sword_attack") },
+        )
+
+    edits.forEach { (name, edit) -> assertEditIgnoredWhenReadOnly(name, file, edit) }
+  }
+
+  @Test
+  fun everyLoreEditIsIgnoredWhenReadOnly() = runTest {
+    val file =
+        JDRFile(
+            id = "shared",
+            ownerId = "other",
+            type = DocumentType.TEXT,
+            content = loreJson,
+        )
+    val edits: Map<String, (EditFileViewModel) -> Unit> =
+        mapOf(
+            "updateLoreTitle" to { it.updateLoreTitle("Changed") },
+            "addLoreSection" to { it.addLoreSection("Geography", "Mountainous") },
+            "updateLoreSectionTitle" to { it.updateLoreSectionTitle("history", "Origins") },
+            "updateLoreSectionDescription" to
+                {
+                  it.updateLoreSectionDescription("history", "A distant past.")
+                },
+            "removeLoreSection" to { it.removeLoreSection("history") },
+        )
+
+    edits.forEach { (name, edit) -> assertEditIgnoredWhenReadOnly(name, file, edit) }
+  }
+
+  @Test
   fun loadsLoreAndAcceptsEmptyCollections() = runTest {
     val loreFile = JDRFile(id = "lore-1", type = DocumentType.TEXT, content = loreJson)
     val loreViewModel = loadedViewModel(loreFile)
@@ -1130,6 +1191,43 @@ class EditFileViewModelTest {
     viewModel.loadFile(file.id, groupId)
     runCurrent()
     return viewModel
+  }
+
+  /**
+   * Loads [file] as a player who does not own it, applies [edit], and checks that the only state
+   * change is the read-only error. Each edit gets a fresh view model so they cannot mask each
+   * other.
+   */
+  private fun TestScope.assertEditIgnoredWhenReadOnly(
+      name: String,
+      file: JDRFile,
+      edit: (EditFileViewModel) -> Unit,
+  ) {
+    val viewModel =
+        loadedViewModel(
+            file,
+            groupRepository =
+                NavigationGroupRepository(
+                    CampaignGroup(
+                        "group",
+                        gameMasterId = "gm",
+                        participantIds = listOf("player", "other"),
+                    )
+                ),
+            authRepository = FakeAuthRepository("player"),
+            groupId = "group",
+        )
+    val before = viewModel.uiState.value
+    assertTrue("$name: precondition isReadOnly", before.isReadOnly)
+    assertNull("$name: precondition error", before.error)
+
+    edit(viewModel)
+
+    assertEquals(
+        "$name should not change state when read-only",
+        before.copy(error = EditFileViewModel.READ_ONLY_ERROR, isSaved = false),
+        viewModel.uiState.value,
+    )
   }
 
   private class FakeAuthRepository(uid: String) : AuthRepository {

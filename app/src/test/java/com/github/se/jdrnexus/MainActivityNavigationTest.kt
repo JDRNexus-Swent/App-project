@@ -406,38 +406,7 @@ class MainActivityNavigationTest {
 
   @Test
   fun groupWorkspaceFileClickOpensLoreEditor() {
-    val loreFile =
-        JDRFile(
-            id = "shared-lore",
-            name = "Dragon Lore",
-            ownerId = "user-1",
-            type = DocumentType.TEXT,
-            content =
-                """
-                {
-                    "version": 1,
-                    "type": "lore",
-                    "title": "Dragon Lore",
-                    "sections": [
-                        {
-                            "sectionID": "history",
-                            "title": "History",
-                            "content": "A dragon."
-                        }
-                    ]
-                }
-                """
-                    .trimIndent(),
-            sharedGroupsIds = listOf("group-1"),
-            placements =
-                mapOf(
-                    "group-1" to
-                        Placement(
-                            folderId = "group-1",
-                            isHidden = false,
-                        )
-                ),
-        )
+    val loreFile = loreFile()
 
     showApp(
         groupRepository = groupRepository("user-1"),
