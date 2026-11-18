@@ -10,6 +10,7 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.firestore.util.CustomClassMapper
 import java.net.HttpURLConnection
@@ -162,6 +163,35 @@ object FirebaseEmulatorTestUtils {
    */
   suspend fun userGroupIds(userId: String): Any? =
       signInAs(userId).collection("users").document(userId).get().await().get("groupIds")
+
+  /**
+   * Runs [action] (a Firestore request made through a [signInAs] instance, or through the
+   * [signedOutFirestore] instance) and fails unless the security rules reject it with
+   * PERMISSION_DENIED. Any other outcome fails: success, another Firestore error code (e.g.
+   * NOT_FOUND), or another exception (e.g. an invalid id), so a request that fails for an unrelated
+   * reason never passes as a rules denial. [case] names the request in the failure message, for
+   * tests that check several requests in a row.
+   */
+  suspend fun assertPermissionDenied(case: String = "request", action: suspend () -> Unit) {
+    val failure =
+        try {
+          action()
+          null
+        } catch (e: CancellationException) {
+          throw e
+        } catch (e: Exception) {
+          e
+        }
+    if (
+        failure !is FirebaseFirestoreException ||
+            failure.code != FirebaseFirestoreException.Code.PERMISSION_DENIED
+    ) {
+      throw AssertionError(
+          "$case: expected PERMISSION_DENIED from the security rules, got: ${failure ?: "success"}",
+          failure,
+      )
+    }
+  }
 
   /**
    * Ids of the documents of [collectionPath], in id order, bypassing the security rules. For test
@@ -317,6 +347,18 @@ object FirebaseEmulatorTestUtils {
           connection.disconnect()
         }
       }
+
+  /**
+   * Returns the default app's Firestore on the emulator with no user signed in, for tests of what
+   * the rules refuse to signed-out clients. FirebaseAuth tells Firestore about the sign-out through
+   * the main looper, which a runBlocking test does not run: the looper is run here, otherwise the
+   * next request could still carry the token of a user signed in by an earlier test.
+   */
+  fun signedOutFirestore(): FirebaseFirestore {
+    getAuth()
+    shadowOf(Looper.getMainLooper()).idle()
+    return getFirestore()
+  }
 
   /**
    * Returns the default app's FirebaseAuth pointed to the Auth emulator and signed out. The default

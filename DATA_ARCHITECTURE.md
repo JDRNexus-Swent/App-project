@@ -5,6 +5,8 @@ This document defines the architectural decisions and invariants of the NoSQL da
 Sections marked **(proposed)** are defaults that still need a team decision. Section 12 lists what is known to be missing
 
 **Out of scope for now:** moving a document between folders, splitting an operation over several batches.
+
+**Not described here:** the game session (`campaign_groups/{groupId}/gm_data`) and the lore (`campaign_groups/{groupId}/gm_lore`). They are mentioned in some sections (permissions, rules), but their data model and exact behaviour are not documented in this file yet.
  
 ---
 
@@ -300,7 +302,7 @@ Concurrent writes (a player placing a document in a folder at the moment it leav
 | Read the game session (`gm_data`) | n/a | yes | yes | no |
 | Write the game session (`gm_data`) | n/a | yes | no | no |
 
-A `get` of an id that does not exist (in `documents` or `campaign_groups`), and an `update` of a missing id in `documents`, are allowed to any signed-in user, so the app receives "not found" instead of a denial. It only tells that the id does not exist, and an update never creates a document.
+A `get` of an id that does not exist (in `documents`, `campaign_groups` or `gm_lore`), and an `update` of a missing id in `documents`, are allowed to any signed-in user, so the app receives "not found" instead of a denial. It only tells that the id does not exist, and an update never creates a document.
 
 The rules cannot tell who changes a placement entry (see 7.5): "who may hide or reveal" is enforced by the UI, not by the rules. Reattachments are a side effect of unsharing or deleting a container: they are performed on other users' documents by whoever triggers the cascade, through exception 2 of 7.5.
 
@@ -357,8 +359,11 @@ A user who left a group can join it again with the same code as long as the GM h
 | Only the owner reads and writes their profile | yes | | | emulator |
 | Profile username trimmed, 3 to 30 characters; bio at most 300 | yes | | view model | emulator |
 | Profile update never overwrites `pictureUrl` | | merge of `username` and `bio` only | | emulator |
+| Dice rolls and activities: added by a member under their own `userId`, server timestamp, never edited | yes | | | rules tests |
+| Game session (`gm_data`) and lore (`gm_lore`): members read (lore only if shared), the GM writes | yes | | | rules tests |
+| `map_sessions` read-only; any other collection denied | yes | | | rules tests |
 
-Rules and batch behavior must be tested with the **Firebase emulator** (member / non-member / GM / owner), not only with mocks.
+Rules and batch behavior must be tested with the **Firebase emulator** (member / non-member / GM / owner), not only with mocks. "Rules tests" are the classes of `app/src/test/.../firestoreRules/`, one per collection: each sends requests as signed-in users and checks that the rules allow them, or deny them and write nothing.
  
 ---
 
