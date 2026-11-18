@@ -53,19 +53,17 @@ class NotificationRepositoryFirestore(private val firestore: FirebaseFirestore) 
       return@callbackFlow
     }
     val registration =
-        notifications
-            .whereEqualTo("userId", userId)
-            .addSnapshotListener { snapshot, error ->
-              if (error != null) {
-                close(error)
-              } else if (snapshot != null) {
-                trySend(
-                    snapshot.documents
-                        .mapNotNull(::toNotification)
-                        .sortedByDescending { it.createdAt ?: Date(0) }
-                )
-              }
-            }
+        notifications.whereEqualTo("userId", userId).addSnapshotListener { snapshot, error ->
+          if (error != null) {
+            close(error)
+          } else if (snapshot != null) {
+            trySend(
+                snapshot.documents.mapNotNull(::toNotification).sortedByDescending {
+                  it.createdAt ?: Date(0)
+                }
+            )
+          }
+        }
     awaitClose { registration.remove() }
   }
 
