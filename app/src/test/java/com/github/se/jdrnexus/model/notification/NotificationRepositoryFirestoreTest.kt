@@ -5,6 +5,7 @@ import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
 import com.github.se.jdrnexus.utils.waitFor
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.EventListener
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
@@ -35,7 +36,7 @@ class NotificationRepositoryFirestoreTest {
 
   @Before
   fun setUp() {
-    firestore = FirebaseEmulatorTestUtils.getFirestore()
+    firestore = FirebaseEmulatorTestUtils.signInAs("target")
     repository = NotificationRepositoryFirestore(firestore)
   }
 
@@ -114,19 +115,17 @@ class NotificationRepositoryFirestoreTest {
 
   @Test
   fun getUserNotificationsIgnoresNotificationWithMissingUserId() = runBlocking {
-    firestore
-        .collection(NotificationRepositoryFirestore.COLLECTION_PATH)
-        .document("missing-user")
-        .set(
-            mapOf(
-                "type" to "CAMPAIGN_UPDATE",
-                "title" to "Malformed",
-                "message" to "Ignored",
-                "createdAt" to Date(1000),
-                "isRead" to false,
-            )
-        )
-        .await()
+    FirebaseEmulatorTestUtils.writeBypassingRules(
+        firestore,
+        "notifications/missing-user",
+        mapOf(
+            "type" to "CAMPAIGN_UPDATE",
+            "title" to "Malformed",
+            "message" to "Ignored",
+            "createdAt" to Date(1000),
+            "isRead" to false,
+        ),
+    )
 
     val notifications = repository.getUserNotifications("target").waitFor { it.isEmpty() }
 
@@ -135,20 +134,18 @@ class NotificationRepositoryFirestoreTest {
 
   @Test
   fun getUserNotificationsIgnoresUnknownNotificationTypes() = runBlocking {
-    firestore
-        .collection(NotificationRepositoryFirestore.COLLECTION_PATH)
-        .document("unknown-type")
-        .set(
-            mapOf(
-                "userId" to "target",
-                "type" to "UNKNOWN_TYPE",
-                "title" to "Malformed",
-                "message" to "Ignored",
-                "createdAt" to Date(1000),
-                "isRead" to false,
-            )
-        )
-        .await()
+    FirebaseEmulatorTestUtils.writeBypassingRules(
+        firestore,
+        "notifications/unknown-type",
+        mapOf(
+            "userId" to "target",
+            "type" to "UNKNOWN_TYPE",
+            "title" to "Malformed",
+            "message" to "Ignored",
+            "createdAt" to Date(1000),
+            "isRead" to false,
+        ),
+    )
 
     val notifications = repository.getUserNotifications("target").waitFor { it.isEmpty() }
 
@@ -170,18 +167,18 @@ class NotificationRepositoryFirestoreTest {
             )
         )
         .getOrThrow()
-    repository
-        .createNotification(
-            Notification(
-                id = "other-notification",
-                userId = "other",
-                type = NotificationType.CAMPAIGN_UPDATE,
-                title = "Update",
-                message = "Campaign updated.",
-                createdAt = Date(2000),
-            )
-        )
-        .getOrThrow()
+    FirebaseEmulatorTestUtils.writeBypassingRules(
+        firestore,
+        "notifications/other-notification",
+        Notification(
+            id = "other-notification",
+            userId = "other",
+            type = NotificationType.CAMPAIGN_UPDATE,
+            title = "Update",
+            message = "Campaign updated.",
+            createdAt = Date(2000),
+        ),
+    )
 
     val notifications = repository.getUserNotifications("target").waitFor { it.isNotEmpty() }
 
@@ -192,18 +189,21 @@ class NotificationRepositoryFirestoreTest {
 
   @Test
   fun managesReadStateAndRejectsAnotherUsersNotification() = runBlocking {
-    repository
-        .createNotification(
-            Notification(
-                id = "notification-1",
-                userId = "target",
-                title = "Membership",
-                message = "A member joined.",
-                type = NotificationType.MEMBERSHIP_CHANGE,
-                createdAt = Date(1000),
+    firestore
+        .collection(NotificationRepositoryFirestore.COLLECTION_PATH)
+        .document("notification-1")
+        .set(
+            mapOf(
+                "userId" to "target",
+                "type" to "MEMBERSHIP_CHANGE",
+                "title" to "Membership",
+                "message" to "A member joined.",
+                "groupId" to null,
+                "createdAt" to FieldValue.serverTimestamp(),
+                "isRead" to false,
             )
         )
-        .getOrThrow()
+        .await()
 
     val wrongOwner = repository.markAsRead("notification-1", "other")
     assertTrue(wrongOwner.isFailure)
@@ -221,12 +221,11 @@ class NotificationRepositoryFirestoreTest {
     repository.deleteNotification("notification-1", "target").getOrThrow()
 
     assertFalse(
-        firestore
-            .collection(NotificationRepositoryFirestore.COLLECTION_PATH)
-            .document("notification-1")
-            .get()
-            .await()
-            .exists()
+        "notification-1" in
+            FirebaseEmulatorTestUtils.documentIdsBypassingRules(
+                firestore,
+                NotificationRepositoryFirestore.COLLECTION_PATH,
+            )
     )
   }
 

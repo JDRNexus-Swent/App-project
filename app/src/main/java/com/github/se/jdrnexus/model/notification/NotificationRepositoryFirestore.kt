@@ -41,7 +41,7 @@ class NotificationRepositoryFirestore(private val firestore: FirebaseFirestore) 
                 "title" to notification.title,
                 "message" to notification.message,
                 "groupId" to notification.groupId,
-                "createdAt" to (notification.createdAt ?: FieldValue.serverTimestamp()),
+                "createdAt" to FieldValue.serverTimestamp(),
                 "isRead" to notification.isRead,
             )
         notifications.document(notification.id.ifBlank { getNewNotificationId() }).set(data).await()
