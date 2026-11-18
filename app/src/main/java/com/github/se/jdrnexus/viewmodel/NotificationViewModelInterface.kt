@@ -52,6 +52,9 @@ interface NotificationViewModelInterface {
   /** Permanently removes one notification belonging to the signed-in user. */
   fun deleteNotification(notificationId: String)
 
+  /** Clears the latest notification-action error after the screen has displayed it. */
+  fun clearActionError()
+
   /** Retries the active user's notification subscription after a loading failure. */
   fun retry()
 }
