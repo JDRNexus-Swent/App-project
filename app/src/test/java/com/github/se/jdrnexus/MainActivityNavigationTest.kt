@@ -6,6 +6,7 @@ import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
@@ -345,6 +346,19 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun groupSearchOpensOwnFileWithEditingEnabled() {
+    // The signed-in user-1 owns this file and is a participant of group-1.
+    val loreFile = loreFile().copy(ownerId = "user-1")
+    groupWorkspaceSearchStart(loreFile)
+
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(loreFile.id)).performClick()
+
+    waitForTag(EditFileLoreTestTags.LIST)
+    composeTestRule.onNodeWithTag("edit_lore_save").assertIsEnabled()
+    composeTestRule.onNodeWithTag("edit_lore_title").assertTextContains("Dragon Lore")
+  }
+
+  @Test
   fun playerCanNavigateToHomeFromGroupWorkspace() {
     openGroupWorkspaceAsPlayer()
 
@@ -426,7 +440,7 @@ class MainActivityNavigationTest {
         )
 
     showApp(
-        groupRepository = playerGroupRepository("user-1"),
+        groupRepository = groupRepository("user-1"),
         workspaceRepository = NavigationWorkspaceRepository(listOf(loreFile)),
     )
     signInAndOpenCampaigns()
@@ -487,7 +501,7 @@ class MainActivityNavigationTest {
 
   @Test
   fun campaignsNavigateToWorkspaceAndBack() {
-    val groupRepository = playerGroupRepository("user-1")
+    val groupRepository = groupRepository("user-1")
     showApp(groupRepository = groupRepository)
     signInAndOpenCampaigns()
 
@@ -508,7 +522,7 @@ class MainActivityNavigationTest {
 
   @Test
   fun systemBackFromWorkspaceReturnsToCampaigns() {
-    val groupRepository = playerGroupRepository("user-1")
+    val groupRepository = groupRepository("user-1")
     showApp(groupRepository = groupRepository)
     signInAndOpenCampaigns()
 
@@ -523,7 +537,7 @@ class MainActivityNavigationTest {
 
   @Test
   fun rapidWorkspaceTapsCreateOneDestinationAndOneViewModel() {
-    val groupRepository = playerGroupRepository("user-1")
+    val groupRepository = groupRepository("user-1")
     showApp(groupRepository = groupRepository)
     signInAndOpenCampaigns()
 
@@ -539,7 +553,7 @@ class MainActivityNavigationTest {
 
   @Test
   fun workspaceGroupIdSurvivesSavedStateRestoration() {
-    val groupRepository = playerGroupRepository("user-1")
+    val groupRepository = groupRepository("user-1")
     val authRepository = FakeAuthRepository()
     val restorationTester = StateRestorationTester(composeTestRule)
     val authViewModel = AuthViewModel(authRepository)
@@ -729,7 +743,7 @@ class MainActivityNavigationTest {
       )
 
   private fun groupWorkspaceSearchStart(loreFile: JDRFile) {
-    val groupRepository = playerGroupRepository()
+    val groupRepository = groupRepository()
 
     showApp(
         groupRepository = groupRepository,
@@ -756,7 +770,12 @@ class MainActivityNavigationTest {
       checkNotNull(FirebaseApp.initializeApp(context))
     }
     val viewModel = AuthViewModel(repository)
-    val editFileViewModel = EditFileViewModel(workspaceRepository)
+    val editFileViewModel =
+        EditFileViewModel(
+            workspaceRepository = workspaceRepository,
+            groupRepository = groupRepository,
+            authRepository = repository,
+        )
     composeTestRule.setContent {
       // The 3D die cannot render under Robolectric: the dice screen draws the flat one instead.
       CompositionLocalProvider(LocalDieView provides FlatDieView) {
@@ -838,7 +857,7 @@ class MainActivityNavigationTest {
   }
 
   private fun openGroupWorkspaceAsPlayer() {
-    showApp(groupRepository = playerGroupRepository())
+    showApp(groupRepository = groupRepository())
     signInAndOpenCampaigns()
 
     waitForTag(C.Tag.enter_workspace_button)
@@ -847,7 +866,7 @@ class MainActivityNavigationTest {
     waitForText("The Sunken Crown")
   }
 
-  private fun playerGroupRepository(gameMasterId: String = "gm-1") =
+  private fun groupRepository(gameMasterId: String = "gm-1") =
       NavigationGroupRepository(
           CampaignGroup(
               id = "group-1",

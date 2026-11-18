@@ -168,6 +168,7 @@ internal fun EditFileErrorMessage(error: String, testTag: String) {
  * @param isSaving whether a save operation is in progress.
  * @param isSaved whether the current content has been saved.
  * @param testTag test tag applied to the save button when it is displayed.
+ * @param enabled whether a player can edit a file or not
  * @param onSave called when the save button is pressed.
  */
 @Composable

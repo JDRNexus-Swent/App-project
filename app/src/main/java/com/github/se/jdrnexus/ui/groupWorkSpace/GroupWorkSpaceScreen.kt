@@ -208,7 +208,7 @@ fun GroupWorkSpaceScreen(
               if (file.type == DocumentType.FOLDER) {
                 gwViewModel.openFolder(file.id)
               } else {
-                val canEdit = uiState.canEditItems || file.ownerId == uiState.currentUserId
+                val canEdit = file.ownerId == uiState.currentUserId
 
                 if (onItemClicked != null) {
                   onItemClicked(file, canEdit)
@@ -226,7 +226,6 @@ fun GroupWorkSpaceScreen(
               gwViewModel.clearError()
               itemToRemoveId = it.id
             },
-            canEditItems = uiState.canEditItems,
             currentUserId = uiState.currentUserId,
             viewModel = gwViewModel,
         )
@@ -862,7 +861,6 @@ private fun WorkspaceContent(
     onItemClick: (JDRFile) -> Unit,
     onEdit: (JDRFile) -> Unit,
     onRemove: (JDRFile) -> Unit,
-    canEditItems: Boolean,
     currentUserId: String,
     viewModel: GroupWorkspaceViewModel,
 ) {
@@ -931,11 +929,13 @@ private fun WorkspaceContent(
             ) { file ->
               val isHidden = file.placements[groupId]?.isHidden ?: false
               val canChangeVisibility = uiState.canCreateFolder || currentUserId == file.ownerId
-              val itemCanEdit = canEditItems || file.ownerId == currentUserId
+              val canEdit = file.ownerId == currentUserId
+              val canRemove = canEdit || uiState.canCreateFolder
+
               WorkspaceCard(
                   file = file,
-                  canEdit = itemCanEdit,
-                  canRemove = itemCanEdit,
+                  canEdit = canEdit,
+                  canRemove = canRemove,
                   isHidden = isHidden,
                   canChangeVisibility = canChangeVisibility,
                   operationInProgress = uiState.isOperationInProgress,

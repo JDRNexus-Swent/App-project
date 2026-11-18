@@ -14,6 +14,7 @@ import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
+import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.model.personalSpace.toEdit
@@ -31,11 +32,11 @@ import kotlinx.coroutines.launch
 
 class EditFileViewModel(
     workspaceRepository: WorkspaceRepository? = null,
-    private val groupRepository: GroupRepository? = null,
+    groupRepository: GroupRepository? = null,
     private val authRepository: AuthRepository? = null,
 ) : ViewModel(), EditFileInterfaceVM {
   private val repository by lazy { workspaceRepository ?: WorkspaceRepositoryProvider.repository }
-  private val groups by lazy { groupRepository }
+  private val groups = groupRepository
   private val auth by lazy { authRepository ?: AuthRepositoryProvider.repository }
 
   private val _uiState = MutableStateFlow(EditFileUiState())
@@ -530,13 +531,13 @@ class EditFileViewModel(
   }
 
   private suspend fun canEditInGroup(
-      file: com.github.se.jdrnexus.model.personalSpace.JDRFile,
+      file: JDRFile,
       groupId: String,
   ): Boolean {
     val userId = auth.authState.first()?.uid ?: return false
     val group = groups?.getGroupFlow(groupId)?.first() ?: return false
     val isMember = group.gameMasterId == userId || userId in group.participantIds
-    return isMember && (group.gameMasterId == userId || file.ownerId == userId)
+    return isMember && file.ownerId == userId
   }
 
   internal companion object {

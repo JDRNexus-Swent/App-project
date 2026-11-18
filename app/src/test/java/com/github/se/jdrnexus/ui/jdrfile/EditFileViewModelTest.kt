@@ -123,7 +123,7 @@ class EditFileViewModelTest {
   }
 
   @Test
-  fun groupOwnerAndGameMasterCanStillEditFiles() = runTest {
+  fun groupOwnerCanEditOwnFile() = runTest {
     val file =
         JDRFile(
             id = "shared",
@@ -131,7 +131,13 @@ class EditFileViewModelTest {
             type = DocumentType.CHARACTER,
             content = characterJson,
         )
-    val group = CampaignGroup("group", gameMasterId = "gm", participantIds = listOf("owner"))
+
+    val group =
+        CampaignGroup(
+            "group",
+            gameMasterId = "gm",
+            participantIds = listOf("owner"),
+        )
 
     val owner =
         loadedViewModel(
@@ -140,9 +146,29 @@ class EditFileViewModelTest {
             authRepository = FakeAuthRepository("owner"),
             groupId = "group",
         )
+
     owner.updateCharacterName("Owner edit")
+
     assertEquals("Owner edit", owner.uiState.value.character?.name)
     assertFalse(owner.uiState.value.isReadOnly)
+  }
+
+  @Test
+  fun groupGameMasterCannotEditAnotherMembersFile() = runTest {
+    val file =
+        JDRFile(
+            id = "shared",
+            ownerId = "owner",
+            type = DocumentType.CHARACTER,
+            content = characterJson,
+        )
+
+    val group =
+        CampaignGroup(
+            "group",
+            gameMasterId = "gm",
+            participantIds = listOf("owner"),
+        )
 
     val gameMaster =
         loadedViewModel(
@@ -151,9 +177,14 @@ class EditFileViewModelTest {
             authRepository = FakeAuthRepository("gm"),
             groupId = "group",
         )
+
     gameMaster.updateCharacterName("GM edit")
-    assertEquals("GM edit", gameMaster.uiState.value.character?.name)
-    assertFalse(gameMaster.uiState.value.isReadOnly)
+
+    assertEquals(
+        "Jean-claude",
+        gameMaster.uiState.value.character?.name,
+    )
+    assertTrue(gameMaster.uiState.value.isReadOnly)
   }
 
   @Test

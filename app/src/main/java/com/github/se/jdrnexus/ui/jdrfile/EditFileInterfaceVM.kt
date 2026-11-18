@@ -50,7 +50,11 @@ interface EditFileInterfaceVM {
   /** StateFlow containing the selected file, parsed editor model, and operation status. */
   val uiState: StateFlow<EditFileUiState>
 
-  /** Loads [fileId] and selects the editor model from its repository document type. */
+  /**
+   * Loads [fileId] and selects the editor model from its repository document type. When [groupId]
+   * is provided, determines whether the file can be edited in that
+   * * group and configures the editor accordingly.
+   */
   fun loadFile(fileId: String, groupId: String? = null)
 
   /** Replaces the character's display name. */
