@@ -1,8 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.model.notification
 
-// Emulator-independent notification repository tests use MockK below.
-import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
@@ -21,31 +19,25 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
 class NotificationRepositoryFirestoreTest {
-  private lateinit var firestore: FirebaseFirestore
-  private lateinit var repository: NotificationRepository
-
-  @Before
-  fun setUp() {
-    firestore = FirebaseEmulatorTestUtils.getFirestore()
-    repository = NotificationRepositoryFirestore(firestore)
-  }
-
-  @After
-  fun tearDown() {
-    runBlocking { FirebaseEmulatorTestUtils.tearDown(firestore, "notifications") }
-  }
+  /** Creates a repository with only the Firestore collection surface needed by pure logic tests. */
+  private fun mockRepository(documentId: String = "new-notification"): NotificationRepository =
+      mockk<FirebaseFirestore>().let { firestore ->
+        val notifications = mockk<CollectionReference>()
+        val document = mockk<DocumentReference>()
+        every { firestore.collection(NotificationRepositoryFirestore.COLLECTION_PATH) } returns
+            notifications
+        every { notifications.document() } returns document
+        every { notifications.document(documentId) } returns document
+        every { document.id } returns documentId
+        NotificationRepositoryFirestore(firestore)
+      }
 
   /** Mocks a notification listener for one [userId] and returns its first repository emission. */
   private suspend fun notificationsFromMockListener(
@@ -72,6 +64,16 @@ class NotificationRepositoryFirestoreTest {
 
   @Test
   fun getNewNotificationIdReturnsAUniqueNonBlankId() {
+    val firestore = mockk<FirebaseFirestore>()
+    val notifications = mockk<CollectionReference>()
+    val firstDocument = mockk<DocumentReference>()
+    val secondDocument = mockk<DocumentReference>()
+    every { firestore.collection(NotificationRepositoryFirestore.COLLECTION_PATH) } returns
+        notifications
+    every { notifications.document() } returnsMany listOf(firstDocument, secondDocument)
+    every { firstDocument.id } returns "first-notification"
+    every { secondDocument.id } returns "second-notification"
+    val repository = NotificationRepositoryFirestore(firestore)
     val first = repository.getNewNotificationId()
     val second = repository.getNewNotificationId()
 
@@ -82,6 +84,7 @@ class NotificationRepositoryFirestoreTest {
 
   @Test
   fun getUserNotificationsRejectsBlankUserId() {
+    val repository = mockRepository()
     val failure =
         assertThrows(IllegalArgumentException::class.java) {
           runBlocking { repository.getUserNotifications("").first() }
@@ -262,6 +265,7 @@ class NotificationRepositoryFirestoreTest {
 
   @Test
   fun rejectsNotificationsWithoutATargetUser() = runBlocking {
+    val repository = mockRepository()
     val result =
         repository.createNotification(Notification(title = "Missing target", message = "Message"))
 
