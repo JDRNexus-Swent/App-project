@@ -374,77 +374,104 @@ class GroupWorkSpaceScreenInstrumentedTest {
         .assertCountEquals(0)
   }
 
-  // Verifies a player can edit, hide, and remove their own file through tagged controls.
+  // Verifies a player can rename, hide, and remove their own file using tagged controls.
   @Test
   fun playerCanManageOwnFileUsingTaggedActions() {
-    val editable =
-        file("own-edit", "Own", DocumentType.TEXT, ownerId = USER).copy(content = "Original")
+    val editable = file("own-edit", "Own", DocumentType.TEXT, ownerId = USER)
     val removable = file("own-remove", "Remove me", DocumentType.TEXT, ownerId = USER)
     val repository = WorkspaceFakeRepository(listOf(editable, removable))
     showScreen(repository, Role.PLAYER)
 
+    // Rename own file.
     composeTestRule.onNodeWithTag(C.Tag.workspaceEdit("own-edit"), true).performClick()
+
     composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_dialog, true).assertIsDisplayed()
+
     composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_name_input, true).performTextClearance()
+
     composeTestRule
         .onNodeWithTag(C.Tag.workspace_edit_item_name_input, true)
         .performTextInput("Updated own")
-    composeTestRule
-        .onNodeWithTag(C.Tag.workspace_edit_item_content_input, true)
-        .performTextClearance()
-    composeTestRule
-        .onNodeWithTag(C.Tag.workspace_edit_item_content_input, true)
-        .performTextInput("Updated content")
-    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_save, true).performClick()
-    composeTestRule.waitUntil(5_000) {
-      repository.files.getValue("own-edit").name == "Updated own" &&
-          repository.files.getValue("own-edit").content == "Updated content"
-    }
 
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_save, true).performClick()
+
+    composeTestRule.waitUntil(5_000) { repository.files.getValue("own-edit").name == "Updated own" }
+
+    // Hide own file.
     composeTestRule.onNodeWithTag(C.Tag.workspaceVisibility("own-edit"), true).performClick()
+
     composeTestRule.waitUntil(5_000) {
       repository.files.getValue("own-edit").placements.getValue(GROUP).isHidden
     }
 
+    // Remove own file from the group.
     composeTestRule.onNodeWithTag(C.Tag.workspaceRemove("own-remove"), true).performClick()
+
     composeTestRule.onNodeWithTag(C.Tag.workspace_remove_item_dialog, true).assertIsDisplayed()
+
     composeTestRule.onNodeWithTag(C.Tag.workspace_remove_item_confirm, true).performClick()
+
     composeTestRule.waitUntil(5_000) {
       GROUP !in repository.files.getValue("own-remove").sharedGroupsIds
     }
+
     composeTestRule.onAllNodesWithTag(C.Tag.workspaceItem("own-remove"), true).assertCountEquals(0)
   }
 
-  // Verifies Game Masters can edit, hide, and remove another player's file.
+  // Verifies Game Masters can hide and remove another player's file.
   @Test
-  fun gameMasterCanManageForeignFile() {
-    val editable = file("foreign-edit", "Foreign", DocumentType.TEXT, ownerId = OTHER)
+  fun gameMasterCanHideAndRemoveForeignFile() {
+    val hidden = file("foreign-hidden", "Foreign", DocumentType.TEXT, ownerId = OTHER)
     val removable = file("foreign-remove", "Remove me", DocumentType.TEXT, ownerId = OTHER)
-    val repository = WorkspaceFakeRepository(listOf(editable, removable))
+    val repository = WorkspaceFakeRepository(listOf(hidden, removable))
     showScreen(repository, Role.GAME_MASTER)
 
-    composeTestRule.onNodeWithTag(C.Tag.workspaceEdit("foreign-edit"), true).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_dialog, true).assertIsDisplayed()
-    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_name_input, true).performTextClearance()
+    composeTestRule.onNodeWithTag(C.Tag.workspaceVisibility("foreign-hidden"), true).performClick()
     composeTestRule
-        .onNodeWithTag(C.Tag.workspace_edit_item_name_input, true)
-        .performTextInput("Updated foreign")
-    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_save, true).performClick()
+        .onAllNodesWithTag(C.Tag.workspaceEdit("foreign-hidden"), true)
+        .assertCountEquals(0)
     composeTestRule.waitUntil(5_000) {
-      repository.files.getValue("foreign-edit").name == "Updated foreign"
+      repository.files.getValue("foreign-hidden").placements.getValue(GROUP).isHidden
     }
-    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("foreign-edit"), true).assertIsDisplayed()
 
-    composeTestRule.onNodeWithTag(C.Tag.workspaceVisibility("foreign-edit"), true).performClick()
-    composeTestRule.waitUntil(5_000) {
-      repository.files.getValue("foreign-edit").placements.getValue(GROUP).isHidden
-    }
     composeTestRule.onNodeWithTag(C.Tag.workspaceRemove("foreign-remove"), true).performClick()
     composeTestRule.onNodeWithTag(C.Tag.workspace_remove_item_dialog, true).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.workspace_remove_item_confirm, true).performClick()
     composeTestRule.waitUntil(5_000) {
       GROUP !in repository.files.getValue("foreign-remove").sharedGroupsIds
     }
+  }
+
+  // Verifies that clicking another member's file as a player reports read-only permission.
+  @Test
+  fun playerClickingAnotherMembersFileReceivesReadOnlyPermission() {
+    val foreignFile =
+        file(
+            "foreign",
+            "Another player's notes",
+            DocumentType.TEXT,
+            ownerId = OTHER,
+        )
+
+    var clickedFile: JDRFile? = null
+    var clickedCanEdit: Boolean? = null
+
+    showScreen(
+        repository = WorkspaceFakeRepository(listOf(foreignFile)),
+        role = Role.PLAYER,
+        onItemClicked = { file, canEdit ->
+          clickedFile = file
+          clickedCanEdit = canEdit
+        },
+    )
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspaceItem("foreign"), true)
+        .assertIsDisplayed()
+        .performClick()
+
+    assertEquals(foreignFile.id, clickedFile?.id)
+    assertEquals(false, clickedCanEdit)
   }
 
   // Verifies edit validation, cancellation, and successful visible updates.

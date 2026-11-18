@@ -126,15 +126,6 @@ class GroupRepositoryInvitationFirestoreTest {
   private suspend fun participantIds(groupId: String): List<String> =
       repository.getGroup(groupId).getOrThrow().participantIds
 
-  // Read as the user themselves: nobody else may read their users document.
-  private suspend fun userGroupIds(userId: String): Any? =
-      FirebaseEmulatorTestUtils.signInAs(userId)
-          .collection("users")
-          .document(userId)
-          .get()
-          .await()
-          .get("groupIds")
-
   /** A repository whose first read of an invitation fails with [error]. No emulator involved. */
   private fun repositoryFailingOnInvitationRead(error: Exception): GroupRepository {
     val firestoreMock = mockk<FirebaseFirestore>()
@@ -332,7 +323,7 @@ class GroupRepositoryInvitationFirestoreTest {
     assertEquals(groupId, result.getOrThrow().id)
     assertEquals(listOf(GM_ID, PLAYER_ID), result.getOrThrow().participantIds)
     assertEquals(listOf(GM_ID, PLAYER_ID), participantIds(groupId))
-    assertEquals(listOf(groupId), userGroupIds(PLAYER_ID))
+    assertEquals(listOf(groupId), FirebaseEmulatorTestUtils.userGroupIds(PLAYER_ID))
     assertEquals(listOf(PLAYER_ID), redeemers(code))
   }
 
@@ -389,7 +380,7 @@ class GroupRepositoryInvitationFirestoreTest {
       assertEquals("code '$bad'", InvitationError.INVALID_CODE, result.invitationError())
     }
     assertEquals(listOf(GM_ID), participantIds(groupId))
-    assertNull(userGroupIds(PLAYER_ID))
+    assertNull(FirebaseEmulatorTestUtils.userGroupIds(PLAYER_ID))
   }
 
   @Test
@@ -400,7 +391,7 @@ class GroupRepositoryInvitationFirestoreTest {
 
     assertEquals(InvitationError.UNKNOWN_CODE, result.invitationError())
     assertEquals(listOf(GM_ID), participantIds(groupId))
-    assertNull(userGroupIds(PLAYER_ID))
+    assertNull(FirebaseEmulatorTestUtils.userGroupIds(PLAYER_ID))
   }
 
   @Test
@@ -423,7 +414,7 @@ class GroupRepositoryInvitationFirestoreTest {
 
     assertEquals(InvitationError.ALREADY_MEMBER, result.invitationError())
     assertEquals(listOf(GM_ID, PLAYER_ID), participantIds(groupId))
-    assertEquals(listOf(groupId), userGroupIds(PLAYER_ID))
+    assertEquals(listOf(groupId), FirebaseEmulatorTestUtils.userGroupIds(PLAYER_ID))
   }
 
   @Test
@@ -437,7 +428,7 @@ class GroupRepositoryInvitationFirestoreTest {
     assertNull(invitationData(code))
     assertEquals(InvitationError.UNKNOWN_CODE, result.invitationError())
     assertEquals("no redemption must be written", emptyList<String>(), redeemers(code))
-    assertNull(userGroupIds(PLAYER_ID))
+    assertNull(FirebaseEmulatorTestUtils.userGroupIds(PLAYER_ID))
   }
 
   @Test
@@ -455,7 +446,7 @@ class GroupRepositoryInvitationFirestoreTest {
 
     assertEquals(InvitationError.UNKNOWN_CODE, result.invitationError())
     assertEquals(listOf(GM_ID), participantIds(groupId))
-    assertNull(userGroupIds(PLAYER_ID))
+    assertNull(FirebaseEmulatorTestUtils.userGroupIds(PLAYER_ID))
   }
 
   // ==========================================

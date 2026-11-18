@@ -77,6 +77,7 @@ fun EditFileLore(
       onBack = onBack,
   ) {
     val lore = state.lore ?: return@EditFileScaffold
+    val enabled = !state.isReadOnly
     var newSectionTitle by remember { mutableStateOf("") }
     var newSectionDescription by remember { mutableStateOf("") }
 
@@ -102,6 +103,7 @@ fun EditFileLore(
             modifier = Modifier.fillMaxWidth().testTag("edit_lore_title"),
             label = { Text(stringResource(R.string.edit_lore_title_label)) },
             singleLine = true,
+            enabled = enabled,
         )
       }
       item(key = "sections-heading") {
@@ -120,6 +122,7 @@ fun EditFileLore(
             onTitleChange = { viewModel.updateLoreSectionTitle(section.sectionID, it) },
             onDescriptionChange = { viewModel.updateLoreSectionDescription(section.sectionID, it) },
             onRemove = { viewModel.removeLoreSection(section.sectionID) },
+            enabled = enabled,
         )
       }
       item(key = "add-section") {
@@ -130,6 +133,7 @@ fun EditFileLore(
               modifier = Modifier.fillMaxWidth().testTag("add_section_title"),
               label = { Text(stringResource(R.string.edit_lore_section_title_label)) },
               singleLine = true,
+              enabled = enabled,
           )
           OutlinedTextField(
               value = newSectionDescription,
@@ -137,6 +141,7 @@ fun EditFileLore(
               modifier = Modifier.fillMaxWidth().testTag("add_section_description"),
               label = { Text(stringResource(R.string.edit_lore_content_label)) },
               minLines = 2,
+              enabled = enabled,
           )
           OutlinedButton(
               onClick = {
@@ -149,6 +154,7 @@ fun EditFileLore(
                 newSectionTitle = ""
                 newSectionDescription = ""
               },
+              enabled = enabled,
               modifier = Modifier.fillMaxWidth().testTag("confirm_add_section"),
               shape = RoundedCornerShape(8.dp),
           ) {
@@ -170,6 +176,7 @@ fun EditFileLore(
             isSaved = state.isSaved,
             testTag = "edit_lore_save",
             onSave = viewModel::saveJDRfile,
+            enabled = enabled,
         )
       }
     }
@@ -192,6 +199,7 @@ private fun LoreSectionCard(
     onTitleChange: (String) -> Unit,
     onDescriptionChange: (String) -> Unit,
     onRemove: () -> Unit,
+    enabled: Boolean,
 ) {
   Surface(
       modifier = Modifier.fillMaxWidth(),
@@ -212,8 +220,9 @@ private fun LoreSectionCard(
             singleLine = true,
             isError = titleError != null,
             supportingText = titleError?.let { message -> ({ Text(message) }) },
+            enabled = enabled,
         )
-        IconButton(onClick = onRemove, modifier = Modifier.size(40.dp)) {
+        IconButton(onClick = onRemove, enabled = enabled, modifier = Modifier.size(40.dp)) {
           Icon(Icons.Default.Close, contentDescription = "Remove ${section.title}")
         }
       }
@@ -223,6 +232,7 @@ private fun LoreSectionCard(
           modifier = Modifier.fillMaxWidth().testTag("section_description_${section.sectionID}"),
           label = { Text(stringResource(R.string.edit_lore_content_label)) },
           minLines = 3,
+          enabled = enabled,
       )
     }
   }

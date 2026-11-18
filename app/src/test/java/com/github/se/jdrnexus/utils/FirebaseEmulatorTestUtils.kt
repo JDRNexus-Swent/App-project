@@ -147,6 +147,23 @@ object FirebaseEmulatorTestUtils {
   }
 
   /**
+   * Makes [userId] a member of [groupIds] for the rules, which read `users/{uid}.groupIds`, by
+   * writing that document bypassing the rules. For test setup only.
+   */
+  suspend fun writeUserGroupIdsBypassingRules(
+      firestore: FirebaseFirestore,
+      userId: String,
+      vararg groupIds: String,
+  ) = writeBypassingRules(firestore, "users/$userId", mapOf("groupIds" to groupIds.toList()))
+
+  /**
+   * The `groupIds` field of `users/[userId]`, read as that user so the rules apply; null when the
+   * document or the field is missing.
+   */
+  suspend fun userGroupIds(userId: String): Any? =
+      signInAs(userId).collection("users").document(userId).get().await().get("groupIds")
+
+  /**
    * Ids of the documents of [collectionPath], in id order, bypassing the security rules. For test
    * checks on data that no client may list (e.g. invitations, redemptions).
    */
