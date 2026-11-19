@@ -46,6 +46,7 @@ import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.dice.FlatDieView
 import com.github.se.jdrnexus.ui.dice.LocalDieView
+import com.github.se.jdrnexus.ui.edition.EditFileCharacterTestTags
 import com.github.se.jdrnexus.ui.edition.EditFileLoreTestTags
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
@@ -426,6 +427,31 @@ class MainActivityNavigationTest {
     // Verify that the lore editor opens.
     waitForTag(EditFileLoreTestTags.LIST)
     composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).assertIsDisplayed()
+  }
+
+  // Creating a character opens its editor, and back returns to the workspace.
+  @Test
+  fun groupWorkspaceCreateCharacterOpensEditorAndBackReturnsToWorkspace() {
+    val workspaceRepository = NavigationWorkspaceRepository()
+    showApp(groupRepository = groupRepository(), workspaceRepository = workspaceRepository)
+    signInAndOpenCampaigns()
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
+    waitForTag(C.Tag.workspace_actions_fab)
+
+    composeTestRule.onNodeWithTag(C.Tag.workspace_actions_fab).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item_character).performClick()
+
+    waitForTag(EditFileCharacterTestTags.LIST)
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.LIST).assertIsDisplayed()
+    val created = workspaceRepository.createdFiles.single()
+    assertEquals(DocumentType.CHARACTER, created.type)
+    assertEquals(Placement("group-1", false), created.placements["group-1"])
+
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.BACK).performClick()
+    waitForTag(C.Tag.workspace_actions_fab)
+    composeTestRule.onNodeWithTag(C.Tag.workspace_actions_fab).assertIsDisplayed()
   }
 
   @Test

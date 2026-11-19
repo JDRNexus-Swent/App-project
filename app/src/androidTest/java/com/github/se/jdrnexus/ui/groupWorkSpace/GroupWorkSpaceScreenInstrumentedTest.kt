@@ -1,8 +1,10 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
@@ -269,9 +271,10 @@ class GroupWorkSpaceScreenInstrumentedTest {
     showScreen(repository, Role.GAME_MASTER)
 
     openActions()
-    composeTestRule.onNodeWithTag(C.Tag.workspace_add_folder, true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item, true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item_folder, true).performClick()
     composeTestRule.onNodeWithTag(C.Tag.workspace_create_folder_dialog, true).assertIsDisplayed()
-    composeTestRule.onAllNodesWithTag(C.Tag.workspace_add_folder, true).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_create_item_dialog, true).assertCountEquals(0)
     composeTestRule
         .onNodeWithTag(C.Tag.workspace_create_folder_name_input, true)
         .performTextInput("Treasure")
@@ -281,40 +284,288 @@ class GroupWorkSpaceScreenInstrumentedTest {
     composeTestRule.onNodeWithTag(C.Tag.workspaceItem("created-1"), true).assertIsDisplayed()
   }
 
-  // Verifies players can add files but are not offered folder creation.
+  // Verifies a player gets the same menu actions and creation options as a Game Master.
   @Test
-  fun playerActionsHideFolderCreation() {
+  fun playerSeesEveryCreationOption() {
     showScreen(WorkspaceFakeRepository(), Role.PLAYER)
 
     openActions()
-    composeTestRule.onAllNodesWithTag(C.Tag.workspace_add_folder, true).assertCountEquals(0)
     composeTestRule.onNodeWithTag(C.Tag.workspace_add_file, true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item, true).performClick()
+
+    assertCreationOptionsAvailable()
+  }
+
+  // Verifies a Game Master sees every creation option with the expected enabled state.
+  @Test
+  fun gameMasterSeesEveryCreationOption() {
+    showScreen(WorkspaceFakeRepository(), Role.GAME_MASTER)
+
+    openCreateItemDialog()
+
+    assertCreationOptionsAvailable()
+  }
+
+  // Verifies a player can create a folder through the dialogs and then sees it.
+  @Test
+  fun playerCreatesFolderThroughDialogs() {
+    val repository = WorkspaceFakeRepository()
+    showScreen(repository, Role.PLAYER)
+    openCreateItemDialog()
+
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item_folder, true).performClick()
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_create_folder_name_input, true)
+        .performTextInput("Maps")
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_folder_confirm, true).performClick()
+
+    composeTestRule.waitUntil(5_000) { "created-1" in repository.files }
+    assertEquals(USER, repository.files.getValue("created-1").ownerId)
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem("created-1"), true).assertIsDisplayed()
+  }
+
+  // Verifies a failed folder creation keeps the dialog open and shows the error.
+  @Test
+  fun failedFolderCreationKeepsDialogOpenWithError() {
+    val repository = WorkspaceFakeRepository(operationFailure = "Create denied")
+    showScreen(repository, Role.PLAYER)
+    openCreateItemDialog()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item_folder, true).performClick()
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_create_folder_name_input, true)
+        .performTextInput("Maps")
+
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_folder_confirm, true).performClick()
+
+    composeTestRule.waitUntil(5_000) {
+      composeTestRule.onAllNodesWithText("Create denied").fetchSemanticsNodes().isNotEmpty()
+    }
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_folder_dialog, true).assertIsDisplayed()
+    assertEquals(emptyMap<String, JDRFile>(), repository.files)
+  }
+
+  // Verifies the + button shows and hides the Create and File actions.
+  @Test
+  fun actionMenuTogglesCreateAndFileActions() {
+    showScreen(WorkspaceFakeRepository(), Role.GAME_MASTER)
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_create_item, true).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_add_file, true).assertCountEquals(0)
+
+    openActions()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item, true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_add_file, true).assertIsDisplayed()
+
+    openActions()
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_create_item, true).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_add_file, true).assertCountEquals(0)
+  }
+
+  // Verifies Create closes the menu and opens a dialog listing every item type.
+  @Test
+  fun createActionOpensDialogListingItemTypesAndClosesMenu() {
+    showScreen(WorkspaceFakeRepository(), Role.GAME_MASTER)
+
+    openCreateItemDialog()
+
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item_dialog, true).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Create an item in the current workspace").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Choose what you want to create.").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Folder").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Character").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Text").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Coming soon").assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_create_item, true).assertCountEquals(0)
+  }
+
+  // Verifies the Text option is disabled and clicking it creates nothing.
+  @Test
+  fun textOptionIsDisabledAndTriggersNothing() {
+    val repository = WorkspaceFakeRepository()
+    val createdIds = mutableListOf<String>()
+    showScreen(repository, Role.GAME_MASTER, onCharacterCreated = { createdIds += it })
+    openCreateItemDialog()
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_create_item_text, true)
+        .assertIsNotEnabled()
+        .performClick()
+    composeTestRule.waitForIdle()
+
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item_dialog, true).assertIsDisplayed()
+    assertEquals(emptyList<String>(), createdIds)
+    assertEquals(emptyMap<String, JDRFile>(), repository.files)
+  }
+
+  // Verifies Character creates the file in the open folder and reports its ID.
+  @Test
+  fun characterOptionCreatesCharacterInCurrentFolderAndReportsItsId() {
+    val folder = file("folder", "Maps", DocumentType.FOLDER)
+    val repository = WorkspaceFakeRepository(listOf(folder))
+    val createdIds = mutableListOf<String>()
+    showScreen(repository, Role.PLAYER, onCharacterCreated = { createdIds += it })
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem(folder.id), true).performClick()
+    composeTestRule.waitUntil(5_000) {
+      composeTestRule.onAllNodesWithText("No files yet").fetchSemanticsNodes().isNotEmpty()
+    }
+    openCreateItemDialog()
+
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item_character, true).performClick()
+
+    composeTestRule.waitUntil(5_000) { createdIds.isNotEmpty() }
+    assertEquals(listOf("created-1"), createdIds)
+    val created = repository.files.getValue("created-1")
+    assertEquals(DocumentType.CHARACTER, created.type)
+    assertEquals(Placement(folder.id, false), created.placements[GROUP])
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_create_item_dialog, true).assertCountEquals(0)
+  }
+
+  // Verifies a failed character creation shows the error and reports no ID.
+  @Test
+  fun failedCharacterCreationShowsErrorAndDoesNotReportAnId() {
+    val createdIds = mutableListOf<String>()
+    showScreen(
+        WorkspaceFakeRepository(operationFailure = "Create denied"),
+        Role.GAME_MASTER,
+        onCharacterCreated = { createdIds += it },
+    )
+    openCreateItemDialog()
+
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item_character, true).performClick()
+
+    composeTestRule.waitUntil(5_000) {
+      composeTestRule.onAllNodesWithText("Create denied").fetchSemanticsNodes().isNotEmpty()
+    }
+    composeTestRule.onNodeWithText("Create denied").assertIsDisplayed()
+    assertEquals(emptyList<String>(), createdIds)
+  }
+
+  // Verifies Folder and Character are disabled while an operation is running.
+  @Test
+  fun createOptionsAreDisabledWhileAnOperationIsInProgress() {
+    val gate = CompletableDeferred<Unit>()
+    val repository = WorkspaceFakeRepository(operationGate = gate)
+    showScreen(repository, Role.GAME_MASTER)
+    openCreateItemDialog()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item_character, true).performClick()
+    composeTestRule.waitUntil(5_000) { repository.operationStarted.get() }
+
+    openCreateItemDialog()
+
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item_folder, true).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item_character, true).assertIsNotEnabled()
+    gate.complete(Unit)
+    composeTestRule.waitUntil(5_000) { "created-1" in repository.files }
+  }
+
+  // Verifies the Cancel button closes the dialog without creating anything.
+  @Test
+  fun cancellingCreateItemDialogCreatesNothing() {
+    val repository = WorkspaceFakeRepository()
+    val createdIds = mutableListOf<String>()
+    showScreen(repository, Role.GAME_MASTER, onCharacterCreated = { createdIds += it })
+    openCreateItemDialog()
+
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item_cancel, true).performClick()
+
+    assertCreateItemDialogClosedWithoutEffect(repository, createdIds)
+  }
+
+  // Verifies system back closes the dialog without creating anything.
+  @Test
+  fun systemBackOnCreateItemDialogCreatesNothing() {
+    val repository = WorkspaceFakeRepository()
+    val createdIds = mutableListOf<String>()
+    showScreen(repository, Role.GAME_MASTER, onCharacterCreated = { createdIds += it })
+    openCreateItemDialog()
+    composeTestRule.waitForIdle()
+
+    Espresso.pressBack()
+
+    assertCreateItemDialogClosedWithoutEffect(repository, createdIds)
   }
 
   // Verifies the add-file dialog filters folders, foreign files, and already-shared files.
   @Test
-  fun addFileDialogShowsOnlyEligiblePersonalFiles() {
-    val eligible = JDRFile("eligible", "Notes", ownerId = USER)
-    val folder = eligible.copy(id = "folder", name = "Folder", type = DocumentType.FOLDER)
-    val shared = eligible.copy(id = "shared", name = "Shared", sharedGroupsIds = listOf(GROUP))
-    val foreign = eligible.copy(id = "foreign", name = "Foreign", ownerId = OTHER)
+  fun shareItemDialogShowsEligiblePersonalFilesAndFolders() {
+    val eligibleFile = JDRFile("eligible", "Notes", ownerId = USER)
+    val eligibleFolder =
+        eligibleFile.copy(
+            id = "folder",
+            name = "Folder",
+            type = DocumentType.FOLDER,
+        )
+    val shared =
+        eligibleFile.copy(
+            id = "shared",
+            name = "Shared",
+            sharedGroupsIds = listOf(GROUP),
+        )
+    val foreign =
+        eligibleFile.copy(
+            id = "foreign",
+            name = "Foreign",
+            ownerId = OTHER,
+        )
+    val groupRoot =
+        eligibleFile.copy(
+            id = GROUP,
+            name = "Group root",
+            type = DocumentType.GROUP_ROOT,
+        )
+
     showScreen(
         WorkspaceFakeRepository(),
         Role.PLAYER,
-        personalItems = listOf(eligible, folder, shared, foreign),
+        personalItems =
+            listOf(
+                eligibleFile,
+                eligibleFolder,
+                shared,
+                foreign,
+                groupRoot,
+            ),
     )
 
     openActions()
     composeTestRule.onNodeWithTag(C.Tag.workspace_add_file, true).performClick()
+
     composeTestRule.onNodeWithTag(C.Tag.workspace_add_files_dialog, true).assertIsDisplayed()
-    composeTestRule.onAllNodesWithTag(C.Tag.workspace_add_file, true).assertCountEquals(0)
-    composeTestRule.onNodeWithTag(C.Tag.workspace_add_files_list, true).assertIsDisplayed()
+
     composeTestRule.onNodeWithText("Notes").assertIsDisplayed()
-    composeTestRule.onAllNodesWithText("Folder").assertCountEquals(0)
+    composeTestRule.onNodeWithText("Folder").assertIsDisplayed()
+
     composeTestRule.onAllNodesWithText("Shared").assertCountEquals(0)
     composeTestRule.onAllNodesWithText("Foreign").assertCountEquals(0)
+    composeTestRule.onAllNodesWithText("Group root").assertCountEquals(0)
+
     composeTestRule.onNodeWithTag(C.Tag.workspace_add_files_done, true).performClick()
     composeTestRule.onAllNodesWithTag(C.Tag.workspace_add_files_dialog, true).assertCountEquals(0)
+  }
+
+  // Verifies selecting a personal folder asks the repository to share it with its content.
+  @Test
+  fun selectingPersonalFolderSharesItWithItsContent() {
+    val folder = JDRFile("personal-folder", "World", ownerId = USER, type = DocumentType.FOLDER)
+    val child = JDRFile("map", "Map", ownerId = USER, personalParentId = folder.id)
+    val repository = WorkspaceFakeRepository(initialFiles = listOf(folder, child))
+    showScreen(repository, Role.PLAYER, personalItems = listOf(folder, child))
+
+    openActions()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_add_file, true).performClick()
+    composeTestRule.onNodeWithText("World").performClick()
+
+    composeTestRule.waitUntil(5_000) { repository.lastAddRequest != null }
+    assertEquals(
+        AddRequest(folder.id, GROUP, GROUP, isHidden = false, includeContent = true),
+        repository.lastAddRequest,
+    )
+    composeTestRule.waitUntil(5_000) {
+      composeTestRule
+          .onAllNodesWithTag(C.Tag.workspace_add_files_dialog, true)
+          .fetchSemanticsNodes()
+          .isEmpty()
+    }
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem(folder.id), true).assertIsDisplayed()
   }
 
   // Verifies selecting a personal file shares it and updates the visible workspace.
@@ -332,6 +583,10 @@ class GroupWorkSpaceScreenInstrumentedTest {
     composeTestRule.waitUntil(5_000) {
       GROUP in repository.files.getValue("personal").sharedGroupsIds
     }
+    assertEquals(
+        AddRequest("personal", GROUP, GROUP, isHidden = false, includeContent = false),
+        repository.lastAddRequest,
+    )
     composeTestRule.onNodeWithTag(C.Tag.workspaceItem("personal"), true).assertIsDisplayed()
   }
 
@@ -668,6 +923,43 @@ class GroupWorkSpaceScreenInstrumentedTest {
     composeTestRule.onNodeWithTag(C.Tag.workspace_actions_fab, true).performClick()
   }
 
+  private fun openCreateItemDialog() {
+    openActions()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item, true).performClick()
+  }
+
+  private fun assertCreationOptionsAvailable() {
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_create_item_folder, true)
+        .assertIsDisplayed()
+        .assertIsEnabled()
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_create_item_character, true)
+        .assertIsDisplayed()
+        .assertIsEnabled()
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_create_item_text, true)
+        .assertIsDisplayed()
+        .assertIsNotEnabled()
+  }
+
+  private fun assertCreateItemDialogClosedWithoutEffect(
+      repository: WorkspaceFakeRepository,
+      createdIds: List<String>,
+  ) {
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_create_item_dialog, true).assertCountEquals(0)
+    composeTestRule
+        .onAllNodesWithTag(C.Tag.workspace_create_folder_dialog, true)
+        .assertCountEquals(0)
+    assertEquals(emptyList<String>(), createdIds)
+    assertEquals(emptyMap<String, JDRFile>(), repository.files)
+    // The create/add option is still available after returning to the screen
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_actions_fab, true)
+        .assertIsDisplayed()
+        .assertIsEnabled()
+  }
+
   private fun showScreen(
       repository: WorkspaceFakeRepository,
       role: Role,
@@ -675,6 +967,7 @@ class GroupWorkSpaceScreenInstrumentedTest {
       onBack: () -> Unit = {},
       onTabSelected: (String) -> Unit = {},
       onItemClicked: ((JDRFile, Boolean) -> Unit)? = null,
+      onCharacterCreated: (String) -> Unit = {},
       setContent: Boolean = true,
       authRepository: FakeAuthRepository = FakeAuthRepository(),
   ): GroupWorkspaceViewModel {
@@ -705,6 +998,7 @@ class GroupWorkSpaceScreenInstrumentedTest {
               onTabSelected = onTabSelected,
               onItemClicked = onItemClicked,
               personalItems = personalItems,
+              onCharacterCreated = onCharacterCreated,
           )
         }
       }
@@ -733,6 +1027,14 @@ class GroupWorkSpaceScreenInstrumentedTest {
     PLAYER,
   }
 
+  private data class AddRequest(
+      val itemId: String,
+      val groupId: String,
+      val folderId: String,
+      val isHidden: Boolean,
+      val includeContent: Boolean,
+  )
+
   private class WorkspaceFakeRepository(
       initialFiles: List<JDRFile> = emptyList(),
       private val rootGate: CompletableDeferred<Unit>? = null,
@@ -755,6 +1057,10 @@ class GroupWorkSpaceScreenInstrumentedTest {
 
     val operationStarted = AtomicBoolean(false)
     var lastError: String? = null
+      private set
+
+    @Volatile
+    var lastAddRequest: AddRequest? = null
       private set
 
     private var nextId = 0
@@ -806,6 +1112,9 @@ class GroupWorkSpaceScreenInstrumentedTest {
         isHidden: Boolean,
         includeContent: Boolean,
     ) = runOperation {
+      // Records the request: the recursive sharing itself is the repository's job and is tested
+      // against the Firestore emulator in WorkspaceRepositoryFirestoreTest.
+      lastAddRequest = AddRequest(itemId, groupId, folderId, isHidden, includeContent)
       val item = state.value.getValue(itemId)
       state.value +=
           itemId to
