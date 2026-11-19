@@ -195,9 +195,14 @@ class DocumentsRulesTest {
   private suspend fun storedIds() =
       FirebaseEmulatorTestUtils.documentIdsBypassingRules(gm, "documents")
 
-  // Read as the owner, who may always read it.
-  private suspend fun stored(id: String, ownerClient: FirebaseFirestore = player) =
-      ownerClient.doc(id).get().await()
+  // A field of the document (a dotted path), read bypassing the rules, so the check does not
+  // depend on them; null if missing.
+  private suspend fun stored(id: String, field: String): Any? =
+      field.split('.').fold<String, Any?>(
+          FirebaseEmulatorTestUtils.readBypassingRules(gm, "documents/$id", Map::class.java)
+      ) { value, key ->
+        (value as Map<*, *>?)?.get(key)
+      }
 
   // ========================================== get
 
@@ -366,8 +371,8 @@ class DocumentsRulesTest {
   fun theOwnerCanEditTheNameAndContent() = runBlocking {
     edit(player, playerFile)
 
-    assertEquals("Renamed", stored(playerFile).getString("name"))
-    assertEquals("New content", stored(playerFile).getString("content"))
+    assertEquals("Renamed", stored(playerFile, "name"))
+    assertEquals("New content", stored(playerFile, "content"))
   }
 
   @Test
@@ -398,12 +403,11 @@ class DocumentsRulesTest {
       batch.commit().await()
     }
 
-    val file = stored(playerFile)
-    assertEquals("Notes", file.getString("name"))
-    assertEquals("", file.getString("content"))
-    assertEquals(PLAYER_ID, file.getString("ownerId"))
-    assertEquals("", file.getString("personalParentId"))
-    assertEquals(GROUP_NAME, stored(groupId, gm).getString("name"))
+    assertEquals("Notes", stored(playerFile, "name"))
+    assertEquals("", stored(playerFile, "content"))
+    assertEquals(PLAYER_ID, stored(playerFile, "ownerId"))
+    assertEquals("", stored(playerFile, "personalParentId"))
+    assertEquals(GROUP_NAME, stored(groupId, "name"))
   }
 
   @Test
@@ -430,8 +434,8 @@ class DocumentsRulesTest {
   fun theOwnerCanShareADocumentIntoTheirGroup() = runBlocking {
     player.doc(playerPrivate).update(shared(groupId, gmFolder)).await()
 
-    assertEquals(listOf(groupId), stored(playerPrivate).get("sharedGroupsIds"))
-    assertEquals(placement(gmFolder), stored(playerPrivate).get("placements.$groupId"))
+    assertEquals(listOf(groupId), stored(playerPrivate, "sharedGroupsIds"))
+    assertEquals(placement(gmFolder), stored(playerPrivate, "placements.$groupId"))
   }
 
   @Test
@@ -468,11 +472,11 @@ class DocumentsRulesTest {
           }
         }
 
-    assertEquals(emptyList<String>(), stored(playerPrivate).get("sharedGroupsIds"))
-    assertEquals(emptyList<String>(), stored(playerFolder).get("sharedGroupsIds"))
-    assertEquals(placement(groupId), stored(gmFolder, gm).get("placements.$groupId"))
-    assertEquals(listOf(groupId), stored(gmFolder, gm).get("sharedGroupsIds"))
-    assertEquals(listOf(groupId), stored(groupId, gm).get("sharedGroupsIds"))
+    assertEquals(emptyList<String>(), stored(playerPrivate, "sharedGroupsIds"))
+    assertEquals(emptyList<String>(), stored(playerFolder, "sharedGroupsIds"))
+    assertEquals(placement(groupId), stored(gmFolder, "placements.$groupId"))
+    assertEquals(listOf(groupId), stored(gmFolder, "sharedGroupsIds"))
+    assertEquals(listOf(groupId), stored(groupId, "sharedGroupsIds"))
   }
 
   // ========================================== unshare from a group
@@ -490,8 +494,8 @@ class DocumentsRulesTest {
     gm.doc(playerSheet).update(unshared(groupId)).await()
 
     listOf(playerFile, playerSheet).forEach {
-      assertEquals(emptyList<String>(), stored(it).get("sharedGroupsIds"))
-      assertEquals(emptyMap<String, Any>(), stored(it).get("placements"))
+      assertEquals(emptyList<String>(), stored(it, "sharedGroupsIds"))
+      assertEquals(emptyMap<String, Any>(), stored(it, "placements"))
     }
   }
 
@@ -507,8 +511,8 @@ class DocumentsRulesTest {
       gm.doc(groupId).update(unshared(groupId)).await()
     }
 
-    assertEquals(listOf(groupId), stored(playerFile).get("sharedGroupsIds"))
-    assertEquals(listOf(groupId), stored(groupId, gm).get("sharedGroupsIds"))
+    assertEquals(listOf(groupId), stored(playerFile, "sharedGroupsIds"))
+    assertEquals(listOf(groupId), stored(groupId, "sharedGroupsIds"))
   }
 
   // ========================================== change a placement entry
@@ -520,13 +524,13 @@ class DocumentsRulesTest {
   fun anyMemberCanChangeAPlacementEntryOfTheGroup() = runBlocking {
     // setItemHidden (hiddenUpdate), by the GM then by another member
     gm.doc(playerFile).update("placements.$groupId.isHidden", true).await()
-    assertEquals(true, stored(playerFile).get("placements.$groupId.isHidden"))
+    assertEquals(true, stored(playerFile, "placements.$groupId.isHidden"))
     companion.doc(playerFile).update("placements.$groupId.isHidden", false).await()
-    assertEquals(false, stored(playerFile).get("placements.$groupId.isHidden"))
+    assertEquals(false, stored(playerFile, "placements.$groupId.isHidden"))
 
     // A reattachment after a cascade (addPlacementUpdate on a document already in the group)
     companion.doc(playerSheet).update(shared(groupId, groupId)).await()
-    assertEquals(placement(groupId), stored(playerSheet).get("placements.$groupId"))
+    assertEquals(placement(groupId), stored(playerSheet, "placements.$groupId"))
   }
 
   @Test
@@ -555,12 +559,12 @@ class DocumentsRulesTest {
           .await()
     }
 
-    assertEquals(placement(groupId), stored(playerFile).get("placements.$groupId"))
-    assertEquals(listOf(groupId), stored(playerFile).get("sharedGroupsIds"))
-    assertEquals("", stored(playerFile).getString("content"))
+    assertEquals(placement(groupId), stored(playerFile, "placements.$groupId"))
+    assertEquals(listOf(groupId), stored(playerFile, "sharedGroupsIds"))
+    assertEquals("", stored(playerFile, "content"))
     assertEquals(
         mapOf(groupId to placement(gmFolder), otherGroupId to placement(otherGroupId)),
-        stored(gmBoth, gm).get("placements"),
+        stored(gmBoth, "placements"),
     )
   }
 
@@ -571,7 +575,7 @@ class DocumentsRulesTest {
   fun aMemberCanStillWriteAMalformedPlacementEntry() = runBlocking {
     companion.doc(playerFile).update("placements.$groupId.isHidden", "yes").await()
 
-    assertEquals("yes", stored(playerFile).get("placements.$groupId.isHidden"))
+    assertEquals("yes", stored(playerFile, "placements.$groupId.isHidden"))
   }
 
   // ========================================== delete
