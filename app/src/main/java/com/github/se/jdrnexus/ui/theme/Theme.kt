@@ -11,10 +11,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 
 /**
- * The app's dark palette. Every Material colour role is set, so built-in components (dialogs, text
- * fields, menus) never fall back to Material's default purple. The "fixed" roles keep the same
- * value in both themes, as Material defines them. Each `on…` colour reaches 4.5:1 contrast on its
- * matching background (checked by `ThemeTest`).
+ * The app's dark palette. Every Material colour role except `scrim` and `surfaceTint` is set, so
+ * built-in components (dialogs, text fields, menus) never fall back to Material's default purple:
+ * `surfaceTint` defaults to this palette's `primary`, and `scrim`, the layer that dims the screen
+ * behind a dialog, keeps Material's black. The "fixed" roles keep the same value in both themes, as
+ * Material defines them. Each `on…` colour reaches 4.5:1 contrast on its matching background, and
+ * `outline`, the text-field border, reaches 3:1 on the field fill, `background` and `surface` (both
+ * checked by `ThemeTest`).
  */
 internal val DarkColorScheme =
     darkColorScheme(
@@ -43,7 +46,7 @@ internal val DarkColorScheme =
         onError = Color(0xFF5F1410),
         errorContainer = Color(0xFF7A2318),
         onErrorContainer = Color(0xFFFFDAD4),
-        outline = Color(0xFF705E50),
+        outline = Color(0xFF897362),
         outlineVariant = Color(0xFF4A3C33),
         surfaceBright = Color(0xFF3A2E27),
         surfaceDim = Color(0xFF17100D),
@@ -67,10 +70,13 @@ internal val DarkColorScheme =
     )
 
 /**
- * The app's light palette. Every Material colour role is set, so built-in components (dialogs, text
- * fields, menus) never fall back to Material's default purple. The "fixed" roles keep the same
- * value in both themes, as Material defines them. Each `on…` colour reaches 4.5:1 contrast on its
- * matching background (checked by `ThemeTest`).
+ * The app's light palette. Every Material colour role except `scrim` and `surfaceTint` is set, so
+ * built-in components (dialogs, text fields, menus) never fall back to Material's default purple:
+ * `surfaceTint` defaults to this palette's `primary`, and `scrim`, the layer that dims the screen
+ * behind a dialog, keeps Material's black. The "fixed" roles keep the same value in both themes, as
+ * Material defines them. Each `on…` colour reaches 4.5:1 contrast on its matching background, and
+ * `outline`, the text-field border, reaches 3:1 on the field fill, `background` and `surface` (both
+ * checked by `ThemeTest`).
  */
 internal val LightColorScheme =
     lightColorScheme(
@@ -99,7 +105,7 @@ internal val LightColorScheme =
         onError = Color.White,
         errorContainer = Color(0xFFF9DAD4),
         onErrorContainer = Color(0xFF4A140D),
-        outline = Color(0xFFB9A08D),
+        outline = Color(0xFF8E6F57),
         outlineVariant = Color(0xFFD8C6B6),
         surfaceBright = Color(0xFFF7EDE4),
         surfaceDim = Color(0xFFDCCBBE),
