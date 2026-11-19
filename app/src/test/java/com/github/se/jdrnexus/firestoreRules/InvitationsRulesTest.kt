@@ -74,8 +74,6 @@ class InvitationsRulesTest {
       writeGroupWithCode(CODE)
       FirebaseEmulatorTestUtils.writeBypassingRules(gm, "invitations/$CODE", invitationData())
       FirebaseEmulatorTestUtils.writeBypassingRules(gm, "invitations/$OLD_CODE", invitationData())
-      FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(gm, GM_ID, groupId)
-      FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(gm, PLAYER_ID, groupId)
     }
   }
 
@@ -87,7 +85,6 @@ class InvitationsRulesTest {
         "invitations/$OLD_CODE/redemptions",
         "invitations",
         "campaign_groups",
-        "users",
     )
   }
 
