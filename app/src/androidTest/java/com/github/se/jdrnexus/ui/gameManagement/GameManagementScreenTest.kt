@@ -84,7 +84,7 @@ class GameManagementScreenTest {
   }
 
   @Test
-  fun playerOnlySeesWorkspaceAction() {
+  fun playerDoesNotSeeGameMasterActions() {
     setContent(
         uiState =
             stateFor(

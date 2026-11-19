@@ -42,7 +42,11 @@ interface GamePlayerInterfaceVM {
   /** StateFlow containing the player's character and operation status. */
   val uiState: StateFlow<GamePlayerUiState>
 
-  /** Starts observing the files of [groupId], replacing any previous session. Also retries. */
+  /**
+   * Starts observing the files of [groupId], replacing any previous session. Calling it again for
+   * the same group while that session is live does nothing, so unsaved edits survive; after a
+   * failed load, it starts again.
+   */
   fun loadSession(groupId: String)
 
   /**

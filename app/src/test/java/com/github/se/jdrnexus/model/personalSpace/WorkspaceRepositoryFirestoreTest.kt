@@ -829,8 +829,8 @@ class WorkspaceRepositoryFirestoreTest {
 
   @Test
   fun addItemToGroup_withContent_addsAnEmptyFolderAlone() = runBlocking {
-    val folder = JDRFile(id = "folder", ownerId = "owner", type = DocumentType.FOLDER)
-    val sibling = JDRFile(id = "sibling", ownerId = "owner")
+    val folder = JDRFile(id = "folder", ownerId = "A", type = DocumentType.FOLDER)
+    val sibling = JDRFile(id = "sibling", ownerId = "A")
     persistFiles(groupRootOf("group"), folder, sibling)
 
     val result =
