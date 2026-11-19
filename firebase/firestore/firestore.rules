@@ -469,11 +469,13 @@ service cloud.firestore {
 
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly(
-             ['userId', 'type', 'title', 'message', 'groupId', 'createdAt', 'isRead'])
+             ['userId', 'senderId', 'type', 'title', 'message', 'groupId', 'createdAt', 'isRead'])
         && request.resource.data.keys().hasAll(
-             ['userId', 'type', 'title', 'message', 'createdAt', 'isRead'])
+             ['userId', 'senderId', 'type', 'title', 'message', 'createdAt', 'isRead'])
         && request.resource.data.userId is string
         && request.resource.data.userId.size() > 0
+        && request.resource.data.senderId is string
+        && request.resource.data.senderId == uid()
         && request.resource.data.type
              in ['GROUP_INVITATION', 'MEMBERSHIP_CHANGE', 'CAMPAIGN_UPDATE']
         && request.resource.data.title is string
@@ -484,11 +486,12 @@ service cloud.firestore {
         && request.resource.data.isRead is bool
         && (request.resource.data.get('groupId', null) == null
             || request.resource.data.groupId is string)
-        && (request.resource.data.userId == uid()
-            || (request.resource.data.groupId is string
-                && exists(groupPath(request.resource.data.groupId))
-                && (isGm(request.resource.data.groupId)
-                    || isMember(request.resource.data.groupId))));
+        && (request.resource.data.groupId == null
+            ? request.resource.data.userId == uid()
+            : (exists(groupPath(request.resource.data.groupId))
+               && uid() in get(groupPath(request.resource.data.groupId)).data.participantIds
+               && request.resource.data.userId
+                  in get(groupPath(request.resource.data.groupId)).data.participantIds));
 
       allow update: if signedIn()
         && resource.data.userId == uid()

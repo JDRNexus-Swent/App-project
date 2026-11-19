@@ -29,23 +29,27 @@ class NotificationRepositoryFirestore(private val firestore: FirebaseFirestore) 
 
   override fun getNewNotificationId(): String = notifications.document().id
 
-  override suspend fun createNotification(notification: Notification): Result<Unit> =
-      safeFirestoreRequest {
-        require(notification.userId.isNotBlank()) { "Notification user id cannot be blank." }
-        require(notification.title.isNotBlank()) { "Notification title cannot be blank." }
-        require(notification.message.isNotBlank()) { "Notification message cannot be blank." }
-        val data =
-            mapOf(
-                "userId" to notification.userId,
-                "type" to notification.type.name,
-                "title" to notification.title,
-                "message" to notification.message,
-                "groupId" to notification.groupId,
-                "createdAt" to FieldValue.serverTimestamp(),
-                "isRead" to notification.isRead,
-            )
-        notifications.document(notification.id.ifBlank { getNewNotificationId() }).set(data).await()
-      }
+  override suspend fun createNotification(
+      notification: Notification,
+      senderId: String,
+  ): Result<Unit> = safeFirestoreRequest {
+    require(notification.userId.isNotBlank()) { "Notification user id cannot be blank." }
+    require(senderId.isNotBlank()) { "Notification sender id cannot be blank." }
+    require(notification.title.isNotBlank()) { "Notification title cannot be blank." }
+    require(notification.message.isNotBlank()) { "Notification message cannot be blank." }
+    val data =
+        mapOf(
+            "userId" to notification.userId,
+            "senderId" to senderId,
+            "type" to notification.type.name,
+            "title" to notification.title,
+            "message" to notification.message,
+            "groupId" to notification.groupId,
+            "createdAt" to FieldValue.serverTimestamp(),
+            "isRead" to notification.isRead,
+        )
+    notifications.document(notification.id.ifBlank { getNewNotificationId() }).set(data).await()
+  }
 
   override fun getUserNotifications(userId: String): Flow<List<Notification>> = callbackFlow {
     if (userId.isBlank()) {

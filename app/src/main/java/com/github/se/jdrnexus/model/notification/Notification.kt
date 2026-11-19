@@ -17,6 +17,7 @@ enum class NotificationType {
 data class Notification(
     val id: String = "",
     val userId: String = "",
+    val senderId: String = "",
     val type: NotificationType = NotificationType.CAMPAIGN_UPDATE,
     val title: String = "",
     val message: String = "",

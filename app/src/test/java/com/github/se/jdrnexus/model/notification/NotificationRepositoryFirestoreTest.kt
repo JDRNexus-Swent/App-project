@@ -27,11 +27,55 @@ class NotificationRepositoryFirestoreTest {
   fun setUp() {
     firestore = FirebaseEmulatorTestUtils.signInAs("target")
     repository = NotificationRepositoryFirestore(firestore)
+    runBlocking {
+      FirebaseEmulatorTestUtils.writeBypassingRules(
+          firestore,
+          "campaign_groups/group-1",
+          mapOf(
+              "id" to "group-1",
+              "name" to "Test Campaign",
+              "gameMasterId" to "gm",
+              "participantIds" to listOf("gm", "target"),
+              "description" to "",
+          ),
+      )
+    }
   }
 
   @After
   fun tearDown() {
-    runBlocking { FirebaseEmulatorTestUtils.tearDown(firestore, "notifications") }
+    runBlocking {
+      FirebaseEmulatorTestUtils.tearDown(
+          firestore,
+          "notifications",
+          "campaign_groups",
+      )
+    }
+  }
+
+  @Test
+  fun rejectsNotificationWhenSenderIdDoesNotMatchAuthenticatedUser() = runBlocking {
+    val result =
+        repository.createNotification(
+            Notification(
+                id = "forged-sender",
+                userId = "target",
+                type = NotificationType.CAMPAIGN_UPDATE,
+                title = "Update",
+                message = "Campaign updated.",
+                groupId = null,
+            ),
+            senderId = "someone-else",
+        )
+
+    assertTrue(result.isFailure)
+    assertFalse(
+        "forged-sender" in
+            FirebaseEmulatorTestUtils.documentIdsBypassingRules(
+                firestore,
+                NotificationRepositoryFirestore.COLLECTION_PATH,
+            )
+    )
   }
 
   @Test
@@ -65,7 +109,8 @@ class NotificationRepositoryFirestoreTest {
                 title = "Invitation",
                 message = "You were invited.",
                 groupId = "group-1",
-            )
+            ),
+            senderId = "target",
         )
         .getOrThrow()
 
@@ -74,6 +119,7 @@ class NotificationRepositoryFirestoreTest {
         "notifications/other-notification",
         mapOf(
             "userId" to "other",
+            "senderId" to "target",
             "type" to "CAMPAIGN_UPDATE",
             "title" to "Update",
             "message" to "Campaign updated.",
@@ -100,7 +146,8 @@ class NotificationRepositoryFirestoreTest {
                 type = NotificationType.MEMBERSHIP_CHANGE,
                 title = "Membership",
                 message = "A member joined.",
-            )
+            ),
+            senderId = "target",
         )
         .getOrThrow()
 
@@ -139,7 +186,8 @@ class NotificationRepositoryFirestoreTest {
                   userId = "target",
                   title = id,
                   message = "Message",
-              )
+              ),
+              senderId = "target",
           )
           .getOrThrow()
     }
@@ -160,6 +208,7 @@ class NotificationRepositoryFirestoreTest {
         "notifications/unknown-type",
         mapOf(
             "userId" to "target",
+            "senderId" to "target",
             "type" to "UNKNOWN_TYPE",
             "title" to "Malformed",
             "message" to "Ignored",
@@ -195,7 +244,10 @@ class NotificationRepositoryFirestoreTest {
   @Test
   fun rejectsNotificationsWithoutATargetUser() = runBlocking {
     val result =
-        repository.createNotification(Notification(title = "Missing target", message = "Message"))
+        repository.createNotification(
+            Notification(title = "Missing target", message = "Message"),
+            senderId = "target",
+        )
 
     assertTrue(result.isFailure)
     assertEquals("Notification user id cannot be blank.", result.exceptionOrNull()?.message)
