@@ -2,10 +2,12 @@
 // Co-authored-by: Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.game
 
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
@@ -18,6 +20,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
@@ -28,6 +32,7 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -59,12 +64,13 @@ class GameScreenPlayerTest {
     composeTestRule.onNodeWithText("Heal (+)").assertIsDisplayed()
 
     composeTestRule
-        .onNodeWithTag(GameScreenPlayerTestTags.statRoll("stat-agility"))
+        .onNodeWithTag(C.Tag.gamePlayerStatRoll("stat-agility"))
         .performScrollTo()
         .performClick()
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.WORKSPACE).performClick()
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.navigationTab("Files")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.game_player_workspace).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.gamePlayerNavigationTab("Files")).performClick()
 
+    composeTestRule.waitForIdle()
     assertEquals(0, diceModifier)
     assertEquals("group-1", workspaceGroup)
     assertEquals("Files", selectedTab)
@@ -154,6 +160,20 @@ class GameScreenPlayerTest {
   }
 
   @Test
+  fun focusedHpFieldUpdatesAfterTakingDamage() {
+    val viewModel = FakeGamePlayerViewModel()
+    setContent(viewModel)
+    val hpInput = composeTestRule.onNodeWithTag(C.Tag.game_player_current_hp)
+    val damage = composeTestRule.onNodeWithTag(C.Tag.game_player_hp_decrease)
+
+    hpInput.performClick()
+    repeat(3) { damage.performClick() }
+
+    hpInput.assertIsFocused().assert(hasText("15"))
+    assertEquals(listOf(17, 16, 15), viewModel.hpUpdates)
+  }
+
+  @Test
   fun maximumHpDisablesHealingWithoutOverflow() {
     val initial = initialGameState()
     val character = requireNotNull(initial.character)
@@ -236,6 +256,77 @@ class GameScreenPlayerTest {
   }
 
   @Test
+  fun selectingFilesWaitsForSuccessfulSave() {
+    val pendingSave = CompletableDeferred<Result<Unit>>()
+    val viewModel = FakeGamePlayerViewModel(pendingSave = pendingSave)
+    var selectedTab: String? = null
+    setContent(viewModel, onTabSelected = { selectedTab = it })
+    composeTestRule.onNodeWithTag(C.Tag.game_player_hp_decrease).performClick()
+
+    composeTestRule.onNodeWithTag(C.Tag.gamePlayerNavigationTab("Files")).performClick()
+    composeTestRule.waitForIdle()
+    assertEquals(null, selectedTab)
+
+    pendingSave.complete(Result.success(Unit))
+    composeTestRule.waitForIdle()
+    assertEquals("Files", selectedTab)
+  }
+
+  @Test
+  fun recreatedScreenShowsFailedSaveAndCanOpenWorkspace() {
+    val pendingSave = CompletableDeferred<Result<Unit>>()
+    val viewModel = FakeGamePlayerViewModel(pendingSave = pendingSave)
+    var workspaceGroup: String? = null
+    val screenInstance = mutableStateOf(0)
+    setContent(
+        viewModel,
+        onOpenGroupWorkspace = { workspaceGroup = it },
+        screenInstance = { screenInstance.value },
+    )
+    composeTestRule.onNodeWithTag(C.Tag.game_player_hp_decrease).performClick()
+
+    composeTestRule.onNodeWithTag(C.Tag.game_player_workspace).performClick()
+    assertEquals(null, workspaceGroup)
+    composeTestRule.onNodeWithTag(C.Tag.game_player_leave_error).assertDoesNotExist()
+    pendingSave.complete(Result.failure(IllegalStateException("Save failed.")))
+    composeTestRule.onNodeWithTag(C.Tag.game_player_leave_error).assertTextEquals("Save failed.")
+    assertEquals(null, workspaceGroup)
+    composeTestRule.runOnIdle { screenInstance.value++ }
+    composeTestRule.onNodeWithTag(C.Tag.game_player_leave_error).assertTextEquals("Save failed.")
+
+    composeTestRule.onNodeWithTag(C.Tag.game_player_leave_anyway).performClick()
+    composeTestRule.waitForIdle()
+    assertEquals("group-1", workspaceGroup)
+  }
+
+  @Test
+  fun recreatedScreenOpensDiceAfterSuccessfulSave() {
+    val pendingSave = CompletableDeferred<Result<Unit>>()
+    val viewModel = FakeGamePlayerViewModel(pendingSave = pendingSave)
+    val screenInstance = mutableStateOf(0)
+    val openedDice = mutableListOf<Pair<Int, Int>>()
+    setContent(
+        viewModel,
+        onOpenDiceForInstance = { instance, modifier -> openedDice += instance to modifier },
+        screenInstance = { screenInstance.value },
+    )
+    composeTestRule.onNodeWithTag(C.Tag.game_player_hp_decrease).performClick()
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.gamePlayerStatRoll("stat-agility"))
+        .performScrollTo()
+        .performClick()
+    composeTestRule.waitForIdle()
+    assertEquals(emptyList<Pair<Int, Int>>(), openedDice)
+    composeTestRule.runOnIdle { screenInstance.value++ }
+    composeTestRule.waitForIdle()
+
+    pendingSave.complete(Result.success(Unit))
+    composeTestRule.waitForIdle()
+    assertEquals(listOf(1 to 0), openedDice)
+  }
+
+  @Test
   fun stayingAfterFailedAutoSavePreservesUnsavedHp() {
     val pendingSave = CompletableDeferred<Result<Unit>>()
     val viewModel = FakeGamePlayerViewModel(pendingSave = pendingSave)
@@ -247,6 +338,7 @@ class GameScreenPlayerTest {
     composeTestRule.onNodeWithTag(C.Tag.game_player_stay).performClick()
 
     composeTestRule.onAllNodesWithTag(C.Tag.game_player_leave_error).assertCountEquals(0)
+    assertEquals(null, viewModel.uiState.value.navigation)
     assertEquals(0, backs)
     assertEquals(17, viewModel.selectedCharacter().character.hp.current)
     assertEquals(true, viewModel.selectedCharacter().hasUnsavedChanges)
@@ -263,6 +355,7 @@ class GameScreenPlayerTest {
 
     composeTestRule.onNodeWithTag(C.Tag.game_player_leave_anyway).performClick()
 
+    composeTestRule.waitForIdle()
     assertEquals(1, backs)
   }
 
@@ -271,14 +364,14 @@ class GameScreenPlayerTest {
     val loadingViewModel =
         FakeGamePlayerViewModel(GamePlayerUiState(groupId = "group-1", isLoading = true))
     setContent(loadingViewModel)
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.LOADING).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.game_player_loading).assertIsDisplayed()
   }
 
   @Test
   fun emptyStateShowsMessage() {
     val emptyViewModel = FakeGamePlayerViewModel(GamePlayerUiState(groupId = "group-1"))
     setContent(emptyViewModel)
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.EMPTY).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.game_player_empty).assertIsDisplayed()
   }
 
   @Test
@@ -287,11 +380,12 @@ class GameScreenPlayerTest {
     var backs = 0
     setContent(viewModel, onBack = { backs++ })
 
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.ERROR).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.game_player_error).assertIsDisplayed()
     composeTestRule.onNodeWithText("Session unavailable.").assertIsDisplayed()
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.WORKSPACE).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.game_player_workspace).assertIsNotEnabled()
     composeTestRule.onNodeWithTag(C.Tag.game_player_back).performClick()
 
+    composeTestRule.waitForIdle()
     assertEquals(0, viewModel.saveCalls)
     assertEquals(1, backs)
   }
@@ -337,17 +431,22 @@ class GameScreenPlayerTest {
       onOpenGroupWorkspace: (String) -> Unit = {},
       onTabSelected: (String) -> Unit = {},
       onBack: () -> Unit = {},
+      screenInstance: () -> Int = { 0 },
+      onOpenDiceForInstance: (Int, Int) -> Unit = { _, modifier -> onOpenDice(modifier) },
   ) {
     composeTestRule.setContent {
       SampleAppTheme {
-        GameScreenPlayer(
-            groupId = "group-1",
-            viewModel = viewModel,
-            onBack = onBack,
-            onOpenDice = onOpenDice,
-            onOpenGroupWorkspace = onOpenGroupWorkspace,
-            onTabSelected = onTabSelected,
-        )
+        val instance = screenInstance()
+        key(instance) {
+          GameScreenPlayer(
+              groupId = "group-1",
+              viewModel = viewModel,
+              onBack = onBack,
+              onOpenDice = { onOpenDiceForInstance(instance, it) },
+              onOpenGroupWorkspace = onOpenGroupWorkspace,
+              onTabSelected = onTabSelected,
+          )
+        }
       }
     }
   }
@@ -355,7 +454,7 @@ class GameScreenPlayerTest {
   private class FakeGamePlayerViewModel(
       initialState: GamePlayerUiState = initialGameState(),
       private val pendingSave: CompletableDeferred<Result<Unit>>? = null,
-  ) : GamePlayerInterfaceVM {
+  ) : ViewModel(), GamePlayerInterfaceVM {
     override val uiState = MutableStateFlow(initialState)
     val loadedGroups = mutableListOf<String>()
     val hpUpdates = mutableListOf<Int>()
@@ -393,8 +492,33 @@ class GameScreenPlayerTest {
       uiState.value = uiState.value.copy(isSaving = true, error = null)
     }
 
-    override suspend fun savePendingChanges(): Result<Unit> =
-        pendingSave?.await() ?: Result.success(Unit)
+    override fun requestNavigation(destination: GamePlayerDestination) {
+      if (uiState.value.navigation != null) return
+      uiState.value = uiState.value.copy(navigation = GamePlayerNavigation.Saving(destination))
+      viewModelScope.launch {
+        val failure = pendingSave?.await()?.exceptionOrNull()
+        val navigation =
+            if (failure == null) GamePlayerNavigation.Ready(destination)
+            else GamePlayerNavigation.SaveFailed(destination, requireNotNull(failure.message))
+        uiState.value = uiState.value.copy(navigation = navigation)
+      }
+    }
+
+    override fun stayOnScreen() {
+      uiState.value = uiState.value.copy(navigation = null)
+    }
+
+    override fun leaveAnyway() {
+      val failed = uiState.value.navigation as GamePlayerNavigation.SaveFailed
+      uiState.value =
+          uiState.value.copy(navigation = GamePlayerNavigation.Ready(failed.destination))
+    }
+
+    override fun consumeNavigation(): GamePlayerDestination? {
+      val ready = uiState.value.navigation as? GamePlayerNavigation.Ready ?: return null
+      uiState.value = uiState.value.copy(navigation = null)
+      return ready.destination
+    }
 
     override fun dismissError() {
       uiState.value = uiState.value.copy(error = null, hpError = null)

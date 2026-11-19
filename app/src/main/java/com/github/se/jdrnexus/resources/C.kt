@@ -27,6 +27,16 @@ object C {
     const val game_player_leave_error = "game_player_leave_error"
     const val game_player_leave_anyway = "game_player_leave_anyway"
     const val game_player_stay = "game_player_stay"
+    const val game_player_loading = "game_player_loading"
+    const val game_player_empty = "game_player_empty"
+    const val game_player_error = "game_player_error"
+    const val game_player_character_name = "game_player_character_name"
+    const val game_player_saving = "game_player_saving"
+    const val game_player_workspace = "game_player_workspace"
+
+    fun gamePlayerStatRoll(statId: String) = "game_player_stat_roll_$statId"
+
+    fun gamePlayerNavigationTab(name: String) = "game_player_navigation_$name"
 
     const val main_screen_container = "main_screen_container"
 

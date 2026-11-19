@@ -38,7 +38,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,20 +54,6 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
-import kotlinx.coroutines.launch
-
-object GameScreenPlayerTestTags {
-  const val LOADING = "game_player_loading"
-  const val EMPTY = "game_player_empty"
-  const val ERROR = "game_player_error"
-  const val CHARACTER_NAME = "game_player_character_name"
-  const val SAVING = "game_player_saving"
-  const val WORKSPACE = "game_player_workspace"
-
-  fun statRoll(statId: String) = "game_player_stat_roll_$statId"
-
-  fun navigationTab(name: String) = "game_player_navigation_$name"
-}
 
 @Composable
 fun GameScreenPlayer(
@@ -80,11 +65,8 @@ fun GameScreenPlayer(
     onTabSelected: (String) -> Unit,
 ) {
   val uiState by viewModel.uiState.collectAsState()
-  val scope = rememberCoroutineScope()
   var wasSaving by remember { mutableStateOf(false) }
   var saveSucceeded by remember { mutableStateOf(false) }
-  var isLeaving by remember { mutableStateOf(false) }
-  var leaveError by remember { mutableStateOf<String?>(null) }
   val hasUnsavedChanges = uiState.character?.hasUnsavedChanges == true
 
   LaunchedEffect(groupId) { viewModel.loadSession(groupId) }
@@ -107,36 +89,32 @@ fun GameScreenPlayer(
       viewModel.saveCharacter()
     }
   }
-  val leaveScreen: () -> Unit = {
-    if (!isLeaving && leaveError == null) {
-      isLeaving = true
-      scope.launch {
-        try {
-          viewModel
-              .savePendingChanges()
-              .fold(
-                  onSuccess = { onBack() },
-                  onFailure = { leaveError = it.message ?: "Unable to save this character." },
-              )
-        } finally {
-          isLeaving = false
-        }
-      }
+  fun navigate(destination: GamePlayerDestination) {
+    when (destination) {
+      GamePlayerDestination.Back -> onBack()
+      is GamePlayerDestination.Workspace -> onOpenGroupWorkspace(destination.groupId)
+      is GamePlayerDestination.Dice -> onOpenDice(destination.modifier)
+      is GamePlayerDestination.Tab -> onTabSelected(destination.name)
     }
   }
+
+  val ready = uiState.navigation as? GamePlayerNavigation.Ready
+  LaunchedEffect(ready) { if (ready != null) viewModel.consumeNavigation()?.let(::navigate) }
+
+  val leaveScreen = { viewModel.requestNavigation(GamePlayerDestination.Back) }
   BackHandler(onBack = leaveScreen)
 
-  leaveError?.let { message ->
+  val failed = uiState.navigation as? GamePlayerNavigation.SaveFailed
+  if (failed != null) {
     AlertDialog(
-        onDismissRequest = { leaveError = null },
+        onDismissRequest = viewModel::stayOnScreen,
         title = { Text("Changes could not be saved") },
-        text = { Text(message, Modifier.testTag(C.Tag.game_player_leave_error)) },
+        text = {
+          Text(failed.saveBeforeLeavingError, Modifier.testTag(C.Tag.game_player_leave_error))
+        },
         confirmButton = {
           TextButton(
-              onClick = {
-                leaveError = null
-                onBack()
-              },
+              onClick = viewModel::leaveAnyway,
               modifier = Modifier.testTag(C.Tag.game_player_leave_anyway),
           ) {
             Text("Leave anyway")
@@ -144,7 +122,7 @@ fun GameScreenPlayer(
         },
         dismissButton = {
           TextButton(
-              onClick = { leaveError = null },
+              onClick = viewModel::stayOnScreen,
               modifier = Modifier.testTag(C.Tag.game_player_stay),
           ) {
             Text("Stay")
@@ -159,15 +137,9 @@ fun GameScreenPlayer(
       onBack = leaveScreen,
       onHpChanged = viewModel::updateCharacterHp,
       onSave = saveCharacter,
-      onOpenDice = onOpenDice,
-      onOpenGroupWorkspace = { id ->
-        saveCharacter()
-        onOpenGroupWorkspace(id)
-      },
-      onTabSelected = { tab ->
-        saveCharacter()
-        onTabSelected(tab)
-      },
+      onOpenDice = { viewModel.requestNavigation(GamePlayerDestination.Dice(it)) },
+      onOpenGroupWorkspace = { viewModel.requestNavigation(GamePlayerDestination.Workspace(it)) },
+      onTabSelected = { viewModel.requestNavigation(GamePlayerDestination.Tab(it)) },
   )
 }
 
@@ -218,7 +190,7 @@ private fun GameScreenPlayerContent(
           OutlinedButton(
               onClick = { uiState.groupId?.let(onOpenGroupWorkspace) },
               enabled = uiState.groupId != null,
-              modifier = Modifier.testTag(GameScreenPlayerTestTags.WORKSPACE),
+              modifier = Modifier.testTag(C.Tag.game_player_workspace),
           ) {
             Text("Group Workspace")
           }
@@ -232,9 +204,7 @@ private fun GameScreenPlayerContent(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-              CircularProgressIndicator(
-                  modifier = Modifier.testTag(GameScreenPlayerTestTags.LOADING)
-              )
+              CircularProgressIndicator(modifier = Modifier.testTag(C.Tag.game_player_loading))
               Text("Loading game session...")
             }
           }
@@ -248,8 +218,7 @@ private fun GameScreenPlayerContent(
                     Modifier.fillMaxWidth()
                         .padding(vertical = 32.dp)
                         .testTag(
-                            if (error == null) GameScreenPlayerTestTags.EMPTY
-                            else GameScreenPlayerTestTags.ERROR
+                            if (error == null) C.Tag.game_player_empty else C.Tag.game_player_error
                         ),
                 color =
                     if (error == null) MaterialTheme.colorScheme.onSurface
@@ -263,7 +232,7 @@ private fun GameScreenPlayerContent(
             Text(
                 sheet.name,
                 style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.testTag(GameScreenPlayerTestTags.CHARACTER_NAME),
+                modifier = Modifier.testTag(C.Tag.game_player_character_name),
             )
           }
           item {
@@ -309,7 +278,7 @@ private fun GameScreenPlayerContent(
               }
               OutlinedButton(
                   onClick = { onOpenDice(0) },
-                  modifier = Modifier.testTag(GameScreenPlayerTestTags.statRoll(stat.statID)),
+                  modifier = Modifier.testTag(C.Tag.gamePlayerStatRoll(stat.statID)),
               ) {
                 Text("Modifier +0 · Roll")
               }
@@ -330,14 +299,14 @@ private fun GameScreenPlayerContent(
               Text(
                   message,
                   color = MaterialTheme.colorScheme.error,
-                  modifier = Modifier.testTag(GameScreenPlayerTestTags.ERROR),
+                  modifier = Modifier.testTag(C.Tag.game_player_error),
               )
             }
           }
           if (uiState.isSaving) {
             item {
               Row(
-                  modifier = Modifier.fillMaxWidth().testTag(GameScreenPlayerTestTags.SAVING),
+                  modifier = Modifier.fillMaxWidth().testTag(C.Tag.game_player_saving),
                   horizontalArrangement = Arrangement.Center,
                   verticalAlignment = Alignment.CenterVertically,
               ) {
@@ -386,7 +355,7 @@ private fun PlayerBottomBar(selectedTab: String, onTabSelected: (String) -> Unit
           onClick = { onTabSelected(label) },
           icon = { Icon(icon, contentDescription = null) },
           label = { Text(label) },
-          modifier = Modifier.testTag(GameScreenPlayerTestTags.navigationTab(label)),
+          modifier = Modifier.testTag(C.Tag.gamePlayerNavigationTab(label)),
       )
     }
   }
@@ -404,7 +373,7 @@ private fun NumericField(
   var hasInvalidInput by remember { mutableStateOf(false) }
   val displayedError = if (hasInvalidInput) "Enter a whole number." else error
   LaunchedEffect(value, isFocused) {
-    if (!isFocused) {
+    if (!isFocused || draft.toIntOrNull() != value.toIntOrNull()) {
       draft = value
       hasInvalidInput = false
     }

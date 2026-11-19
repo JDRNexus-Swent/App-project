@@ -324,8 +324,10 @@ class GamePlayerViewModelTest {
 
     val save = async(start = CoroutineStart.UNDISPATCHED) { viewModel.savePendingChanges() }
     saveGate.complete(Unit)
-    save.await()
+    val result = save.await()
 
+    assertTrue(result.isSuccess)
+    assertFalse(requireNotNull(viewModel.uiState.value.character).hasUnsavedChanges)
     assertEquals(
         listOf(3, 7),
         workspace.updatedFiles.map { JDRFileJsonCodec.deserializeCharacter(it.content).hp.current },
@@ -333,7 +335,34 @@ class GamePlayerViewModelTest {
   }
 
   @Test
-  fun savingPendingChangesReturnsFailureAndPreservesTheEdit() = runTest {
+  fun navigationSurvivesReloadWhileSavingAndIsConsumedOnce() = runTest {
+    val saveGate = CompletableDeferred<Unit>()
+    val workspace =
+        FakeWorkspaceRepository(
+            group.id to listOf(characterFile("own", player.uid)),
+            updateGate = saveGate,
+        )
+    val viewModel = createViewModel(workspace)
+    viewModel.loadSession(group.id)
+    runCurrent()
+    viewModel.updateCharacterHp(7)
+    val destination = GamePlayerDestination.Dice(0)
+
+    viewModel.requestNavigation(destination)
+    runCurrent()
+    viewModel.loadSession(group.id)
+    viewModel.requestNavigation(GamePlayerDestination.Back)
+    assertEquals(GamePlayerNavigation.Saving(destination), viewModel.uiState.value.navigation)
+    assertNull(viewModel.consumeNavigation())
+
+    saveGate.complete(Unit)
+    runCurrent()
+    assertEquals(destination, viewModel.consumeNavigation())
+    assertNull(viewModel.consumeNavigation())
+  }
+
+  @Test
+  fun failedNavigationSavePreservesTheEditAndRequiresConfirmation() = runTest {
     val workspace =
         FakeWorkspaceRepository(
             group.id to listOf(characterFile("own", player.uid)),
@@ -344,12 +373,22 @@ class GamePlayerViewModelTest {
     runCurrent()
     viewModel.updateCharacterHp(7)
 
-    val result = viewModel.savePendingChanges()
+    val destination = GamePlayerDestination.Workspace(group.id)
+    viewModel.requestNavigation(destination)
+    runCurrent()
 
-    assertEquals("Permission denied", result.exceptionOrNull()?.message)
+    assertEquals(
+        GamePlayerNavigation.SaveFailed(destination, "Permission denied"),
+        viewModel.uiState.value.navigation,
+    )
+    assertNull(viewModel.consumeNavigation())
     val character = requireNotNull(viewModel.uiState.value.character)
     assertEquals(7, character.character.hp.current)
     assertTrue(character.hasUnsavedChanges)
+
+    viewModel.leaveAnyway()
+    assertEquals(destination, viewModel.consumeNavigation())
+    assertNull(viewModel.consumeNavigation())
   }
 
   @Test
