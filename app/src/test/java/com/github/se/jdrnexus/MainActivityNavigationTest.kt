@@ -73,6 +73,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -762,18 +763,19 @@ class MainActivityNavigationTest {
   }
 
   @Test
-  fun gameMasterPlayOpensTheirGameScreen() {
+  fun gameMasterPlayOpensTheirGameScreenAndStartsTheGame() {
     val gameRepository = NavigationGameSessionRepository()
     openGameFromPlay(gameMasterId = "user-1", gameRepository = gameRepository)
 
-    waitForTag(C.Tag.game_gm_start_combat)
+    waitForTag(C.Tag.game_gm_start_game)
     waitForText("The Sunken Crown")
     composeTestRule.onAllNodesWithTag(C.Tag.game_player_back).assertCountEquals(0)
 
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_start_combat).performClick()
-    composeTestRule.waitUntil(5_000) { gameRepository.lastSavedGroupId == "group-1" }
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_start_game).performClick()
+    waitForTag(C.Tag.game_gm_game_in_progress)
 
     assertEquals("group-1", gameRepository.lastSavedGroupId)
+    assertTrue(gameRepository.session.value.isGameStarted)
   }
 
   @Test
@@ -783,7 +785,7 @@ class MainActivityNavigationTest {
 
     composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
 
-    assertBackOnCampaigns(C.Tag.game_gm_start_combat)
+    assertBackOnCampaigns(C.Tag.game_gm_start_game)
   }
 
   @Test
@@ -795,17 +797,17 @@ class MainActivityNavigationTest {
     waitForTag(C.Tag.dice_offline_screen)
     Espresso.pressBack()
 
-    waitForTag(C.Tag.game_gm_start_combat)
+    waitForTag(C.Tag.game_gm_start_game)
   }
 
   @Test
   fun gameMasterCampaignsTabReturnsToCampaigns() {
     openGameFromPlay(gameMasterId = "user-1")
-    waitForTag(C.Tag.game_gm_start_combat)
+    waitForTag(C.Tag.game_gm_start_game)
 
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
 
-    assertBackOnCampaigns(C.Tag.game_gm_start_combat)
+    assertBackOnCampaigns(C.Tag.game_gm_start_game)
   }
 
   @Test
@@ -815,10 +817,10 @@ class MainActivityNavigationTest {
     waitForTag(C.Tag.play_button)
 
     composeTestRule.onNodeWithTag(C.Tag.play_button).performTouchInput { repeat(10) { click() } }
-    waitForTag(C.Tag.game_gm_start_combat)
+    waitForTag(C.Tag.game_gm_start_game)
     Espresso.pressBack()
 
-    assertBackOnCampaigns(C.Tag.game_gm_start_combat)
+    assertBackOnCampaigns(C.Tag.game_gm_start_game)
   }
 
   @Test
@@ -826,7 +828,7 @@ class MainActivityNavigationTest {
     openGameFromPlay(gameMasterId = "gm-1")
 
     waitForTag(C.Tag.game_player_back)
-    composeTestRule.onAllNodesWithTag(C.Tag.game_gm_start_combat).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(C.Tag.game_gm_start_game).assertCountEquals(0)
 
     composeTestRule.onNodeWithTag(C.Tag.game_player_back).performClick()
 

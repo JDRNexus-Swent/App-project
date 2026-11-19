@@ -20,6 +20,7 @@ import com.github.se.jdrnexus.ui.gameManagement.GameViewModelGMViewModel
 import com.github.se.jdrnexus.ui.gameManagement.GameViewModelGMViewModelFactory
 import com.github.se.jdrnexus.ui.gameManagement.LoreDocument
 import com.github.se.jdrnexus.ui.gameManagement.Npc
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -55,6 +56,134 @@ class GameGMViewModelTest {
   @After
   fun tearDown() {
     Dispatchers.resetMain()
+  }
+
+  @Test
+  fun startGameSavesTheFlagAndKeepsTheRestOfTheSession() = runTest {
+    val session = sessionInProgress()
+    repository.session.value = session
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    assertFalse(viewModel.uiState.value.isGameStarted)
+
+    viewModel.startGame()
+    assertTrue(viewModel.uiState.value.isStartingGame)
+    advanceUntilIdle()
+
+    assertEquals(session.copy(isGameStarted = true), repository.savedSessions.single())
+    assertTrue(viewModel.uiState.value.isGameStarted)
+    assertFalse(viewModel.uiState.value.isStartingGame)
+  }
+
+  @Test
+  fun startGameStaysStartedWhenTheSnapshotArrivesBeforeTheSaveEnds() = runTest {
+    repository.emitBeforeSave = true
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    val saveGate = CompletableDeferred<Unit>()
+    repository.sessionWriteGate = saveGate
+
+    viewModel.startGame()
+    advanceUntilIdle()
+    // The snapshot with the started flag has arrived, but the save is still running.
+    assertTrue(viewModel.uiState.value.isStartingGame)
+    assertFalse(viewModel.uiState.value.isGameStarted)
+
+    saveGate.complete(Unit)
+    advanceUntilIdle()
+    assertTrue(viewModel.uiState.value.isGameStarted)
+    assertFalse(viewModel.uiState.value.isStartingGame)
+
+    viewModel.addEnemy(CombatNPC("enemy-2", goblinSheet(), 4))
+    advanceUntilIdle()
+    assertTrue(repository.savedSessions.last().isGameStarted)
+  }
+
+  @Test
+  fun tapWhileStartingDoesNotTryASecondSave() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    val saveGate = CompletableDeferred<Unit>()
+    repository.sessionWriteGate = saveGate
+    // A failing save leaves the session unchanged, so a queued second start would save again.
+    repository.sessionWriteFailure = IllegalStateException("Save failed")
+
+    viewModel.startGame()
+    advanceUntilIdle()
+    viewModel.startGame()
+    advanceUntilIdle()
+    assertTrue(viewModel.uiState.value.isStartingGame)
+
+    saveGate.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(1, repository.sessionWriteAttempts)
+    assertFalse(viewModel.uiState.value.isStartingGame)
+  }
+
+  @Test
+  fun startGameDoesNothingOnceTheGameHasStarted() = runTest {
+    repository.session.value = GameSessionSnapshot(isGameStarted = true)
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    assertTrue(viewModel.uiState.value.isGameStarted)
+
+    viewModel.startGame()
+
+    assertFalse(viewModel.uiState.value.isStartingGame)
+    advanceUntilIdle()
+    assertEquals(0, repository.sessionWriteAttempts)
+  }
+
+  @Test
+  fun failedStartGameShowsTheErrorAndCanBeRetried() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    repository.sessionWriteFailure = IllegalStateException("Save failed")
+
+    viewModel.startGame()
+    advanceUntilIdle()
+
+    assertFalse(viewModel.uiState.value.isGameStarted)
+    assertFalse(viewModel.uiState.value.isStartingGame)
+    assertEquals("Save failed", viewModel.uiState.value.error)
+
+    repository.sessionWriteFailure = null
+    viewModel.startGame()
+    advanceUntilIdle()
+
+    assertTrue(viewModel.uiState.value.isGameStarted)
+    assertEquals("", viewModel.uiState.value.error)
+  }
+
+  @Test
+  fun startGameBeforeTheSessionLoadsReportsAnErrorWithoutSaving() = runTest {
+    repository.sessionObservationFailure = IllegalStateException("Session unavailable")
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    viewModel.startGame()
+    advanceUntilIdle()
+
+    assertEquals("Campaign session is not loaded.", viewModel.uiState.value.error)
+    assertFalse(viewModel.uiState.value.isStartingGame)
+    assertEquals(0, repository.sessionWriteAttempts)
+  }
+
+  @Test
+  fun otherSessionChangesKeepTheGameStarted() = runTest {
+    repository.session.value = sessionInProgress().copy(isGameStarted = true)
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    viewModel.addEnemy(CombatNPC("enemy-2", goblinSheet(), 4))
+    viewModel.nextRound()
+    viewModel.endCombat()
+    advanceUntilIdle()
+
+    assertEquals(3, repository.savedSessions.size)
+    assertTrue(repository.savedSessions.all { it.isGameStarted })
+    assertTrue(viewModel.uiState.value.isGameStarted)
   }
 
   @Test
@@ -853,11 +982,26 @@ class GameGMViewModelTest {
 
   private fun createViewModel() = GameViewModelGMViewModel(repository, groupId)
 
+  private fun goblinSheet() =
+      CharacterFile("Goblin", emptyList(), emptyList(), CharacterHealthPoints(6, 8))
+
+  private fun sessionInProgress() =
+      GameSessionSnapshot(
+          enemies = listOf(GameCombatNPC("enemy-1", goblinSheet(), 12)),
+          isCombatActive = true,
+          currentRound = 3,
+          npcs = listOf(GameNpc("npc-1", "Guide", null, "Helpful")),
+      )
+
   private class FakeGameSessionRepository : GameSessionRepository {
     val session = MutableStateFlow(GameSessionSnapshot())
     val lore = MutableStateFlow<List<GameLoreEntry>>(emptyList())
     val activityEntries = MutableStateFlow<List<GameActivityEntry>>(emptyList())
     val savedSessions = mutableListOf<GameSessionSnapshot>()
+    var sessionWriteAttempts = 0
+    var sessionWriteGate: CompletableDeferred<Unit>? = null
+    /** When true, emits the saved session before the save finishes, as Firestore's local write. */
+    var emitBeforeSave = false
     var sessionWriteFailure: Throwable? = null
     var loreWriteFailure: Throwable? = null
     var loreWriteException: Exception? = null
@@ -877,6 +1021,9 @@ class GameGMViewModelTest {
         groupId: String,
         session: GameSessionSnapshot,
     ): Result<Unit> {
+      sessionWriteAttempts++
+      if (emitBeforeSave) this.session.value = session
+      sessionWriteGate?.await()
       sessionWriteFailure?.let {
         return Result.failure(it)
       }
