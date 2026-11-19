@@ -340,20 +340,20 @@ A user who left a group can join it again with the same code as long as the GM h
 | Only owner deletes | yes | | yes | emulator |
 | GM can unshare others' docs | exception 7.5.1 | yes | | emulator |
 | Reattach after unshare / delete | yes, broad (7.5, exception 2) | yes | | emulator |
-| `users/{uid}.groupIds` agrees with `participantIds` | yes | same batch | | emulator |
+| `users/{uid}.groupIds` agrees with `participantIds` | yes | same batch | | emulator, rules tests |
 | Unshare and delete follow the same reattachment rules | | pure functions in `CascadeRules.kt` | | yes |
 | `GROUP_ROOT` immutable | yes | yes | yes | emulator |
 | Group and root names stay equal | | batch | | yes |
 | Personal queries exclude `GROUP_ROOT` | | single filter | | yes |
 | `isHidden` filtering | no (not a boundary) | none (view model) | single function | yes |
 | Batch size limit | | yes | | yes |
-| Invitation and `inviteCode` point to each other (no ghost code) | yes (`getAfter` both ways, 1.7) | transaction / same batch | | emulator (repository, no rules) |
+| Invitation and `inviteCode` point to each other (no ghost code) | yes (`getAfter` both ways, 1.7) | transaction / same batch | | emulator (repository), rules tests (invitation side) |
 | One valid code per group | yes | transaction (`createInvitation`) | | emulator (repository, no rules) |
-| Old code stops working after regeneration | yes (redemption needs the current code) | delete + create in one batch | | emulator (repository, no rules) |
+| Old code stops working after regeneration | yes (redemption needs the current code) | delete + create in one batch | | emulator (repository), rules tests (redemption) |
 | Join writes redemption, `participantIds` and `groupIds` together | yes (`existsAfter`, `getAfter`) | same batch | | emulator (repository, no rules) |
 | Join adds only the current user | yes (`isSelfJoin`) | `arrayUnion(userId)` | | emulator (repository, no rules) |
-| Only the GM writes `inviteCode` and invitations | yes | checked before writing | | emulator (repository, no rules) |
-| Invitations cannot be listed | yes | | | not tested yet |
+| Only the GM writes `inviteCode` and invitations | yes | checked before writing | | emulator (repository), rules tests (invitations) |
+| Invitations cannot be listed | yes | | | rules tests |
 | Already member refused before any write | | yes (`users/{uid}.groupIds`) | | emulator |
 | Code generation: alphabet, length, normalization | | pure functions (`InvitationCodes`) | | yes |
 | Only the owner reads and writes their profile | yes | | | emulator |
@@ -375,7 +375,8 @@ Rules and batch behavior must be tested with the **Firebase emulator** (member /
 - The client does not check who calls an operation: this is the job of the security rules.
 - Moving documents between folders is not supported yet.
 - Placement entry changes are open to any member of the group (7.5, exception 2).
-- The invitation rules (1.7) have no rules tests yet: the repository tests run on the emulator without the security rules. Rules tests that load `firestore.rules` with signed-in users come with the test refactor. Until then, the "denied" cases (listing, old code, adding another user, another field, non-GM) are not verified automatically.
+- `users/{userId}` does not check who writes it: the GM writes the users document of the player they add (`addUserToGroup`), so any signed-in user may write any users document, as long as `groupIds` follows `participantIds` (one group added if the user is a participant after the write, one removed if they no longer are). Accepted, since it can only make `groupIds` consistent with the groups.
+- The invitation rules (1.7) are covered by rules tests for `invitations`, `redemptions` and `users`. The `campaign_groups` side of the join and of the invite code (`isSelfJoin`, `isInviteCodeEdit`) has no rules test yet.
 - The join makes about 6 to 8 document-access calls in the rules (limit: 20 per batched write). The emulator does not apply the limit: to check once on a real Firestore project.
 - Deleting or regenerating an invitation does not delete its `redemptions` subcollection (Firestore never cascades): the documents stay as harmless orphans. To handle with the group lifecycle (9).
 - `deleteGroup` does not delete the group's invitation: the code stays known but points to nothing. Under the security rules, a join with that code is refused (`PERMISSION_DENIED`) and reported as `NETWORK`, not `GROUP_NOT_FOUND`. `deleteGroup` could delete the invitation in its own batch (the delete rule allows it, since the group still exists before the batch), so the code really stops existing.
