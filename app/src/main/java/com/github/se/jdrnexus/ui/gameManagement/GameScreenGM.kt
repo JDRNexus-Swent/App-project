@@ -74,6 +74,7 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
 import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
+import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 
@@ -97,6 +98,7 @@ private enum class GmSection(@StringRes val title: Int, val key: String) {
  * @param onTabSelected Receives selections from the shared bottom navigation.
  * @param onDiceClick Opens the dice roller.
  * @param groupName Name shown for the active campaign.
+ * @param onBack Leaves the screen; the top bar shows no back button when it is null.
  */
 @Composable
 fun GameScreenGM(
@@ -104,6 +106,7 @@ fun GameScreenGM(
     onTabSelected: (String) -> Unit = {},
     onDiceClick: () -> Unit = {},
     groupName: String = "",
+    onBack: (() -> Unit)? = null,
 ) {
   val uiState by viewModel.uiState.collectAsState()
   GameScreenGMContent(
@@ -122,6 +125,7 @@ fun GameScreenGM(
       },
       onTabSelected = onTabSelected,
       onDiceClick = onDiceClick,
+      onBack = onBack,
   )
 }
 
@@ -139,6 +143,7 @@ fun GameScreenGM(
  * @param onRetry Requests the unavailable session data again.
  * @param onTabSelected Receives shared bottom-navigation selections.
  * @param onDiceClick Opens the dice roller.
+ * @param onBack Leaves the screen; the top bar shows no back button when it is null.
  * @param renderAddEnemyDialogAsWindow Whether the add-enemy dialog opens in its own window; tests
  *   pass `false` to render it inline.
  */
@@ -155,6 +160,7 @@ internal fun GameScreenGMContent(
     onRetry: () -> Unit = {},
     onTabSelected: (String) -> Unit = {},
     onDiceClick: () -> Unit = {},
+    onBack: (() -> Unit)? = null,
     renderAddEnemyDialogAsWindow: Boolean = true,
 ) {
   var showAddEnemyDialog by rememberSaveable { mutableStateOf(false) }
@@ -165,6 +171,7 @@ internal fun GameScreenGMContent(
   val selectedNpc = uiState.npcs.firstOrNull { it.id == selectedNpcId }
 
   Scaffold(
+      topBar = { AppTopBar(title = stringResource(R.string.game_gm_header), onBack = onBack) },
       bottomBar = { ScreenBottomBar(selectedTab = "Campaigns", onTabSelected = onTabSelected) },
       contentColor = MaterialTheme.colorScheme.onSurface,
       floatingActionButton = {
@@ -189,11 +196,6 @@ internal fun GameScreenGMContent(
     ) {
       item {
         Column(modifier = Modifier.padding(horizontal = 2.dp)) {
-          Text(
-              stringResource(R.string.game_gm_header),
-              color = MaterialTheme.colorScheme.tertiary,
-              style = MaterialTheme.typography.labelLarge,
-          )
           Text(
               groupName,
               color = MaterialTheme.colorScheme.onSecondary,

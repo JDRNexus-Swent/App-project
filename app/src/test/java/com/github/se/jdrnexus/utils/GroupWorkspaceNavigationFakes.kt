@@ -1,6 +1,11 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.utils
 
+import com.github.se.jdrnexus.model.gameManagement.GameActivityEntry
+import com.github.se.jdrnexus.model.gameManagement.GameLoreEntry
+import com.github.se.jdrnexus.model.gameManagement.GameSessionRepository
+import com.github.se.jdrnexus.model.gameManagement.GameSessionSnapshot
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.FileEdit
@@ -8,7 +13,50 @@ import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+
+/** Holds one game session in memory, with no lore or activity, for navigation tests. */
+class NavigationGameSessionRepository : GameSessionRepository {
+  val session = MutableStateFlow(GameSessionSnapshot())
+  var lastSavedGroupId: String? = null
+
+  override fun observeSession(groupId: String): Flow<GameSessionSnapshot> = session
+
+  override suspend fun saveSession(groupId: String, session: GameSessionSnapshot): Result<Unit> =
+      runCatching {
+        session.validate()
+        lastSavedGroupId = groupId
+        this.session.value = session
+      }
+
+  override fun observeLore(groupId: String): Flow<List<GameLoreEntry>> = flowOf(emptyList())
+
+  override fun observeSharedLore(groupId: String): Flow<List<GameLoreEntry>> = flowOf(emptyList())
+
+  override suspend fun saveLore(groupId: String, lore: GameLoreEntry): Result<Unit> =
+      error("Not used")
+
+  override suspend fun setLoreVisibility(
+      groupId: String,
+      documentId: String,
+      isShared: Boolean,
+  ): Result<Unit> = error("Not used")
+
+  override suspend fun loadActivities(groupId: String): Result<List<GameActivityEntry>> =
+      Result.success(emptyList())
+
+  override fun observeActivities(groupId: String): Flow<List<GameActivityEntry>> =
+      flowOf(emptyList())
+
+  override suspend fun recordActivity(
+      groupId: String,
+      userId: String,
+      playerName: String,
+      action: String,
+      diceResult: String?,
+  ): Result<Unit> = error("Not used")
+}
 
 class NavigationGroupRepository(private val group: CampaignGroup) : GroupRepository {
   var groupFlowLoads = 0

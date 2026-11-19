@@ -54,6 +54,8 @@ class GamePlayerViewModel(
   private var sessionJob: Job? = null
 
   override fun loadSession(groupId: String) {
+    // The screen calls this each time it reappears; reloading would erase unsaved edits.
+    if (_uiState.value.groupId == groupId && sessionJob?.isActive == true) return
     sessionJob?.cancel()
     _uiState.value = GamePlayerUiState(groupId = groupId, isLoading = true)
     sessionJob = viewModelScope.launch {

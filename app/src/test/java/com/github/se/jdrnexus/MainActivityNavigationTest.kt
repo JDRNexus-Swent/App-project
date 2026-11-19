@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -26,6 +27,10 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.codec.JDRFileJsonCodec
+import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
+import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
+import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.map.MapGame
 import com.github.se.jdrnexus.model.map.MapLocation
 import com.github.se.jdrnexus.model.map.MapRepository
@@ -47,6 +52,7 @@ import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.dice.FlatDieView
 import com.github.se.jdrnexus.ui.dice.LocalDieView
 import com.github.se.jdrnexus.ui.edition.EditFileLoreTestTags
+import com.github.se.jdrnexus.ui.game.GameScreenPlayerTestTags
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
@@ -55,6 +61,7 @@ import com.github.se.jdrnexus.ui.search.DocumentSearchResult
 import com.github.se.jdrnexus.ui.search.DocumentSearchStatus
 import com.github.se.jdrnexus.ui.search.DocumentSearchUiState
 import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
+import com.github.se.jdrnexus.utils.NavigationGameSessionRepository
 import com.github.se.jdrnexus.utils.NavigationGroupRepository
 import com.github.se.jdrnexus.utils.NavigationWorkspaceRepository
 import com.github.se.jdrnexus.utils.tapInOneFrame
@@ -729,10 +736,176 @@ class MainActivityNavigationTest {
     waitForTag(C.Tag.searchResult(loreFile.id))
   }
 
+  @Test
+  fun gameMasterPlayOpensTheirGameScreen() {
+    val gameRepository = NavigationGameSessionRepository()
+    openGameFromPlay(gameMasterId = "user-1", gameRepository = gameRepository)
+
+    waitForTag(C.Tag.game_gm_start_combat)
+    waitForText("The Sunken Crown")
+    composeTestRule.onAllNodesWithTag(GameScreenPlayerTestTags.BACK).assertCountEquals(0)
+
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_start_combat).performClick()
+    composeTestRule.waitUntil(5_000) { gameRepository.lastSavedGroupId == "group-1" }
+
+    assertEquals("group-1", gameRepository.lastSavedGroupId)
+  }
+
+  @Test
+  fun backFromGameMasterScreenReturnsToCampaigns() {
+    openGameFromPlay(gameMasterId = "user-1")
+    waitForTag(C.Tag.shared_back_button)
+
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    assertBackOnCampaigns(C.Tag.game_gm_start_combat)
+  }
+
+  @Test
+  fun gameMasterDiceOpensAndReturnsToTheGameScreen() {
+    openGameFromPlay(gameMasterId = "user-1")
+    waitForTag(C.Tag.game_gm_dice)
+
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_dice).performClick()
+    waitForTag(C.Tag.dice_offline_screen)
+    Espresso.pressBack()
+
+    waitForTag(C.Tag.game_gm_start_combat)
+  }
+
+  @Test
+  fun gameMasterCampaignsTabReturnsToCampaigns() {
+    openGameFromPlay(gameMasterId = "user-1")
+    waitForTag(C.Tag.game_gm_start_combat)
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+
+    assertBackOnCampaigns(C.Tag.game_gm_start_combat)
+  }
+
+  @Test
+  fun rapidPlayTapsOpenOneGameScreen() {
+    showGameApp(gameMasterId = "user-1")
+    signInAndOpenCampaigns()
+    waitForTag(C.Tag.play_button)
+
+    composeTestRule.onNodeWithTag(C.Tag.play_button).performTouchInput { repeat(10) { click() } }
+    waitForTag(C.Tag.game_gm_start_combat)
+    Espresso.pressBack()
+
+    assertBackOnCampaigns(C.Tag.game_gm_start_combat)
+  }
+
+  @Test
+  fun playerPlayOpensTheirGameScreenAndBackReturnsToCampaigns() {
+    openGameFromPlay(gameMasterId = "gm-1")
+
+    waitForTag(GameScreenPlayerTestTags.BACK)
+    composeTestRule.onAllNodesWithTag(C.Tag.game_gm_start_combat).assertCountEquals(0)
+
+    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.BACK).performClick()
+
+    assertBackOnCampaigns(GameScreenPlayerTestTags.BACK)
+  }
+
+  @Test
+  fun playerWorkspaceButtonOpensTheGroupWorkspace() {
+    openGameFromPlay(gameMasterId = "gm-1")
+    waitForTag(GameScreenPlayerTestTags.WORKSPACE)
+
+    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.WORKSPACE).performClick()
+
+    waitForTagToDisappear(GameScreenPlayerTestTags.WORKSPACE)
+    waitForText("The Sunken Crown")
+  }
+
+  @Test
+  fun playerDiceOpensAndReturnsToTheGameScreen() {
+    val strengthRoll = GameScreenPlayerTestTags.statRoll("strength")
+    openGameFromPlay(
+        gameMasterId = "gm-1",
+        workspaceRepository = NavigationWorkspaceRepository(listOf(playerCharacterFile())),
+    )
+    waitForTag(GameScreenPlayerTestTags.CHARACTER_NAME)
+
+    composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag(strengthRoll))
+    composeTestRule.onNodeWithTag(strengthRoll).performClick()
+    waitForTag(C.Tag.dice_offline_screen)
+    Espresso.pressBack()
+
+    waitForTag(GameScreenPlayerTestTags.BACK)
+  }
+
+  @Test
+  fun playerCampaignsTabReturnsToCampaigns() {
+    openGameFromPlay(gameMasterId = "gm-1")
+    waitForTag(GameScreenPlayerTestTags.BACK)
+
+    composeTestRule
+        .onNodeWithTag(GameScreenPlayerTestTags.navigationTab("Campaigns"))
+        .performClick()
+
+    assertBackOnCampaigns(GameScreenPlayerTestTags.BACK)
+  }
+
+  private fun showGameApp(
+      gameMasterId: String,
+      gameRepository: NavigationGameSessionRepository = NavigationGameSessionRepository(),
+      workspaceRepository: NavigationWorkspaceRepository = NavigationWorkspaceRepository(),
+  ) {
+    showApp(
+        groupRepository = groupRepository(gameMasterId),
+        workspaceRepository = workspaceRepository,
+        gameSessionRepository = gameRepository,
+    )
+  }
+
+  /** Signs in as `user-1` and taps Play on the only group, led by [gameMasterId]. */
+  private fun openGameFromPlay(
+      gameMasterId: String,
+      gameRepository: NavigationGameSessionRepository = NavigationGameSessionRepository(),
+      workspaceRepository: NavigationWorkspaceRepository = NavigationWorkspaceRepository(),
+  ) {
+    showGameApp(gameMasterId, gameRepository, workspaceRepository)
+    signInAndOpenCampaigns()
+    waitForTag(C.Tag.play_button)
+    composeTestRule.onNodeWithTag(C.Tag.play_button).performClick()
+  }
+
+  private fun assertBackOnCampaigns(gameScreenTag: String) {
+    waitForTag(C.Tag.play_button)
+    composeTestRule.onAllNodesWithTag(gameScreenTag).assertCountEquals(0)
+  }
+
+  private fun waitForTagToDisappear(tag: String) {
+    composeTestRule.waitUntil(5_000) {
+      composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isEmpty()
+    }
+  }
+
+  private fun playerCharacterFile() =
+      JDRFile(
+          id = "hero-sheet",
+          ownerId = "user-1",
+          type = DocumentType.CHARACTER,
+          content =
+              JDRFileJsonCodec.serializeCharacter(
+                  CharacterFile(
+                      name = "Hero",
+                      stats = listOf(CharacterStat("strength", "Strength", 16.0)),
+                      actions = emptyList(),
+                      hp = CharacterHealthPoints(current = 10, max = 20),
+                  )
+              ),
+          sharedGroupsIds = listOf("group-1"),
+          placements = mapOf("group-1" to Placement("group-1", false)),
+      )
+
   private fun showApp(
       repository: FakeAuthRepository = FakeAuthRepository(),
       groupRepository: NavigationGroupRepository? = null,
       workspaceRepository: NavigationWorkspaceRepository = NavigationWorkspaceRepository(),
+      gameSessionRepository: NavigationGameSessionRepository? = null,
   ) {
     val context = ApplicationProvider.getApplicationContext<Context>()
     if (FirebaseApp.getApps(context).isEmpty()) {
@@ -754,6 +927,7 @@ class MainActivityNavigationTest {
             groupRepository = groupRepository,
             workspaceRepository = workspaceRepository,
             editFileViewModel = editFileViewModel,
+            gameSessionRepository = gameSessionRepository,
         )
       }
     }

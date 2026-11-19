@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -28,6 +29,7 @@ import com.github.se.jdrnexus.viewmodel.GroupLoadState
 import com.github.se.jdrnexus.viewmodel.GroupRole
 import com.github.se.jdrnexus.viewmodel.UserGroup
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -35,6 +37,29 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class GameManagementScreenTest {
   @get:Rule val composeTestRule = createComposeRule()
+
+  @Test
+  fun playReportsTheGroupAndGameMasterRole() {
+    assertPlayReports(gameMasterId = "user-1", expectedRole = GroupRole.GAME_MASTER)
+  }
+
+  @Test
+  fun playReportsTheGroupAndPlayerRole() {
+    assertPlayReports(gameMasterId = "another-user", expectedRole = GroupRole.PLAYER)
+  }
+
+  @Test
+  fun playSitsBesideEnterWorkspaceAtTwoThirdsOfItsWidth() {
+    setContent(uiState = stateFor(CampaignGroup(id = "group", name = "Crown")))
+
+    val play = composeTestRule.onNodeWithTag(C.Tag.play_button).getUnclippedBoundsInRoot()
+    val workspace =
+        composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).getUnclippedBoundsInRoot()
+
+    assertEquals(play.top, workspace.top)
+    assertTrue(play.right < workspace.left)
+    assertEquals(2f / 3f, (play.right - play.left) / (workspace.right - workspace.left), 0.01f)
+  }
 
   @Test
   fun gameMasterSeesManageAndInviteActions() {
@@ -243,9 +268,23 @@ class GameManagementScreenTest {
     assertEquals(1, dismissals)
   }
 
+  private fun assertPlayReports(gameMasterId: String, expectedRole: GroupRole) {
+    var played: Pair<String, GroupRole>? = null
+    setContent(
+        uiState = stateFor(CampaignGroup(id = "group", gameMasterId = gameMasterId)),
+        onPlay = { groupId, role -> played = groupId to role },
+    )
+
+    composeTestRule.onNodeWithText("Play").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.play_button).performClick()
+
+    assertEquals("group" to expectedRole, played)
+  }
+
   private fun setContent(
       uiState: GameManagementUiState,
       onEnterWorkspace: (String) -> Unit = {},
+      onPlay: (String, GroupRole) -> Unit = { _, _ -> },
       onCreateGroup: () -> Unit = {},
       onDismissCreateDialog: () -> Unit = {},
       onRetryLoad: () -> Unit = {},
@@ -268,6 +307,7 @@ class GameManagementScreenTest {
             onRetryLoad = onRetryLoad,
             onDismissSuccess = onDismissSuccess,
             onEnterWorkspace = onEnterWorkspace,
+            onPlay = onPlay,
             onManageGroup = {},
             invitationVM = RecordingInvitationVM(),
             onTabSelected = {},

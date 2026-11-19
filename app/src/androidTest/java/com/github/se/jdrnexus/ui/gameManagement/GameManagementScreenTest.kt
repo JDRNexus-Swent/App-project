@@ -376,6 +376,7 @@ class GameManagementScreenTest {
       SampleAppTheme(darkTheme = false) {
         GameManagementScreen(
             onEnterWorkspace = { enteredGroupId = it },
+            onPlay = { _, _ -> },
             onManageGroup = { managedGroupId = it },
             onTabSelected = { selectedTab = it },
             gameManagementViewModel = viewModel,
@@ -438,6 +439,7 @@ class GameManagementScreenTest {
             onRetryLoad = onRetryLoad,
             onDismissSuccess = onDismissSuccess,
             onEnterWorkspace = onEnterWorkspace,
+            onPlay = { _, _ -> },
             onManageGroup = onManageGroup,
             invitationVM = NoOpInvitationVM,
             onTabSelected = onTabSelected,
