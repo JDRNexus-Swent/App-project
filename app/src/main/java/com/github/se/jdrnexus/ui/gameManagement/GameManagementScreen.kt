@@ -634,7 +634,7 @@ private fun CampaignGroupCard(
             modifier = Modifier.weight(2f).testTag(C.Tag.play_button),
         )
         OutlinedActionButton(
-            label = "Enter workspace",
+            label = stringResource(R.string.enter_workspace_action),
             colors = colors,
             icon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.size(16.dp)) },
             onClick = onEnterWorkspace,

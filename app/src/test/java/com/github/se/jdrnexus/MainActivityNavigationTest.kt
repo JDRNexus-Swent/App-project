@@ -848,6 +848,93 @@ class MainActivityNavigationTest {
     assertBackOnCampaigns(GameScreenPlayerTestTags.BACK)
   }
 
+  @Test
+  fun campaignsTabInAWorkspaceOpenedFromThePlayerScreenReturnsToCampaigns() {
+    openGameFromPlay(gameMasterId = "gm-1")
+    waitForTag(GameScreenPlayerTestTags.WORKSPACE)
+    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.WORKSPACE).performClick()
+    waitForTagToDisappear(GameScreenPlayerTestTags.WORKSPACE)
+    waitForText("The Sunken Crown")
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+
+    assertBackOnCampaigns(GameScreenPlayerTestTags.BACK)
+  }
+
+  @Test
+  fun gameMasterHomeTabReturnsHome() =
+      assertGameTabOpens("user-1", C.Tag.game_gm_start_combat, C.Tag.bottomTab("home")) {
+        waitForTag(TestTags.TITLE)
+      }
+
+  @Test
+  fun gameMasterFilesTabOpensPersonalSpace() =
+      assertGameTabOpens("user-1", C.Tag.game_gm_start_combat, C.Tag.bottomTab("files")) {
+        waitForText(PERSONAL_SPACE_TITLE)
+      }
+
+  @Test
+  fun gameMasterMapTabOpensTheMap() =
+      assertGameTabOpens("user-1", C.Tag.game_gm_start_combat, C.Tag.bottomTab("map")) {
+        waitForTag(C.Tag.map_screen)
+      }
+
+  @Test
+  fun playerHomeTabReturnsHome() =
+      assertGameTabOpens(
+          "gm-1",
+          GameScreenPlayerTestTags.BACK,
+          GameScreenPlayerTestTags.navigationTab("Home"),
+      ) {
+        waitForTag(TestTags.TITLE)
+      }
+
+  @Test
+  fun playerFilesTabOpensPersonalSpace() =
+      assertGameTabOpens(
+          "gm-1",
+          GameScreenPlayerTestTags.BACK,
+          GameScreenPlayerTestTags.navigationTab("Files"),
+      ) {
+        waitForText(PERSONAL_SPACE_TITLE)
+      }
+
+  @Test
+  fun playerMapTabOpensTheMap() =
+      assertGameTabOpens(
+          "gm-1",
+          GameScreenPlayerTestTags.BACK,
+          GameScreenPlayerTestTags.navigationTab("Map"),
+      ) {
+        waitForTag(C.Tag.map_screen)
+      }
+
+  /**
+   * Opens the game screen of the group led by [gameMasterId] as `user-1`, taps [tabTag], runs
+   * [waitForDestination] and checks the game screen (found by [gameScreenTag]) is no longer shown.
+   * The Map screen reads its games from [NoGamesMapRepository] instead of Firestore.
+   */
+  private fun assertGameTabOpens(
+      gameMasterId: String,
+      gameScreenTag: String,
+      tabTag: String,
+      waitForDestination: () -> Unit,
+  ) {
+    val defaultMapRepository = MapRepositoryProvider.mapRepository
+    MapRepositoryProvider.mapRepository = NoGamesMapRepository()
+    try {
+      openGameFromPlay(gameMasterId)
+      waitForTag(gameScreenTag)
+
+      composeTestRule.onNodeWithTag(tabTag).performClick()
+
+      waitForDestination()
+      composeTestRule.onAllNodesWithTag(gameScreenTag).assertCountEquals(0)
+    } finally {
+      MapRepositoryProvider.mapRepository = defaultMapRepository
+    }
+  }
+
   private fun showGameApp(
       gameMasterId: String,
       gameRepository: NavigationGameSessionRepository = NavigationGameSessionRepository(),
