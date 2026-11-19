@@ -343,16 +343,17 @@ A user who left a group can join it again with the same code as long as the GM h
 | `users/{uid}.groupIds` agrees with `participantIds` | yes | same batch | | emulator, rules tests |
 | Unshare and delete follow the same reattachment rules | | pure functions in `CascadeRules.kt` | | yes |
 | `GROUP_ROOT` immutable | yes | yes | yes | emulator |
-| Group and root names stay equal | | batch | | yes |
+| Group and root names stay equal | yes (`getAfter`, same batch) | batch | | yes, rules tests |
 | Personal queries exclude `GROUP_ROOT` | | single filter | | yes |
 | `isHidden` filtering | no (not a boundary) | none (view model) | single function | yes |
 | Batch size limit | | yes | | yes |
-| Invitation and `inviteCode` point to each other (no ghost code) | yes (`getAfter` both ways, 1.7) | transaction / same batch | | emulator (repository), rules tests (invitation side) |
+| Invitation and `inviteCode` point to each other (no ghost code) | yes (`getAfter` both ways, 1.7) | transaction / same batch | | emulator (repository), rules tests |
 | One valid code per group | yes | transaction (`createInvitation`) | | emulator (repository, no rules) |
 | Old code stops working after regeneration | yes (redemption needs the current code) | delete + create in one batch | | emulator (repository), rules tests (redemption) |
-| Join writes redemption, `participantIds` and `groupIds` together | yes (`existsAfter`, `getAfter`) | same batch | | emulator (repository, no rules) |
-| Join adds only the current user | yes (`isSelfJoin`) | `arrayUnion(userId)` | | emulator (repository, no rules) |
-| Only the GM writes `inviteCode` and invitations | yes | checked before writing | | emulator (repository), rules tests (invitations) |
+| Join writes redemption, `participantIds` and `groupIds` together | yes (`existsAfter`, `getAfter`) | same batch | | emulator (repository), rules tests |
+| Join adds only the current user | yes (`isSelfJoin`) | `arrayUnion(userId)` | | emulator (repository), rules tests |
+| Only the GM writes `inviteCode` and invitations | yes | checked before writing | | emulator (repository), rules tests |
+| Groups: created with their root and the creator's membership; only the GM edits, adds or removes others and deletes; a participant may leave; the GM cannot be removed | yes | same batch | | rules tests |
 | Invitations cannot be listed | yes | | | rules tests |
 | Already member refused before any write | | yes (`users/{uid}.groupIds`) | | emulator |
 | Code generation: alphabet, length, normalization | | pure functions (`InvitationCodes`) | | yes |
@@ -376,10 +377,9 @@ Rules and batch behavior must be tested with the **Firebase emulator** (member /
 - Moving documents between folders is not supported yet.
 - Placement entry changes are open to any member of the group (7.5, exception 2).
 - `users/{userId}` does not check who writes it: any signed-in user may write any users document, as long as `groupIds` follows `participantIds` (one group added if the user is a participant after the write, one removed if they no longer are). This is needed by the GM's operations on other members, which write those members' users documents: adding a player (`addUserToGroup`), banning one (`removeUserFromGroup`) and deleting the group (`deleteGroup`). These operations are planned but not wired to a screen yet. Meanwhile, a modified client could let a GM add a user to their group without an invitation code. Accepted, since it can only make `groupIds` consistent with the groups; `uid() == userId` would close it, but would also block these GM operations.
-- The invitation rules (1.7) are covered by rules tests for `invitations`, `redemptions` and `users`. The `campaign_groups` side of the join and of the invite code (`isSelfJoin`, `isInviteCodeEdit`) has no rules test yet.
 - The join makes about 6 to 8 document-access calls in the rules (limit: 20 per batched write). The emulator does not apply the limit: to check once on a real Firestore project.
 - Deleting or regenerating an invitation does not delete its `redemptions` subcollection (Firestore never cascades): the documents stay as harmless orphans. To handle with the group lifecycle (9).
-- `deleteGroup` does not delete the group's invitation: the code stays known but points to nothing. Under the security rules, a join with that code is refused (`PERMISSION_DENIED`) and reported as `NETWORK`, not `GROUP_NOT_FOUND`. `deleteGroup` could delete the invitation in its own batch (the delete rule allows it, since the group still exists before the batch), so the code really stops existing.
+- The rules let the GM delete a group alone: the `campaign_groups` delete rule only checks the GM. The root can then no longer be deleted (its delete rule reads the group), and the members' `groupIds` keep the group until each member removes it. `deleteGroup` writes all of it in one batch, so the app is not affected. To enforce in the rules with the group lifecycle (9).
 - `regenerateInvitation` checks that the new code is free with a plain read, not atomically (the collision probability is negligible). Two simultaneous regenerations can leave one valid invitation that the group no longer knows.
 - A refused write (`PERMISSION_DENIED`) during an invitation operation is mapped to a generic error (`NETWORK` for a join, `NOT_GAME_MASTER` for create and regenerate), because the real cause is not known to the client.
 - Profile picture upload (1.8) is not implemented yet: it needs Firebase Storage, its rules and the Storage emulator in CI. Until then `uploadProfilePicture` fails.
