@@ -99,6 +99,7 @@ class GameSessionRepositoryFirestoreTest {
             isCombatActive = true,
             currentRound = 3,
             npcs = listOf(GameNpc("npc-1", "Guide", null, "Helpful")),
+            isGameStarted = true,
         )
 
     assertTrue(repository.saveSession(groupId, session).isSuccess)

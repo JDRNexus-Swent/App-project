@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.gameManagement
 
 import androidx.lifecycle.ViewModel
@@ -66,6 +67,15 @@ class GameViewModelGMViewModel(
     observeSession()
     observeLoreDocuments()
     observeActivityFeed()
+  }
+
+  override fun startGame() {
+    val state = _uiState.value
+    if (state.isGameStarted || state.isStartingGame) return
+    _uiState.update { it.copy(isStartingGame = true) }
+    // The save can end in several ways, including before it starts: clear the flag for all of them.
+    mutateSession { session -> session.copy(isGameStarted = true) }
+        .invokeOnCompletion { _uiState.update { it.copy(isStartingGame = false) } }
   }
 
   override fun addEnemy(enemy: CombatNPC) {
@@ -334,7 +344,12 @@ class GameViewModelGMViewModel(
             markSessionLoadCompleted()
           }
           .collect { session ->
-            _uiState.update { it.withSession(session) }
+            _uiState.update { state ->
+              // Firestore reports a local write first, so the saved result sets the started flag.
+              val updated = state.withSession(session)
+              if (state.isStartingGame) updated.copy(isGameStarted = state.isGameStarted)
+              else updated
+            }
             markSessionLoaded()
           }
     }
@@ -373,9 +388,11 @@ class GameViewModelGMViewModel(
    * Serializes a session change, validates the resulting snapshot, and saves it to the repository.
    *
    * Changes are rejected until the session is loaded; failures are reported in the UI state.
+   *
+   * @return The job running the change, which completes once the change is saved or rejected.
    */
-  private fun mutateSession(change: (GameSessionSnapshot) -> GameSessionSnapshot) {
-    viewModelScope.launch {
+  private fun mutateSession(change: (GameSessionSnapshot) -> GameSessionSnapshot): Job {
+    return viewModelScope.launch {
       // ensures thread safety
       writeMutex.withLock {
         if (!sessionLoaded) {
@@ -494,6 +511,7 @@ class GameViewModelGMViewModel(
           isCombatActive = isCombatActive,
           currentRound = currentRound,
           npcs = npcs.map { it.toRepositoryNpc() },
+          isGameStarted = isGameStarted,
       )
 
   /** Copies session data into this UI state while preserving unrelated screen state. */
@@ -503,6 +521,7 @@ class GameViewModelGMViewModel(
           isCombatActive = session.isCombatActive,
           currentRound = session.currentRound,
           npcs = session.npcs.map { it.toUiNpc() },
+          isGameStarted = session.isGameStarted,
       )
 
   /** Converts this UI enemy to its repository model. */

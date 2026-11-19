@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.gameManagement
 
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
@@ -48,7 +49,12 @@ data class LoreDocument(
     get() = lore.title
 }
 
-/** UI state holding the live game master session data for GameScreenGM. */
+/**
+ * UI state holding the live game master session data for GameScreenGM.
+ *
+ * @property isGameStarted Whether the campaign's game session has been started.
+ * @property isStartingGame Whether a [GameViewModelGM.startGame] request is still being saved.
+ */
 data class GameViewModelGMUiState(
     val enemies: List<CombatNPC> = emptyList(),
     val isCombatActive: Boolean = false,
@@ -60,6 +66,8 @@ data class GameViewModelGMUiState(
     val hasUnsavedLoreChanges: Boolean = false,
     val isLoading: Boolean = false,
     val error: String = "",
+    val isGameStarted: Boolean = false,
+    val isStartingGame: Boolean = false,
 )
 
 /**
@@ -70,6 +78,12 @@ interface GameViewModelGM {
 
   /** StateFlow exposing the current UI state of the GM session. */
   val uiState: StateFlow<GameViewModelGMUiState>
+
+  /**
+   * Starts the campaign's game session and saves it. Does nothing while a start is being saved or
+   * once the game has started. A failed save is reported in [uiState] and can be tried again.
+   */
+  fun startGame()
 
   // ==================== 1. Live Combat Management ====================
 
