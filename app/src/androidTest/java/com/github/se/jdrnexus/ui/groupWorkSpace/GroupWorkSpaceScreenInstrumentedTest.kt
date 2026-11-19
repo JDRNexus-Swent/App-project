@@ -952,6 +952,11 @@ class GroupWorkSpaceScreenInstrumentedTest {
         .assertCountEquals(0)
     assertEquals(emptyList<String>(), createdIds)
     assertEquals(emptyMap<String, JDRFile>(), repository.files)
+    // The create/add option is still available after returning to the screen
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_actions_fab, true)
+        .assertIsDisplayed()
+        .assertIsEnabled()
   }
 
   private fun showScreen(
