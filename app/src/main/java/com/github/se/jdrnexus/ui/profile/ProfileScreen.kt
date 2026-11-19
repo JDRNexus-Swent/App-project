@@ -1,7 +1,6 @@
 // Co-authored-by: Codex <codex@openai.com>
 package com.github.se.jdrnexus.ui.profile
 
-import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -58,20 +57,16 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.profile.ProfileStats
-import com.github.se.jdrnexus.model.profile.UserProfile
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
-import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.ProfileUiState
 import com.github.se.jdrnexus.viewmodel.ProfileViewModelInterface
-import kotlinx.coroutines.flow.MutableStateFlow
 
 /** Displays the signed-in user's profile and forwards edits to the supplied ViewModel. */
 @Composable
@@ -350,69 +345,70 @@ private fun ProfilePicture(
 private const val NO_USERNAME = "No username"
 private const val NO_DESCRIPTION = "No description"
 
-@Preview(name = "Light", showBackground = true)
-@Preview(
-    name = "Dark",
-    showBackground = true,
-    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
-)
-@Composable
-private fun ProfileScreenPreview() {
-  ProfilePreview(PreviewProfileViewModel.previewState)
-}
-
-@Preview(name = "Editing", showBackground = true)
-@Preview(
-    name = "Dark Editing",
-    showBackground = true,
-    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
-)
-@Composable
-private fun EditingProfileScreenPreview() {
-  ProfilePreview(
-      PreviewProfileViewModel.previewState.copy(
-          isEditing = true,
-          usernameDraft = "Mira Chen",
-      )
-  )
-}
-
-@Composable
-private fun ProfilePreview(state: ProfileUiState) {
-  SampleAppTheme {
-    ProfileContent(
-        state = state,
-        viewModel = PreviewProfileViewModel,
-        onBack = {},
-        onTabSelected = {},
-        selectedTab = "Home",
-        onPickPicture = {},
-    )
-  }
-}
-
-private object PreviewProfileViewModel : ProfileViewModelInterface {
-  val previewState =
-      ProfileUiState(
-          profile = UserProfile(username = "Mira Chen", bio = "Game master of the Lantern Below."),
-          stats = ProfileStats(campaignsCreated = 4, groupsJoined = 6, filesCreated = 23),
-          isLoading = false,
-      )
-  override val uiState = MutableStateFlow(previewState)
-
-  override fun loadProfile() = Unit
-
-  override fun startEditing() = Unit
-
-  override fun onUsernameChange(username: String) = Unit
-
-  override fun onBioChange(bio: String) = Unit
-
-  override fun cancelEditing() = Unit
-
-  override fun saveProfile() = Unit
-
-  override fun updateProfilePicture(image: Uri) = Unit
-
-  override fun clearError() = Unit
-}
+// @Preview(name = "Light", showBackground = true)
+// @Preview(
+//    name = "Dark",
+//    showBackground = true,
+//    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+// )
+// @Composable
+// private fun ProfileScreenPreview() {
+//  ProfilePreview(PreviewProfileViewModel.previewState)
+// }
+//
+// @Preview(name = "Editing", showBackground = true)
+// @Preview(
+//    name = "Dark Editing",
+//    showBackground = true,
+//    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+// )
+// @Composable
+// private fun EditingProfileScreenPreview() {
+//  ProfilePreview(
+//      PreviewProfileViewModel.previewState.copy(
+//          isEditing = true,
+//          usernameDraft = "Mira Chen",
+//      )
+//  )
+// }
+//
+// @Composable
+// private fun ProfilePreview(state: ProfileUiState) {
+//  SampleAppTheme {
+//    ProfileContent(
+//        state = state,
+//        viewModel = PreviewProfileViewModel,
+//        onBack = {},
+//        onTabSelected = {},
+//        selectedTab = "Home",
+//        onPickPicture = {},
+//    )
+//  }
+// }
+//
+// private object PreviewProfileViewModel : ProfileViewModelInterface {
+//  val previewState =
+//      ProfileUiState(
+//          profile = UserProfile(username = "Mira Chen", bio = "Game master of the Lantern
+// Below."),
+//          stats = ProfileStats(campaignsCreated = 4, groupsJoined = 6, filesCreated = 23),
+//          isLoading = false,
+//      )
+//  override val uiState = MutableStateFlow(previewState)
+//
+//  override fun loadProfile() = Unit
+//
+//  override fun startEditing() = Unit
+//
+//  override fun onUsernameChange(username: String) = Unit
+//
+//  override fun onBioChange(bio: String) = Unit
+//
+//  override fun cancelEditing() = Unit
+//
+//  override fun saveProfile() = Unit
+//
+//  override fun updateProfilePicture(image: Uri) = Unit
+//
+//  override fun clearError() = Unit
+// }
