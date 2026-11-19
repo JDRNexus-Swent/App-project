@@ -462,6 +462,42 @@ service cloud.firestore {
             }
     }
 
+    // ------------------------------------------------------------------ notifications
+
+    match /notifications/{notificationId} {
+      allow read: if signedIn() && resource.data.userId == uid();
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(
+             ['userId', 'type', 'title', 'message', 'groupId', 'createdAt', 'isRead'])
+        && request.resource.data.keys().hasAll(
+             ['userId', 'type', 'title', 'message', 'createdAt', 'isRead'])
+        && request.resource.data.userId is string
+        && request.resource.data.userId.size() > 0
+        && request.resource.data.type
+             in ['GROUP_INVITATION', 'MEMBERSHIP_CHANGE', 'CAMPAIGN_UPDATE']
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.isRead is bool
+        && (request.resource.data.get('groupId', null) == null
+            || request.resource.data.groupId is string)
+        && (request.resource.data.userId == uid()
+            || (request.resource.data.groupId is string
+                && exists(groupPath(request.resource.data.groupId))
+                && (isGm(request.resource.data.groupId)
+                    || isMember(request.resource.data.groupId))));
+
+      allow update: if signedIn()
+        && resource.data.userId == uid()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])
+        && request.resource.data.isRead is bool;
+
+      allow delete: if signedIn() && resource.data.userId == uid();
+    }
+
     // ------------------------------------------------------------------ everything else
 
     match /{document=**} {
