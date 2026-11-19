@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
 import androidx.compose.ui.test.assertCountEquals
@@ -293,28 +294,86 @@ class GroupWorkSpaceScreenInstrumentedTest {
 
   // Verifies the add-file dialog filters folders, foreign files, and already-shared files.
   @Test
-  fun addFileDialogShowsOnlyEligiblePersonalFiles() {
-    val eligible = JDRFile("eligible", "Notes", ownerId = USER)
-    val folder = eligible.copy(id = "folder", name = "Folder", type = DocumentType.FOLDER)
-    val shared = eligible.copy(id = "shared", name = "Shared", sharedGroupsIds = listOf(GROUP))
-    val foreign = eligible.copy(id = "foreign", name = "Foreign", ownerId = OTHER)
+  fun shareItemDialogShowsEligiblePersonalFilesAndFolders() {
+    val eligibleFile = JDRFile("eligible", "Notes", ownerId = USER)
+    val eligibleFolder =
+        eligibleFile.copy(
+            id = "folder",
+            name = "Folder",
+            type = DocumentType.FOLDER,
+        )
+    val shared =
+        eligibleFile.copy(
+            id = "shared",
+            name = "Shared",
+            sharedGroupsIds = listOf(GROUP),
+        )
+    val foreign =
+        eligibleFile.copy(
+            id = "foreign",
+            name = "Foreign",
+            ownerId = OTHER,
+        )
+    val groupRoot =
+        eligibleFile.copy(
+            id = GROUP,
+            name = "Group root",
+            type = DocumentType.GROUP_ROOT,
+        )
+
     showScreen(
         WorkspaceFakeRepository(),
         Role.PLAYER,
-        personalItems = listOf(eligible, folder, shared, foreign),
+        personalItems =
+            listOf(
+                eligibleFile,
+                eligibleFolder,
+                shared,
+                foreign,
+                groupRoot,
+            ),
     )
 
     openActions()
     composeTestRule.onNodeWithTag(C.Tag.workspace_add_file, true).performClick()
+
     composeTestRule.onNodeWithTag(C.Tag.workspace_add_files_dialog, true).assertIsDisplayed()
-    composeTestRule.onAllNodesWithTag(C.Tag.workspace_add_file, true).assertCountEquals(0)
-    composeTestRule.onNodeWithTag(C.Tag.workspace_add_files_list, true).assertIsDisplayed()
+
     composeTestRule.onNodeWithText("Notes").assertIsDisplayed()
-    composeTestRule.onAllNodesWithText("Folder").assertCountEquals(0)
+    composeTestRule.onNodeWithText("Folder").assertIsDisplayed()
+
     composeTestRule.onAllNodesWithText("Shared").assertCountEquals(0)
     composeTestRule.onAllNodesWithText("Foreign").assertCountEquals(0)
+    composeTestRule.onAllNodesWithText("Group root").assertCountEquals(0)
+
     composeTestRule.onNodeWithTag(C.Tag.workspace_add_files_done, true).performClick()
     composeTestRule.onAllNodesWithTag(C.Tag.workspace_add_files_dialog, true).assertCountEquals(0)
+  }
+
+  // Verifies selecting a personal folder asks the repository to share it with its content.
+  @Test
+  fun selectingPersonalFolderSharesItWithItsContent() {
+    val folder = JDRFile("personal-folder", "World", ownerId = USER, type = DocumentType.FOLDER)
+    val child = JDRFile("map", "Map", ownerId = USER, personalParentId = folder.id)
+    val repository = WorkspaceFakeRepository(initialFiles = listOf(folder, child))
+    showScreen(repository, Role.PLAYER, personalItems = listOf(folder, child))
+
+    openActions()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_add_file, true).performClick()
+    composeTestRule.onNodeWithText("World").performClick()
+
+    composeTestRule.waitUntil(5_000) { repository.lastAddRequest != null }
+    assertEquals(
+        AddRequest(folder.id, GROUP, GROUP, isHidden = false, includeContent = true),
+        repository.lastAddRequest,
+    )
+    composeTestRule.waitUntil(5_000) {
+      composeTestRule
+          .onAllNodesWithTag(C.Tag.workspace_add_files_dialog, true)
+          .fetchSemanticsNodes()
+          .isEmpty()
+    }
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem(folder.id), true).assertIsDisplayed()
   }
 
   // Verifies selecting a personal file shares it and updates the visible workspace.
@@ -332,6 +391,10 @@ class GroupWorkSpaceScreenInstrumentedTest {
     composeTestRule.waitUntil(5_000) {
       GROUP in repository.files.getValue("personal").sharedGroupsIds
     }
+    assertEquals(
+        AddRequest("personal", GROUP, GROUP, isHidden = false, includeContent = false),
+        repository.lastAddRequest,
+    )
     composeTestRule.onNodeWithTag(C.Tag.workspaceItem("personal"), true).assertIsDisplayed()
   }
 
@@ -733,6 +796,14 @@ class GroupWorkSpaceScreenInstrumentedTest {
     PLAYER,
   }
 
+  private data class AddRequest(
+      val itemId: String,
+      val groupId: String,
+      val folderId: String,
+      val isHidden: Boolean,
+      val includeContent: Boolean,
+  )
+
   private class WorkspaceFakeRepository(
       initialFiles: List<JDRFile> = emptyList(),
       private val rootGate: CompletableDeferred<Unit>? = null,
@@ -755,6 +826,10 @@ class GroupWorkSpaceScreenInstrumentedTest {
 
     val operationStarted = AtomicBoolean(false)
     var lastError: String? = null
+      private set
+
+    @Volatile
+    var lastAddRequest: AddRequest? = null
       private set
 
     private var nextId = 0
@@ -806,6 +881,9 @@ class GroupWorkSpaceScreenInstrumentedTest {
         isHidden: Boolean,
         includeContent: Boolean,
     ) = runOperation {
+      // Records the request: the recursive sharing itself is the repository's job and is tested
+      // against the Firestore emulator in WorkspaceRepositoryFirestoreTest.
+      lastAddRequest = AddRequest(itemId, groupId, folderId, isHidden, includeContent)
       val item = state.value.getValue(itemId)
       state.value +=
           itemId to
