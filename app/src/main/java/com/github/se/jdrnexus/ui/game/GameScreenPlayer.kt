@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.game
 
 import androidx.activity.compose.BackHandler
@@ -13,22 +14,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.MenuBook
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -49,27 +44,14 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
 import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 
-object GameScreenPlayerTestTags {
-  const val BACK = "game_player_back"
-  const val LOADING = "game_player_loading"
-  const val EMPTY = "game_player_empty"
-  const val ERROR = "game_player_error"
-  const val CHARACTER_NAME = "game_player_character_name"
-  const val CURRENT_HP = "game_player_current_hp"
-  const val HP_DECREASE = "game_player_hp_decrease"
-  const val HP_INCREASE = "game_player_hp_increase"
-  const val SAVE = "game_player_save"
-  const val SAVING = "game_player_saving"
-  const val SAVE_SUCCESS = "game_player_save_success"
-  const val WORKSPACE = "game_player_workspace"
+// Placeholder until roll modifiers can be derived from the character's stats.
+private const val PLACEHOLDER_DICE_MODIFIER = 0
 
-  fun statRoll(statId: String) = "game_player_stat_roll_$statId"
-
-  fun navigationTab(name: String) = "game_player_navigation_$name"
-}
-
+/** Displays the player's character sheet and saves pending edits before navigating away. */
 @Composable
 fun GameScreenPlayer(
     groupId: String,
@@ -77,20 +59,24 @@ fun GameScreenPlayer(
     onBack: () -> Unit,
     onOpenDice: (Int) -> Unit,
     onOpenGroupWorkspace: (String) -> Unit,
-    onTabSelected: (String) -> Unit = {},
+    onTabSelected: (String) -> Unit,
 ) {
   val uiState by viewModel.uiState.collectAsState()
+  var selectedTab by rememberSaveable { mutableStateOf("Campaigns") }
   var wasSaving by remember { mutableStateOf(false) }
   var saveSucceeded by remember { mutableStateOf(false) }
+  val hasUnsavedChanges = uiState.character?.hasUnsavedChanges == true
 
   LaunchedEffect(groupId) { viewModel.loadSession(groupId) }
-  LaunchedEffect(uiState.isSaving, uiState.error) {
+  LaunchedEffect(uiState.isSaving, uiState.error, hasUnsavedChanges) {
     if (uiState.isSaving) {
       wasSaving = true
       saveSucceeded = false
     } else if (wasSaving) {
-      saveSucceeded = uiState.error == null
+      saveSucceeded = uiState.error == null && !hasUnsavedChanges
       wasSaving = false
+    } else if (hasUnsavedChanges) {
+      saveSucceeded = false
     }
   }
 
@@ -101,33 +87,68 @@ fun GameScreenPlayer(
       viewModel.saveCharacter()
     }
   }
-  val leaveScreen = {
-    saveCharacter()
-    onBack()
+  fun navigate(destination: GamePlayerDestination) {
+    when (destination) {
+      GamePlayerDestination.Back -> onBack()
+      is GamePlayerDestination.Workspace -> onOpenGroupWorkspace(destination.groupId)
+      is GamePlayerDestination.Dice -> onOpenDice(destination.modifier)
+      is GamePlayerDestination.Tab -> {
+        onTabSelected(destination.name)
+        selectedTab = destination.name
+      }
+    }
   }
+
+  val ready = uiState.navigation as? GamePlayerNavigation.Ready
+  LaunchedEffect(ready) { if (ready != null) viewModel.consumeNavigation()?.let(::navigate) }
+
+  val leaveScreen = { viewModel.requestNavigation(GamePlayerDestination.Back) }
   BackHandler(onBack = leaveScreen)
+
+  val failed = uiState.navigation as? GamePlayerNavigation.SaveFailed
+  if (failed != null) {
+    AlertDialog(
+        onDismissRequest = viewModel::stayOnScreen,
+        title = { Text("Changes could not be saved") },
+        text = {
+          Text(failed.saveBeforeLeavingError, Modifier.testTag(C.Tag.game_player_leave_error))
+        },
+        confirmButton = {
+          TextButton(
+              onClick = viewModel::leaveAnyway,
+              modifier = Modifier.testTag(C.Tag.game_player_leave_anyway),
+          ) {
+            Text("Leave anyway")
+          }
+        },
+        dismissButton = {
+          TextButton(
+              onClick = viewModel::stayOnScreen,
+              modifier = Modifier.testTag(C.Tag.game_player_stay),
+          ) {
+            Text("Stay")
+          }
+        },
+    )
+  }
 
   GameScreenPlayerContent(
       uiState = uiState,
+      selectedTab = selectedTab,
       saveSucceeded = saveSucceeded,
       onBack = leaveScreen,
       onHpChanged = viewModel::updateCharacterHp,
       onSave = saveCharacter,
-      onOpenDice = onOpenDice,
-      onOpenGroupWorkspace = { id ->
-        saveCharacter()
-        onOpenGroupWorkspace(id)
-      },
-      onTabSelected = { tab ->
-        saveCharacter()
-        onTabSelected(tab)
-      },
+      onOpenDice = { viewModel.requestNavigation(GamePlayerDestination.Dice(it)) },
+      onOpenGroupWorkspace = { viewModel.requestNavigation(GamePlayerDestination.Workspace(it)) },
+      onTabSelected = { viewModel.requestNavigation(GamePlayerDestination.Tab(it)) },
   )
 }
 
 @Composable
 private fun GameScreenPlayerContent(
     uiState: GamePlayerUiState,
+    selectedTab: String,
     saveSucceeded: Boolean,
     onBack: () -> Unit,
     onHpChanged: (Int) -> Unit,
@@ -137,19 +158,10 @@ private fun GameScreenPlayerContent(
     onTabSelected: (String) -> Unit,
 ) {
   val character = uiState.character
-  var selectedTab by rememberSaveable { mutableStateOf("Campaigns") }
 
   Scaffold(
       contentColor = MaterialTheme.colorScheme.onSurface,
-      bottomBar = {
-        PlayerBottomBar(
-            selectedTab,
-            { tab ->
-              selectedTab = tab
-              onTabSelected(tab)
-            },
-        )
-      },
+      bottomBar = { ScreenBottomBar(selectedTab, onTabSelected) },
   ) { contentPadding ->
     LazyColumn(
         modifier = Modifier.fillMaxSize().imePadding().padding(contentPadding),
@@ -164,7 +176,7 @@ private fun GameScreenPlayerContent(
         ) {
           OutlinedButton(
               onClick = onBack,
-              modifier = Modifier.testTag(GameScreenPlayerTestTags.BACK),
+              modifier = Modifier.testTag(C.Tag.game_player_back),
           ) {
             Text("Back")
           }
@@ -172,7 +184,7 @@ private fun GameScreenPlayerContent(
           OutlinedButton(
               onClick = { uiState.groupId?.let(onOpenGroupWorkspace) },
               enabled = uiState.groupId != null,
-              modifier = Modifier.testTag(GameScreenPlayerTestTags.WORKSPACE),
+              modifier = Modifier.testTag(C.Tag.game_player_workspace),
           ) {
             Text("Group Workspace")
           }
@@ -186,9 +198,7 @@ private fun GameScreenPlayerContent(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-              CircularProgressIndicator(
-                  modifier = Modifier.testTag(GameScreenPlayerTestTags.LOADING)
-              )
+              CircularProgressIndicator(modifier = Modifier.testTag(C.Tag.game_player_loading))
               Text("Loading game session...")
             }
           }
@@ -202,8 +212,7 @@ private fun GameScreenPlayerContent(
                     Modifier.fillMaxWidth()
                         .padding(vertical = 32.dp)
                         .testTag(
-                            if (error == null) GameScreenPlayerTestTags.EMPTY
-                            else GameScreenPlayerTestTags.ERROR
+                            if (error == null) C.Tag.game_player_empty else C.Tag.game_player_error
                         ),
                 color =
                     if (error == null) MaterialTheme.colorScheme.onSurface
@@ -217,7 +226,7 @@ private fun GameScreenPlayerContent(
             Text(
                 sheet.name,
                 style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.testTag(GameScreenPlayerTestTags.CHARACTER_NAME),
+                modifier = Modifier.testTag(C.Tag.game_player_character_name),
             )
           }
           item {
@@ -225,7 +234,7 @@ private fun GameScreenPlayerContent(
               NumericField(
                   value = sheet.hp.current.toString(),
                   error = uiState.hpError,
-                  modifier = Modifier.fillMaxWidth().testTag(GameScreenPlayerTestTags.CURRENT_HP),
+                  modifier = Modifier.fillMaxWidth().testTag(C.Tag.game_player_current_hp),
                   onValidValue = onHpChanged,
               )
               Row(
@@ -235,14 +244,14 @@ private fun GameScreenPlayerContent(
                 OutlinedButton(
                     onClick = { onHpChanged(sheet.hp.current - 1) },
                     enabled = sheet.hp.current > 0,
-                    modifier = Modifier.weight(1f).testTag(GameScreenPlayerTestTags.HP_DECREASE),
+                    modifier = Modifier.weight(1f).testTag(C.Tag.game_player_hp_decrease),
                 ) {
                   Text("Take damage (−)")
                 }
                 OutlinedButton(
                     onClick = { onHpChanged(sheet.hp.current + 1) },
-                    enabled = sheet.hp.current < Int.MAX_VALUE,
-                    modifier = Modifier.weight(1f).testTag(GameScreenPlayerTestTags.HP_INCREASE),
+                    enabled = sheet.hp.current < sheet.hp.max,
+                    modifier = Modifier.weight(1f).testTag(C.Tag.game_player_hp_increase),
                 ) {
                   Text("Heal (+)")
                 }
@@ -262,8 +271,8 @@ private fun GameScreenPlayerContent(
                 Text("Value: ${stat.value}")
               }
               OutlinedButton(
-                  onClick = { onOpenDice(0) },
-                  modifier = Modifier.testTag(GameScreenPlayerTestTags.statRoll(stat.statID)),
+                  onClick = { onOpenDice(PLACEHOLDER_DICE_MODIFIER) },
+                  modifier = Modifier.testTag(C.Tag.gamePlayerStatRoll(stat.statID)),
               ) {
                 Text("Modifier +0 · Roll")
               }
@@ -284,14 +293,14 @@ private fun GameScreenPlayerContent(
               Text(
                   message,
                   color = MaterialTheme.colorScheme.error,
-                  modifier = Modifier.testTag(GameScreenPlayerTestTags.ERROR),
+                  modifier = Modifier.testTag(C.Tag.game_player_error),
               )
             }
           }
           if (uiState.isSaving) {
             item {
               Row(
-                  modifier = Modifier.fillMaxWidth().testTag(GameScreenPlayerTestTags.SAVING),
+                  modifier = Modifier.fillMaxWidth().testTag(C.Tag.game_player_saving),
                   horizontalArrangement = Arrangement.Center,
                   verticalAlignment = Alignment.CenterVertically,
               ) {
@@ -303,7 +312,7 @@ private fun GameScreenPlayerContent(
             item {
               Button(
                   onClick = onSave,
-                  modifier = Modifier.fillMaxWidth().testTag(GameScreenPlayerTestTags.SAVE),
+                  modifier = Modifier.fillMaxWidth().testTag(C.Tag.game_player_save),
               ) {
                 Text("Save Changes")
               }
@@ -314,34 +323,12 @@ private fun GameScreenPlayerContent(
               Text(
                   "Changes saved.",
                   color = MaterialTheme.colorScheme.primary,
-                  modifier = Modifier.testTag(GameScreenPlayerTestTags.SAVE_SUCCESS),
+                  modifier = Modifier.testTag(C.Tag.game_player_save_success),
               )
             }
           }
         }
       }
-    }
-  }
-}
-
-@Composable
-private fun PlayerBottomBar(selectedTab: String, onTabSelected: (String) -> Unit) {
-  val tabs =
-      listOf(
-          "Home" to Icons.Filled.Home,
-          "Campaigns" to Icons.AutoMirrored.Outlined.MenuBook,
-          "Files" to Icons.Outlined.Folder,
-          "Map" to Icons.Outlined.Map,
-      )
-  NavigationBar {
-    tabs.forEach { (label, icon) ->
-      NavigationBarItem(
-          selected = selectedTab == label,
-          onClick = { onTabSelected(label) },
-          icon = { Icon(icon, contentDescription = null) },
-          label = { Text(label) },
-          modifier = Modifier.testTag(GameScreenPlayerTestTags.navigationTab(label)),
-      )
     }
   }
 }
@@ -353,12 +340,12 @@ private fun NumericField(
     modifier: Modifier,
     onValidValue: (Int) -> Unit,
 ) {
-  var draft by remember(value) { mutableStateOf(value) }
+  var draft by remember { mutableStateOf(value) }
   var isFocused by remember { mutableStateOf(false) }
   var hasInvalidInput by remember { mutableStateOf(false) }
   val displayedError = if (hasInvalidInput) "Enter a whole number." else error
   LaunchedEffect(value, isFocused) {
-    if (!isFocused) {
+    if (!isFocused || draft.toIntOrNull() != value.toIntOrNull()) {
       draft = value
       hasInvalidInput = false
     }
@@ -401,6 +388,7 @@ private fun GameScreenPlayerPreview() {
       )
   SampleAppTheme {
     GameScreenPlayerContent(
+        selectedTab = "Campaigns",
         uiState =
             GamePlayerUiState(
                 groupId = "preview-group",
