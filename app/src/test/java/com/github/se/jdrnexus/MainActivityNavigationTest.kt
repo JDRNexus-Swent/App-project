@@ -51,8 +51,8 @@ import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.dice.FlatDieView
 import com.github.se.jdrnexus.ui.dice.LocalDieView
+import com.github.se.jdrnexus.ui.edition.EditFileCharacterTestTags
 import com.github.se.jdrnexus.ui.edition.EditFileLoreTestTags
-import com.github.se.jdrnexus.ui.game.GameScreenPlayerTestTags
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
@@ -436,6 +436,31 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).assertIsDisplayed()
   }
 
+  // Creating a character opens its editor, and back returns to the workspace.
+  @Test
+  fun groupWorkspaceCreateCharacterOpensEditorAndBackReturnsToWorkspace() {
+    val workspaceRepository = NavigationWorkspaceRepository()
+    showApp(groupRepository = groupRepository(), workspaceRepository = workspaceRepository)
+    signInAndOpenCampaigns()
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
+    waitForTag(C.Tag.workspace_actions_fab)
+
+    composeTestRule.onNodeWithTag(C.Tag.workspace_actions_fab).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item_character).performClick()
+
+    waitForTag(EditFileCharacterTestTags.LIST)
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.LIST).assertIsDisplayed()
+    val created = workspaceRepository.createdFiles.single()
+    assertEquals(DocumentType.CHARACTER, created.type)
+    assertEquals(Placement("group-1", false), created.placements["group-1"])
+
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.BACK).performClick()
+    waitForTag(C.Tag.workspace_actions_fab)
+    composeTestRule.onNodeWithTag(C.Tag.workspace_actions_fab).assertIsDisplayed()
+  }
+
   @Test
   fun backFromLoreReturnsToPersonalSpace() {
     val loreFile = showAuthenticatedApp()
@@ -744,7 +769,7 @@ class MainActivityNavigationTest {
 
     waitForTag(C.Tag.game_gm_start_game)
     waitForText("The Sunken Crown")
-    composeTestRule.onAllNodesWithTag(GameScreenPlayerTestTags.BACK).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(C.Tag.game_player_back).assertCountEquals(0)
 
     composeTestRule.onNodeWithTag(C.Tag.game_gm_start_game).performClick()
     waitForTag(C.Tag.game_gm_game_in_progress)
@@ -802,65 +827,63 @@ class MainActivityNavigationTest {
   fun playerPlayOpensTheirGameScreenAndBackReturnsToCampaigns() {
     openGameFromPlay(gameMasterId = "gm-1")
 
-    waitForTag(GameScreenPlayerTestTags.BACK)
+    waitForTag(C.Tag.game_player_back)
     composeTestRule.onAllNodesWithTag(C.Tag.game_gm_start_game).assertCountEquals(0)
 
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.BACK).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.game_player_back).performClick()
 
-    assertBackOnCampaigns(GameScreenPlayerTestTags.BACK)
+    assertBackOnCampaigns(C.Tag.game_player_back)
   }
 
   @Test
   fun playerWorkspaceButtonOpensTheGroupWorkspace() {
     openGameFromPlay(gameMasterId = "gm-1")
-    waitForTag(GameScreenPlayerTestTags.WORKSPACE)
+    waitForTag(C.Tag.game_player_workspace)
 
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.WORKSPACE).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.game_player_workspace).performClick()
 
-    waitForTagToDisappear(GameScreenPlayerTestTags.WORKSPACE)
+    waitForTagToDisappear(C.Tag.game_player_workspace)
     waitForText("The Sunken Crown")
   }
 
   @Test
   fun playerDiceOpensAndReturnsToTheGameScreen() {
-    val strengthRoll = GameScreenPlayerTestTags.statRoll("strength")
+    val strengthRoll = C.Tag.gamePlayerStatRoll("strength")
     openGameFromPlay(
         gameMasterId = "gm-1",
         workspaceRepository = NavigationWorkspaceRepository(listOf(playerCharacterFile())),
     )
-    waitForTag(GameScreenPlayerTestTags.CHARACTER_NAME)
+    waitForTag(C.Tag.game_player_character_name)
 
     composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag(strengthRoll))
     composeTestRule.onNodeWithTag(strengthRoll).performClick()
     waitForTag(C.Tag.dice_offline_screen)
     Espresso.pressBack()
 
-    waitForTag(GameScreenPlayerTestTags.BACK)
+    waitForTag(C.Tag.game_player_back)
   }
 
   @Test
   fun playerCampaignsTabReturnsToCampaigns() {
     openGameFromPlay(gameMasterId = "gm-1")
-    waitForTag(GameScreenPlayerTestTags.BACK)
+    waitForTag(C.Tag.game_player_back)
 
-    composeTestRule
-        .onNodeWithTag(GameScreenPlayerTestTags.navigationTab("Campaigns"))
-        .performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
 
-    assertBackOnCampaigns(GameScreenPlayerTestTags.BACK)
+    assertBackOnCampaigns(C.Tag.game_player_back)
   }
 
   @Test
   fun campaignsTabInAWorkspaceOpenedFromThePlayerScreenReturnsToCampaigns() {
     openGameFromPlay(gameMasterId = "gm-1")
-    waitForTag(GameScreenPlayerTestTags.WORKSPACE)
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.WORKSPACE).performClick()
-    waitForTagToDisappear(GameScreenPlayerTestTags.WORKSPACE)
+    waitForTag(C.Tag.game_player_workspace)
+    composeTestRule.onNodeWithTag(C.Tag.game_player_workspace).performClick()
+    waitForTagToDisappear(C.Tag.game_player_workspace)
     waitForText("The Sunken Crown")
 
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
 
-    assertBackOnCampaigns(GameScreenPlayerTestTags.BACK)
+    assertBackOnCampaigns(C.Tag.game_player_back)
   }
 
   @Test
@@ -885,8 +908,8 @@ class MainActivityNavigationTest {
   fun playerHomeTabReturnsHome() =
       assertGameTabOpens(
           "gm-1",
-          GameScreenPlayerTestTags.BACK,
-          GameScreenPlayerTestTags.navigationTab("Home"),
+          C.Tag.game_player_back,
+          C.Tag.bottomTab("home"),
       ) {
         waitForTag(TestTags.TITLE)
       }
@@ -895,8 +918,8 @@ class MainActivityNavigationTest {
   fun playerFilesTabOpensPersonalSpace() =
       assertGameTabOpens(
           "gm-1",
-          GameScreenPlayerTestTags.BACK,
-          GameScreenPlayerTestTags.navigationTab("Files"),
+          C.Tag.game_player_back,
+          C.Tag.bottomTab("files"),
       ) {
         waitForText(PERSONAL_SPACE_TITLE)
       }
@@ -905,8 +928,8 @@ class MainActivityNavigationTest {
   fun playerMapTabOpensTheMap() =
       assertGameTabOpens(
           "gm-1",
-          GameScreenPlayerTestTags.BACK,
-          GameScreenPlayerTestTags.navigationTab("Map"),
+          C.Tag.game_player_back,
+          C.Tag.bottomTab("map"),
       ) {
         waitForTag(C.Tag.map_screen)
       }
