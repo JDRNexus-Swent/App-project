@@ -110,9 +110,9 @@ class GroupSubcollectionsRulesTest {
           "campaign_groups/$groupId/$subCollection",
       )
 
-  // Read as the GM, who may read every document of these sub-collections; null if missing.
-  private suspend fun stored(document: DocumentReference): Map<String, Any>? =
-      gm.document(document.path).get().await().data
+  // Read bypassing the rules, so the check does not depend on them; null if missing.
+  private suspend fun stored(document: DocumentReference): Map<*, *>? =
+      FirebaseEmulatorTestUtils.readBypassingRules(gm, document.path, Map::class.java)
 
   // ========================================== dice_rolls
 
@@ -148,6 +148,7 @@ class GroupSubcollectionsRulesTest {
             Triple("another user's id", player, validRoll(GM_ID)),
             Triple("client timestamp", player, validRoll() + ("timestamp" to Timestamp.now())),
             Triple("extra field", player, validRoll() + ("isCritical" to true)),
+            Triple("missing field", player, validRoll() - "modifier"),
             Triple("username above 50", player, validRoll() + ("username" to "a".repeat(51))),
             Triple("outsider", outsider, validRoll(OUTSIDER_ID)),
         )
@@ -210,6 +211,9 @@ class GroupSubcollectionsRulesTest {
                 validActivity() + ("timestamp" to Timestamp.now()),
             ),
             Triple("empty action", player, validActivity() + ("action" to "")),
+            Triple("extra field", player, validActivity() + ("isCritical" to true)),
+            // The nullable field: its key must be there even when its value is null.
+            Triple("missing field", player, validActivity() - "diceResult"),
             Triple("outsider", outsider, validActivity(OUTSIDER_ID)),
         )
         .forEach { (case, client, activity) ->
@@ -308,10 +312,10 @@ class GroupSubcollectionsRulesTest {
   }
 
   @Test
-  fun aPlayerReadingAMissingLoreIdGetsNotFound() = runBlocking {
-    val lore = player.sub("gm_lore").document("missing").get().await()
-
-    assertFalse(lore.exists())
+  fun aSignedInUserReadingAMissingLoreIdGetsNotFound() = runBlocking {
+    assertFalse(player.sub("gm_lore").document("missing").get().await().exists())
+    // Not only members: any signed-in user learns the id is missing (DATA_ARCHITECTURE.md §8).
+    assertFalse(outsider.sub("gm_lore").document("missing").get().await().exists())
   }
 
   @Test

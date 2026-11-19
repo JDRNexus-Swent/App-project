@@ -363,7 +363,7 @@ A user who left a group can join it again with the same code as long as the GM h
 | Game session (`gm_data`) and lore (`gm_lore`): members read (lore only if shared), the GM writes | yes | | | rules tests |
 | `map_sessions` read-only; any other collection denied | yes | | | rules tests |
 
-Rules and batch behavior must be tested with the **Firebase emulator** (member / non-member / GM / owner), not only with mocks. "Rules tests" are the classes of `app/src/test/.../firestoreRules/`, one per collection: each sends requests as signed-in users and checks that the rules allow them, or deny them and write nothing.
+Rules and batch behavior must be tested with the **Firebase emulator** (member / non-member / GM / owner), not only with mocks. "Rules tests" are the classes of `app/src/test/.../firestoreRules/`, one per collection or group of related rules: each sends requests as signed-in users and checks that the rules allow them, or deny them and write nothing.
  
 ---
 

@@ -279,6 +279,8 @@ object FirebaseEmulatorTestUtils {
             ?: return null
     val fields = JSONObject(response).optJSONObject("fields") ?: JSONObject()
     val data = fields.keys().asSequence().associateWith { fromRestValue(fields.getJSONObject(it)) }
+    // CustomClassMapper refuses the raw Map class, so a map is returned as it is.
+    @Suppress("UNCHECKED_CAST") if (type == Map::class.java) return data as T
     return CustomClassMapper.convertToCustomClass(data, type, firestore.document(documentPath))
   }
 
