@@ -9,7 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 
-private val DarkColorScheme =
+internal val DarkColorScheme =
     darkColorScheme(
         primary = Color(0xFFD4B95D), // gold
         secondary = Color(0xFFB89B5A),
@@ -23,7 +23,7 @@ private val DarkColorScheme =
         onSurface = Color(0xFFF2EEE9),
     )
 
-private val LightColorScheme =
+internal val LightColorScheme =
     lightColorScheme(
         primary = Color(0xFF6F5138), // brown
         secondary = Color(0xFFD4B95D), // gold
