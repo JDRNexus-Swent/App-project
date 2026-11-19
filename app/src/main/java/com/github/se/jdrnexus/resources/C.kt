@@ -117,6 +117,7 @@ object C {
     const val join_cancel = "join_cancel"
 
     const val enter_workspace_button = "enter_workspace_button"
+    const val play_button = "play_button"
     const val workspace_actions_fab = "workspace_actions_fab"
     const val workspace_create_item = "workspace_create_item"
     const val workspace_create_item_dialog = "create_item_dialog"

@@ -36,6 +36,9 @@
     <string name="edit_character_description_label">Description</string>
     <string name="edit_character_add_action">Add action</string>
     <string name="edit_character_action_label">Action</string>
+    <!-- Game management screen -->
+    <string name="play_action">Play</string>
+    <string name="enter_workspace_action">Enter workspace</string>
     <!-- Game master screen -->
     <string name="game_gm_dice_cd">Roll dice</string>
     <string name="game_gm_header">Campaign · Game Master</string>
