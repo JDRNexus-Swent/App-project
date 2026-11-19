@@ -45,6 +45,20 @@ class NotificationViewModelTest {
   }
 
   @Test
+  fun startsSignedOutWhenNoUserIsAuthenticated() = runTest {
+    val viewModel =
+        NotificationViewModel(
+            FakeNotificationRepository(flowOf(emptyList())),
+            FakeAuthRepository(null),
+        )
+
+    advanceUntilIdle()
+
+    assertEquals(NotificationLoadState.SignedOut, viewModel.uiState.value.loadState)
+    assertEquals(emptyList<Notification>(), viewModel.uiState.value.notifications)
+  }
+
+  @Test
   fun reportsRepositoryFailureAndRetryRecovers() = runTest {
     var attempts = 0
     val repository =
@@ -54,7 +68,7 @@ class NotificationViewModelTest {
                   attempts++
                   if (attempts == 1) throw IllegalStateException("offline")
                   emit(emptyList())
-                }
+                },
         )
     val viewModel =
         NotificationViewModel(repository, FakeAuthRepository(AuthUser("user-1", null, null)))
@@ -117,12 +131,13 @@ class NotificationViewModelTest {
         )
     val authRepository = FakeAuthRepository(AuthUser("user-1", "user@example.com", "User"))
     val repository =
-        TrackingNotificationRepository(
-            notificationFlow =
+        FakeNotificationRepository(
+            notifications =
                 flow {
                   emit(listOf(notification))
                   awaitCancellation()
-                }
+                },
+            trackActiveUsers = true,
         )
     val viewModel = NotificationViewModel(repository, authRepository)
     advanceUntilIdle()
@@ -141,15 +156,24 @@ class NotificationViewModelTest {
   private class FakeNotificationRepository(
       private val notifications: Flow<List<Notification>>,
       private val markAsReadResult: Result<Unit> = Result.success(Unit),
+      private val trackActiveUsers: Boolean = false,
   ) : NotificationRepository {
     val readRequests = mutableListOf<Pair<String, String>>()
     val deleteRequests = mutableListOf<Pair<String, String>>()
+    val activeUsers = mutableSetOf<String>()
 
     override fun getNewNotificationId() = "new-notification"
 
     override suspend fun createNotification(notification: Notification) = Result.success(Unit)
 
-    override fun getUserNotifications(userId: String) = notifications
+    override fun getUserNotifications(userId: String): Flow<List<Notification>> = flow {
+      if (trackActiveUsers) activeUsers += userId
+      try {
+        notifications.collect { emit(it) }
+      } finally {
+        if (trackActiveUsers) activeUsers -= userId
+      }
+    }
 
     override suspend fun markAsRead(notificationId: String, userId: String): Result<Unit> {
       readRequests += notificationId to userId
@@ -178,31 +202,5 @@ class NotificationViewModelTest {
         AuthResult.Failure(com.github.se.jdrnexus.model.repository.AuthError.UNKNOWN)
 
     override suspend fun signOut() = AuthResult.Success(Unit)
-  }
-
-  private class TrackingNotificationRepository(
-      private val notificationFlow: Flow<List<Notification>>,
-  ) : NotificationRepository {
-    val activeUsers = mutableSetOf<String>()
-
-    override fun getNewNotificationId() = "new-notification"
-
-    override suspend fun createNotification(notification: Notification) = Result.success(Unit)
-
-    override fun getUserNotifications(userId: String): Flow<List<Notification>> = flow {
-      activeUsers += userId
-      try {
-        notificationFlow.collect { emit(it) }
-      } finally {
-        activeUsers -= userId
-      }
-    }
-
-    override suspend fun markAsRead(notificationId: String, userId: String) = Result.success(Unit)
-
-    override suspend fun markAllAsRead(userId: String) = Result.success(Unit)
-
-    override suspend fun deleteNotification(notificationId: String, userId: String) =
-        Result.success(Unit)
   }
 }
