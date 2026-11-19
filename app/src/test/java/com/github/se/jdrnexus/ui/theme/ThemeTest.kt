@@ -31,6 +31,16 @@ class ThemeTest {
   }
 
   @Test
+  fun lightThemeFieldBordersStandOutFromWhatTheyTouch() {
+    assertEquals(emptyList<String>(), faintFieldBorders(LightColorScheme))
+  }
+
+  @Test
+  fun darkThemeFieldBordersStandOutFromWhatTheyTouch() {
+    assertEquals(emptyList<String>(), faintFieldBorders(DarkColorScheme))
+  }
+
+  @Test
   fun lightThemeSetsEveryColourRoleItself() {
     assertEquals(
         emptyList<String>(),
@@ -123,10 +133,30 @@ class ThemeTest {
                 s.tertiaryFixedDim,
             ),
         )
-    return pairs
-        .filter { (_, text, background) -> contrast(text, background) < 4.5 }
-        .map { (name, text, background) -> "$name: %.2f".format(contrast(text, background)) }
+    return pairsBelow(4.5, pairs)
   }
+
+  /**
+   * Text-field border on each colour it touches: the field's own fill, the sign-in and sign-up page
+   * (`background`) and the group workspace dialogs (`surface`). Each needs the WCAG 3:1 contrast
+   * for the boundary of a control.
+   */
+  private fun faintFieldBorders(s: ColorScheme): List<String> =
+      pairsBelow(
+          3.0,
+          listOf(
+              Triple("outline on surfaceContainerHighest", s.outline, s.surfaceContainerHighest),
+              Triple("outline on background", s.outline, s.background),
+              Triple("outline on surface", s.outline, s.surface),
+          ),
+      )
+
+  /** Names and contrasts of the [pairs] whose two colours differ by less than [minimum]:1. */
+  private fun pairsBelow(minimum: Double, pairs: List<Triple<String, Color, Color>>): List<String> =
+      pairs.mapNotNull { (name, a, b) ->
+        val ratio = contrast(a, b)
+        if (ratio < minimum) "$name: %.2f".format(ratio) else null
+      }
 
   private fun contrast(a: Color, b: Color): Double {
     val la = a.luminance().toDouble()
