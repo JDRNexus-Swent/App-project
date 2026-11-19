@@ -1180,6 +1180,59 @@ class EditFileViewModelTest {
     assertEquals(List(4) { original }, viewModels.map { it.uiState.value.character })
   }
 
+  @Test
+  fun savingCharacterRenamesTheFileToTheTrimmedSheetName() = runTest {
+    val file =
+        JDRFile(
+            id = "character",
+            name = "New character",
+            type = DocumentType.CHARACTER,
+            content = characterJson,
+        )
+    val repository = FakeRepository(file)
+    val viewModel = loadedViewModel(file, repository)
+
+    viewModel.updateCharacterName("  Aria  ")
+    viewModel.saveJDRfile()
+    runCurrent()
+
+    assertEquals(listOf("Aria"), repository.updatedFiles.map { it.name })
+    assertEquals("Aria", viewModel.uiState.value.file?.name)
+  }
+
+  @Test
+  fun savingCharacterWithWhitespaceOnlySheetNameNamesTheFileNewCharacter() = runTest {
+    val file =
+        JDRFile(
+            id = "character",
+            name = "Aria",
+            type = DocumentType.CHARACTER,
+            content = characterJson,
+        )
+    val repository = FakeRepository(file)
+    val viewModel = loadedViewModel(file, repository)
+
+    viewModel.updateCharacterName("   ")
+    viewModel.saveJDRfile()
+    runCurrent()
+
+    assertEquals(listOf("New character"), repository.updatedFiles.map { it.name })
+  }
+
+  @Test
+  fun savingLoreKeepsTheFileName() = runTest {
+    val file =
+        JDRFile(id = "lore", name = "Kingdom notes", type = DocumentType.TEXT, content = loreJson)
+    val repository = FakeRepository(file)
+    val viewModel = loadedViewModel(file, repository)
+
+    viewModel.updateLoreTitle("A New Realm")
+    viewModel.saveJDRfile()
+    runCurrent()
+
+    assertEquals(listOf("Kingdom notes"), repository.updatedFiles.map { it.name })
+  }
+
   private fun TestScope.loadedViewModel(
       file: JDRFile,
       repository: FakeRepository = FakeRepository(file),
