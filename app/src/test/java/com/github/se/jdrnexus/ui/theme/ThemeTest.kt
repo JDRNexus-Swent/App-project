@@ -32,12 +32,18 @@ class ThemeTest {
 
   @Test
   fun lightThemeSetsEveryColourRoleItself() {
-    assertEquals(emptyList<String>(), rolesLeftAtMaterialDefault(LightColorScheme, lightColorScheme()))
+    assertEquals(
+        emptyList<String>(),
+        rolesLeftAtMaterialDefault(LightColorScheme, lightColorScheme()),
+    )
   }
 
   @Test
   fun darkThemeSetsEveryColourRoleItself() {
-    assertEquals(emptyList<String>(), rolesLeftAtMaterialDefault(DarkColorScheme, darkColorScheme()))
+    assertEquals(
+        emptyList<String>(),
+        rolesLeftAtMaterialDefault(DarkColorScheme, darkColorScheme()),
+    )
   }
 
   @Test
@@ -68,20 +74,54 @@ class ThemeTest {
             Triple("onSurface on surface", s.onSurface, s.surface),
             Triple("onSurfaceVariant on surfaceVariant", s.onSurfaceVariant, s.surfaceVariant),
             Triple("onSurfaceVariant on background", s.onSurfaceVariant, s.background),
-            Triple("onSurfaceVariant on surfaceContainerHighest", s.onSurfaceVariant, s.surfaceContainerHighest),
+            Triple(
+                "onSurfaceVariant on surfaceContainerHighest",
+                s.onSurfaceVariant,
+                s.surfaceContainerHighest,
+            ),
             Triple("onSurface on surfaceContainerLowest", s.onSurface, s.surfaceContainerLowest),
             Triple("onSurface on surfaceContainerLow", s.onSurface, s.surfaceContainerLow),
             Triple("onSurface on surfaceContainer", s.onSurface, s.surfaceContainer),
             Triple("onSurface on surfaceContainerHigh", s.onSurface, s.surfaceContainerHigh),
             Triple("onSurface on surfaceContainerHighest", s.onSurface, s.surfaceContainerHighest),
-            Triple("onPrimaryContainer on primaryContainer", s.onPrimaryContainer, s.primaryContainer),
-            Triple("onSecondaryContainer on secondaryContainer", s.onSecondaryContainer, s.secondaryContainer),
-            Triple("onTertiaryContainer on tertiaryContainer", s.onTertiaryContainer, s.tertiaryContainer),
+            Triple(
+                "onPrimaryContainer on primaryContainer",
+                s.onPrimaryContainer,
+                s.primaryContainer,
+            ),
+            Triple(
+                "onSecondaryContainer on secondaryContainer",
+                s.onSecondaryContainer,
+                s.secondaryContainer,
+            ),
+            Triple(
+                "onTertiaryContainer on tertiaryContainer",
+                s.onTertiaryContainer,
+                s.tertiaryContainer,
+            ),
             Triple("onError on error", s.onError, s.error),
             Triple("onErrorContainer on errorContainer", s.onErrorContainer, s.errorContainer),
             Triple("error on background", s.error, s.background),
             Triple("error on surfaceContainerHigh", s.error, s.surfaceContainerHigh),
             Triple("inverseOnSurface on inverseSurface", s.inverseOnSurface, s.inverseSurface),
+            Triple("onPrimaryFixed on primaryFixed", s.onPrimaryFixed, s.primaryFixed),
+            Triple(
+                "onPrimaryFixedVariant on primaryFixedDim",
+                s.onPrimaryFixedVariant,
+                s.primaryFixedDim,
+            ),
+            Triple("onSecondaryFixed on secondaryFixed", s.onSecondaryFixed, s.secondaryFixed),
+            Triple(
+                "onSecondaryFixedVariant on secondaryFixedDim",
+                s.onSecondaryFixedVariant,
+                s.secondaryFixedDim,
+            ),
+            Triple("onTertiaryFixed on tertiaryFixed", s.onTertiaryFixed, s.tertiaryFixed),
+            Triple(
+                "onTertiaryFixedVariant on tertiaryFixedDim",
+                s.onTertiaryFixedVariant,
+                s.tertiaryFixedDim,
+            ),
         )
     return pairs
         .filter { (_, text, background) -> contrast(text, background) < 4.5 }
@@ -135,6 +175,18 @@ class ThemeTest {
             "surfaceContainer" to { it.surfaceContainer },
             "surfaceContainerHigh" to { it.surfaceContainerHigh },
             "surfaceContainerHighest" to { it.surfaceContainerHighest },
+            "primaryFixed" to { it.primaryFixed },
+            "primaryFixedDim" to { it.primaryFixedDim },
+            "onPrimaryFixed" to { it.onPrimaryFixed },
+            "onPrimaryFixedVariant" to { it.onPrimaryFixedVariant },
+            "secondaryFixed" to { it.secondaryFixed },
+            "secondaryFixedDim" to { it.secondaryFixedDim },
+            "onSecondaryFixed" to { it.onSecondaryFixed },
+            "onSecondaryFixedVariant" to { it.onSecondaryFixedVariant },
+            "tertiaryFixed" to { it.tertiaryFixed },
+            "tertiaryFixedDim" to { it.tertiaryFixedDim },
+            "onTertiaryFixed" to { it.onTertiaryFixed },
+            "onTertiaryFixedVariant" to { it.onTertiaryFixedVariant },
         )
     return roles
         .filter { (_, role) ->

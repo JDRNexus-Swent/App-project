@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.search
 
 import androidx.activity.compose.BackHandler
@@ -44,7 +45,6 @@ import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
-import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 
 @Composable
 fun DocumentSearchScreen(
@@ -53,7 +53,7 @@ fun DocumentSearchScreen(
     searchViewModel: DocumentSearchInterfaceVM = viewModel<DocumentSearchViewModel>(),
 ) {
   val uiState by searchViewModel.uiState.collectAsState()
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   val focusRequester = remember { FocusRequester() }
   val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -119,7 +119,7 @@ fun DocumentSearchScreen(
           ) {
             CircularProgressIndicator(
                 modifier = Modifier.testTag(C.Tag.search_loading),
-                color = colors.accent,
+                color = colors.primary,
             )
           }
       DocumentSearchStatus.NoResults ->
@@ -155,11 +155,11 @@ fun DocumentSearchScreen(
                   onFolderClicked = { onDocumentClicked(result.file) },
                   modifier = Modifier.testTag(C.Tag.searchResult(result.file.id)),
                   cardColor = colors.surface,
-                  iconBackground = colors.iconBackground,
-                  primaryText = colors.primaryText,
-                  secondaryText = colors.secondaryText,
+                  iconBackground = colors.surfaceContainerLowest,
+                  primaryText = colors.onSurface,
+                  secondaryText = colors.onSurfaceVariant,
                   borderColor = colors.outline,
-                  accentColor = colors.accent,
+                  accentColor = colors.primary,
               )
             }
           }
@@ -173,7 +173,7 @@ private fun SearchMessage(
     modifier: Modifier = Modifier,
     action: @Composable (() -> Unit)? = null,
 ) {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   Box(modifier = modifier.padding(24.dp), contentAlignment = Alignment.Center) {
     androidx.compose.foundation.layout.Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -181,7 +181,7 @@ private fun SearchMessage(
     ) {
       Text(
           text = message,
-          color = colors.secondaryText,
+          color = colors.onSurfaceVariant,
           style = MaterialTheme.typography.bodyLarge,
       )
       action?.invoke()
