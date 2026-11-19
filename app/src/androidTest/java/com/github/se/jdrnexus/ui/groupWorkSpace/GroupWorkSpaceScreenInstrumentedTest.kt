@@ -349,6 +349,7 @@ class GroupWorkSpaceScreenInstrumentedTest {
   fun actionMenuTogglesCreateAndFileActions() {
     showScreen(WorkspaceFakeRepository(), Role.GAME_MASTER)
     composeTestRule.onAllNodesWithTag(C.Tag.workspace_create_item, true).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_add_file, true).assertCountEquals(0)
 
     openActions()
     composeTestRule.onNodeWithTag(C.Tag.workspace_create_item, true).assertIsDisplayed()
