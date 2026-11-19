@@ -20,7 +20,7 @@ interface NotificationRepository {
    * @return [Result.success] after the write completes, or [Result.failure] when validation or
    *   persistence fails.
    */
-  suspend fun createNotification(notification: Notification, senderId: String): Result<Unit>
+  suspend fun createNotification(notification: Notification): Result<Unit>
 
   /**
    * Observes notifications belonging to [userId], newest first.

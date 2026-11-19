@@ -64,8 +64,8 @@ class NotificationRepositoryFirestoreTest {
                 title = "Update",
                 message = "Campaign updated.",
                 groupId = null,
+                senderId = "someone-else",
             ),
-            senderId = "someone-else",
         )
 
     assertTrue(result.isFailure)
@@ -100,7 +100,9 @@ class NotificationRepositoryFirestoreTest {
 
   @Test
   fun createsAndRetrievesNotificationsForOnlyTheTargetUser() = runBlocking {
-    repository
+    val gmFirestore = FirebaseEmulatorTestUtils.signInAs("gm")
+    val gmRepository = NotificationRepositoryFirestore(gmFirestore)
+    gmRepository
         .createNotification(
             Notification(
                 id = "target-notification",
@@ -109,8 +111,8 @@ class NotificationRepositoryFirestoreTest {
                 title = "Invitation",
                 message = "You were invited.",
                 groupId = "group-1",
+                senderId = "gm",
             ),
-            senderId = "target",
         )
         .getOrThrow()
 
@@ -119,7 +121,7 @@ class NotificationRepositoryFirestoreTest {
         "notifications/other-notification",
         mapOf(
             "userId" to "other",
-            "senderId" to "target",
+            "senderId" to "gm",
             "type" to "CAMPAIGN_UPDATE",
             "title" to "Update",
             "message" to "Campaign updated.",
@@ -133,7 +135,28 @@ class NotificationRepositoryFirestoreTest {
 
     assertEquals(listOf("target-notification"), notifications.map { it.id })
     assertEquals(NotificationType.GROUP_INVITATION, notifications.single().type)
+    assertEquals("gm", notifications.single().senderId)
     assertFalse(notifications.single().isRead)
+  }
+
+  @Test
+  fun gameMasterCanInviteAUserOutsideTheGroup() = runBlocking {
+    val gmFirestore = FirebaseEmulatorTestUtils.signInAs("gm")
+    val gmRepository = NotificationRepositoryFirestore(gmFirestore)
+    val result =
+        gmRepository.createNotification(
+            Notification(
+                id = "outsider-invitation",
+                userId = "outsider",
+                type = NotificationType.GROUP_INVITATION,
+                title = "Invitation",
+                message = "Join the campaign.",
+                groupId = "group-1",
+                senderId = "gm",
+            ),
+        )
+
+    assertTrue(result.isSuccess)
   }
 
   @Test
@@ -146,8 +169,9 @@ class NotificationRepositoryFirestoreTest {
                 type = NotificationType.MEMBERSHIP_CHANGE,
                 title = "Membership",
                 message = "A member joined.",
+                groupId = "group-1",
+                senderId = "target",
             ),
-            senderId = "target",
         )
         .getOrThrow()
 
@@ -186,8 +210,9 @@ class NotificationRepositoryFirestoreTest {
                   userId = "target",
                   title = id,
                   message = "Message",
+                  groupId = "group-1",
+                  senderId = "target",
               ),
-              senderId = "target",
           )
           .getOrThrow()
     }
@@ -208,7 +233,7 @@ class NotificationRepositoryFirestoreTest {
         "notifications/unknown-type",
         mapOf(
             "userId" to "target",
-            "senderId" to "target",
+            "senderId" to "gm",
             "type" to "UNKNOWN_TYPE",
             "title" to "Malformed",
             "message" to "Ignored",
@@ -245,8 +270,11 @@ class NotificationRepositoryFirestoreTest {
   fun rejectsNotificationsWithoutATargetUser() = runBlocking {
     val result =
         repository.createNotification(
-            Notification(title = "Missing target", message = "Message"),
-            senderId = "target",
+            Notification(
+                title = "Missing target",
+                message = "Message",
+                senderId = "gm",
+            ),
         )
 
     assertTrue(result.isFailure)
