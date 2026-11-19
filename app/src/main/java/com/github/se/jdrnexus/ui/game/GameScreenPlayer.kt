@@ -55,6 +55,10 @@ import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 
+// Placeholder until roll modifiers can be derived from the character's stats.
+private const val PLACEHOLDER_DICE_MODIFIER = 0
+
+/** Displays the player's character sheet and saves pending edits before navigating away. */
 @Composable
 fun GameScreenPlayer(
     groupId: String,
@@ -277,7 +281,7 @@ private fun GameScreenPlayerContent(
                 Text("Value: ${stat.value}")
               }
               OutlinedButton(
-                  onClick = { onOpenDice(0) },
+                  onClick = { onOpenDice(PLACEHOLDER_DICE_MODIFIER) },
                   modifier = Modifier.testTag(C.Tag.gamePlayerStatRoll(stat.statID)),
               ) {
                 Text("Modifier +0 · Roll")
