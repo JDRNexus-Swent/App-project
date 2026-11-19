@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.game
 
 import androidx.activity.compose.BackHandler
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -29,12 +31,14 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,20 +53,16 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
 import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import kotlinx.coroutines.launch
 
 object GameScreenPlayerTestTags {
-  const val BACK = "game_player_back"
   const val LOADING = "game_player_loading"
   const val EMPTY = "game_player_empty"
   const val ERROR = "game_player_error"
   const val CHARACTER_NAME = "game_player_character_name"
-  const val CURRENT_HP = "game_player_current_hp"
-  const val HP_DECREASE = "game_player_hp_decrease"
-  const val HP_INCREASE = "game_player_hp_increase"
-  const val SAVE = "game_player_save"
   const val SAVING = "game_player_saving"
-  const val SAVE_SUCCESS = "game_player_save_success"
   const val WORKSPACE = "game_player_workspace"
 
   fun statRoll(statId: String) = "game_player_stat_roll_$statId"
@@ -77,20 +77,26 @@ fun GameScreenPlayer(
     onBack: () -> Unit,
     onOpenDice: (Int) -> Unit,
     onOpenGroupWorkspace: (String) -> Unit,
-    onTabSelected: (String) -> Unit = {},
+    onTabSelected: (String) -> Unit,
 ) {
   val uiState by viewModel.uiState.collectAsState()
+  val scope = rememberCoroutineScope()
   var wasSaving by remember { mutableStateOf(false) }
   var saveSucceeded by remember { mutableStateOf(false) }
+  var isLeaving by remember { mutableStateOf(false) }
+  var leaveError by remember { mutableStateOf<String?>(null) }
+  val hasUnsavedChanges = uiState.character?.hasUnsavedChanges == true
 
   LaunchedEffect(groupId) { viewModel.loadSession(groupId) }
-  LaunchedEffect(uiState.isSaving, uiState.error) {
+  LaunchedEffect(uiState.isSaving, uiState.error, hasUnsavedChanges) {
     if (uiState.isSaving) {
       wasSaving = true
       saveSucceeded = false
     } else if (wasSaving) {
-      saveSucceeded = uiState.error == null
+      saveSucceeded = uiState.error == null && !hasUnsavedChanges
       wasSaving = false
+    } else if (hasUnsavedChanges) {
+      saveSucceeded = false
     }
   }
 
@@ -101,11 +107,51 @@ fun GameScreenPlayer(
       viewModel.saveCharacter()
     }
   }
-  val leaveScreen = {
-    saveCharacter()
-    onBack()
+  val leaveScreen: () -> Unit = {
+    if (!isLeaving && leaveError == null) {
+      isLeaving = true
+      scope.launch {
+        try {
+          viewModel
+              .savePendingChanges()
+              .fold(
+                  onSuccess = { onBack() },
+                  onFailure = { leaveError = it.message ?: "Unable to save this character." },
+              )
+        } finally {
+          isLeaving = false
+        }
+      }
+    }
   }
   BackHandler(onBack = leaveScreen)
+
+  leaveError?.let { message ->
+    AlertDialog(
+        onDismissRequest = { leaveError = null },
+        title = { Text("Changes could not be saved") },
+        text = { Text(message, Modifier.testTag(C.Tag.game_player_leave_error)) },
+        confirmButton = {
+          TextButton(
+              onClick = {
+                leaveError = null
+                onBack()
+              },
+              modifier = Modifier.testTag(C.Tag.game_player_leave_anyway),
+          ) {
+            Text("Leave anyway")
+          }
+        },
+        dismissButton = {
+          TextButton(
+              onClick = { leaveError = null },
+              modifier = Modifier.testTag(C.Tag.game_player_stay),
+          ) {
+            Text("Stay")
+          }
+        },
+    )
+  }
 
   GameScreenPlayerContent(
       uiState = uiState,
@@ -164,7 +210,7 @@ private fun GameScreenPlayerContent(
         ) {
           OutlinedButton(
               onClick = onBack,
-              modifier = Modifier.testTag(GameScreenPlayerTestTags.BACK),
+              modifier = Modifier.testTag(C.Tag.game_player_back),
           ) {
             Text("Back")
           }
@@ -225,7 +271,7 @@ private fun GameScreenPlayerContent(
               NumericField(
                   value = sheet.hp.current.toString(),
                   error = uiState.hpError,
-                  modifier = Modifier.fillMaxWidth().testTag(GameScreenPlayerTestTags.CURRENT_HP),
+                  modifier = Modifier.fillMaxWidth().testTag(C.Tag.game_player_current_hp),
                   onValidValue = onHpChanged,
               )
               Row(
@@ -235,14 +281,14 @@ private fun GameScreenPlayerContent(
                 OutlinedButton(
                     onClick = { onHpChanged(sheet.hp.current - 1) },
                     enabled = sheet.hp.current > 0,
-                    modifier = Modifier.weight(1f).testTag(GameScreenPlayerTestTags.HP_DECREASE),
+                    modifier = Modifier.weight(1f).testTag(C.Tag.game_player_hp_decrease),
                 ) {
                   Text("Take damage (−)")
                 }
                 OutlinedButton(
                     onClick = { onHpChanged(sheet.hp.current + 1) },
-                    enabled = sheet.hp.current < Int.MAX_VALUE,
-                    modifier = Modifier.weight(1f).testTag(GameScreenPlayerTestTags.HP_INCREASE),
+                    enabled = sheet.hp.current < sheet.hp.max,
+                    modifier = Modifier.weight(1f).testTag(C.Tag.game_player_hp_increase),
                 ) {
                   Text("Heal (+)")
                 }
@@ -303,7 +349,7 @@ private fun GameScreenPlayerContent(
             item {
               Button(
                   onClick = onSave,
-                  modifier = Modifier.fillMaxWidth().testTag(GameScreenPlayerTestTags.SAVE),
+                  modifier = Modifier.fillMaxWidth().testTag(C.Tag.game_player_save),
               ) {
                 Text("Save Changes")
               }
@@ -314,7 +360,7 @@ private fun GameScreenPlayerContent(
               Text(
                   "Changes saved.",
                   color = MaterialTheme.colorScheme.primary,
-                  modifier = Modifier.testTag(GameScreenPlayerTestTags.SAVE_SUCCESS),
+                  modifier = Modifier.testTag(C.Tag.game_player_save_success),
               )
             }
           }
@@ -353,7 +399,7 @@ private fun NumericField(
     modifier: Modifier,
     onValidValue: (Int) -> Unit,
 ) {
-  var draft by remember(value) { mutableStateOf(value) }
+  var draft by remember { mutableStateOf(value) }
   var isFocused by remember { mutableStateOf(false) }
   var hasInvalidInput by remember { mutableStateOf(false) }
   val displayedError = if (hasInvalidInput) "Enter a whole number." else error

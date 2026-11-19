@@ -1,10 +1,14 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.game
 
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -20,7 +24,9 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
 import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -71,13 +77,13 @@ class GameScreenPlayerTest {
     val viewModel = FakeGamePlayerViewModel()
     setContent(viewModel)
 
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.HP_DECREASE).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.game_player_hp_decrease).performClick()
     assertEquals(17, viewModel.selectedCharacter().character.hp.current)
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.HP_INCREASE).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.game_player_hp_increase).performClick()
     assertEquals(18, viewModel.selectedCharacter().character.hp.current)
     assertEquals(listOf(17, 18), viewModel.hpUpdates)
 
-    val hpInput = composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.CURRENT_HP)
+    val hpInput = composeTestRule.onNodeWithTag(C.Tag.game_player_current_hp)
     hpInput.performTextClearance()
     hpInput.performTextInput("not-a-number")
     composeTestRule.onNodeWithText("Enter a whole number.").assertIsDisplayed()
@@ -100,7 +106,7 @@ class GameScreenPlayerTest {
         )
     setContent(FakeGamePlayerViewModel(state))
 
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.HP_DECREASE).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.game_player_hp_decrease).assertIsNotEnabled()
     composeTestRule
         .onAllNodesWithText("HP must be between 0 and 24.")
         .assertCountEquals(1) // not very relevant, just show an hp error is displayed
@@ -111,7 +117,7 @@ class GameScreenPlayerTest {
     val viewModel = FakeGamePlayerViewModel()
     setContent(viewModel)
 
-    val hpInput = composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.CURRENT_HP)
+    val hpInput = composeTestRule.onNodeWithTag(C.Tag.game_player_current_hp)
     hpInput.performTextClearance()
     hpInput.performTextInput("25")
 
@@ -123,6 +129,28 @@ class GameScreenPlayerTest {
 
     composeTestRule.onAllNodesWithText("HP must be between 0 and 24.").assertCountEquals(0)
     assertEquals(24, viewModel.selectedCharacter().character.hp.current)
+  }
+
+  @Test
+  fun fullHealthDisablesHealing() {
+    val viewModel = FakeGamePlayerViewModel()
+    viewModel.updateCharacterHp(24)
+    setContent(viewModel)
+
+    composeTestRule.onNodeWithTag(C.Tag.game_player_hp_increase).assertIsNotEnabled()
+  }
+
+  @Test
+  fun focusedHpFieldPreservesLeadingZero() {
+    val viewModel = FakeGamePlayerViewModel()
+    setContent(viewModel)
+    val hpInput = composeTestRule.onNodeWithTag(C.Tag.game_player_current_hp)
+
+    hpInput.performTextClearance()
+    hpInput.performTextInput("05")
+
+    hpInput.assert(hasText("05"))
+    assertEquals(listOf(5), viewModel.hpUpdates)
   }
 
   @Test
@@ -141,7 +169,7 @@ class GameScreenPlayerTest {
         )
     setContent(FakeGamePlayerViewModel(state))
 
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.HP_INCREASE).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.game_player_hp_increase).assertIsNotEnabled()
     composeTestRule.onNodeWithText("Max HP: ${Int.MAX_VALUE}").assertIsDisplayed()
   }
 
@@ -150,52 +178,92 @@ class GameScreenPlayerTest {
     val viewModel = FakeGamePlayerViewModel()
     setContent(viewModel)
 
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.HP_DECREASE).performClick()
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.SAVE).performScrollTo().performClick()
+    composeTestRule.onNodeWithTag(C.Tag.game_player_hp_decrease).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.game_player_save).performScrollTo().performClick()
     assertEquals(1, viewModel.saveCalls)
 
     composeTestRule.onNodeWithText("Saving changes...").performScrollTo().assertIsDisplayed()
-    composeTestRule.onAllNodesWithTag(GameScreenPlayerTestTags.SAVE).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(C.Tag.game_player_save).assertCountEquals(0)
 
     viewModel.setState(viewModel.uiState.value.copy(isSaving = false, error = "Save failed."))
     composeTestRule.onNodeWithText("Save failed.").performScrollTo().assertIsDisplayed()
     assertEquals(17, viewModel.selectedCharacter().character.hp.current)
 
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.SAVE).performScrollTo().performClick()
+    composeTestRule.onNodeWithTag(C.Tag.game_player_save).performScrollTo().performClick()
     assertEquals(2, viewModel.saveCalls)
     composeTestRule.waitForIdle()
-    viewModel.setState(viewModel.uiState.value.copy(isSaving = false))
+    viewModel.completeSave()
     composeTestRule
-        .onNodeWithTag(GameScreenPlayerTestTags.SAVE_SUCCESS)
+        .onNodeWithTag(C.Tag.game_player_save_success)
         .performScrollTo()
         .assertIsDisplayed()
   }
 
   @Test
-  fun leavingScreenSavesUnsavedCharacterChanges() {
+  fun newHpEditClearsSaveConfirmation() {
     val viewModel = FakeGamePlayerViewModel()
+    setContent(viewModel)
+    val damage = composeTestRule.onNodeWithTag(C.Tag.game_player_hp_decrease)
+    damage.performClick()
+    composeTestRule.onNodeWithTag(C.Tag.game_player_save).performScrollTo().performClick()
+    composeTestRule.waitForIdle()
+    viewModel.completeSave()
+    composeTestRule
+        .onNodeWithTag(C.Tag.game_player_save_success)
+        .performScrollTo()
+        .assertIsDisplayed()
+
+    damage.performScrollTo().performClick()
+
+    composeTestRule.onNodeWithTag(C.Tag.game_player_save).performScrollTo()
+    composeTestRule.onAllNodesWithTag(C.Tag.game_player_save_success).assertCountEquals(0)
+  }
+
+  @Test
+  fun leavingScreenWaitsForSuccessfulSave() {
+    val pendingSave = CompletableDeferred<Result<Unit>>()
+    val viewModel = FakeGamePlayerViewModel(pendingSave = pendingSave)
     var backs = 0
     setContent(viewModel, onBack = { backs++ })
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.HP_DECREASE).performClick()
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.BACK).performClick()
-    assertEquals(1, viewModel.saveCalls)
+
+    composeTestRule.onNodeWithTag(C.Tag.game_player_back).performClick()
+
+    composeTestRule.waitForIdle()
+    assertEquals(0, backs)
+    pendingSave.complete(Result.success(Unit))
+    composeTestRule.waitForIdle()
     assertEquals(1, backs)
   }
 
   @Test
-  fun leavingDuringSaveSubmitsHpEditsMadeAfterTheInFlightSnapshot() {
-    val viewModel = FakeGamePlayerViewModel()
-    setContent(viewModel)
+  fun stayingAfterFailedAutoSavePreservesUnsavedHp() {
+    val pendingSave = CompletableDeferred<Result<Unit>>()
+    val viewModel = FakeGamePlayerViewModel(pendingSave = pendingSave)
+    var backs = 0
+    setContent(viewModel, onBack = { backs++ })
+    composeTestRule.onNodeWithTag(C.Tag.game_player_hp_decrease).performClick()
+    failSaveOnBack(pendingSave)
 
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.HP_DECREASE).performClick()
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.SAVE).performScrollTo().performClick()
-    assertEquals(listOf(17), viewModel.savedHpValues)
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.HP_INCREASE).performClick()
-    assertEquals(18, viewModel.selectedCharacter().character.hp.current)
+    composeTestRule.onNodeWithTag(C.Tag.game_player_stay).performClick()
 
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.BACK).performScrollTo().performClick()
+    composeTestRule.onAllNodesWithTag(C.Tag.game_player_leave_error).assertCountEquals(0)
+    assertEquals(0, backs)
+    assertEquals(17, viewModel.selectedCharacter().character.hp.current)
+    assertEquals(true, viewModel.selectedCharacter().hasUnsavedChanges)
+  }
 
-    assertEquals(listOf(17, 18), viewModel.savedHpValues)
+  @Test
+  fun confirmingLeaveAfterFailedAutoSaveNavigatesBack() {
+    val pendingSave = CompletableDeferred<Result<Unit>>()
+    val viewModel = FakeGamePlayerViewModel(pendingSave = pendingSave)
+    var backs = 0
+    setContent(viewModel, onBack = { backs++ })
+    failSaveOnBack(pendingSave)
+    assertEquals(0, backs)
+
+    composeTestRule.onNodeWithTag(C.Tag.game_player_leave_anyway).performClick()
+
+    assertEquals(1, backs)
   }
 
   @Test
@@ -222,14 +290,14 @@ class GameScreenPlayerTest {
     composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.ERROR).assertIsDisplayed()
     composeTestRule.onNodeWithText("Session unavailable.").assertIsDisplayed()
     composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.WORKSPACE).assertIsNotEnabled()
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.BACK).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.game_player_back).performClick()
 
     assertEquals(0, viewModel.saveCalls)
     assertEquals(1, backs)
   }
 
   @Test
-  fun groupChangeReloadsSessionAndDefaultTabCallbackIsSafe() {
+  fun groupChangeReloadsSession() {
     val viewModel = FakeGamePlayerViewModel()
     val groupId = mutableStateOf("group-1")
     composeTestRule.setContent {
@@ -240,19 +308,27 @@ class GameScreenPlayerTest {
             onBack = {},
             onOpenDice = {},
             onOpenGroupWorkspace = {},
+            onTabSelected = {},
         )
       }
     }
 
     assertEquals(listOf("group-1"), viewModel.loadedGroups)
-    // clicking is not really useful for now, clicking on home tab do nothing ?
-    composeTestRule.onNodeWithTag(GameScreenPlayerTestTags.navigationTab("Home")).performClick()
     composeTestRule.runOnIdle { groupId.value = "group-2" }
     composeTestRule.waitForIdle()
     composeTestRule.runOnIdle { groupId.value = "group-3" }
     composeTestRule.waitForIdle()
 
     assertEquals(listOf("group-1", "group-2", "group-3"), viewModel.loadedGroups)
+  }
+
+  private fun failSaveOnBack(pendingSave: CompletableDeferred<Result<Unit>>) {
+    composeTestRule.onNodeWithTag(C.Tag.game_player_back).performClick()
+    pendingSave.complete(Result.failure(IllegalStateException("Save failed.")))
+    composeTestRule
+        .onNodeWithTag(C.Tag.game_player_leave_error)
+        .assertIsDisplayed()
+        .assertTextEquals("Save failed.")
   }
 
   private fun setContent(
@@ -278,11 +354,11 @@ class GameScreenPlayerTest {
 
   private class FakeGamePlayerViewModel(
       initialState: GamePlayerUiState = initialGameState(),
+      private val pendingSave: CompletableDeferred<Result<Unit>>? = null,
   ) : GamePlayerInterfaceVM {
     override val uiState = MutableStateFlow(initialState)
     val loadedGroups = mutableListOf<String>()
     val hpUpdates = mutableListOf<Int>()
-    val savedHpValues = mutableListOf<Int>()
     var saveCalls = 0
       private set
 
@@ -314,15 +390,25 @@ class GameScreenPlayerTest {
 
     override fun saveCharacter() {
       saveCalls++
-      savedHpValues += selectedCharacter().character.hp.current
       uiState.value = uiState.value.copy(isSaving = true, error = null)
     }
+
+    override suspend fun savePendingChanges(): Result<Unit> =
+        pendingSave?.await() ?: Result.success(Unit)
 
     override fun dismissError() {
       uiState.value = uiState.value.copy(error = null, hpError = null)
     }
 
     fun selectedCharacter() = requireNotNull(uiState.value.character)
+
+    fun completeSave() {
+      uiState.value =
+          uiState.value.copy(
+              isSaving = false,
+              character = selectedCharacter().copy(hasUnsavedChanges = false),
+          )
+    }
 
     fun setState(state: GamePlayerUiState) {
       uiState.value = state

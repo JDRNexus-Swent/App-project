@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.game
 
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
@@ -27,11 +28,14 @@ import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.SIGNED_OUT_E
 import com.github.se.jdrnexus.utils.MainDispatcherRule
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -288,6 +292,64 @@ class GamePlayerViewModelTest {
     assertFalse(viewModel.uiState.value.isSaving)
     assertFalse(viewModel.uiState.value.character!!.hasUnsavedChanges)
     assertNull(viewModel.uiState.value.error)
+  }
+
+  @Test
+  fun savingPendingChangesSkipsWritesForACleanSheet() = runTest {
+    val (viewModel, workspace) = ownSheetSession()
+    viewModel.loadSession(group.id)
+    runCurrent()
+
+    val result = viewModel.savePendingChanges()
+
+    assertEquals(Result.success(Unit), result)
+    assertEquals(emptyList<JDRFile>(), workspace.updatedFiles)
+  }
+
+  @Test
+  fun savingPendingChangesWritesNewerHpAfterAnInFlightSave() = runTest {
+    val saveGate = CompletableDeferred<Unit>()
+    val workspace =
+        FakeWorkspaceRepository(
+            group.id to listOf(characterFile("own", player.uid)),
+            updateGate = saveGate,
+        )
+    val viewModel = createViewModel(workspace)
+    viewModel.loadSession(group.id)
+    runCurrent()
+    viewModel.updateCharacterHp(3)
+    viewModel.saveCharacter()
+    runCurrent()
+    viewModel.updateCharacterHp(7)
+
+    val save = async(start = CoroutineStart.UNDISPATCHED) { viewModel.savePendingChanges() }
+    saveGate.complete(Unit)
+    save.await()
+
+    assertEquals(
+        listOf(3, 7),
+        workspace.updatedFiles.map { JDRFileJsonCodec.deserializeCharacter(it.content).hp.current },
+    )
+  }
+
+  @Test
+  fun savingPendingChangesReturnsFailureAndPreservesTheEdit() = runTest {
+    val workspace =
+        FakeWorkspaceRepository(
+            group.id to listOf(characterFile("own", player.uid)),
+            updateResult = Result.failure(IllegalStateException("Permission denied")),
+        )
+    val viewModel = createViewModel(workspace)
+    viewModel.loadSession(group.id)
+    runCurrent()
+    viewModel.updateCharacterHp(7)
+
+    val result = viewModel.savePendingChanges()
+
+    assertEquals("Permission denied", result.exceptionOrNull()?.message)
+    val character = requireNotNull(viewModel.uiState.value.character)
+    assertEquals(7, character.character.hp.current)
+    assertTrue(character.hasUnsavedChanges)
   }
 
   @Test

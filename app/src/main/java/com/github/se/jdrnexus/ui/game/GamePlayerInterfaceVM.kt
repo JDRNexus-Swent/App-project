@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.game
 
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
@@ -53,6 +54,9 @@ interface GamePlayerInterfaceVM {
 
   /** Persists the player's character so that the other participants receive the change. */
   fun saveCharacter()
+
+  /** Waits for any active write and persists remaining edits, returning the save outcome. */
+  suspend fun savePendingChanges(): Result<Unit>
 
   /** Clears [GamePlayerUiState.error] after the screen has displayed it. */
   fun dismissError()

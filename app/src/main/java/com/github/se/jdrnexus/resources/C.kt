@@ -1,3 +1,4 @@
+// Co-authored-by: Codex <noreply@openai.com>
 package com.github.se.jdrnexus.resources
 
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
@@ -17,6 +18,16 @@ package com.github.se.jdrnexus.resources
  */
 object C {
   object Tag {
+    const val game_player_back = "game_player_back"
+    const val game_player_current_hp = "game_player_current_hp"
+    const val game_player_hp_decrease = "game_player_hp_decrease"
+    const val game_player_hp_increase = "game_player_hp_increase"
+    const val game_player_save = "game_player_save"
+    const val game_player_save_success = "game_player_save_success"
+    const val game_player_leave_error = "game_player_leave_error"
+    const val game_player_leave_anyway = "game_player_leave_anyway"
+    const val game_player_stay = "game_player_stay"
+
     const val main_screen_container = "main_screen_container"
 
     const val shared_top_bar = "shared_top_bar"

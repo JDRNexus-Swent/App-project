@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.game
 
 import androidx.lifecycle.ViewModel
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -141,6 +143,28 @@ class GamePlayerViewModel(
         }
       }
     }
+  }
+
+  override suspend fun savePendingChanges(): Result<Unit> {
+    var state = uiState.value
+    if (state.isSaving) {
+      state = uiState.first { !it.isSaving }
+      state.error?.let {
+        return Result.failure(IllegalStateException(it))
+      }
+    }
+    while (state.character?.hasUnsavedChanges == true) {
+      val attempted = state.character
+      saveCharacter()
+      state = uiState.first { !it.isSaving }
+      state.error?.let {
+        return Result.failure(IllegalStateException(it))
+      }
+      if (state.character == attempted) {
+        return Result.failure(IllegalStateException(SAVE_ERROR))
+      }
+    }
+    return Result.success(Unit)
   }
 
   override fun dismissError() {
