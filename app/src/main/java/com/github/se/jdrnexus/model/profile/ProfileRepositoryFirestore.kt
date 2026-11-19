@@ -3,6 +3,7 @@ package com.github.se.jdrnexus.model.profile
 
 import android.net.Uri
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryFirestore
 import com.github.se.jdrnexus.model.personalSpace.safeFirestoreRequest
 import com.google.firebase.firestore.AggregateSource
 import com.google.firebase.firestore.FirebaseFirestore
@@ -58,7 +59,7 @@ class ProfileRepositoryFirestore(private val firestore: FirebaseFirestore) : Pro
                 .whereArrayContains("participantIds", userId)
         val ownFiles =
             firestore
-                .collection(DOCUMENTS_COLLECTION_PATH)
+                .collection(WorkspaceRepositoryFirestore.COLLECTION_PATH)
                 .whereEqualTo("ownerId", userId)
                 .whereIn("type", listOf(DocumentType.TEXT.name, DocumentType.CHARACTER.name))
         coroutineScope {
@@ -89,6 +90,5 @@ class ProfileRepositoryFirestore(private val firestore: FirebaseFirestore) : Pro
     const val UPLOAD_NOT_AVAILABLE_MESSAGE = "Profile picture upload is not available yet."
 
     private const val GROUPS_COLLECTION_PATH = "campaign_groups"
-    private const val DOCUMENTS_COLLECTION_PATH = "documents"
   }
 }

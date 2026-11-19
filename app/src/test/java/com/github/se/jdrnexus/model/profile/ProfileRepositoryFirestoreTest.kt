@@ -216,6 +216,18 @@ class ProfileRepositoryFirestoreTest {
   }
 
   @Test
+  fun updateProfileAcceptsValuesAtTheLimits() = runBlocking {
+    val shortest = "a".repeat(3)
+    val longest = "a".repeat(30)
+    val longestBio = "b".repeat(300)
+
+    assertEquals(Unit, repository.updateProfile(USER_ID, shortest, longestBio).getOrNull())
+    assertEquals(StoredProfile(shortest, longestBio), storedProfile(USER_ID))
+    assertEquals(Unit, repository.updateProfile(USER_ID, longest, BIO).getOrNull())
+    assertEquals(StoredProfile(longest, BIO), storedProfile(USER_ID))
+  }
+
+  @Test
   fun profileWithoutUsernameIsDenied() = runBlocking {
     // The repository always sends a username, so this checks the rule directly.
     val profile = firestore.collection(PROFILES_COLLECTION_PATH).document(USER_ID)
@@ -224,6 +236,41 @@ class ProfileRepositoryFirestoreTest {
 
     assertPermissionDenied(result)
     assertNull(storedProfile(USER_ID))
+  }
+
+  @Test
+  fun profileWithExtraFieldIsDenied() = runBlocking {
+    val profile = firestore.collection(PROFILES_COLLECTION_PATH).document(USER_ID)
+
+    val result = runCatching {
+      profile.set(mapOf("username" to USERNAME, "bio" to BIO, "role" to "admin")).await()
+    }
+
+    assertPermissionDenied(result)
+    assertNull(storedProfile(USER_ID))
+  }
+
+  @Test
+  fun profileWithNonStringPictureUrlIsDenied() = runBlocking {
+    val profile = firestore.collection(PROFILES_COLLECTION_PATH).document(USER_ID)
+
+    val result = runCatching {
+      profile.set(mapOf("username" to USERNAME, "bio" to BIO, "pictureUrl" to 42)).await()
+    }
+
+    assertPermissionDenied(result)
+    assertNull(storedProfile(USER_ID))
+  }
+
+  @Test
+  fun profileDeletionIsDenied() = runBlocking {
+    seedProfile(USER_ID, mapOf("username" to USERNAME, "bio" to BIO, "pictureUrl" to PICTURE_URL))
+    val profile = firestore.collection(PROFILES_COLLECTION_PATH).document(USER_ID)
+
+    val result = runCatching { profile.delete().await() }
+
+    assertPermissionDenied(result)
+    assertEquals(StoredProfile(USERNAME, BIO, PICTURE_URL), storedProfile(USER_ID))
   }
 
   // ============ uploadProfilePicture ============
@@ -272,6 +319,11 @@ class ProfileRepositoryFirestoreTest {
     val result = repository.getProfileStats("")
 
     assertEquals(BLANK_USER_ID_MESSAGE, result.exceptionOrNull()?.message)
+  }
+
+  @Test
+  fun getProfileStatsIsDeniedForAnotherUser() = runBlocking {
+    assertPermissionDenied(statsOf(OTHER_USER_ID))
   }
 
   companion object {
