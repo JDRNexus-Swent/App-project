@@ -12,6 +12,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.firestore.util.CustomClassMapper
+import com.google.firebase.storage.FirebaseStorage
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Instant
@@ -46,6 +47,7 @@ object FirebaseEmulatorTestUtils {
   private const val EMULATOR_HOST = "127.0.0.1"
   private const val EMULATOR_PORT = 8080
   private const val AUTH_EMULATOR_PORT = 9099
+  private const val STORAGE_EMULATOR_PORT = 9199
 
   /** Firestore refuses batches of more than 500 writes. */
   private const val MAX_BATCH_SIZE = 500
@@ -113,6 +115,19 @@ object FirebaseEmulatorTestUtils {
       }
     }
     return emulatorFirestore(app)
+  }
+
+  /**
+   * Returns a Storage instance on the emulator for the user [uid], like [signInAs] for Firestore,
+   * so a repository under test never reaches the real bucket. Storage requests cannot run under
+   * Robolectric (TESTING.md, section 4.2): upload tests are instrumented.
+   */
+  fun storageAs(uid: String): FirebaseStorage {
+    signInAs(uid)
+    val app = FirebaseApp.getInstance("$EMULATOR_APP_NAME-$uid")
+    return FirebaseStorage.getInstance(app).apply {
+      useEmulator(EMULATOR_HOST, STORAGE_EMULATOR_PORT)
+    }
   }
 
   // The Auth emulator accepts unsigned custom tokens, which lets a test choose the uid.

@@ -80,6 +80,7 @@ How we test, for the team and for AI agents. Every PR that adds or changes code 
 - Test each documented failure (`"Reveal the parent folder first."`, item not in group, above 500 writes) by asserting the error **and** that nothing was written.
 - `mockk` of Firestore classes is acceptable only for paths the emulator cannot reach (a listener error, a thrown exception). Keep those few tests in the same class.
 - Repositories that wrap Firebase behind an interface (`FirebaseAuthClient`) get a fake of that interface for their translation logic, plus an emulator test class for the real errors.
+- **Storage is the exception:** its SDK cannot read the Storage emulator's responses under Robolectric (case-sensitive headers on the JVM). Storage tests go in `app/src/androidTest/` (instrumented, on an Android emulator, e.g. `ProfilePictureUploadTest`); everything else stays in Robolectric.
 
 ### 4.3 ViewModels
 

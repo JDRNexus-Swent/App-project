@@ -1,14 +1,16 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.profile
 
+import android.content.Context
 import android.net.Uri
+import androidx.test.core.app.ApplicationProvider
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.profile.ProfileRepositoryFirestore.Companion.BLANK_USER_ID_MESSAGE
 import com.github.se.jdrnexus.model.profile.ProfileRepositoryFirestore.Companion.PROFILES_COLLECTION_PATH
-import com.github.se.jdrnexus.model.profile.ProfileRepositoryFirestore.Companion.UPLOAD_NOT_AVAILABLE_MESSAGE
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -29,13 +31,21 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class ProfileRepositoryFirestoreTest {
 
+  private val context = ApplicationProvider.getApplicationContext<Context>()
   private lateinit var firestore: FirebaseFirestore
+  private lateinit var storage: FirebaseStorage
   private lateinit var repository: ProfileRepositoryFirestore
 
   @Before
   fun setUp() {
     firestore = FirebaseEmulatorTestUtils.signInAs(USER_ID)
-    repository = ProfileRepositoryFirestore(firestore)
+    storage = FirebaseEmulatorTestUtils.storageAs(USER_ID)
+    repository =
+        ProfileRepositoryFirestore(
+            firestore,
+            storage,
+            ProfilePictureCompressor(context.contentResolver),
+        )
   }
 
   @After
@@ -228,11 +238,13 @@ class ProfileRepositoryFirestoreTest {
 
   // ============ uploadProfilePicture ============
 
-  @Test
-  fun uploadProfilePictureIsNotAvailableYet() = runBlocking {
-    val result = repository.uploadProfilePicture(USER_ID, Uri.parse("content://media/picker/1"))
+  // The upload itself is tested on an Android emulator: androidTest ProfilePictureUploadTest.
 
-    assertEquals(UPLOAD_NOT_AVAILABLE_MESSAGE, result.exceptionOrNull()?.message)
+  @Test
+  fun uploadProfilePictureFailsForBlankUserId() = runBlocking {
+    val result = repository.uploadProfilePicture(" ", Uri.EMPTY)
+
+    assertEquals(BLANK_USER_ID_MESSAGE, result.exceptionOrNull()?.message)
   }
 
   // ============ getProfileStats ============
