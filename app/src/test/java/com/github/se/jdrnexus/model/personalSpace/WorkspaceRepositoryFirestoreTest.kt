@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.personalSpace
 
 import android.os.Looper
@@ -50,8 +51,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 
 /**
- * Those test use firebase emulator WITH TEST SETTING, make sure to activate it with "firebase
- * emulators:exec --config firebase.test.json"
+ * Those tests use the Firestore emulator with the project security rules; start it with "firebase
+ * emulators:exec --only auth,firestore"
  */
 @RunWith(RobolectricTestRunner::class)
 class WorkspaceRepositoryFirestoreTest {
@@ -61,25 +62,43 @@ class WorkspaceRepositoryFirestoreTest {
 
   @Before
   fun setUp() {
-    firestore = FirebaseEmulatorTestUtils.getFirestore()
+    // The repository acts as USER_ID, the owner of the files the tests act on.
+    firestore = FirebaseEmulatorTestUtils.signInAs(USER_ID)
     repository = WorkspaceRepositoryFirestore(firestore)
+    // USER_ID is a member of the groups the tests use.
+    runBlocking {
+      FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(
+          firestore,
+          USER_ID,
+          "group",
+          "other-group",
+          "other",
+      )
+    }
   }
 
   @After
   fun tearDown() {
-    runBlocking { FirebaseEmulatorTestUtils.tearDown(firestore, "documents") }
+    runBlocking { FirebaseEmulatorTestUtils.tearDown(firestore, "documents", "users") }
   }
 
+  // Test setup: the files are written as stored, bypassing the rules (they are not under test).
   private suspend fun persistFiles(vararg files: JDRFile) {
-    files.forEach { file -> firestore.collection("documents").document(file.id).set(file).await() }
+    files.forEach { file ->
+      FirebaseEmulatorTestUtils.writeBypassingRules(firestore, "documents/${file.id}", file)
+    }
   }
 
   /**
-   * Reads [fileId] straight from the emulator, bypassing the repository, so tests check what is
-   * really stored. Returns null if the document does not exist.
+   * Reads [fileId] straight from the emulator, bypassing the repository and the rules, so tests
+   * check what is really stored. Returns null if the document does not exist.
    */
   private suspend fun getPersistedFile(fileId: String): JDRFile? =
-      firestore.collection("documents").document(fileId).get().await().toObject(JDRFile::class.java)
+      FirebaseEmulatorTestUtils.readBypassingRules(
+          firestore,
+          "documents/$fileId",
+          JDRFile::class.java,
+      )
 
   private suspend fun removeItemFromGroupAndPumpMainLooper(
       itemId: String,
@@ -273,6 +292,7 @@ class WorkspaceRepositoryFirestoreTest {
             type = DocumentType.FOLDER,
         )
     persistFiles(folder)
+    FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, USER_ID, groupId)
 
     val failingRepository = spyk(WorkspaceRepositoryFirestore(firestore))
     every { failingRepository.getGroupFolderFiles(folder.id, groupId) } returns
@@ -474,6 +494,7 @@ class WorkspaceRepositoryFirestoreTest {
             type = DocumentType.GROUP_ROOT,
         )
     persistFiles(groupRoot)
+    FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, USER_ID, groupId)
 
     val result = removeItemFromGroupAndPumpMainLooper(groupRoot.id, groupId)
 
@@ -488,7 +509,7 @@ class WorkspaceRepositoryFirestoreTest {
 
   @Test
   fun addItemToGroup_addsTheItemAtTheGroupRoot() = runBlocking {
-    val file = JDRFile(id = "file", name = "Goblin", ownerId = "owner", content = "hp: 7")
+    val file = JDRFile(id = "file", name = "Goblin", ownerId = "A", content = "hp: 7")
     persistFiles(groupRootOf("group"), file)
 
     val result =
@@ -529,7 +550,7 @@ class WorkspaceRepositoryFirestoreTest {
 
   @Test
   fun addItemToGroup_canAddTheItemHidden() = runBlocking {
-    val file = JDRFile(id = "file")
+    val file = JDRFile(id = "file", ownerId = "A")
     persistFiles(groupRootOf("group"), file)
 
     val result =
@@ -544,7 +565,7 @@ class WorkspaceRepositoryFirestoreTest {
   @Test
   fun addItemToGroup_hidesTheItemWhenTheFolderIsHidden() = runBlocking {
     val hiddenFolder = inGroup("folder", "group", "group", DocumentType.FOLDER, isHidden = true)
-    val file = JDRFile(id = "file")
+    val file = JDRFile(id = "file", ownerId = "A")
     persistFiles(groupRootOf("group"), hiddenFolder, file)
 
     val result =
@@ -558,8 +579,8 @@ class WorkspaceRepositoryFirestoreTest {
 
   @Test
   fun addItemToGroup_addsAFolderWithoutItsContent() = runBlocking {
-    val folder = JDRFile(id = "folder", type = DocumentType.FOLDER)
-    val child = JDRFile(id = "child", personalParentId = "folder")
+    val folder = JDRFile(id = "folder", ownerId = "A", type = DocumentType.FOLDER)
+    val child = JDRFile(id = "child", ownerId = "A", personalParentId = "folder")
     persistFiles(groupRootOf("group"), folder, child)
 
     val result =
@@ -621,7 +642,7 @@ class WorkspaceRepositoryFirestoreTest {
   @Test
   fun addItemToGroup_refusesADestinationThatIsNotAFolder() = runBlocking {
     val notAFolder = inGroup("text", "group", "group")
-    val file = JDRFile(id = "file")
+    val file = JDRFile(id = "file", ownerId = "A")
     persistFiles(groupRootOf("group"), notAFolder, file)
 
     val result =
@@ -636,7 +657,7 @@ class WorkspaceRepositoryFirestoreTest {
   @Test
   fun addItemToGroup_refusesADestinationOutsideTheGroup() = runBlocking {
     val foreignFolder = inGroup("folder", "other-group", "other-group", DocumentType.FOLDER)
-    val file = JDRFile(id = "file")
+    val file = JDRFile(id = "file", ownerId = "A")
     persistFiles(groupRootOf("group"), foreignFolder, file)
 
     val result =
@@ -689,11 +710,11 @@ class WorkspaceRepositoryFirestoreTest {
 
   @Test
   fun addItemToGroup_withContent_addsTheWholePersonalTreeKeepingItsStructure() = runBlocking {
-    val folder = JDRFile(id = "folder", ownerId = "owner", type = DocumentType.FOLDER)
+    val folder = JDRFile(id = "folder", ownerId = "A", type = DocumentType.FOLDER)
     val file =
         JDRFile(
             id = "file",
-            ownerId = "owner",
+            ownerId = "A",
             personalParentId = "folder",
             sharedGroupsIds = listOf("other-group"),
             placements = mapOf("other-group" to Placement("other-group")),
@@ -701,12 +722,12 @@ class WorkspaceRepositoryFirestoreTest {
     val subfolder =
         JDRFile(
             id = "subfolder",
-            ownerId = "owner",
+            ownerId = "A",
             personalParentId = "folder",
             type = DocumentType.FOLDER,
         )
-    val deepFile = JDRFile(id = "deep", ownerId = "owner", personalParentId = "subfolder")
-    val unrelated = JDRFile(id = "unrelated", ownerId = "owner")
+    val deepFile = JDRFile(id = "deep", ownerId = "A", personalParentId = "subfolder")
+    val unrelated = JDRFile(id = "unrelated", ownerId = "A")
     persistFiles(groupRootOf("group"), folder, file, subfolder, deepFile, unrelated)
 
     val result =
@@ -728,16 +749,16 @@ class WorkspaceRepositoryFirestoreTest {
   @Test
   fun addItemToGroup_withContent_keepsItemsAlreadyInTheGroupAndPlacesTheirContentUnderThem() =
       runBlocking {
-        val folder = JDRFile(id = "folder", ownerId = "owner", type = DocumentType.FOLDER)
+        val folder = JDRFile(id = "folder", ownerId = "A", type = DocumentType.FOLDER)
         val placed =
             JDRFile(
                     id = "placed",
-                    ownerId = "owner",
+                    ownerId = "A",
                     personalParentId = "folder",
                     type = DocumentType.FOLDER,
                 )
                 .withPlacement("group", Placement("group"))
-        val inside = JDRFile(id = "inside", ownerId = "owner", personalParentId = "placed")
+        val inside = JDRFile(id = "inside", ownerId = "A", personalParentId = "placed")
         persistFiles(groupRootOf("group"), folder, placed, inside)
 
         val result =
@@ -752,8 +773,8 @@ class WorkspaceRepositoryFirestoreTest {
 
   @Test
   fun addItemToGroup_withContent_hidesEverythingWhenAskedTo() = runBlocking {
-    val folder = JDRFile(id = "folder", ownerId = "owner", type = DocumentType.FOLDER)
-    val file = JDRFile(id = "file", ownerId = "owner", personalParentId = "folder")
+    val folder = JDRFile(id = "folder", ownerId = "A", type = DocumentType.FOLDER)
+    val file = JDRFile(id = "file", ownerId = "A", personalParentId = "folder")
     persistFiles(groupRootOf("group"), folder, file)
 
     val result =
@@ -775,8 +796,8 @@ class WorkspaceRepositoryFirestoreTest {
   @Test
   fun addItemToGroup_withContent_hidesEverythingWhenTheDestinationIsHidden() = runBlocking {
     val destination = inGroup("destination", "group", "group", DocumentType.FOLDER, isHidden = true)
-    val folder = JDRFile(id = "folder", ownerId = "owner", type = DocumentType.FOLDER)
-    val file = JDRFile(id = "file", ownerId = "owner", personalParentId = "folder")
+    val folder = JDRFile(id = "folder", ownerId = "A", type = DocumentType.FOLDER)
+    val file = JDRFile(id = "file", ownerId = "A", personalParentId = "folder")
     persistFiles(groupRootOf("group"), destination, folder, file)
 
     val result =
@@ -794,7 +815,7 @@ class WorkspaceRepositoryFirestoreTest {
 
   @Test
   fun addItemToGroup_withContent_ignoresTheOptionForAFileThatIsNotAFolder() = runBlocking {
-    val file = JDRFile(id = "file", ownerId = "owner")
+    val file = JDRFile(id = "file", ownerId = "A")
     persistFiles(groupRootOf("group"), file)
 
     val result =
@@ -807,13 +828,29 @@ class WorkspaceRepositoryFirestoreTest {
   }
 
   @Test
+  fun addItemToGroup_withContent_addsAnEmptyFolderAlone() = runBlocking {
+    val folder = JDRFile(id = "folder", ownerId = "A", type = DocumentType.FOLDER)
+    val sibling = JDRFile(id = "sibling", ownerId = "A")
+    persistFiles(groupRootOf("group"), folder, sibling)
+
+    val result =
+        runAndPumpMainLooper("addItemToGroup") {
+          repository.addItemToGroup("folder", "group", "group", includeContent = true)
+        }
+
+    assertTrue(result.isSuccess)
+    assertEquals(folder.withPlacement("group", Placement("group")), getPersistedFile("folder"))
+    assertEquals(sibling, getPersistedFile("sibling"))
+  }
+
+  @Test
   fun addItemToGroup_withContent_refusesToAddMoreItemsThanOneBatchCanWrite() = runBlocking {
-    val folder = JDRFile(id = "folder", ownerId = "owner", type = DocumentType.FOLDER)
+    val folder = JDRFile(id = "folder", ownerId = "A", type = DocumentType.FOLDER)
     persistFiles(groupRootOf("group"), folder)
     val repositorySpy = spyk(WorkspaceRepositoryFirestore(firestore))
     val children =
-        (1..500).map { JDRFile(id = "child-$it", ownerId = "owner", personalParentId = "folder") }
-    every { repositorySpy.getPersonalFolderFiles("folder", "owner") } returns flowOf(children)
+        (1..500).map { JDRFile(id = "child-$it", ownerId = "A", personalParentId = "folder") }
+    every { repositorySpy.getPersonalFolderFiles("folder", "A") } returns flowOf(children)
 
     val result =
         runAndPumpMainLooper("addItemToGroup") {
@@ -1056,7 +1093,7 @@ class WorkspaceRepositoryFirestoreTest {
 
   @Test
   fun setItemHidden_refusesAnItemThatIsNotInTheGroup() = runBlocking {
-    val file = JDRFile(id = "file")
+    val file = JDRFile(id = "file", ownerId = "A")
     persistFiles(groupRootOf("group"), file)
 
     val result =
@@ -1085,14 +1122,7 @@ class WorkspaceRepositoryFirestoreTest {
     persistFiles(groupRootOf("group"), folder)
     val children = (1..500).map { inGroup("child-$it", "group", "folder") }
     // Write the children to the emulator so the direct query in setItemHidden finds them.
-    val batch = firestore.batch()
-    children.forEach {
-      batch.set(
-          firestore.collection(WorkspaceRepositoryFirestore.COLLECTION_PATH).document(it.id),
-          it,
-      )
-    }
-    batch.commit().await()
+    persistFiles(*children.toTypedArray())
 
     val result =
         runAndPumpMainLooper("setItemHidden") { repository.setItemHidden("folder", "group", true) }
@@ -1185,7 +1215,7 @@ class WorkspaceRepositoryFirestoreTest {
           JDRFile(
               id = fileId,
               name = "Test File",
-              ownerId = "owner1",
+              ownerId = "A",
               type = DocumentType.TEXT,
               content = "Hello World",
           )
@@ -1209,7 +1239,7 @@ class WorkspaceRepositoryFirestoreTest {
       // Empty ID throws IllegalArgumentException in Firebase
       val invalidFile = JDRFile(id = "", name = "Invalid")
       val result = repository.createFile(invalidFile)
-      assertTrue("createFile should fail with empty ID", result.isFailure)
+      assertEquals(IllegalArgumentException::class.java, result.exceptionOrNull()?.javaClass)
     }
   }
 
@@ -1218,7 +1248,7 @@ class WorkspaceRepositoryFirestoreTest {
   fun testUpdateFile() {
     runBlocking {
       val fileId = UUID.randomUUID().toString()
-      val file = JDRFile(id = fileId, name = "Original", ownerId = "owner1")
+      val file = JDRFile(id = fileId, name = "Original", ownerId = "A")
       repository.createFile(file)
 
       val updatedFile = file.copy(name = "Updated", content = "New Content")
@@ -1236,7 +1266,7 @@ class WorkspaceRepositoryFirestoreTest {
   fun updateFile_doesNotOverwriteGroupPlacements() {
     runBlocking {
       val groupId = "group-${UUID.randomUUID()}"
-      val file = JDRFile(id = UUID.randomUUID().toString(), name = "Original", ownerId = "owner1")
+      val file = JDRFile(id = UUID.randomUUID().toString(), name = "Original", ownerId = "A")
       persistFiles(file)
       // The file is shared after the editor loaded its snapshot (which has no placement).
       val shared = file.withPlacement(groupId, Placement(folderId = groupId))
@@ -1261,7 +1291,7 @@ class WorkspaceRepositoryFirestoreTest {
           JDRFile(
               id = "file",
               name = "Original",
-              ownerId = "owner1",
+              ownerId = "A",
               content = "old",
               personalParentId = "folder",
               sharedGroupsIds = listOf("group"),
@@ -1293,10 +1323,13 @@ class WorkspaceRepositoryFirestoreTest {
   fun testUpdateFile_NotFound() {
     runBlocking {
       val fileId = "non_existent_id_for_update"
-      val file = JDRFile(id = fileId, name = "Ghost", ownerId = "owner1")
+      val file = JDRFile(id = fileId, name = "Ghost", ownerId = "A")
 
       val result = repository.updateFile(file.toEdit())
-      assertTrue("updateFile should fail when document does not exist", result.isFailure)
+      assertEquals(
+          FirebaseFirestoreException.Code.NOT_FOUND,
+          (result.exceptionOrNull() as? FirebaseFirestoreException)?.code,
+      )
     }
   }
 
@@ -1306,7 +1339,7 @@ class WorkspaceRepositoryFirestoreTest {
     runBlocking {
       val invalidFile = JDRFile(id = "", name = "Invalid")
       val result = repository.updateFile(invalidFile.toEdit())
-      assertTrue("updateFile should fail with empty ID", result.isFailure)
+      assertEquals(IllegalArgumentException::class.java, result.exceptionOrNull()?.javaClass)
     }
   }
 
@@ -1325,7 +1358,7 @@ class WorkspaceRepositoryFirestoreTest {
   fun testGetFile_Exception() {
     runBlocking {
       val result = repository.getFile("")
-      assertTrue("getFile should fail with empty ID", result.isFailure)
+      assertEquals(IllegalArgumentException::class.java, result.exceptionOrNull()?.javaClass)
     }
   }
 
@@ -1337,7 +1370,7 @@ class WorkspaceRepositoryFirestoreTest {
   fun testGetFileFlow() {
     runBlocking {
       val fileId = UUID.randomUUID().toString()
-      val file = JDRFile(id = fileId, name = "Flow Test")
+      val file = JDRFile(id = fileId, name = "Flow Test", ownerId = USER_ID)
       repository.createFile(file)
 
       val emittedFile = repository.getFileFlow(fileId).waitFor { it != null }
@@ -1365,7 +1398,7 @@ class WorkspaceRepositoryFirestoreTest {
   fun testGetFileFlow_Updates() {
     runBlocking {
       val fileId = UUID.randomUUID().toString()
-      val file = JDRFile(id = fileId, name = "Initial")
+      val file = JDRFile(id = fileId, name = "Initial", ownerId = USER_ID)
       repository.createFile(file)
 
       val latestName = AtomicReference("")
@@ -1391,7 +1424,8 @@ class WorkspaceRepositoryFirestoreTest {
   @Test
   fun testGetPersonalFolderFiles_Root() {
     runBlocking {
-      val ownerId = UUID.randomUUID().toString()
+      // Only the owner may list their personal files: the query is made by the signed-in user.
+      val ownerId = USER_ID
       val file1 =
           JDRFile(
               id = UUID.randomUUID().toString(),
@@ -1418,10 +1452,8 @@ class WorkspaceRepositoryFirestoreTest {
               personalParentId = "parent1",
           )
 
-      repository.createFile(file1)
-      repository.createFile(file2)
-      repository.createFile(fileOtherOwner)
-      repository.createFile(fileWithParent)
+      // The query is under test, not the creation: written as stored, bypassing the rules.
+      persistFiles(file1, file2, fileOtherOwner, fileWithParent)
 
       val files =
           repository.getPersonalFolderFiles(PERSONAL_ROOT_ID, ownerId).waitFor { it.size == 2 }
@@ -1436,7 +1468,7 @@ class WorkspaceRepositoryFirestoreTest {
   @Test
   fun testGetPersonalFolderFiles_Root_Empty() {
     runBlocking {
-      val emptyOwnerId = "empty_owner_id"
+      val emptyOwnerId = "A"
       val files =
           repository.getPersonalFolderFiles(PERSONAL_ROOT_ID, emptyOwnerId).waitFor { it.isEmpty() }
       assertTrue("Should retrieve empty list when no root files exist", files.isEmpty())
@@ -1484,11 +1516,9 @@ class WorkspaceRepositoryFirestoreTest {
               placements = mapOf(groupId to Placement(folderId = groupId)),
           )
 
-      repository.createFile(file1)
-      repository.createFile(file2)
-      repository.createFile(fileOtherGroup)
-      repository.createFile(fileWithParent)
-      repository.createFile(parentFolder)
+      // The query is under test, not the creation: written as stored, bypassing the rules.
+      persistFiles(file1, file2, fileOtherGroup, fileWithParent, parentFolder)
+      FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, USER_ID, groupId)
 
       val files = repository.getGroupFolderFiles(groupId, groupId).waitFor { it.size == 3 }
 
@@ -1505,6 +1535,7 @@ class WorkspaceRepositoryFirestoreTest {
   fun testGetGroupRootFiles_Empty() {
     runBlocking {
       val emptyGroupId = "empty_group_id"
+      FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, USER_ID, emptyGroupId)
       val files =
           repository.getGroupFolderFiles(emptyGroupId, emptyGroupId).waitFor { it.isEmpty() }
       assertTrue("Should retrieve empty list when no group root files exist", files.isEmpty())
@@ -1550,10 +1581,9 @@ class WorkspaceRepositoryFirestoreTest {
               name = "Root File",
           )
 
-      repository.createFile(file1)
-      repository.createFile(file2)
-      repository.createFile(fileOtherFolder)
-      repository.createFile(fileRoot)
+      // The query is under test, not the creation: written as stored, bypassing the rules.
+      persistFiles(file1, file2, fileOtherFolder, fileRoot)
+      FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, USER_ID, groupId)
 
       val files = repository.getGroupFolderFiles(folderId, groupId).waitFor { it.size == 2 }
 
@@ -1569,6 +1599,7 @@ class WorkspaceRepositoryFirestoreTest {
     runBlocking {
       val emptyFolderId = "empty_folder_id"
       val emptyGroupId = "empty_group_id"
+      FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, USER_ID, emptyGroupId)
       val files =
           repository.getGroupFolderFiles(emptyFolderId, emptyGroupId).waitFor { it.isEmpty() }
       assertTrue("Should retrieve empty list when no documents in folder", files.isEmpty())
@@ -1591,7 +1622,9 @@ class WorkspaceRepositoryFirestoreTest {
               placements = mapOf(groupId to Placement(folderId = folderId)),
               name = "File 1",
           )
-      repository.createFile(file1)
+      // The listener is under test: the files are written as stored, bypassing the rules.
+      persistFiles(file1)
+      FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, USER_ID, groupId)
 
       val latestList = AtomicReference(emptyList<JDRFile>())
       val hasEmitted = AtomicBoolean(false)
@@ -1615,7 +1648,7 @@ class WorkspaceRepositoryFirestoreTest {
               placements = mapOf(groupId to Placement(folderId = folderId)),
               name = "File 2",
           )
-      repository.createFile(file2)
+      persistFiles(file2)
 
       FirebaseEmulatorTestUtils.pumpMainLooperUntil { latestList.get().size == 2 }
       assertEquals("List should be updated to 2 items", 2, latestList.get().size)
@@ -1642,7 +1675,7 @@ class WorkspaceRepositoryFirestoreTest {
   fun testOfflineBehavior() {
     runBlocking {
       val fileId = UUID.randomUUID().toString()
-      val file = JDRFile(id = fileId, name = "Offline Test", ownerId = "owner1")
+      val file = JDRFile(id = fileId, name = "Offline Test", ownerId = "A")
 
       // Ensure network is enabled and file is created online
       firestore.enableNetwork().await()
@@ -1662,7 +1695,10 @@ class WorkspaceRepositoryFirestoreTest {
       // When offline, querying a document that was never cached throws an exception
       // (Firebase cannot confirm its non-existence without reaching the server).
       val getNotFoundResult = repository.getFile("non_existent_offline")
-      assertTrue("getFile should fail offline for uncached documents", getNotFoundResult.isFailure)
+      assertEquals(
+          FirebaseFirestoreException.Code.UNAVAILABLE,
+          (getNotFoundResult.exceptionOrNull() as? FirebaseFirestoreException)?.code,
+      )
 
       // Restore network to leave the instance clean
       firestore.enableNetwork().await()
@@ -1679,16 +1715,20 @@ class WorkspaceRepositoryFirestoreTest {
     runBlocking {
       val corruptedData =
           hashMapOf(
-              "ownerId" to "corrupted_owner",
+              "ownerId" to "A",
               "personalParentId" to "",
               "placements" to 12345,
           )
-      firestore.collection("documents").document("corrupted_doc").set(corruptedData).await()
+      // The rules refuse a corrupted document: written bypassing them.
+      FirebaseEmulatorTestUtils.writeBypassingRules(
+          firestore,
+          "documents/corrupted_doc",
+          corruptedData,
+      )
 
       // Listen to the corrupted folder. The catch block will log the error and ignore the file
       // instead of crashing the entire Flow.
-      val files =
-          repository.getPersonalFolderFiles(PERSONAL_ROOT_ID, "corrupted_owner").waitFor { true }
+      val files = repository.getPersonalFolderFiles(PERSONAL_ROOT_ID, "A").waitFor { true }
 
       // Assert the list is empty because the only document was corrupted and thus ignored.
       assertTrue("List should be empty due to parsing failure", files.isEmpty())
@@ -1704,22 +1744,29 @@ class WorkspaceRepositoryFirestoreTest {
   fun testCoroutinesCancellation_IsPropagated() {
     runBlocking {
       val file = JDRFile(id = "cancel_test")
+      // A write that never completes, so the cancellation always happens during the request.
+      val firestoreMock = mockk<FirebaseFirestore>()
+      val collectionMock = mockk<CollectionReference>()
+      val documentMock = mockk<DocumentReference>()
+      every { firestoreMock.collection("documents") } returns collectionMock
+      every { collectionMock.document(file.id) } returns documentMock
+      every { documentMock.set(file) } returns TaskCompletionSource<Void>().task
+      val mockRepository = WorkspaceRepositoryFirestore(firestoreMock)
+
+      // Set if createFile returns after the cancellation instead of rethrowing it.
+      val continuedAfterCancel = AtomicBoolean(false)
 
       // Launch the creation in a separate Job so we can cancel it mid-flight
       val job = launch {
         try {
-          repository.createFile(file)
+          mockRepository.createFile(file)
+          continuedAfterCancel.set(true)
         } catch (e: CancellationException) {
           // This confirms our 'catch (e: CancellationException) { throw e }' works perfectly
           throw e
         }
       }
-      // yield() suspends this main coroutine and forces the dispatcher
-      // to execute the 'job' launched just above.
-      // The job will call Firebase and suspend on the await().
-      // Since we are in Robolectric and not actively pumping the MainLooper,
-      // the job will remain frozen there. Control is immediately returned to us.
-      // This makes the cancellation 100% deterministic without relying on arbitrary delays.
+      // yield() lets the job start: it calls createFile and suspends on the pending write.
       yield()
 
       // Cancel the job immediately before Firestore finishes the network call
@@ -1727,6 +1774,8 @@ class WorkspaceRepositoryFirestoreTest {
       job.join()
 
       assertTrue("Job should be successfully cancelled", job.isCancelled)
+      // isCancelled is true as soon as cancel() is called: only this proves createFile rethrew.
+      assertFalse("createFile must rethrow the cancellation", continuedAfterCancel.get())
     }
   }
 
@@ -1843,5 +1892,10 @@ class WorkspaceRepositoryFirestoreTest {
     } catch (e: Exception) {
       assertTrue(e.message?.contains("Simulated Permission Denied") == true)
     }
+  }
+
+  private companion object {
+    // The signed-in user: the owner ("A") of the files the tests act on.
+    const val USER_ID = "A"
   }
 }

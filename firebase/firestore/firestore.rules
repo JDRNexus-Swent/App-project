@@ -206,19 +206,28 @@ service cloud.firestore {
         && newPlacements().diff(oldPlacements()).affectedKeys().hasOnly(userGroups());
     }
 
+    // Own documents, or documents shared in one of the caller's groups.
+    function canReadDocument() {
+      return resource.data.ownerId == uid()
+        || resource.data.sharedGroupsIds.hasAny(userGroups());
+    }
+
     match /documents/{docId} {
-      // Own documents, or documents shared in one of the caller's groups.
-      allow read: if signedIn()
-        && (resource.data.ownerId == uid()
-            || resource.data.sharedGroupsIds.hasAny(userGroups()));
+      // A get of a missing id is allowed so the app receives "not found" instead of a denial;
+      // it only tells that the id does not exist. Queries only return existing documents.
+      allow get: if signedIn() && (resource == null || canReadDocument());
+      allow list: if signedIn() && canReadDocument();
 
       allow create: if signedIn()
         && (request.resource.data.type == 'GROUP_ROOT'
             ? validGroupRoot(docId)
             : validNewDocument(docId));
 
+      // An update of a missing id is allowed so the app receives "not found" instead of a denial:
+      // an update never creates a document, so nothing can be written this way.
       allow update: if signedIn()
-        && (isOwnEdit()
+        && (resource == null
+            || isOwnEdit()
             || isGroupRootRename(docId)
             || isPlacementAdd(docId)
             || isPlacementRemove()
@@ -310,7 +319,9 @@ service cloud.firestore {
     match /campaign_groups/{groupId} {
       // Membership is part of the query used by GroupRepositoryFirestore.getUserGroups:
       // membership queries must filter on participantIds.
-      allow read: if signedIn() && uid() in resource.data.participantIds;
+      // A get of a missing id is allowed so the app receives "not found" instead of a denial.
+      allow get: if signedIn() && (resource == null || uid() in resource.data.participantIds);
+      allow list: if signedIn() && uid() in resource.data.participantIds;
       allow create: if signedIn() && validNewGroup(groupId);
       allow update: if signedIn()
           && (isGroupMetadataEdit(groupId)
@@ -361,8 +372,10 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
+      // The session (combat, NPCs) is shown to every member; only the GM changes it.
       match /gm_data/{dataId} {
-        allow read, write: if signedIn() && isGm(groupId);
+        allow read: if signedIn() && isMember(groupId);
+        allow write: if signedIn() && isGm(groupId);
       }
 
       match /gm_lore/{loreId} {
@@ -447,6 +460,58 @@ service cloud.firestore {
 
               allow read, delete: if false;
             }
+    }
+
+    // ------------------------------------------------------------------ notifications
+
+    match /notifications/{notificationId} {
+      allow read: if signedIn() && resource.data.userId == uid();
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(
+             ['userId', 'senderId', 'type', 'title', 'message', 'groupId', 'createdAt', 'isRead'])
+        && request.resource.data.keys().hasAll(
+             ['userId', 'senderId', 'type', 'title', 'message', 'createdAt', 'isRead'])
+        && request.resource.data.userId is string
+        && request.resource.data.userId.size() > 0
+        && request.resource.data.senderId is string
+        && request.resource.data.senderId == uid()
+        && request.resource.data.type
+             in ['GROUP_INVITATION', 'MEMBERSHIP_CHANGE', 'CAMPAIGN_UPDATE']
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.isRead is bool
+        && (request.resource.data.get('groupId', null) == null
+            || request.resource.data.groupId is string)
+        && (
+             (request.resource.data.type == 'GROUP_INVITATION'
+              && request.resource.data.groupId is string
+              && exists(groupPath(request.resource.data.groupId))
+              && get(groupPath(request.resource.data.groupId)).data.gameMasterId == uid()
+              && request.resource.data.userId != uid())
+             ||
+             (request.resource.data.type != 'GROUP_INVITATION'
+              && request.resource.data.groupId == null
+              && request.resource.data.userId == uid())
+             ||
+             (request.resource.data.type != 'GROUP_INVITATION'
+              && request.resource.data.groupId is string
+              && exists(groupPath(request.resource.data.groupId))
+              && uid()
+                 in get(groupPath(request.resource.data.groupId)).data.participantIds
+              && request.resource.data.userId
+                 in get(groupPath(request.resource.data.groupId)).data.participantIds)
+           );
+
+      allow update: if signedIn()
+        && resource.data.userId == uid()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])
+        && request.resource.data.isRead is bool;
+
+      allow delete: if signedIn() && resource.data.userId == uid();
     }
 
     // ------------------------------------------------------------------ everything else

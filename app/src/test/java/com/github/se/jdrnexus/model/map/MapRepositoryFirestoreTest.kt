@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.map
 
 import com.firebase.geofire.GeoFireUtils
@@ -14,7 +15,6 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.util.Date
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -25,8 +25,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Those tests use the Firestore emulator WITH TEST SETTINGS, make sure to activate it with
- * "firebase emulators:exec --config firebase.test.json".
+ * Those tests use the Firestore emulator with the project security rules; start it with "firebase
+ * emulators:exec --only auth,firestore".
  */
 @RunWith(RobolectricTestRunner::class)
 class MapRepositoryFirestoreTest {
@@ -36,7 +36,7 @@ class MapRepositoryFirestoreTest {
 
   @Before
   fun setUp() {
-    firestore = FirebaseEmulatorTestUtils.getFirestore()
+    firestore = FirebaseEmulatorTestUtils.signInAs(USER_ID)
     repository = MapRepositoryFirestore(firestore, ZoneOffset.UTC) { NOW }
     runBlocking { FirebaseEmulatorTestUtils.clearCollection(firestore, MAP_SESSIONS_COLLECTION) }
   }
@@ -67,7 +67,12 @@ class MapRepositoryFirestoreTest {
 
   private fun seed(vararg sessions: Pair<String, Map<String, Any?>>) = runBlocking {
     sessions.forEach { (id, data) ->
-      firestore.collection(MAP_SESSIONS_COLLECTION).document(id).set(data).await()
+      // Clients cannot write listings (security rules), so the test setup bypasses them.
+      FirebaseEmulatorTestUtils.writeBypassingRules(
+          firestore,
+          "$MAP_SESSIONS_COLLECTION/$id",
+          data,
+      )
     }
   }
 
@@ -194,5 +199,8 @@ class MapRepositoryFirestoreTest {
   private companion object {
     /** Fixed clock: every seeded session is upcoming unless a test says otherwise. */
     val NOW: Instant = Instant.parse("2026-11-01T00:00:00Z")
+
+    // Any signed-in user may read the listings.
+    const val USER_ID = "map-reader"
   }
 }

@@ -287,6 +287,10 @@ Concurrent writes (a player placing a document in a folder at the moment it leav
 | Read one invitation by its code (`get`) | n/a | yes | yes | yes (signed in) |
 | List invitations | n/a | no | no | no |
 | Join the group with the current code (1.7) | n/a | n/a (already in) | n/a (already in) | yes (signed in), adds only their own uid |
+| Read the game session (`gm_data`) | n/a | yes | yes | no |
+| Write the game session (`gm_data`) | n/a | yes | no | no |
+
+A `get` of an id that does not exist (in `documents` or `campaign_groups`), and an `update` of a missing id in `documents`, are allowed to any signed-in user, so the app receives "not found" instead of a denial. It only tells that the id does not exist, and an update never creates a document.
 
 The rules cannot tell who changes a placement entry (see 7.5): "who may hide or reveal" is enforced by the UI, not by the rules. Reattachments are a side effect of unsharing or deleting a container: they are performed on other users' documents by whoever triggers the cascade, through exception 2 of 7.5.
 
@@ -298,7 +302,7 @@ A user who left a group can join it again with the same code as long as the GM h
 
 ## 9. Group lifecycle (proposed, not implemented)
 
-- **Group deletion:** delete the group and its root. Unshare every document of the group (placements for that group removed). Personal documents are never deleted. Today `deleteGroup` only deletes the group document.
+- **Group deletion:** delete the group and its root. Unshare every document of the group (placements for that group removed). Personal documents are never deleted. Today `deleteGroup` deletes the group, its root, its id in the members' `groupIds` and its invitation, but not its sub-collections nor the placements of the group's documents.
 - **Member leaving or being removed:** their documents leave the group (rule 7.2 applies to their containers, so other members' documents are reattached). Their documents stay in their personal space. Today `removeUserFromGroup` only edits `participantIds`.
 - **Account deletion:** their documents are deleted (rule 7.4). Other members' documents under their folders are reattached.
 - **GM change:** authorization follows `gameMasterId`, so the `ownerId` of the root is irrelevant.

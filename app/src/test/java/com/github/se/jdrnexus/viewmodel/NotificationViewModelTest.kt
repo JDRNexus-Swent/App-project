@@ -8,6 +8,7 @@ import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.utils.MainDispatcherRule
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
@@ -104,6 +105,39 @@ class NotificationViewModelTest {
     assertTrue(viewModel.uiState.value.actionError == null)
   }
 
+  @Test
+  fun signOutClearsNotificationsAndCancelsSubscription() = runTest {
+    val notification =
+        Notification(
+            id = "notification-1",
+            userId = "user-1",
+            type = NotificationType.CAMPAIGN_UPDATE,
+            title = "Update",
+            message = "Campaign updated.",
+        )
+    val authRepository = FakeAuthRepository(AuthUser("user-1", "user@example.com", "User"))
+    val repository =
+        TrackingNotificationRepository(
+            notificationFlow =
+                flow {
+                  emit(listOf(notification))
+                  awaitCancellation()
+                }
+        )
+    val viewModel = NotificationViewModel(repository, authRepository)
+    advanceUntilIdle()
+    assertEquals(NotificationLoadState.Success, viewModel.uiState.value.loadState)
+    assertEquals(listOf(notification), viewModel.uiState.value.notifications)
+    assertEquals(setOf("user-1"), repository.activeUsers)
+
+    authRepository.currentUser.value = null
+    advanceUntilIdle()
+
+    assertEquals(NotificationLoadState.SignedOut, viewModel.uiState.value.loadState)
+    assertTrue(viewModel.uiState.value.notifications.isEmpty())
+    assertTrue(repository.activeUsers.isEmpty())
+  }
+
   private class FakeNotificationRepository(
       private val notifications: Flow<List<Notification>>,
       private val markAsReadResult: Result<Unit> = Result.success(Unit),
@@ -131,8 +165,8 @@ class NotificationViewModelTest {
   }
 
   private class FakeAuthRepository(user: AuthUser?) : AuthRepository {
-    private val state = MutableStateFlow(user)
-    override val authState: Flow<AuthUser?> = state
+    val currentUser = MutableStateFlow(user)
+    override val authState: Flow<AuthUser?> = currentUser
 
     override suspend fun signUpWithEmail(email: String, password: String, username: String) =
         AuthResult.Failure(com.github.se.jdrnexus.model.repository.AuthError.UNKNOWN)
@@ -144,5 +178,31 @@ class NotificationViewModelTest {
         AuthResult.Failure(com.github.se.jdrnexus.model.repository.AuthError.UNKNOWN)
 
     override suspend fun signOut() = AuthResult.Success(Unit)
+  }
+
+  private class TrackingNotificationRepository(
+      private val notificationFlow: Flow<List<Notification>>,
+  ) : NotificationRepository {
+    val activeUsers = mutableSetOf<String>()
+
+    override fun getNewNotificationId() = "new-notification"
+
+    override suspend fun createNotification(notification: Notification) = Result.success(Unit)
+
+    override fun getUserNotifications(userId: String): Flow<List<Notification>> = flow {
+      activeUsers += userId
+      try {
+        notificationFlow.collect { emit(it) }
+      } finally {
+        activeUsers -= userId
+      }
+    }
+
+    override suspend fun markAsRead(notificationId: String, userId: String) = Result.success(Unit)
+
+    override suspend fun markAllAsRead(userId: String) = Result.success(Unit)
+
+    override suspend fun deleteNotification(notificationId: String, userId: String) =
+        Result.success(Unit)
   }
 }

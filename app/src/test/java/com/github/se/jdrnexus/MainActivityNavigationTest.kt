@@ -6,6 +6,7 @@ import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
@@ -45,6 +46,7 @@ import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.dice.FlatDieView
 import com.github.se.jdrnexus.ui.dice.LocalDieView
+import com.github.se.jdrnexus.ui.edition.EditFileCharacterTestTags
 import com.github.se.jdrnexus.ui.edition.EditFileLoreTestTags
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
@@ -312,6 +314,147 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun groupWorkspaceSearchOpensEditorAndReturnsToWorkspace() {
+    val loreFile = loreFile()
+    groupWorkspaceSearchStart(loreFile)
+
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(loreFile.id)).performClick()
+
+    // The selected file must open in the existing lore editor.
+    waitForTag(EditFileLoreTestTags.LIST)
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).assertIsDisplayed()
+
+    // Returning from the editor should restore Group Search.
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.BACK).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).assertIsDisplayed()
+
+    // Returning from Group Search should restore Group Workspace.
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+    waitForText("The Sunken Crown")
+    composeTestRule.onNodeWithTag(C.Tag.search_open).assertIsDisplayed()
+  }
+
+  @Test
+  fun groupSearchOpensAnotherMembersFileReadOnly() {
+    val loreFile = loreFile().copy(ownerId = "another-player")
+    groupWorkspaceSearchStart(loreFile)
+
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(loreFile.id)).performClick()
+
+    waitForTag(EditFileLoreTestTags.LIST)
+    composeTestRule.onNodeWithTag("edit_lore_save").assertIsNotEnabled()
+    composeTestRule.onNodeWithTag("edit_lore_title").assertTextContains("Dragon Lore")
+  }
+
+  @Test
+  fun groupSearchOpensOwnFileWithEditingEnabled() {
+    // The signed-in user-1 owns this file and is a participant of group-1.
+    val loreFile = loreFile().copy(ownerId = "user-1")
+    groupWorkspaceSearchStart(loreFile)
+
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(loreFile.id)).performClick()
+
+    waitForTag(EditFileLoreTestTags.LIST)
+    composeTestRule.onNodeWithTag("edit_lore_save").assertIsEnabled()
+    composeTestRule.onNodeWithTag("edit_lore_title").assertTextContains("Dragon Lore")
+  }
+
+  @Test
+  fun playerCanNavigateToHomeFromGroupWorkspace() {
+    openGroupWorkspaceAsPlayer()
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+
+    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
+  }
+
+  @Test
+  fun playerCanNavigateToGroupManagementFromGroupWorkspace() {
+    openGroupWorkspaceAsPlayer()
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+
+    // The group management screen should display the available workspace.
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).assertIsDisplayed()
+  }
+
+  @Test
+  fun playerCanNavigateToPersonalSpaceFromGroupWorkspace() {
+    openGroupWorkspaceAsPlayer()
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+
+    waitForText("My Space")
+
+    composeTestRule.onNodeWithText("My Space").assertIsDisplayed()
+  }
+
+  @Test
+  fun playerCanNavigateToMapFromGroupWorkspace() {
+    val previousRepository = MapRepositoryProvider.mapRepository
+    MapRepositoryProvider.mapRepository = NoGamesMapRepository()
+
+    try {
+      openGroupWorkspaceAsPlayer()
+
+      composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
+
+      composeTestRule.onNodeWithTag(C.Tag.map_screen).assertIsDisplayed()
+    } finally {
+      MapRepositoryProvider.mapRepository = previousRepository
+    }
+  }
+
+  @Test
+  fun groupWorkspaceFileClickOpensLoreEditor() {
+    val loreFile = loreFile()
+
+    showApp(
+        groupRepository = groupRepository("user-1"),
+        workspaceRepository = NavigationWorkspaceRepository(listOf(loreFile)),
+    )
+    signInAndOpenCampaigns()
+
+    // Open Group Workspace.
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
+
+    waitForText("Dragon Lore")
+
+    // Click the file in the workspace.
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItem(loreFile.id)).performClick()
+
+    // Verify that the lore editor opens.
+    waitForTag(EditFileLoreTestTags.LIST)
+    composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).assertIsDisplayed()
+  }
+
+  // Creating a character opens its editor, and back returns to the workspace.
+  @Test
+  fun groupWorkspaceCreateCharacterOpensEditorAndBackReturnsToWorkspace() {
+    val workspaceRepository = NavigationWorkspaceRepository()
+    showApp(groupRepository = groupRepository(), workspaceRepository = workspaceRepository)
+    signInAndOpenCampaigns()
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
+    waitForTag(C.Tag.workspace_actions_fab)
+
+    composeTestRule.onNodeWithTag(C.Tag.workspace_actions_fab).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_create_item_character).performClick()
+
+    waitForTag(EditFileCharacterTestTags.LIST)
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.LIST).assertIsDisplayed()
+    val created = workspaceRepository.createdFiles.single()
+    assertEquals(DocumentType.CHARACTER, created.type)
+    assertEquals(Placement("group-1", false), created.placements["group-1"])
+
+    composeTestRule.onNodeWithTag(EditFileCharacterTestTags.BACK).performClick()
+    waitForTag(C.Tag.workspace_actions_fab)
+    composeTestRule.onNodeWithTag(C.Tag.workspace_actions_fab).assertIsDisplayed()
+  }
+
+  @Test
   fun backFromLoreReturnsToPersonalSpace() {
     val loreFile = showAuthenticatedApp()
 
@@ -353,7 +496,7 @@ class MainActivityNavigationTest {
 
   @Test
   fun campaignsNavigateToWorkspaceAndBack() {
-    val groupRepository = navigationGroupRepository()
+    val groupRepository = groupRepository("user-1")
     showApp(groupRepository = groupRepository)
     signInAndOpenCampaigns()
 
@@ -367,37 +510,14 @@ class MainActivityNavigationTest {
 
   @Test
   fun groupWorkspaceSearchShowsGroupFilesAndBackReturnsToWorkspace() {
-    val groupRepository = navigationGroupRepository()
-    val loreFile =
-        JDRFile(
-            id = "shared-lore",
-            name = "Dragon Lore",
-            ownerId = "user-1",
-            type = DocumentType.TEXT,
-            content =
-                """{"version":1,"type":"lore","title":"Dragon Lore","sections":[{"sectionID":"history","title":"History","content":"A dragon."}]}""",
-            sharedGroupsIds = listOf("group-1"),
-            placements = mapOf("group-1" to Placement(folderId = "group-1", isHidden = false)),
-        )
-    showApp(
-        groupRepository = groupRepository,
-        workspaceRepository = NavigationWorkspaceRepository(listOf(loreFile)),
-    )
-    signInAndOpenCampaigns()
-
-    waitForTag(C.Tag.enter_workspace_button)
-    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
-    waitForText("The Sunken Crown")
-    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Dragon")
-    waitForTag(C.Tag.searchResult(loreFile.id))
+    groupWorkspaceSearchStart(loreFile())
     composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
     waitForText("The Sunken Crown")
   }
 
   @Test
   fun systemBackFromWorkspaceReturnsToCampaigns() {
-    val groupRepository = navigationGroupRepository()
+    val groupRepository = groupRepository("user-1")
     showApp(groupRepository = groupRepository)
     signInAndOpenCampaigns()
 
@@ -412,7 +532,7 @@ class MainActivityNavigationTest {
 
   @Test
   fun rapidWorkspaceTapsCreateOneDestinationAndOneViewModel() {
-    val groupRepository = navigationGroupRepository()
+    val groupRepository = groupRepository("user-1")
     showApp(groupRepository = groupRepository)
     signInAndOpenCampaigns()
 
@@ -428,7 +548,7 @@ class MainActivityNavigationTest {
 
   @Test
   fun workspaceGroupIdSurvivesSavedStateRestoration() {
-    val groupRepository = navigationGroupRepository()
+    val groupRepository = groupRepository("user-1")
     val authRepository = FakeAuthRepository()
     val restorationTester = StateRestorationTester(composeTestRule)
     val authViewModel = AuthViewModel(authRepository)
@@ -540,7 +660,8 @@ class MainActivityNavigationTest {
           authRepository = authRepository,
           groupRepository = groupRepository,
           workspaceRepository = workspaceRepository,
-          documentSearchViewModel = searchViewModel,
+          personalSearchViewModel = searchViewModel,
+          groupSearchViewModel = searchViewModel,
       )
     }
 
@@ -597,6 +718,43 @@ class MainActivityNavigationTest {
     override suspend fun loadGamesNear(location: MapLocation?): List<MapGame> = emptyList()
   }
 
+  private fun loreFile(): JDRFile =
+      JDRFile(
+          id = "shared-lore",
+          name = "Dragon Lore",
+          ownerId = "user-1",
+          type = DocumentType.TEXT,
+          content =
+              """{"version":1,"type":"lore","title":"Dragon Lore","sections":[{"sectionID":"history","title":"History","content":"A dragon."}]}""",
+          sharedGroupsIds = listOf("group-1"),
+          placements =
+              mapOf(
+                  "group-1" to
+                      Placement(
+                          folderId = "group-1",
+                          isHidden = false,
+                      )
+              ),
+      )
+
+  private fun groupWorkspaceSearchStart(loreFile: JDRFile) {
+    val groupRepository = groupRepository()
+
+    showApp(
+        groupRepository = groupRepository,
+        workspaceRepository = NavigationWorkspaceRepository(listOf(loreFile)),
+    )
+    signInAndOpenCampaigns()
+
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
+    waitForText("The Sunken Crown")
+
+    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Dragon")
+    waitForTag(C.Tag.searchResult(loreFile.id))
+  }
+
   private fun showApp(
       repository: FakeAuthRepository = FakeAuthRepository(),
       groupRepository: NavigationGroupRepository? = null,
@@ -607,6 +765,12 @@ class MainActivityNavigationTest {
       checkNotNull(FirebaseApp.initializeApp(context))
     }
     val viewModel = AuthViewModel(repository)
+    val editFileViewModel =
+        EditFileViewModel(
+            workspaceRepository = workspaceRepository,
+            groupRepository = groupRepository,
+            authRepository = repository,
+        )
     composeTestRule.setContent {
       // The 3D die cannot render under Robolectric: the dice screen draws the flat one instead.
       CompositionLocalProvider(LocalDieView provides FlatDieView) {
@@ -615,6 +779,7 @@ class MainActivityNavigationTest {
             authRepository = repository,
             groupRepository = groupRepository,
             workspaceRepository = workspaceRepository,
+            editFileViewModel = editFileViewModel,
         )
       }
     }
@@ -627,16 +792,6 @@ class MainActivityNavigationTest {
     waitForTag(TestTags.GROUPMANAGEMENTBUTTON)
     composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
   }
-
-  private fun navigationGroupRepository() =
-      NavigationGroupRepository(
-          CampaignGroup(
-              id = "group-1",
-              name = "The Sunken Crown",
-              gameMasterId = "user-1",
-              participantIds = listOf("user-1"),
-          )
-      )
 
   private fun waitForTag(tag: String) {
     composeTestRule.waitUntil(5_000) {
@@ -680,7 +835,8 @@ class MainActivityNavigationTest {
           authRepository = repository,
           groupRepository = groupRepository,
           workspaceRepository = workspaceRepository,
-          documentSearchViewModel = documentSearchViewModel,
+          personalSearchViewModel = documentSearchViewModel,
+          groupSearchViewModel = documentSearchViewModel,
       )
     }
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
@@ -694,6 +850,31 @@ class MainActivityNavigationTest {
   private fun scrollToTag(containerTag: String, targetTag: String) {
     composeTestRule.onNodeWithTag(containerTag).performScrollToNode(hasTestTag(targetTag))
   }
+
+  private fun openGroupWorkspaceAsPlayer() {
+    showApp(groupRepository = groupRepository())
+    signInAndOpenCampaigns()
+
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).performClick()
+
+    waitForText("The Sunken Crown")
+  }
+
+  private fun groupRepository(gameMasterId: String = "gm-1") =
+      NavigationGroupRepository(
+          CampaignGroup(
+              id = "group-1",
+              name = "The Sunken Crown",
+              gameMasterId = gameMasterId,
+              participantIds =
+                  if (gameMasterId == "user-1") {
+                    listOf("user-1")
+                  } else {
+                    listOf(gameMasterId, "user-1")
+                  },
+          )
+      )
 
   private class FakeAuthRepository : AuthRepository {
     private val mutableAuthState = MutableStateFlow<AuthUser?>(null)
