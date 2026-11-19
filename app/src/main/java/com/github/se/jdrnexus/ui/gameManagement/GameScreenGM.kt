@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -43,6 +44,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -73,6 +75,7 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
 import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
+import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 
@@ -96,6 +99,7 @@ private enum class GmSection(@StringRes val title: Int, val key: String) {
  * @param onTabSelected Receives selections from the shared bottom navigation.
  * @param onDiceClick Opens the dice roller.
  * @param groupName Name shown for the active campaign.
+ * @param onBack Leaves the screen; the top bar shows no back button when it is null.
  */
 @Composable
 fun GameScreenGM(
@@ -103,6 +107,7 @@ fun GameScreenGM(
     onTabSelected: (String) -> Unit = {},
     onDiceClick: () -> Unit = {},
     groupName: String = "",
+    onBack: (() -> Unit)? = null,
 ) {
   val uiState by viewModel.uiState.collectAsState()
   GameScreenGMContent(
@@ -121,7 +126,56 @@ fun GameScreenGM(
       },
       onTabSelected = onTabSelected,
       onDiceClick = onDiceClick,
+      onStartGame = viewModel::startGame,
+      onBack = onBack,
   )
+}
+
+/**
+ * Shows the Start game button, or a "Game in progress" label once the game has started.
+ *
+ * The button is disabled while the screen loads and while the start is being saved.
+ */
+@Composable
+private fun GameStartControl(uiState: GameViewModelGMUiState, onStartGame: () -> Unit) {
+  if (uiState.isGameStarted) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier =
+            Modifier.testTag(C.Tag.game_gm_game_in_progress)
+                .clip(CircleShape)
+                .background(colors.surfaceContainerLowest)
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Box(Modifier.size(6.dp).clip(CircleShape).background(colors.primary))
+      Text(
+          stringResource(R.string.game_gm_game_in_progress),
+          color = colors.onSurface,
+          style = MaterialTheme.typography.labelMedium,
+      )
+    }
+  } else {
+    Button(
+        onClick = onStartGame,
+        enabled = !uiState.isLoading && !uiState.isStartingGame,
+        modifier = Modifier.fillMaxWidth().height(46.dp).testTag(C.Tag.game_gm_start_game),
+        shape = RoundedCornerShape(10.dp),
+    ) {
+      if (uiState.isStartingGame) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(18.dp).testTag(C.Tag.game_gm_start_game_progress),
+            color = LocalContentColor.current,
+            strokeWidth = 2.dp,
+        )
+      } else {
+        Icon(Icons.Filled.Flag, contentDescription = null, modifier = Modifier.size(18.dp))
+      }
+      Spacer(Modifier.width(8.dp))
+      Text(stringResource(R.string.game_gm_start_game))
+    }
+  }
 }
 
 /**
@@ -138,6 +192,8 @@ fun GameScreenGM(
  * @param onRetry Requests the unavailable session data again.
  * @param onTabSelected Receives shared bottom-navigation selections.
  * @param onDiceClick Opens the dice roller.
+ * @param onStartGame Starts the campaign's game session.
+ * @param onBack Leaves the screen; the top bar shows no back button when it is null.
  * @param renderAddEnemyDialogAsWindow Whether the add-enemy dialog opens in its own window; tests
  *   pass `false` to render it inline.
  */
@@ -154,6 +210,8 @@ internal fun GameScreenGMContent(
     onRetry: () -> Unit = {},
     onTabSelected: (String) -> Unit = {},
     onDiceClick: () -> Unit = {},
+    onStartGame: () -> Unit = {},
+    onBack: (() -> Unit)? = null,
     renderAddEnemyDialogAsWindow: Boolean = true,
 ) {
   var showAddEnemyDialog by rememberSaveable { mutableStateOf(false) }
@@ -164,6 +222,7 @@ internal fun GameScreenGMContent(
   val selectedNpc = uiState.npcs.firstOrNull { it.id == selectedNpcId }
 
   Scaffold(
+      topBar = { AppTopBar(title = stringResource(R.string.game_gm_header), onBack = onBack) },
       bottomBar = { ScreenBottomBar(selectedTab = "Campaigns", onTabSelected = onTabSelected) },
       contentColor = MaterialTheme.colorScheme.onSurface,
       floatingActionButton = {
@@ -187,12 +246,10 @@ internal fun GameScreenGMContent(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       item {
-        Column(modifier = Modifier.padding(horizontal = 2.dp)) {
-          Text(
-              stringResource(R.string.game_gm_header),
-              color = MaterialTheme.colorScheme.tertiary,
-              style = MaterialTheme.typography.labelLarge,
-          )
+        Column(
+            modifier = Modifier.padding(horizontal = 2.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
           Text(
               groupName,
               color = MaterialTheme.colorScheme.onSecondary,
@@ -200,6 +257,7 @@ internal fun GameScreenGMContent(
               fontSize = 30.sp,
               lineHeight = 34.sp,
           )
+          GameStartControl(uiState = uiState, onStartGame = onStartGame)
         }
       }
       if (hidden.isNotEmpty()) {

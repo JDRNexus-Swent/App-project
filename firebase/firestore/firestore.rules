@@ -14,6 +14,8 @@ rules_version = '2';
 //                              the proof ({ groupId }) that a user joined with the code, written in
 //                              the same batch as their addition to participantIds.
 //   map_sessions/{sessionId}   public session listings shown on the map (read-only for clients)
+//   profiles/{userId}          { username, bio, pictureUrl }: the profile a user shows. Only its
+//                              owner reads and writes it for now.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -425,6 +427,26 @@ service cloud.firestore {
       allow read: if signedIn();
     }
 
+    // ------------------------------------------------------------------ profiles
+
+    // profiles/{userId} = { username, bio, pictureUrl }. The document id is the user's uid.
+    // Only the owner reads it: widen `read` when other users must see profiles (e.g. group members).
+    // The limits match the ones the profile ViewModel checks. No delete: it comes with accounts.
+    match /profiles/{userId} {
+      allow read: if signedIn() && uid() == userId;
+      allow create, update: if signedIn()
+        && uid() == userId
+        && request.resource.data.keys().hasOnly(['username', 'bio', 'pictureUrl'])
+        && request.resource.data.username is string
+        && request.resource.data.username == request.resource.data.username.trim()
+        && request.resource.data.username.size() >= 3
+        && request.resource.data.username.size() <= 30
+        && request.resource.data.bio is string
+        && request.resource.data.bio.size() <= 300
+        && request.resource.data.get('pictureUrl', '') is string;
+      allow delete: if false;
+    }
+
 
     // ------------------------------------------------------------------ invitations
 
@@ -460,6 +482,58 @@ service cloud.firestore {
 
               allow read, delete: if false;
             }
+    }
+
+    // ------------------------------------------------------------------ notifications
+
+    match /notifications/{notificationId} {
+      allow read: if signedIn() && resource.data.userId == uid();
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(
+             ['userId', 'senderId', 'type', 'title', 'message', 'groupId', 'createdAt', 'isRead'])
+        && request.resource.data.keys().hasAll(
+             ['userId', 'senderId', 'type', 'title', 'message', 'createdAt', 'isRead'])
+        && request.resource.data.userId is string
+        && request.resource.data.userId.size() > 0
+        && request.resource.data.senderId is string
+        && request.resource.data.senderId == uid()
+        && request.resource.data.type
+             in ['GROUP_INVITATION', 'MEMBERSHIP_CHANGE', 'CAMPAIGN_UPDATE']
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.isRead is bool
+        && (request.resource.data.get('groupId', null) == null
+            || request.resource.data.groupId is string)
+        && (
+             (request.resource.data.type == 'GROUP_INVITATION'
+              && request.resource.data.groupId is string
+              && exists(groupPath(request.resource.data.groupId))
+              && get(groupPath(request.resource.data.groupId)).data.gameMasterId == uid()
+              && request.resource.data.userId != uid())
+             ||
+             (request.resource.data.type != 'GROUP_INVITATION'
+              && request.resource.data.groupId == null
+              && request.resource.data.userId == uid())
+             ||
+             (request.resource.data.type != 'GROUP_INVITATION'
+              && request.resource.data.groupId is string
+              && exists(groupPath(request.resource.data.groupId))
+              && uid()
+                 in get(groupPath(request.resource.data.groupId)).data.participantIds
+              && request.resource.data.userId
+                 in get(groupPath(request.resource.data.groupId)).data.participantIds)
+           );
+
+      allow update: if signedIn()
+        && resource.data.userId == uid()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])
+        && request.resource.data.isRead is bool;
+
+      allow delete: if signedIn() && resource.data.userId == uid();
     }
 
     // ------------------------------------------------------------------ everything else

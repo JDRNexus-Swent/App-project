@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.game
 
 import androidx.lifecycle.ViewModel
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -52,8 +54,16 @@ class GamePlayerViewModel(
 
   /** The one active session subscription; replaced by each [loadSession]. */
   private var sessionJob: Job? = null
+  private var navigationSaveJob: Job? = null
 
   override fun loadSession(groupId: String) {
+    val state = uiState.value
+    // The screen calls this each time it reappears. Skip the reload while the session is live
+    // (unsaved edits survive) or while edits are being saved before leaving.
+    if (state.groupId == groupId && (sessionJob?.isActive == true || state.navigation != null)) {
+      return
+    }
+    navigationSaveJob?.cancel()
     sessionJob?.cancel()
     _uiState.value = GamePlayerUiState(groupId = groupId, isLoading = true)
     sessionJob = viewModelScope.launch {
@@ -143,6 +153,67 @@ class GamePlayerViewModel(
     }
   }
 
+  override fun requestNavigation(destination: GamePlayerDestination) {
+    if (uiState.value.navigation != null) return
+    _uiState.update { it.copy(navigation = GamePlayerNavigation.Saving(destination)) }
+
+    navigationSaveJob = viewModelScope.launch {
+      val navigation =
+          savePendingChanges()
+              .fold(
+                  onSuccess = { GamePlayerNavigation.Ready(destination) },
+                  onFailure = { failure ->
+                    GamePlayerNavigation.SaveFailed(
+                        destination,
+                        failure.message?.takeIf(String::isNotBlank) ?: SAVE_ERROR,
+                    )
+                  },
+              )
+      _uiState.update { it.copy(navigation = navigation) }
+    }
+  }
+
+  internal suspend fun savePendingChanges(): Result<Unit> {
+    var state = uiState.value
+    if (state.isSaving) {
+      state = uiState.first { !it.isSaving }
+      state.error?.let {
+        return Result.failure(IllegalStateException(it))
+      }
+    }
+    while (state.character?.hasUnsavedChanges == true) {
+      val attempted = state.character
+      saveCharacter()
+      state = uiState.first { !it.isSaving }
+      state.error?.let {
+        return Result.failure(IllegalStateException(it))
+      }
+      if (state.character == attempted) {
+        return Result.failure(IllegalStateException(SAVE_ERROR))
+      }
+    }
+    return Result.success(Unit)
+  }
+
+  override fun stayOnScreen() {
+    _uiState.update {
+      if (it.navigation is GamePlayerNavigation.SaveFailed) it.copy(navigation = null) else it
+    }
+  }
+
+  override fun leaveAnyway() {
+    _uiState.update {
+      val failed = it.navigation as? GamePlayerNavigation.SaveFailed ?: return@update it
+      it.copy(navigation = GamePlayerNavigation.Ready(failed.destination))
+    }
+  }
+
+  override fun consumeNavigation(): GamePlayerDestination? {
+    val ready = uiState.value.navigation as? GamePlayerNavigation.Ready ?: return null
+    _uiState.update { it.copy(navigation = null) }
+    return ready.destination
+  }
+
   override fun dismissError() {
     _uiState.update { it.copy(error = null) }
   }
@@ -199,7 +270,7 @@ class GamePlayerViewModel(
 
   private fun failSession(message: String) {
     _uiState.update {
-      GamePlayerUiState(groupId = it.groupId, isSaving = it.isSaving, error = message)
+      it.copy(character = null, isLoading = false, error = message, hpError = null)
     }
   }
 

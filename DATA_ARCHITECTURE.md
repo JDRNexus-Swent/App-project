@@ -99,6 +99,16 @@ The repository does not authenticate: the caller passes the user id (like `addUs
 - The redemption exists because rules cannot see which code a user typed. Writing it in the **same batch** as the membership turns "this user knows a valid code" into a document the rules can read. The chain is: valid current code, then redemption allowed, then membership allowed. The order of the writes inside the batch does not matter, `existsAfter` reads the final state.
 - Reads of other documents by the rules count towards the limit of document-access calls (20 per batched write). A join makes about 6 to 8, see section 12.
 
+### 1.8 Profiles (`profiles/{userId}`)
+
+`profiles/{userId}` holds the profile a user shows: `username`, `bio` and `pictureUrl` (all `String`, `""` = not set, see 1.3). The document id is the user's uid. It is separate from `users/{userId}`, whose rules only accept `groupIds` (1.6).
+
+- **Only the owner reads and writes it for now.** The `read` rule must be widened when other users need to see a profile (e.g. the members of a shared group).
+- A user who never saved a profile has no document: `ProfileRepository.getProfile` returns empty fields, and the profile ViewModel shows the sign-up username (Firebase Auth display name) until the first save.
+- `updateProfile` writes `username` and `bio` with a merge: it creates the document on the first save and never overwrites `pictureUrl`.
+- The rules refuse any other field, a username that is not trimmed or outside 3 to 30 characters, and a bio above 300 characters. The profile ViewModel checks the same limits. Deletion is refused (it comes with account deletion, section 9).
+- **Stats are not stored.** `getProfileStats` counts on the server (`count()`), filtering on the caller as the rules require: groups with `participantIds` containing the user (joined) and also `gameMasterId` equal to the user (created), and the user's own `TEXT` and `CHARACTER` documents (folders and group roots are not files). These filters need no composite index.
+
 ---
 
 ## 2. Group root (pseudo-root)
@@ -344,6 +354,9 @@ A user who left a group can join it again with the same code as long as the GM h
 | Invitations cannot be listed | yes | | | not tested yet |
 | Already member refused before any write | | yes (`users/{uid}.groupIds`) | | emulator |
 | Code generation: alphabet, length, normalization | | pure functions (`InvitationCodes`) | | yes |
+| Only the owner reads and writes their profile | yes | | | emulator |
+| Profile username trimmed, 3 to 30 characters; bio at most 300 | yes | | view model | emulator |
+| Profile update never overwrites `pictureUrl` | | merge of `username` and `bio` only | | emulator |
 
 Rules and batch behavior must be tested with the **Firebase emulator** (member / non-member / GM / owner), not only with mocks.
  
@@ -363,6 +376,8 @@ Rules and batch behavior must be tested with the **Firebase emulator** (member /
 - `deleteGroup` does not delete the group's invitation: the code stays known but points to nothing. Under the security rules, a join with that code is refused (`PERMISSION_DENIED`) and reported as `NETWORK`, not `GROUP_NOT_FOUND`. `deleteGroup` could delete the invitation in its own batch (the delete rule allows it, since the group still exists before the batch), so the code really stops existing.
 - `regenerateInvitation` checks that the new code is free with a plain read, not atomically (the collision probability is negligible). Two simultaneous regenerations can leave one valid invitation that the group no longer knows.
 - A refused write (`PERMISSION_DENIED`) during an invitation operation is mapped to a generic error (`NETWORK` for a join, `NOT_GAME_MASTER` for create and regenerate), because the real cause is not known to the client.
+- Profile picture upload (1.8) is not implemented yet: it needs Firebase Storage, its rules and the Storage emulator in CI. Until then `uploadProfilePicture` fails.
+- Sign-up accepts any non-blank username, while a profile requires 3 to 30 characters (1.8): a user with a shorter sign-up name must change it before saving their profile.
 ---
 ---
 *Note: The structure and technical constraints detailed in this document were formulated with the help of Claude Sonnet 5.5.*

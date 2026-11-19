@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -125,11 +126,14 @@ internal object GameManagementTestTags {
  * Displays the signed-in user's campaign groups and their available actions.
  *
  * Selecting "Enter workspace" invokes [onEnterWorkspace] with that group's ID so the destination
- * can load its shared files. [gameManagementViewModel] provides the loading and creation state.
+ * can load its shared files. Selecting "Play" invokes [onPlay] with that group's ID and the user's
+ * role in it, so the destination can open the matching game screen. [gameManagementViewModel]
+ * provides the loading and creation state.
  */
 @Composable
 fun GameManagementScreen(
     onEnterWorkspace: (String) -> Unit,
+    onPlay: (String, GroupRole) -> Unit,
     onManageGroup: (String) -> Unit,
     onTabSelected: (String) -> Unit,
     gameManagementViewModel: GameManagementViewModel,
@@ -146,6 +150,7 @@ fun GameManagementScreen(
       onRetryLoad = gameManagementViewModel::loadGroups,
       onDismissSuccess = gameManagementViewModel::dismissSuccessMessage,
       onEnterWorkspace = onEnterWorkspace,
+      onPlay = onPlay,
       onManageGroup = onManageGroup,
       invitationVM = gameManagementViewModel,
       onTabSelected = onTabSelected,
@@ -156,6 +161,7 @@ fun GameManagementScreen(
  * Renders the game-management screen from state and callbacks. It only keeps which invitation
  * dialog is open; codes and join results come from [uiState].
  *
+ * @param onPlay receives the group ID and the user's role when a card's Play button is tapped.
  * @param invitationVM receives the invite and join actions of the dialogs.
  * @param renderDialogsAsWindow whether dialogs open in their own window; tests render them inline.
  */
@@ -169,6 +175,7 @@ internal fun GameManagementScreenContent(
     onRetryLoad: () -> Unit,
     onDismissSuccess: () -> Unit,
     onEnterWorkspace: (String) -> Unit,
+    onPlay: (String, GroupRole) -> Unit,
     onManageGroup: (String) -> Unit,
     invitationVM: GroupInvitationVM,
     onTabSelected: (String) -> Unit,
@@ -280,6 +287,7 @@ internal fun GameManagementScreenContent(
                     isGameMaster = userGroup.role == GroupRole.GAME_MASTER,
                     colors = colors,
                     onEnterWorkspace = { onEnterWorkspace(userGroup.group.id) },
+                    onPlay = { onPlay(userGroup.group.id, userGroup.role) },
                     onManageGroup = { onManageGroup(userGroup.group.id) },
                     onInvite = {
                       invitationVM.loadInvitation(userGroup.group.id)
@@ -558,6 +566,7 @@ private fun CampaignGroupCard(
     isGameMaster: Boolean,
     colors: GameManagementColors,
     onEnterWorkspace: () -> Unit,
+    onPlay: () -> Unit,
     onManageGroup: () -> Unit,
     onInvite: () -> Unit,
     inviteEnabled: Boolean,
@@ -616,13 +625,23 @@ private fun CampaignGroupCard(
           overflow = TextOverflow.Ellipsis,
           modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
       )
-      OutlinedActionButton(
-          label = "Enter workspace",
-          colors = colors,
-          icon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.size(16.dp)) },
-          onClick = onEnterWorkspace,
-          modifier = Modifier.testTag(C.Tag.enter_workspace_button),
-      )
+      Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        PlayButton(
+            colors = colors,
+            onClick = onPlay,
+            modifier = Modifier.weight(2f).testTag(C.Tag.play_button),
+        )
+        OutlinedActionButton(
+            label = stringResource(R.string.enter_workspace_action),
+            colors = colors,
+            icon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.size(16.dp)) },
+            onClick = onEnterWorkspace,
+            modifier = Modifier.weight(3f).testTag(C.Tag.enter_workspace_button),
+        )
+      }
       if (isGameMaster) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
@@ -710,6 +729,36 @@ private fun PrimaryActionButton(
   }
 }
 
+/** Renders the filled button that opens a group's game screen. */
+@Composable
+private fun PlayButton(
+    colors: GameManagementColors,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+  Button(
+      onClick = onClick,
+      modifier = modifier.height(42.dp),
+      shape = RoundedCornerShape(10.dp),
+      colors =
+          ButtonDefaults.buttonColors(
+              containerColor = colors.accent,
+              contentColor = colors.accentContent,
+          ),
+      contentPadding = PaddingValues(horizontal = 12.dp),
+  ) {
+    Icon(Icons.Filled.PlayArrow, null, Modifier.size(16.dp))
+    Spacer(Modifier.width(6.dp))
+    Text(
+        stringResource(R.string.play_action),
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+  }
+}
+
 /**
  * Renders an outlined action button with optional leading icon content.
  *
@@ -737,7 +786,13 @@ private fun OutlinedActionButton(
   ) {
     icon?.invoke()
     if (icon != null) Spacer(Modifier.width(8.dp))
-    Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+    Text(
+        label,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
   }
 }
 
@@ -944,6 +999,7 @@ private fun GameManagementScreenPreview() {
         onRetryLoad = {},
         onDismissSuccess = {},
         onEnterWorkspace = {},
+        onPlay = { _, _ -> },
         onManageGroup = {},
         invitationVM = NoOpInvitationVM,
         onTabSelected = {},
