@@ -121,6 +121,11 @@
     <string name="workspace_empty_message">Add files to share them with the group.</string>
     <string name="workspace_folder_action">Folder</string>
     <string name="workspace_share_item_action">Item</string>
+    <string name="workspace_character_action">Character</string>
+    <string name="workspace_text_action">Text</string>
+    <string name="workspace_coming_soon">Coming soon</string>
+    <string name="workspace_create_item_title">Create an item in the current workspace</string>
+    <string name="workspace_create_item_description">Choose what you want to create.</string>
     <string name="map_you">You</string>
     <string name="map_search_city_label">Search a city</string>
     <string name="map_search_city_description">Search city</string>

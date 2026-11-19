@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.game
 
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
@@ -27,11 +28,14 @@ import com.github.se.jdrnexus.ui.game.GamePlayerViewModel.Companion.SIGNED_OUT_E
 import com.github.se.jdrnexus.utils.MainDispatcherRule
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -288,6 +292,103 @@ class GamePlayerViewModelTest {
     assertFalse(viewModel.uiState.value.isSaving)
     assertFalse(viewModel.uiState.value.character!!.hasUnsavedChanges)
     assertNull(viewModel.uiState.value.error)
+  }
+
+  @Test
+  fun savingPendingChangesSkipsWritesForACleanSheet() = runTest {
+    val (viewModel, workspace) = ownSheetSession()
+    viewModel.loadSession(group.id)
+    runCurrent()
+
+    val result = viewModel.savePendingChanges()
+
+    assertEquals(Result.success(Unit), result)
+    assertEquals(emptyList<JDRFile>(), workspace.updatedFiles)
+  }
+
+  @Test
+  fun savingPendingChangesWritesNewerHpAfterAnInFlightSave() = runTest {
+    val saveGate = CompletableDeferred<Unit>()
+    val workspace =
+        FakeWorkspaceRepository(
+            group.id to listOf(characterFile("own", player.uid)),
+            updateGate = saveGate,
+        )
+    val viewModel = createViewModel(workspace)
+    viewModel.loadSession(group.id)
+    runCurrent()
+    viewModel.updateCharacterHp(3)
+    viewModel.saveCharacter()
+    runCurrent()
+    viewModel.updateCharacterHp(7)
+
+    val save = async(start = CoroutineStart.UNDISPATCHED) { viewModel.savePendingChanges() }
+    saveGate.complete(Unit)
+    val result = save.await()
+
+    assertTrue(result.isSuccess)
+    assertFalse(requireNotNull(viewModel.uiState.value.character).hasUnsavedChanges)
+    assertEquals(
+        listOf(3, 7),
+        workspace.updatedFiles.map { JDRFileJsonCodec.deserializeCharacter(it.content).hp.current },
+    )
+  }
+
+  @Test
+  fun navigationSurvivesReloadWhileSavingAndIsConsumedOnce() = runTest {
+    val saveGate = CompletableDeferred<Unit>()
+    val workspace =
+        FakeWorkspaceRepository(
+            group.id to listOf(characterFile("own", player.uid)),
+            updateGate = saveGate,
+        )
+    val viewModel = createViewModel(workspace)
+    viewModel.loadSession(group.id)
+    runCurrent()
+    viewModel.updateCharacterHp(7)
+    val destination = GamePlayerDestination.Dice(0)
+
+    viewModel.requestNavigation(destination)
+    runCurrent()
+    viewModel.loadSession(group.id)
+    viewModel.requestNavigation(GamePlayerDestination.Back)
+    assertEquals(GamePlayerNavigation.Saving(destination), viewModel.uiState.value.navigation)
+    assertNull(viewModel.consumeNavigation())
+
+    saveGate.complete(Unit)
+    runCurrent()
+    assertEquals(destination, viewModel.consumeNavigation())
+    assertNull(viewModel.consumeNavigation())
+  }
+
+  @Test
+  fun failedNavigationSavePreservesTheEditAndRequiresConfirmation() = runTest {
+    val workspace =
+        FakeWorkspaceRepository(
+            group.id to listOf(characterFile("own", player.uid)),
+            updateResult = Result.failure(IllegalStateException("Permission denied")),
+        )
+    val viewModel = createViewModel(workspace)
+    viewModel.loadSession(group.id)
+    runCurrent()
+    viewModel.updateCharacterHp(7)
+
+    val destination = GamePlayerDestination.Workspace(group.id)
+    viewModel.requestNavigation(destination)
+    runCurrent()
+
+    assertEquals(
+        GamePlayerNavigation.SaveFailed(destination, "Permission denied"),
+        viewModel.uiState.value.navigation,
+    )
+    assertNull(viewModel.consumeNavigation())
+    val character = requireNotNull(viewModel.uiState.value.character)
+    assertEquals(7, character.character.hp.current)
+    assertTrue(character.hasUnsavedChanges)
+
+    viewModel.leaveAnyway()
+    assertEquals(destination, viewModel.consumeNavigation())
+    assertNull(viewModel.consumeNavigation())
   }
 
   @Test
