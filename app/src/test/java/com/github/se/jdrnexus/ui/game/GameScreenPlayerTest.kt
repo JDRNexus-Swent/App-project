@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -68,7 +69,7 @@ class GameScreenPlayerTest {
         .performScrollTo()
         .performClick()
     composeTestRule.onNodeWithTag(C.Tag.game_player_workspace).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.gamePlayerNavigationTab("Files")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
 
     composeTestRule.waitForIdle()
     assertEquals(0, diceModifier)
@@ -263,13 +264,31 @@ class GameScreenPlayerTest {
     setContent(viewModel, onTabSelected = { selectedTab = it })
     composeTestRule.onNodeWithTag(C.Tag.game_player_hp_decrease).performClick()
 
-    composeTestRule.onNodeWithTag(C.Tag.gamePlayerNavigationTab("Files")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
     composeTestRule.waitForIdle()
     assertEquals(null, selectedTab)
 
     pendingSave.complete(Result.success(Unit))
     composeTestRule.waitForIdle()
     assertEquals("Files", selectedTab)
+  }
+
+  @Test
+  fun stayingAfterFailedTabSaveKeepsCampaignsSelected() {
+    val pendingSave = CompletableDeferred<Result<Unit>>()
+    val viewModel = FakeGamePlayerViewModel(pendingSave = pendingSave)
+    var selectedTab: String? = null
+    setContent(viewModel, onTabSelected = { selectedTab = it })
+    composeTestRule.onNodeWithTag(C.Tag.game_player_hp_decrease).performClick()
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).assertIsSelected()
+    pendingSave.complete(Result.failure(IllegalStateException("Save failed.")))
+    composeTestRule.onNodeWithTag(C.Tag.game_player_leave_error).assertTextEquals("Save failed.")
+    composeTestRule.onNodeWithTag(C.Tag.game_player_stay).performClick()
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).assertIsSelected()
+    assertEquals(null, selectedTab)
   }
 
   @Test

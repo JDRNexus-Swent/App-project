@@ -14,19 +14,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.MenuBook
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -53,6 +45,7 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 
 // Placeholder until roll modifiers can be derived from the character's stats.
@@ -69,6 +62,7 @@ fun GameScreenPlayer(
     onTabSelected: (String) -> Unit,
 ) {
   val uiState by viewModel.uiState.collectAsState()
+  var selectedTab by rememberSaveable { mutableStateOf("Campaigns") }
   var wasSaving by remember { mutableStateOf(false) }
   var saveSucceeded by remember { mutableStateOf(false) }
   val hasUnsavedChanges = uiState.character?.hasUnsavedChanges == true
@@ -98,7 +92,10 @@ fun GameScreenPlayer(
       GamePlayerDestination.Back -> onBack()
       is GamePlayerDestination.Workspace -> onOpenGroupWorkspace(destination.groupId)
       is GamePlayerDestination.Dice -> onOpenDice(destination.modifier)
-      is GamePlayerDestination.Tab -> onTabSelected(destination.name)
+      is GamePlayerDestination.Tab -> {
+        onTabSelected(destination.name)
+        selectedTab = destination.name
+      }
     }
   }
 
@@ -137,6 +134,7 @@ fun GameScreenPlayer(
 
   GameScreenPlayerContent(
       uiState = uiState,
+      selectedTab = selectedTab,
       saveSucceeded = saveSucceeded,
       onBack = leaveScreen,
       onHpChanged = viewModel::updateCharacterHp,
@@ -150,6 +148,7 @@ fun GameScreenPlayer(
 @Composable
 private fun GameScreenPlayerContent(
     uiState: GamePlayerUiState,
+    selectedTab: String,
     saveSucceeded: Boolean,
     onBack: () -> Unit,
     onHpChanged: (Int) -> Unit,
@@ -159,19 +158,10 @@ private fun GameScreenPlayerContent(
     onTabSelected: (String) -> Unit,
 ) {
   val character = uiState.character
-  var selectedTab by rememberSaveable { mutableStateOf("Campaigns") }
 
   Scaffold(
       contentColor = MaterialTheme.colorScheme.onSurface,
-      bottomBar = {
-        PlayerBottomBar(
-            selectedTab,
-            { tab ->
-              selectedTab = tab
-              onTabSelected(tab)
-            },
-        )
-      },
+      bottomBar = { ScreenBottomBar(selectedTab, onTabSelected) },
   ) { contentPadding ->
     LazyColumn(
         modifier = Modifier.fillMaxSize().imePadding().padding(contentPadding),
@@ -344,28 +334,6 @@ private fun GameScreenPlayerContent(
 }
 
 @Composable
-private fun PlayerBottomBar(selectedTab: String, onTabSelected: (String) -> Unit) {
-  val tabs =
-      listOf(
-          "Home" to Icons.Filled.Home,
-          "Campaigns" to Icons.AutoMirrored.Outlined.MenuBook,
-          "Files" to Icons.Outlined.Folder,
-          "Map" to Icons.Outlined.Map,
-      )
-  NavigationBar {
-    tabs.forEach { (label, icon) ->
-      NavigationBarItem(
-          selected = selectedTab == label,
-          onClick = { onTabSelected(label) },
-          icon = { Icon(icon, contentDescription = null) },
-          label = { Text(label) },
-          modifier = Modifier.testTag(C.Tag.gamePlayerNavigationTab(label)),
-      )
-    }
-  }
-}
-
-@Composable
 private fun NumericField(
     value: String,
     error: String?,
@@ -420,6 +388,7 @@ private fun GameScreenPlayerPreview() {
       )
   SampleAppTheme {
     GameScreenPlayerContent(
+        selectedTab = "Campaigns",
         uiState =
             GamePlayerUiState(
                 groupId = "preview-group",
