@@ -97,7 +97,12 @@ object C {
 
     const val enter_workspace_button = "enter_workspace_button"
     const val workspace_actions_fab = "workspace_actions_fab"
-    const val workspace_add_folder = "workspace_add_folder"
+    const val workspace_create_item = "workspace_create_item"
+    const val workspace_create_item_dialog = "create_item_dialog"
+    const val workspace_create_item_folder = "create_item_folder"
+    const val workspace_create_item_character = "create_item_character"
+    const val workspace_create_item_text = "create_item_text"
+    const val workspace_create_item_cancel = "create_item_cancel"
     const val workspace_add_file = "workspace_add_file"
     const val workspace_add_files_dialog = "add_files_dialog"
     const val workspace_add_files_list = "add_files_list"

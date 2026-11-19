@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
 import androidx.activity.compose.BackHandler
@@ -20,7 +21,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -67,6 +70,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -94,6 +98,7 @@ import kotlinx.coroutines.launch
  * @param onItemClicked Called when the user opens an item; the Boolean indicates whether the user
  *   can edit the clicked item.
  * @param personalItems Personal files available to add to the group.
+ * @param onCharacterCreated Called with the file ID of a character created in this workspace.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -106,11 +111,13 @@ fun GroupWorkSpaceScreen(
     onItemClicked: ((JDRFile, Boolean) -> Unit)? = null,
     personalItems: List<JDRFile> = emptyList(),
     onSearchClicked: () -> Unit = {},
+    onCharacterCreated: (String) -> Unit = {},
 ) {
   val uiState by gwViewModel.uiState.collectAsState()
   val scope = rememberCoroutineScope()
   val snackbarHostState = remember { SnackbarHostState() }
 
+  var showCreateItemDialog by rememberSaveable { mutableStateOf(false) }
   var showCreateFolderDialog by rememberSaveable { mutableStateOf(false) }
   var showAddFilesDialog by rememberSaveable { mutableStateOf(false) }
   var itemToEditId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -120,7 +127,8 @@ fun GroupWorkSpaceScreen(
   var folderName by rememberSaveable { mutableStateOf("") }
   var editedName by rememberSaveable { mutableStateOf("") }
   val isDialogOpen =
-      showCreateFolderDialog ||
+      showCreateItemDialog ||
+          showCreateFolderDialog ||
           showAddFilesDialog ||
           itemToEditId != null ||
           itemToRemoveId != null ||
@@ -160,11 +168,9 @@ fun GroupWorkSpaceScreen(
         floatingActionButton = {
           if (uiState.loadState == LoadState.Success) {
             WorkspaceFab(
-                canCreateFolder = uiState.canCreateFolder,
-                onAddFolder = {
+                onCreateItem = {
                   gwViewModel.clearError()
-                  folderName = ""
-                  showCreateFolderDialog = true
+                  showCreateItemDialog = true
                 },
                 onAddFile = {
                   gwViewModel.clearError()
@@ -190,7 +196,7 @@ fun GroupWorkSpaceScreen(
             onSearchClicked = onSearchClicked,
             roleLabel =
                 if (uiState.loadState == LoadState.Success) {
-                  if (uiState.canCreateFolder) {
+                  if (uiState.isGameMaster) {
                     stringResource(R.string.workspace_role_game_master)
                   } else {
                     stringResource(R.string.workspace_role_player)
@@ -232,6 +238,23 @@ fun GroupWorkSpaceScreen(
         )
       }
     }
+  }
+
+  // Choose the type of item to create
+  if (showCreateItemDialog) {
+    CreateItemDialog(
+        isOperationInProgress = uiState.isOperationInProgress,
+        onFolderSelected = {
+          showCreateItemDialog = false
+          folderName = ""
+          showCreateFolderDialog = true
+        },
+        onCharacterSelected = {
+          showCreateItemDialog = false
+          gwViewModel.createCharacter(onCharacterCreated)
+        },
+        onDismiss = { showCreateItemDialog = false },
+    )
   }
 
   // Create folder
@@ -936,9 +959,9 @@ private fun WorkspaceContent(
                 key = { it.id },
             ) { file ->
               val isHidden = file.placements[groupId]?.isHidden ?: false
-              val canChangeVisibility = uiState.canCreateFolder || currentUserId == file.ownerId
+              val canChangeVisibility = uiState.isGameMaster || currentUserId == file.ownerId
               val canEdit = file.ownerId == currentUserId
-              val canRemove = canEdit || uiState.canCreateFolder
+              val canRemove = canEdit || uiState.isGameMaster
 
               WorkspaceCard(
                   file = file,
@@ -1018,16 +1041,130 @@ fun EmptyWorkspace() {
 }
 
 /**
- * Displays actions for adding a folder or file to the workspace.
+ * Lets the user choose the type of item to create in the current workspace.
  *
- * @param canCreateFolder Whether the folder action is available.
- * @param onAddFolder Called when a folder should be added.
+ * @param isOperationInProgress Whether a workspace operation is running, disabling the options.
+ * @param onFolderSelected Called when the folder option is selected.
+ * @param onCharacterSelected Called when the character option is selected.
+ * @param onDismiss Called when the dialog is closed without a selection.
+ */
+@Composable
+private fun CreateItemDialog(
+    isOperationInProgress: Boolean,
+    onFolderSelected: () -> Unit,
+    onCharacterSelected: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+  AlertDialog(
+      modifier = Modifier.testTag(C.Tag.workspace_create_item_dialog),
+      containerColor = color().surface,
+      onDismissRequest = onDismiss,
+      title = {
+        Text(stringResource(R.string.workspace_create_item_title), color = color().tertiary)
+      },
+      text = {
+        Column(
+            modifier = Modifier.verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          Text(
+              stringResource(R.string.workspace_create_item_description),
+              color = color().onSecondary,
+          )
+          CreateItemOption(
+              label = stringResource(R.string.workspace_folder_action),
+              icon = Icons.Filled.Folder,
+              enabled = !isOperationInProgress,
+              onClick = onFolderSelected,
+              modifier = Modifier.testTag(C.Tag.workspace_create_item_folder),
+          )
+          CreateItemOption(
+              label = stringResource(R.string.workspace_character_action),
+              icon = Icons.Default.People,
+              enabled = !isOperationInProgress,
+              onClick = onCharacterSelected,
+              modifier = Modifier.testTag(C.Tag.workspace_create_item_character),
+          )
+          CreateItemOption(
+              label = stringResource(R.string.workspace_text_action),
+              icon = Icons.Default.Description,
+              enabled = false,
+              onClick = {},
+              modifier = Modifier.testTag(C.Tag.workspace_create_item_text),
+              supportingText = stringResource(R.string.workspace_coming_soon),
+          )
+        }
+      },
+      confirmButton = {
+        TextButton(
+            modifier = Modifier.testTag(C.Tag.workspace_create_item_cancel),
+            onClick = onDismiss,
+        ) {
+          Text(stringResource(R.string.workspace_cancel), color = color().primary)
+        }
+      },
+  )
+}
+
+@Composable
+private fun CreateItemOption(
+    label: String,
+    icon: ImageVector,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    supportingText: String? = null,
+) {
+  val contentAlpha = if (enabled) 1f else DISABLED_CONTENT_ALPHA
+
+  Card(
+      onClick = onClick,
+      enabled = enabled,
+      modifier = modifier.fillMaxWidth(),
+      shape = RoundedCornerShape(12.dp),
+      border = BorderStroke(1.dp, color().outline.copy(alpha = 0.65f)),
+      colors =
+          CardDefaults.cardColors(
+              containerColor = color().background,
+              disabledContainerColor = color().background,
+          ),
+  ) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      Icon(
+          imageVector = icon,
+          contentDescription = null,
+          tint = color().primary.copy(alpha = contentAlpha),
+      )
+      Text(
+          text = label,
+          modifier = Modifier.weight(1f),
+          style = MaterialTheme.typography.titleMedium,
+          color = color().onSecondary.copy(alpha = contentAlpha),
+      )
+      supportingText?.let {
+        Text(
+            text = it,
+            style = MaterialTheme.typography.labelSmall,
+            color = color().tertiary,
+        )
+      }
+    }
+  }
+}
+
+/**
+ * Displays actions for creating an item in the workspace or adding a personal file to it.
+ *
+ * @param onCreateItem Called when the user wants to create a new item.
  * @param onAddFile Called when a file should be added.
  */
 @Composable
 fun WorkspaceFab(
-    canCreateFolder: Boolean,
-    onAddFolder: () -> Unit,
+    onCreateItem: () -> Unit,
     onAddFile: () -> Unit,
 ) {
 
@@ -1036,29 +1173,24 @@ fun WorkspaceFab(
   Column(horizontalAlignment = Alignment.End) {
     AnimatedVisibility(expanded) {
       Column {
-        if (canCreateFolder) {
+        ExtendedFloatingActionButton(
+            containerColor = color().surface,
+            text = { Text(stringResource(R.string.workspace_create), color = color().primary) },
+            icon = {
+              Icon(
+                  Icons.Default.CreateNewFolder,
+                  null,
+                  tint = color().primary,
+              )
+            },
+            onClick = {
+              expanded = false
+              onCreateItem()
+            },
+            modifier = Modifier.width(120.dp).testTag(C.Tag.workspace_create_item),
+        )
 
-          ExtendedFloatingActionButton(
-              containerColor = color().surface,
-              text = {
-                Text(stringResource(R.string.workspace_folder_action), color = color().primary)
-              },
-              icon = {
-                Icon(
-                    Icons.Default.CreateNewFolder,
-                    null,
-                    tint = color().primary,
-                )
-              },
-              onClick = {
-                expanded = false
-                onAddFolder()
-              },
-              modifier = Modifier.width(120.dp).testTag(C.Tag.workspace_add_folder),
-          )
-
-          Spacer(Modifier.height(8.dp))
-        }
+        Spacer(Modifier.height(8.dp))
 
         ExtendedFloatingActionButton(
             containerColor = color().surface,
@@ -1096,6 +1228,8 @@ fun WorkspaceFab(
     }
   }
 }
+
+private const val DISABLED_CONTENT_ALPHA = 0.38f
 
 @Composable
 private fun color(): ColorScheme {

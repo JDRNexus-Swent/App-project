@@ -1,8 +1,10 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.se.jdrnexus.codec.JDRFileJsonCodec
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
@@ -43,7 +45,7 @@ data class GroupWorkspaceUiState(
     val loadState: LoadState = LoadState.Loading,
     val isOperationInProgress: Boolean = false,
     val errorMessage: String = "",
-    val canCreateFolder: Boolean = false,
+    val isGameMaster: Boolean = false,
     val canEditItems: Boolean = false,
     val currentFolderName: String = "",
     val folderHistory: List<String> = emptyList(),
@@ -85,15 +87,9 @@ class GroupWorkspaceViewModel(
   private suspend fun requireUid(): String =
       authRepository.authState.first()?.uid ?: throw IllegalStateException("You must be signed in.")
 
-  /**
-   * Ensures that the current user has the Game Master role.
-   *
-   * Used to restrict privileged workspace operations to the Game Master.
-   */
-  private fun requireGameMaster() {
-    check(role == GroupWorkspaceRole.GAME_MASTER) {
-      "Only the GameMaster can perform this operation."
-    }
+  /** Ensures that the current user is the Game Master or a player of this group. */
+  private fun requireMember() {
+    check(role != null) { "You are not a member of this group." }
   }
 
   /**
@@ -107,7 +103,7 @@ class GroupWorkspaceViewModel(
 
   /** Ensures that the user is allowed to edit the specified item. */
   private fun requireCanEdit(item: JDRFile, uid: String) {
-    check(role != null) { "You are not a member of this group." }
+    requireMember()
     check(item.ownerId == uid) { "You cannot edit an item that you do not own." }
   }
 
@@ -287,7 +283,7 @@ class GroupWorkspaceViewModel(
                 currentFolderId = "",
                 currentFolderName = "",
                 folderHistory = emptyList(),
-                canCreateFolder = false,
+                isGameMaster = false,
                 canEditItems = false,
                 loadState = LoadState.Error("You are no longer a member of this group."),
                 groupId = "",
@@ -304,7 +300,7 @@ class GroupWorkspaceViewModel(
 
         _uiState.update {
           it.copy(
-              canCreateFolder = newRole == GroupWorkspaceRole.GAME_MASTER,
+              isGameMaster = newRole == GroupWorkspaceRole.GAME_MASTER,
               canEditItems = newRole == GroupWorkspaceRole.GAME_MASTER,
               groupId = groupId,
               groupName = group?.name.orEmpty(),
@@ -332,7 +328,7 @@ class GroupWorkspaceViewModel(
             currentFolderId = "",
             currentFolderName = "",
             folderHistory = emptyList(),
-            canCreateFolder = false,
+            isGameMaster = false,
             canEditItems = false,
             loadState = LoadState.Error(e.message ?: "Unable to verify group membership."),
         )
@@ -547,7 +543,7 @@ class GroupWorkspaceViewModel(
     }
   }
 
-  /** Creates a folder in the currently displayed folder. Only the GameMaster may create folders. */
+  /** Creates a folder in the currently displayed folder. Any group member may create one. */
   fun createFolder(name: String): Job? {
     val folderName = name.trim()
     if (folderName.isEmpty()) {
@@ -557,34 +553,67 @@ class GroupWorkspaceViewModel(
 
     val parentId = _uiState.value.currentFolderId
     return viewModelScope.launch {
-      performOperation {
-        requireGameMaster()
-        val uid = requireUid()
-        val parent =
-            if (parentId.isNotEmpty()) {
-              requireAccessibleFolder(parentId, uid)
-            } else {
-              null
-            }
-
-        val folderId = repository.getNewUid()
-
-        val isHidden = parent?.placements?.get(groupId)?.isHidden == true
-        val folder =
-            JDRFile(
-                    id = folderId,
-                    name = folderName,
-                    ownerId = uid,
-                    sharedGroupsIds = listOf(groupId),
-                    personalParentId = "",
-                    type = DocumentType.FOLDER,
-                    content = "",
-                )
-                .withPlacement(groupId, Placement(parentId.ifEmpty { groupId }, isHidden))
-
-        repository.createFile(folder).getOrThrow()
-      }
+      performOperation { createItemInFolder(parentId, folderName, DocumentType.FOLDER) }
     }
+  }
+
+  /**
+   * Creates an empty character in the currently displayed folder. Any group member may create one.
+   *
+   * @param onCreated Called with the new file's ID, only when the creation succeeds.
+   */
+  fun createCharacter(onCreated: (fileId: String) -> Unit): Job {
+    val parentId = _uiState.value.currentFolderId
+    return viewModelScope.launch {
+      var createdId: String? = null
+      performOperation {
+        createdId =
+            createItemInFolder(
+                parentId = parentId,
+                name = "New character",
+                type = DocumentType.CHARACTER,
+                content = JDRFileJsonCodec.serializeCharacter(null),
+            )
+      }
+      createdId?.let(onCreated)
+    }
+  }
+
+  /**
+   * Creates an item owned by the current user directly in this group and returns its ID. The parent
+   * folder must be accessible to the user, and its hidden state is inherited.
+   */
+  private suspend fun createItemInFolder(
+      parentId: String,
+      name: String,
+      type: DocumentType,
+      content: String = "",
+  ): String {
+    requireMember()
+    val uid = requireUid()
+    val parent =
+        if (parentId.isNotEmpty()) {
+          requireAccessibleFolder(parentId, uid)
+        } else {
+          null
+        }
+
+    val itemId = repository.getNewUid()
+    val isHidden = parent?.placements?.get(groupId)?.isHidden == true
+    val item =
+        JDRFile(
+                id = itemId,
+                name = name,
+                ownerId = uid,
+                sharedGroupsIds = listOf(groupId),
+                personalParentId = PERSONAL_ROOT_ID,
+                type = type,
+                content = content,
+            )
+            .withPlacement(groupId, Placement(parentId.ifEmpty { groupId }, isHidden))
+
+    repository.createFile(item).getOrThrow()
+    return itemId
   }
 
   /**

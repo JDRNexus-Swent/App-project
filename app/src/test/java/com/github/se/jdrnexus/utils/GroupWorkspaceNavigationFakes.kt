@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.utils
 
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
@@ -50,13 +51,18 @@ class NavigationGroupRepository(private val group: CampaignGroup) : GroupReposit
 }
 
 class NavigationWorkspaceRepository(
-    private val files: List<JDRFile> = emptyList(),
+    private var files: List<JDRFile> = emptyList(),
 ) : WorkspaceRepository {
   var groupRootLoads = 0
+  val createdFiles = mutableListOf<JDRFile>()
 
-  override fun getNewUid(): String = error("Not used")
+  override fun getNewUid(): String = "created-${createdFiles.size + 1}"
 
-  override suspend fun createFile(file: JDRFile): Result<Unit> = error("Not used")
+  override suspend fun createFile(file: JDRFile): Result<Unit> {
+    createdFiles += file
+    files = files + file
+    return Result.success(Unit)
+  }
 
   override suspend fun updateFile(edit: FileEdit): Result<Unit> = error("Not used")
 
