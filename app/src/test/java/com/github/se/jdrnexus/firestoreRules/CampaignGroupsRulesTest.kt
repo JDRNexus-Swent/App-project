@@ -129,8 +129,14 @@ class CampaignGroupsRulesTest {
   private suspend fun storedGroupIds() =
       FirebaseEmulatorTestUtils.documentIdsBypassingRules(gm, "campaign_groups")
 
-  // Read as the GM, a participant of the group.
-  private suspend fun stored(field: String) = gm.group().get().await().get(field)
+  // Read bypassing the rules, so the check does not depend on them.
+  private suspend fun stored(field: String) =
+      FirebaseEmulatorTestUtils.readBypassingRules(
+              gm,
+              "campaign_groups/$groupId",
+              Map::class.java,
+          )
+          ?.get(field)
 
   // ========================================== read
 
