@@ -76,6 +76,30 @@ class GameGMViewModelTest {
   }
 
   @Test
+  fun startGameStaysStartedWhenTheSnapshotArrivesBeforeTheSaveEnds() = runTest {
+    repository.emitBeforeSave = true
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    val saveGate = CompletableDeferred<Unit>()
+    repository.sessionWriteGate = saveGate
+
+    viewModel.startGame()
+    advanceUntilIdle()
+    // The snapshot with the started flag has arrived, but the save is still running.
+    assertTrue(viewModel.uiState.value.isStartingGame)
+    assertFalse(viewModel.uiState.value.isGameStarted)
+
+    saveGate.complete(Unit)
+    advanceUntilIdle()
+    assertTrue(viewModel.uiState.value.isGameStarted)
+    assertFalse(viewModel.uiState.value.isStartingGame)
+
+    viewModel.addEnemy(CombatNPC("enemy-2", goblinSheet(), 4))
+    advanceUntilIdle()
+    assertTrue(repository.savedSessions.last().isGameStarted)
+  }
+
+  @Test
   fun tapWhileStartingDoesNotTryASecondSave() = runTest {
     val viewModel = createViewModel()
     advanceUntilIdle()
@@ -976,6 +1000,8 @@ class GameGMViewModelTest {
     val savedSessions = mutableListOf<GameSessionSnapshot>()
     var sessionWriteAttempts = 0
     var sessionWriteGate: CompletableDeferred<Unit>? = null
+    /** When true, emits the saved session before the save finishes, as Firestore's local write. */
+    var emitBeforeSave = false
     var sessionWriteFailure: Throwable? = null
     var loreWriteFailure: Throwable? = null
     var loreWriteException: Exception? = null
@@ -996,6 +1022,7 @@ class GameGMViewModelTest {
         session: GameSessionSnapshot,
     ): Result<Unit> {
       sessionWriteAttempts++
+      if (emitBeforeSave) this.session.value = session
       sessionWriteGate?.await()
       sessionWriteFailure?.let {
         return Result.failure(it)

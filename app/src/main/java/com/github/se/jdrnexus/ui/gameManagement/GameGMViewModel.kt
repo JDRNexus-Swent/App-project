@@ -345,7 +345,8 @@ class GameViewModelGMViewModel(
           }
           .collect { session ->
             _uiState.update { state ->
-              // Firestore reports a local write first, so the saved result sets the started flag.
+              // Firestore sends the started flag as soon as Start game begins saving. Keep the old
+              // value until mutateSession applies the saved session, so it shows only on success.
               val updated = state.withSession(session)
               if (state.isStartingGame) updated.copy(isGameStarted = state.isGameStarted)
               else updated
