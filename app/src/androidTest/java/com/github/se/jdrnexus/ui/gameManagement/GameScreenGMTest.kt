@@ -416,6 +416,10 @@ class GameScreenGMTest {
     val calls = mutableListOf<String>()
     override val uiState: StateFlow<GameViewModelGMUiState> = state
 
+    override fun startGame() {
+      calls += "startGame"
+    }
+
     override fun addEnemy(enemy: CombatNPC) {
       calls += "addEnemy(${enemy.id})"
     }

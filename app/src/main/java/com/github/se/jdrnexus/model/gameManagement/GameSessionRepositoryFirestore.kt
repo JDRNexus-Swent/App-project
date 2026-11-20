@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.gameManagement
 
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
@@ -275,6 +276,7 @@ class GameSessionRepositoryFirestore(
                     "information" to npc.information,
                 )
               },
+          "isGameStarted" to session.isGameStarted,
       )
 
   private fun decodeSession(data: Map<String, Any>?): GameSessionSnapshot {
@@ -313,6 +315,7 @@ class GameSessionRepositoryFirestore(
             isCombatActive = data["isCombatActive"] as? Boolean ?: false,
             currentRound = round,
             npcs = npcs,
+            isGameStarted = data["isGameStarted"] as? Boolean ?: false,
         )
     session.validate()
     return session

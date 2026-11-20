@@ -110,6 +110,7 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
 import com.github.se.jdrnexus.resources.MAX_LANDSCAPE_CONTENT_WIDTH
 import com.github.se.jdrnexus.resources.useLandscapeLayout
+import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import dev.romainguy.kotlin.math.Quaternion
 import kotlin.math.PI
 import kotlin.math.abs
@@ -145,13 +146,13 @@ private fun diceThemeColors(): DiceThemeColors {
   return DiceThemeColors(
       backgroundColor = scheme.background,
       cardColor = scheme.surface,
-      cardBorder = scheme.onBackground,
+      cardBorder = scheme.outline,
       panelColor = scheme.background,
-      panelBorder = scheme.onBackground,
+      panelBorder = scheme.outline,
       primaryText = scheme.onSecondary,
       secondaryText = scheme.tertiary,
       accentColor = scheme.primary,
-      dieText = scheme.secondary,
+      dieText = LocalAppUiColors.current.dieText,
       selectedDiceBackground = scheme.primary.copy(alpha = 0.15f),
       rollGradient = listOf(scheme.primary, lerp(scheme.primary, scheme.secondary, 0.5f)),
       rollBorder = scheme.secondary,
