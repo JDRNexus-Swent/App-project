@@ -24,7 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -64,6 +63,7 @@ import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.groupWorkSpace.EditItemDialog
+import com.github.se.jdrnexus.ui.groupWorkSpace.FolderCard
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import com.github.se.jdrnexus.viewmodel.LoadState
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
@@ -239,24 +239,34 @@ fun PersonalSpaceScreen(
                   verticalArrangement = Arrangement.spacedBy(12.dp),
               ) {
                 items(personalSpaceItems, key = { it.id }) { item ->
-                  FolderItem(
-                      folder = item,
-                      onFolderClicked = {
-                        personalSpaceViewModel.onItemClicked(item, onDocumentClicked)
-                      },
-                      onRename =
-                          if (item.type == DocumentType.FOLDER) {
-                            { personalSpaceViewModel.onRenameSelected(item) }
-                          } else {
-                            null
-                          },
-                      cardColor = cardColor,
-                      iconBackground = iconBackground,
-                      primaryText = primaryText,
-                      secondaryText = secondaryText,
-                      borderColor = borderColor,
-                      accentColor = accentColor,
-                  )
+                  val open = { personalSpaceViewModel.onItemClicked(item, onDocumentClicked) }
+                  if (item.isContainer()) {
+                    // Same folder card as the Group Workspace. Personal Space folders can only be
+                    // renamed: there is no delete or visibility here, and group roots have no
+                    // actions at all.
+                    FolderCard(
+                        folder = item,
+                        onOpen = open,
+                        onEdit =
+                            if (item.type == DocumentType.FOLDER) {
+                              { personalSpaceViewModel.onRenameSelected(item) }
+                            } else {
+                              null
+                            },
+                        actionsEnabled = !uiState.isRenaming,
+                    )
+                  } else {
+                    FolderItem(
+                        folder = item,
+                        onFolderClicked = open,
+                        cardColor = cardColor,
+                        iconBackground = iconBackground,
+                        primaryText = primaryText,
+                        secondaryText = secondaryText,
+                        borderColor = borderColor,
+                        accentColor = accentColor,
+                    )
+                  }
                 }
               }
             }
@@ -316,7 +326,6 @@ fun FolderItem(
     folder: JDRFile,
     onFolderClicked: () -> Unit,
     modifier: Modifier = Modifier,
-    onRename: (() -> Unit)? = null,
     cardColor: Color = MaterialTheme.colorScheme.surface,
     iconBackground: Color = MaterialTheme.colorScheme.surfaceVariant,
     primaryText: Color = MaterialTheme.colorScheme.onSurface,
@@ -391,19 +400,6 @@ fun FolderItem(
               maxLines = 1,
               overflow = TextOverflow.Ellipsis,
               modifier = Modifier.padding(top = 3.dp),
-          )
-        }
-      }
-
-      if (onRename != null) {
-        IconButton(
-            onClick = onRename,
-            modifier = Modifier.size(36.dp).testTag(C.Tag.personalSpaceRename(folder.id)),
-        ) {
-          Icon(
-              Icons.Filled.Edit,
-              contentDescription = stringResource(R.string.workspace_edit_description, folder.name),
-              tint = primaryText,
           )
         }
       }

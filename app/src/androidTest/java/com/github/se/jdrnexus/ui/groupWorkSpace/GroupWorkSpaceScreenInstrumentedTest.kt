@@ -630,6 +630,33 @@ class GroupWorkSpaceScreenInstrumentedTest {
         .assertCountEquals(0)
   }
 
+  // Folders use the shared folder card; the role and ownership only decide its actions.
+  @Test
+  fun playerSeesEveryActionOnlyOnTheirOwnFolderCard() {
+    val own = file("own-folder", "Own", DocumentType.FOLDER, ownerId = USER)
+    val foreign = file("foreign-folder", "Foreign", DocumentType.FOLDER, ownerId = OTHER)
+    showScreen(WorkspaceFakeRepository(listOf(own, foreign)), Role.PLAYER)
+
+    composeTestRule.assertSharedFolderCard(
+        id = "own-folder",
+        name = "Own",
+        actions = FolderCardAction.entries.toSet(),
+    )
+    composeTestRule.assertSharedFolderCard(id = "foreign-folder", name = "Foreign")
+  }
+
+  @Test
+  fun gameMasterCanRemoveAndHideButNotRenameAnotherMembersFolderCard() {
+    val foreign = file("foreign-folder", "Foreign", DocumentType.FOLDER, ownerId = OTHER)
+    showScreen(WorkspaceFakeRepository(listOf(foreign)), Role.GAME_MASTER)
+
+    composeTestRule.assertSharedFolderCard(
+        id = "foreign-folder",
+        name = "Foreign",
+        actions = setOf(FolderCardAction.REMOVE, FolderCardAction.VISIBILITY),
+    )
+  }
+
   // A folder is renamed through the same edit dialog as files, and its card shows the new name.
   @Test
   fun ownerRenamesFolderThroughTheSharedEditDialog() {
