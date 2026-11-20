@@ -5,6 +5,7 @@ package com.github.se.jdrnexus.endToEnd
 import android.util.Log
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -19,6 +20,9 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.MainActivity
+import com.github.se.jdrnexus.codec.JDRFileJsonCodec
+import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
+import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
@@ -31,6 +35,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.BeforeClass
 import org.junit.Rule
@@ -110,26 +115,33 @@ class CharacterEditionE2ETest {
         .performScrollToNode(hasTestTag("edit_character_save"))
     composeRule.onNodeWithTag("edit_character_save").performClick()
 
+    // The editor only navigates back once the repository write has succeeded.
     waitForContentDescription("Add item")
     composeRule.onNodeWithTag(EditFileCharacterTestTags.LIST).assertDoesNotExist()
     composeRule.onNodeWithText("CHARACTER SHEET").assertIsDisplayed()
     composeRule.onNodeWithText("1 items").assertIsDisplayed()
-    // Saving the sheet renames the file too, so Personal Space lists the character by its new name.
-    waitForText(EDITED_NAME)
-    composeRule.onNodeWithText(EDITED_NAME).assertIsDisplayed()
-    composeRule.onAllNodesWithText(SEEDED_NAME).fetchSemanticsNodes().let {
-      org.junit.Assert.assertTrue("Old name must no longer be listed", it.isEmpty())
-    }
-    runBlocking {
-      kotlinx.coroutines.delay(1000)
 
-      val updatedFile = WorkspaceRepositoryProvider.repository.getFile(fileId).getOrThrow()
-      org.junit.Assert.assertEquals(EDITED_NAME, updatedFile?.name)
-      org.junit.Assert.assertTrue(
-          "Json must contain new name",
-          updatedFile?.content?.contains(EDITED_NAME) == true,
-      )
+    // The file name mirrors the sheet name (the source of truth); every other field is kept.
+    val updatedFile = runBlocking {
+      WorkspaceRepositoryProvider.repository.getFile(fileId).getOrThrow()
     }
+    assertEquals(EDITED_NAME, updatedFile?.name)
+    assertEquals(
+        CharacterFile(
+            name = EDITED_NAME,
+            stats = emptyList(),
+            actions = emptyList(),
+            hp = CharacterHealthPoints(current = 10, max = 10),
+        ),
+        JDRFileJsonCodec.deserializeCharacter(updatedFile!!.content),
+    )
+
+    // Reopening the character shows the edited name.
+    composeRule.onNodeWithText("CHARACTER SHEET").performClick()
+    waitForTag(EditFileCharacterTestTags.LIST)
+    composeRule
+        .onNode(hasTestTag("edit_character_name") and hasText(EDITED_NAME))
+        .assertIsDisplayed()
   }
 
   private fun seedCharacter(): String {
