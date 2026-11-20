@@ -64,7 +64,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.notification.Notification
@@ -72,14 +71,9 @@ import com.github.se.jdrnexus.model.notification.NotificationType
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
-import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.NotificationLoadState
-import com.github.se.jdrnexus.viewmodel.NotificationUiState
 import com.github.se.jdrnexus.viewmodel.NotificationViewModelInterface
 import java.util.Date
-import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** Bottom-bar tab highlighted on this screen: notifications are about campaigns. */
@@ -520,138 +514,3 @@ private fun relativeTime(createdAt: Date?): String =
           )
           .toString()
     } ?: stringResource(R.string.notifications_just_now)
-
-// ============ Previews ============
-
-/**
- * In-memory ViewModel for the previews: marking as read updates the list, so they are interactive.
- */
-private class PreviewNotificationViewModel(state: NotificationUiState) :
-    NotificationViewModelInterface {
-  override val notificationUiState = MutableStateFlow(state)
-
-  override fun markAsRead(notificationId: String) = update { notification ->
-    if (notification.id == notificationId) notification.copy(isRead = true) else notification
-  }
-
-  override fun markAllAsRead() = update { it.copy(isRead = true) }
-
-  override fun deleteNotification(notificationId: String) {
-    notificationUiState.update { state ->
-      state.copy(notifications = state.notifications.filterNot { it.id == notificationId })
-    }
-  }
-
-  override fun clearActionError() {
-    notificationUiState.update { it.copy(actionError = null) }
-  }
-
-  override fun retry() {
-    notificationUiState.update { it.copy(loadState = NotificationLoadState.Success) }
-  }
-
-  private fun update(transform: (Notification) -> Notification) {
-    notificationUiState.update { state ->
-      state.copy(notifications = state.notifications.map(transform))
-    }
-  }
-}
-
-/** The notifications of the design: three unread and two read, covering every type. */
-private fun previewNotifications(): List<Notification> {
-  val now = System.currentTimeMillis()
-  fun minutesAgo(minutes: Long) = Date(now - TimeUnit.MINUTES.toMillis(minutes))
-  return listOf(
-      Notification(
-          id = "invitation",
-          type = NotificationType.GROUP_INVITATION,
-          title = "Group invitation",
-          message = "Kael invited you to join Tides of the Black Depths.",
-          createdAt = minutesAgo(minutes = 2),
-      ),
-      Notification(
-          id = "member",
-          type = NotificationType.MEMBERSHIP_CHANGE,
-          title = "New member",
-          message = "Arin joined your group Clockwork Dominion.",
-          groupId = "clockwork",
-          createdAt = minutesAgo(minutes = TimeUnit.HOURS.toMinutes(1)),
-      ),
-      Notification(
-          id = "update",
-          type = NotificationType.CAMPAIGN_UPDATE,
-          title = "Campaign update",
-          message = "Chapter IV of Tides of the Black Depths has new lore.",
-          groupId = "tides",
-          createdAt = minutesAgo(minutes = TimeUnit.HOURS.toMinutes(3)),
-      ),
-      Notification(
-          id = "old-member",
-          type = NotificationType.MEMBERSHIP_CHANGE,
-          title = "New member",
-          message = "Lio joined your group Tides of the Black Depths.",
-          groupId = "tides",
-          createdAt = minutesAgo(minutes = TimeUnit.DAYS.toMinutes(1)),
-          isRead = true,
-      ),
-      Notification(
-          id = "old-update",
-          type = NotificationType.CAMPAIGN_UPDATE,
-          title = "Campaign update",
-          message = "Session notes for Clockwork Dominion were shared.",
-          groupId = "clockwork",
-          createdAt = minutesAgo(minutes = TimeUnit.DAYS.toMinutes(3)),
-          isRead = true,
-      ),
-  )
-}
-
-@Composable
-private fun NotificationScreenPreview(state: NotificationUiState, darkTheme: Boolean) {
-  SampleAppTheme(darkTheme = darkTheme) {
-    NotificationScreen(
-        viewModel = remember { PreviewNotificationViewModel(state) },
-        onBack = {},
-        onOpenNotification = {},
-        onTabSelected = {},
-    )
-  }
-}
-
-private val successState
-  get() =
-      NotificationUiState(
-          notifications = previewNotifications(),
-          loadState = NotificationLoadState.Success,
-      )
-
-@Preview(name = "Notifications · Light", widthDp = 412, heightDp = 917)
-@Composable
-private fun NotificationScreenLightPreview() =
-    NotificationScreenPreview(successState, darkTheme = false)
-
-@Preview(name = "Notifications · Dark", widthDp = 412, heightDp = 917)
-@Composable
-private fun NotificationScreenDarkPreview() =
-    NotificationScreenPreview(successState, darkTheme = true)
-
-@Preview(name = "Notifications · Loading", widthDp = 412, heightDp = 917)
-@Composable
-private fun NotificationScreenLoadingPreview() =
-    NotificationScreenPreview(NotificationUiState(), darkTheme = false)
-
-@Preview(name = "Notifications · Empty", widthDp = 412, heightDp = 917)
-@Composable
-private fun NotificationScreenEmptyPreview() =
-    NotificationScreenPreview(
-        NotificationUiState(loadState = NotificationLoadState.Empty),
-        darkTheme = false,
-    )
-
-@Preview(name = "Notifications · Error", widthDp = 412, heightDp = 917)
-@Composable
-private fun NotificationScreenErrorPreview() =
-    NotificationScreenPreview(
-        NotificationUiState(loadState = NotificationLoadState.Error("offline")),
-        darkTheme = false,
-    )
