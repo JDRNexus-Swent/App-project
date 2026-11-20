@@ -41,7 +41,6 @@ import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.notification.NotificationBell
-import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 
 object TestTags {
   const val TITLE = "home_title"
