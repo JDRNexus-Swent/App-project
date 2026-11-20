@@ -31,7 +31,7 @@ data class ProfileUiState(
     val isLoading: Boolean = true,
     /** True while a save or a picture upload is running. */
     val isSaving: Boolean = false,
-    /** Error from the latest repository operation, or null. */
+    /** Error from the latest repository operation, or null. Cleared when a new one starts. */
     val errorMessage: String? = null,
 )
 
@@ -68,7 +68,4 @@ interface ProfileViewModelInterface {
    * Uploads the picked [image] as the new profile picture and shows it once the upload succeeds.
    */
   fun updateProfilePicture(image: Uri)
-
-  /** Clears [ProfileUiState.errorMessage] once the screen has shown it. */
-  fun clearError()
 }
