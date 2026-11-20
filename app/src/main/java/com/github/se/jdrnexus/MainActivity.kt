@@ -33,6 +33,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.github.se.jdrnexus.model.gameManagement.GameSessionRepository
 import com.github.se.jdrnexus.model.gameManagement.GameSessionRepositoryFirestore
+import com.github.se.jdrnexus.model.notification.Notification
+import com.github.se.jdrnexus.model.notification.NotificationRepositoryProvider
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.GroupRepositoryFirestore
@@ -41,6 +43,7 @@ import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
+import com.github.se.jdrnexus.model.repository.AuthRepositoryProvider
 import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.showComingSoon
@@ -61,6 +64,9 @@ import com.github.se.jdrnexus.ui.home.HomeScreen
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
 import com.github.se.jdrnexus.ui.map.MapScreen
 import com.github.se.jdrnexus.ui.map.MapViewModel
+import com.github.se.jdrnexus.ui.notification.NotificationDestination
+import com.github.se.jdrnexus.ui.notification.NotificationScreen
+import com.github.se.jdrnexus.ui.notification.destination
 import com.github.se.jdrnexus.ui.search.DocumentSearchInterfaceVM
 import com.github.se.jdrnexus.ui.search.DocumentSearchScope
 import com.github.se.jdrnexus.ui.search.DocumentSearchScreen
@@ -68,6 +74,8 @@ import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.GroupRole
+import com.github.se.jdrnexus.viewmodel.NotificationViewModel
+import com.github.se.jdrnexus.viewmodel.NotificationViewModelInterface
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.catch
@@ -83,7 +91,19 @@ class MainActivity : ComponentActivity() {
             modifier = Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container },
             color = MaterialTheme.colorScheme.background,
         ) {
-          JDRNexusApp()
+          val notificationViewModel: NotificationViewModel =
+              viewModel(
+                  factory =
+                      viewModelFactory {
+                        initializer {
+                          NotificationViewModel(
+                              repository = NotificationRepositoryProvider.repository,
+                              authRepository = AuthRepositoryProvider.repository,
+                          )
+                        }
+                      }
+              )
+          JDRNexusApp(notificationViewModel = notificationViewModel)
         }
       }
     }
@@ -101,6 +121,7 @@ enum class AllRoutes {
   EditChar,
   EditLore,
   Map,
+  Notifications,
 }
 
 object GroupWorkspaceRoute {
@@ -138,7 +159,12 @@ object GamePlayerRoute {
   fun createRoute(groupId: String): String = "game_player/${Uri.encode(groupId)}"
 }
 
-/** Optional dependencies let navigation tests use production screens with deterministic fakes. */
+/**
+ * Optional dependencies let navigation tests use production screens with deterministic fakes.
+ *
+ * @param notificationViewModel Source of the user's notifications. The notification screen and the
+ *   Home bell only exist when it is provided.
+ */
 @Composable
 fun JDRNexusApp(
     authViewModel: AuthViewModel? = null,
@@ -151,6 +177,7 @@ fun JDRNexusApp(
     groupRepository: GroupRepository? = null,
     personalSearchViewModel: DocumentSearchInterfaceVM? = null,
     groupSearchViewModel: DocumentSearchInterfaceVM? = null,
+    notificationViewModel: NotificationViewModelInterface? = null,
     gameSessionRepository: GameSessionRepository? = null,
 ) {
   val activeAuthViewModel = authViewModel ?: viewModel(factory = AuthViewModel.Factory)
@@ -185,6 +212,17 @@ fun JDRNexusApp(
       DocumentType.TEXT -> navigation.navigate(AllRoutes.EditLore.name)
       DocumentType.FOLDER,
       DocumentType.GROUP_ROOT -> Unit
+    }
+  }
+  val openNotification: (Notification) -> Unit = { notification ->
+    when (val destination = notification.destination()) {
+      is NotificationDestination.GroupWorkspace ->
+          navigation.navigate(GroupWorkspaceRoute.createRoute(destination.groupId)) {
+            launchSingleTop = true
+          }
+      NotificationDestination.Campaigns ->
+          navigation.navigate(AllRoutes.GroupManagement.name) { launchSingleTop = true }
+      null -> Unit
     }
   }
   val onGameTabSelected: (String) -> Unit = { tab ->
@@ -241,6 +279,7 @@ fun JDRNexusApp(
         val onDiceClicked = { navigation.navigate(AllRoutes.Dice.name) }
         val onGroupManagementClicked = { navigation.navigate(AllRoutes.GroupManagement.name) }
         val onMapClicked = { navigation.navigate(AllRoutes.Map.name) }
+        val notificationState = notificationViewModel?.notificationUiState?.collectAsState()
         HomeScreen(
             viewModel = activeAuthViewModel,
             onLogout = onLogout,
@@ -248,7 +287,31 @@ fun JDRNexusApp(
             onDiceClick = onDiceClicked,
             onGroupManagementClick = onGroupManagementClicked,
             onMapClick = onMapClicked,
+            unreadNotificationCount =
+                notificationState?.value?.notifications?.count { !it.isRead } ?: 0,
+            onNotificationsClick =
+                notificationViewModel?.let {
+                  { navigation.navigate(AllRoutes.Notifications.name) { launchSingleTop = true } }
+                },
         )
+      }
+
+      if (notificationViewModel != null) {
+        composable(route = AllRoutes.Notifications.name) {
+          NotificationScreen(
+              viewModel = notificationViewModel,
+              onBack = { navigation.popBackStack() },
+              onOpenNotification = openNotification,
+              onTabSelected = { tab ->
+                when (tab) {
+                  "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
+                  "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
+                  "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
+                  "Map" -> navigation.navigate(AllRoutes.Map.name)
+                }
+              },
+          )
+        }
       }
 
       composable(route = AllRoutes.SignUp.name) {
