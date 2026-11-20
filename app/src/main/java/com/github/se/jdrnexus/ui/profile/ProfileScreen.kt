@@ -432,6 +432,4 @@ private const val NO_DESCRIPTION = "No description"
 //  override fun saveProfile() = Unit
 //
 //  override fun updateProfilePicture(image: Uri) = Unit
-//
-//  override fun clearError() = Unit
 // }
