@@ -172,6 +172,8 @@ dependencies {
   implementation(libs.compose.viewmodel)
   // Android Studio Preview support
   implementation(libs.compose.preview)
+  implementation(libs.coil.compose)
+  implementation(libs.coil.network.okhttp)
   debugImplementation(libs.compose.tooling)
   // UI Tests
   globalTestImplementation(libs.compose.test.junit)
