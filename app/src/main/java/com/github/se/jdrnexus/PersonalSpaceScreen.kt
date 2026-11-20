@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -62,6 +63,7 @@ import com.github.se.jdrnexus.model.personalSpace.isContainer
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
+import com.github.se.jdrnexus.ui.groupWorkSpace.EditItemDialog
 import com.github.se.jdrnexus.viewmodel.LoadState
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 
@@ -241,6 +243,12 @@ fun PersonalSpaceScreen(
                       onFolderClicked = {
                         personalSpaceViewModel.onItemClicked(item, onDocumentClicked)
                       },
+                      onRename =
+                          if (item.type == DocumentType.FOLDER) {
+                            { personalSpaceViewModel.onRenameSelected(item) }
+                          } else {
+                            null
+                          },
                       cardColor = cardColor,
                       iconBackground = iconBackground,
                       primaryText = primaryText,
@@ -287,6 +295,19 @@ fun PersonalSpaceScreen(
         },
     )
   }
+
+  // Same rename dialog as the Group Workspace.
+  if (uiState.renamingItemId != null) {
+    EditItemDialog(
+        isFolder = true,
+        name = uiState.renameName,
+        onNameChange = personalSpaceViewModel::onRenameNameChanged,
+        errorMessage = uiState.renameError,
+        isInProgress = uiState.isRenaming,
+        onSave = personalSpaceViewModel::renameFolder,
+        onCancel = personalSpaceViewModel::onRenameDialogDismissed,
+    )
+  }
 }
 
 @Composable
@@ -294,6 +315,7 @@ fun FolderItem(
     folder: JDRFile,
     onFolderClicked: () -> Unit,
     modifier: Modifier = Modifier,
+    onRename: (() -> Unit)? = null,
     cardColor: Color = MaterialTheme.colorScheme.surface,
     iconBackground: Color = MaterialTheme.colorScheme.surfaceVariant,
     primaryText: Color = MaterialTheme.colorScheme.onSurface,
@@ -368,6 +390,19 @@ fun FolderItem(
               maxLines = 1,
               overflow = TextOverflow.Ellipsis,
               modifier = Modifier.padding(top = 3.dp),
+          )
+        }
+      }
+
+      if (onRename != null) {
+        IconButton(
+            onClick = onRename,
+            modifier = Modifier.size(36.dp).testTag(C.Tag.personalSpaceRename(folder.id)),
+        ) {
+          Icon(
+              Icons.Filled.Edit,
+              contentDescription = stringResource(R.string.workspace_edit_description, folder.name),
+              tint = primaryText,
           )
         }
       }

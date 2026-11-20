@@ -22,14 +22,18 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.FolderItem
@@ -42,6 +46,7 @@ import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
+import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 import kotlinx.coroutines.awaitCancellation
@@ -607,19 +612,36 @@ class PersonalSpaceScreenTests {
     composeTestRule.onAllNodesWithText("CHARACTER SHEET").assertCountEquals(2)
   }
 
-  private class FakeWorkspaceRepository(private val rootFiles: Flow<List<JDRFile>>) :
-      WorkspaceRepository {
+  /**
+   * When [stored] is given, [getFile] reads it and [updateFile] applies edits to it, so a screen
+   * observing it as [rootFiles] sees renames.
+   */
+  private class FakeWorkspaceRepository(
+      private val rootFiles: Flow<List<JDRFile>>,
+      private val stored: MutableStateFlow<List<JDRFile>>? = null,
+  ) : WorkspaceRepository {
     var rootFetchCount = 0
+    val updates = mutableListOf<FileEdit>()
 
     override fun getNewUid(): String = "new-folder-id"
 
     override suspend fun createFile(file: JDRFile): Result<Unit> = Result.success(Unit)
 
-    override suspend fun updateFile(edit: FileEdit): Result<Unit> = Result.success(Unit)
+    override suspend fun updateFile(edit: FileEdit): Result<Unit> {
+      updates.add(edit)
+      stored?.let { files ->
+        files.value =
+            files.value.map {
+              if (it.id == edit.id) it.copy(name = edit.name, content = edit.content) else it
+            }
+      }
+      return Result.success(Unit)
+    }
 
     override suspend fun deleteFile(fileId: String): Result<Unit> = Result.success(Unit)
 
-    override suspend fun getFile(fileId: String): Result<JDRFile?> = Result.success(null)
+    override suspend fun getFile(fileId: String): Result<JDRFile?> =
+        Result.success(stored?.value?.firstOrNull { it.id == fileId })
 
     override suspend fun removeItemFromGroup(
         itemId: String,
@@ -654,6 +676,98 @@ class PersonalSpaceScreenTests {
         groupId: String,
         isHidden: Boolean,
     ): Result<Unit> = error("Not used")
+  }
+
+  // ============ Folder rename ============
+
+  /** Files owned by the signed-in test user, stored so renames reach the displayed list. */
+  private fun renamableScreen(): Pair<FakeWorkspaceRepository, MutableStateFlow<List<JDRFile>>> {
+    val stored = MutableStateFlow(files.map { it.copy(ownerId = "test-user") })
+    val repository = FakeWorkspaceRepository(stored, stored)
+    setScreen(PersonalSpaceViewModel(repository, FakeAuthRepository()))
+    return repository to stored
+  }
+
+  @Test
+  fun onlyFoldersShowTheRenameAction() {
+    renamableScreen()
+
+    composeTestRule.onNodeWithTag(C.Tag.personalSpaceRename("ashen-realms")).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.personalSpaceRename("silver-covenant")).assertIsDisplayed()
+    composeTestRule
+        .onAllNodesWithTag(C.Tag.personalSpaceRename("elara-moonwhisper"))
+        .assertCountEquals(0)
+    composeTestRule
+        .onAllNodesWithTag(C.Tag.personalSpaceRename("sunken-citadel"))
+        .assertCountEquals(0)
+  }
+
+  @Test
+  fun folderIsRenamedThroughTheGroupWorkspaceEditDialog() {
+    val (repository, stored) = renamableScreen()
+
+    composeTestRule.onNodeWithTag(C.Tag.personalSpaceRename("ashen-realms")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_dialog).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Edit folder").assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_edit_item_name_input)
+        .assertTextContains("The Ashen Realms")
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_name_input).performTextClearance()
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_edit_item_name_input)
+        .performTextInput("The Burning Realms")
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_save).performClick()
+
+    composeTestRule.waitUntil(5_000) {
+      composeTestRule
+          .onAllNodesWithTag(C.Tag.workspace_edit_item_dialog)
+          .fetchSemanticsNodes()
+          .isEmpty()
+    }
+    composeTestRule.onNodeWithText("The Burning Realms").assertIsDisplayed()
+    composeTestRule.onAllNodesWithText("The Ashen Realms").assertCountEquals(0)
+    assertEquals(
+        listOf(FileEdit("ashen-realms", "The Burning Realms", "8 files · World lore & maps")),
+        repository.updates,
+    )
+    assertEquals(
+        listOf(
+            "The Burning Realms",
+            "Elara Moonwhisper",
+            "The Sunken Citadel",
+            "The Silver Covenant",
+        ),
+        stored.value.map { it.name },
+    )
+  }
+
+  @Test
+  fun cancellingTheRenameDialogKeepsTheFolderName() {
+    val (repository, _) = renamableScreen()
+
+    composeTestRule.onNodeWithTag(C.Tag.personalSpaceRename("ashen-realms")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_name_input).performTextClearance()
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_edit_item_name_input)
+        .performTextInput("The Burning Realms")
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_cancel).performClick()
+
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_edit_item_dialog).assertCountEquals(0)
+    composeTestRule.onNodeWithText("The Ashen Realms").assertIsDisplayed()
+    assertEquals(emptyList<FileEdit>(), repository.updates)
+  }
+
+  @Test
+  fun blankRenameKeepsTheDialogOpenWithAnError() {
+    val (repository, _) = renamableScreen()
+
+    composeTestRule.onNodeWithTag(C.Tag.personalSpaceRename("ashen-realms")).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_name_input).performTextClearance()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_save).performClick()
+
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_dialog).assertIsDisplayed()
+    composeTestRule.onNodeWithText("The item name cannot be blank.").assertIsDisplayed()
+    assertEquals(emptyList<FileEdit>(), repository.updates)
   }
 
   private class FakeAuthRepository(
