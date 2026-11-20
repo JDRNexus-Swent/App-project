@@ -191,8 +191,8 @@ fun SignInScreen(
           modifier = Modifier.fillMaxWidth().testTag(C.Tag.sign_in_email),
           colors =
               darkFieldColors(
-                  container = colors.onBackground,
-                  border = colors.onSurface,
+                  container = colors.surfaceContainerHighest,
+                  border = colors.outline,
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
@@ -249,8 +249,8 @@ fun SignInScreen(
           modifier = Modifier.fillMaxWidth().testTag(C.Tag.sign_in_password),
           colors =
               darkFieldColors(
-                  container = colors.onBackground,
-                  border = colors.onSurface,
+                  container = colors.surfaceContainerHighest,
+                  border = colors.outline,
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
@@ -338,10 +338,10 @@ fun SignInScreen(
               signInViewModel.googleSignIn(context, credentialManager)
             }
           },
-          border = colors.onSurface,
+          border = colors.outline,
           logo = colors.primary,
           textColor = colors.onSecondary,
-          container = colors.onBackground,
+          container = colors.surfaceContainerHighest,
           enabled = !isAuthenticationLocked,
       )
       Spacer(modifier = Modifier.height(2.dp))

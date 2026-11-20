@@ -835,7 +835,7 @@ fun WorkspaceHeader(
     roleLabel?.let { role ->
       Surface(
           shape = RoundedCornerShape(8.dp),
-          color = color().onBackground,
+          color = color().surfaceContainerHighest,
       ) {
         Text(
             text = role,
@@ -1288,8 +1288,8 @@ private fun color(): ColorScheme {
 @Composable
 private fun workspaceFieldColors(): TextFieldColors =
     darkFieldColors(
-        container = color().onBackground,
-        border = color().onSurface,
+        container = color().surfaceContainerHighest,
+        border = color().outline,
         textPrimary = color().onSecondary,
         primary = color().primary,
     )

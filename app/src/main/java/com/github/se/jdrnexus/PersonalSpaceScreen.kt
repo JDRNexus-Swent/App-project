@@ -80,13 +80,13 @@ fun PersonalSpaceScreen(
   val uiState by personalSpaceViewModel.uiState.collectAsState()
   val personalSpaceItems = uiState.items
 
-  val themeColors = LocalAppUiColors.current
+  val themeColors = MaterialTheme.colorScheme
   val cardColor = themeColors.surface
-  val iconBackground = themeColors.iconBackground
-  val primaryText = themeColors.primaryText
-  val secondaryText = themeColors.secondaryText
+  val iconBackground = themeColors.surfaceContainerLowest
+  val primaryText = themeColors.onSurface
+  val secondaryText = themeColors.onSurfaceVariant
   val borderColor = themeColors.outline
-  val accentColor = themeColors.accent
+  val accentColor = themeColors.primary
 
   val handleBack = {
     if (personalSpaceViewModel.uiState.value.canNavigateUp) {
@@ -124,12 +124,12 @@ fun PersonalSpaceScreen(
                 onClick = personalSpaceViewModel::onAddClicked,
                 shape = RoundedCornerShape(50),
                 containerColor = accentColor,
-                contentColor = themeColors.accentContent,
+                contentColor = themeColors.onPrimary,
             ) {
               Icon(
                   imageVector = Icons.Filled.Add,
                   contentDescription = "Add item",
-                  tint = themeColors.accentContent,
+                  tint = themeColors.onPrimary,
               )
             }
             DropdownMenu(

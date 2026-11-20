@@ -553,9 +553,49 @@ class GamePlayerViewModelTest {
     assertNull(viewModel.uiState.value.character)
   }
 
+  @Test
+  fun loadingTheSameGroupAgainKeepsUnsavedHp() = runTest {
+    val (viewModel, _) = ownSheetSession()
+    viewModel.loadSession(group.id)
+    advanceUntilIdle()
+    viewModel.updateCharacterHp(11)
+
+    // GameScreenPlayer calls loadSession again each time it reappears, e.g. after the dice screen.
+    viewModel.loadSession(group.id)
+    advanceUntilIdle()
+
+    val state = viewModel.uiState.value
+    assertFalse(state.isLoading)
+    assertEquals(
+        hero.copy(hp = CharacterHealthPoints(current = 11, max = 20)),
+        state.character!!.character,
+    )
+    assertTrue(state.character!!.hasUnsavedChanges)
+  }
+
+  @Test
+  fun loadingTheSameGroupAgainAfterAFailedLoadTriesAgain() = runTest {
+    val workspace =
+        FakeWorkspaceRepository(
+            group.id to listOf(characterFile("own", player.uid)),
+            failure = IllegalStateException("Offline"),
+        )
+    val viewModel = createViewModel(workspace)
+    viewModel.loadSession(group.id)
+    advanceUntilIdle()
+    assertEquals("Offline", viewModel.uiState.value.error)
+
+    workspace.failure = null
+    viewModel.loadSession(group.id)
+    advanceUntilIdle()
+
+    assertNull(viewModel.uiState.value.error)
+    assertEquals("own", viewModel.uiState.value.character!!.file.id)
+  }
+
   private class FakeWorkspaceRepository(
       vararg folderContents: Pair<String, List<JDRFile>>,
-      private val failure: Exception? = null,
+      var failure: Exception? = null,
       private val updateResult: Result<Unit> = Result.success(Unit),
       private val updateGate: CompletableDeferred<Unit>? = null,
   ) : WorkspaceRepository by UnusedWorkspaceRepository {

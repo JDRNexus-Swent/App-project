@@ -14,6 +14,8 @@ rules_version = '2';
 //                              the proof ({ groupId }) that a user joined with the code, written in
 //                              the same batch as their addition to participantIds.
 //   map_sessions/{sessionId}   public session listings shown on the map (read-only for clients)
+//   profiles/{userId}          { username, bio, pictureUrl }: the profile a user shows. Only its
+//                              owner reads and writes it for now.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -379,7 +381,12 @@ service cloud.firestore {
       }
 
       match /gm_lore/{loreId} {
-        allow read: if signedIn()
+        // A get of a missing id is allowed so the app receives "not found" instead of a denial.
+        allow get: if signedIn()
+          && (resource == null
+              || isGm(groupId)
+              || (isMember(groupId) && resource.data.isShared == true));
+        allow list: if signedIn()
           && (isGm(groupId) || (isMember(groupId) && resource.data.isShared == true));
         allow write: if signedIn() && isGm(groupId);
       }
@@ -423,6 +430,26 @@ service cloud.firestore {
     // clients cannot write them; add write rules when that feature lands.
     match /map_sessions/{sessionId} {
       allow read: if signedIn();
+    }
+
+    // ------------------------------------------------------------------ profiles
+
+    // profiles/{userId} = { username, bio, pictureUrl }. The document id is the user's uid.
+    // Only the owner reads it: widen `read` when other users must see profiles (e.g. group members).
+    // The limits match the ones the profile ViewModel checks. No delete: it comes with accounts.
+    match /profiles/{userId} {
+      allow read: if signedIn() && uid() == userId;
+      allow create, update: if signedIn()
+        && uid() == userId
+        && request.resource.data.keys().hasOnly(['username', 'bio', 'pictureUrl'])
+        && request.resource.data.username is string
+        && request.resource.data.username == request.resource.data.username.trim()
+        && request.resource.data.username.size() >= 3
+        && request.resource.data.username.size() <= 30
+        && request.resource.data.bio is string
+        && request.resource.data.bio.size() <= 300
+        && request.resource.data.get('pictureUrl', '') is string;
+      allow delete: if false;
     }
 
 

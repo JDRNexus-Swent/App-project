@@ -118,6 +118,7 @@ object C {
     const val join_cancel = "join_cancel"
 
     const val enter_workspace_button = "enter_workspace_button"
+    const val play_button = "play_button"
     const val workspace_actions_fab = "workspace_actions_fab"
     const val workspace_create_item = "workspace_create_item"
     const val workspace_create_item_dialog = "create_item_dialog"
@@ -177,6 +178,9 @@ object C {
     const val game_gm_enemy_max_hp = "game_gm_enemy_max_hp"
     const val game_gm_enemy_ac = "game_gm_enemy_ac"
     const val game_gm_enemy_condition = "game_gm_enemy_condition"
+    const val game_gm_start_game = "game_gm_start_game"
+    const val game_gm_start_game_progress = "game_gm_start_game_progress"
+    const val game_gm_game_in_progress = "game_gm_game_in_progress"
     const val game_gm_start_combat = "game_gm_start_combat"
     const val game_gm_next_round = "game_gm_next_round"
     const val game_gm_end_combat = "game_gm_end_combat"

@@ -5,6 +5,8 @@ This document defines the architectural decisions and invariants of the NoSQL da
 Sections marked **(proposed)** are defaults that still need a team decision. Section 12 lists what is known to be missing
 
 **Out of scope for now:** moving a document between folders, splitting an operation over several batches.
+
+**Not described here:** the game session (`campaign_groups/{groupId}/gm_data`) and the lore (`campaign_groups/{groupId}/gm_lore`). They are mentioned in some sections (permissions, rules), but their data model and exact behaviour are not documented in this file yet.
  
 ---
 
@@ -98,6 +100,16 @@ The repository does not authenticate: the caller passes the user id (like `addUs
 - **Self join** (`isSelfJoin`): a non-GM updates a group only by adding **their own uid** to `participantIds` (exactly one added, none removed, no other field changed). The code used is the group's current `inviteCode` read before the write, never a value typed by the user, so an old code is useless. The redemption must exist after the write (`existsAfter`) and the group must be in `users/{uid}.groupIds` after the write (`getAfter`). The new uid is expected in last position, which is what `arrayUnion` does (same assumption as `isParticipantAdded`).
 - The redemption exists because rules cannot see which code a user typed. Writing it in the **same batch** as the membership turns "this user knows a valid code" into a document the rules can read. The chain is: valid current code, then redemption allowed, then membership allowed. The order of the writes inside the batch does not matter, `existsAfter` reads the final state.
 - Reads of other documents by the rules count towards the limit of document-access calls (20 per batched write). A join makes about 6 to 8, see section 12.
+
+### 1.8 Profiles (`profiles/{userId}`)
+
+`profiles/{userId}` holds the profile a user shows: `username`, `bio` and `pictureUrl` (all `String`, `""` = not set, see 1.3). The document id is the user's uid. It is separate from `users/{userId}`, whose rules only accept `groupIds` (1.6).
+
+- **Only the owner reads and writes it for now.** The `read` rule must be widened when other users need to see a profile (e.g. the members of a shared group).
+- A user who never saved a profile has no document: `ProfileRepository.getProfile` returns empty fields, and the profile ViewModel shows the sign-up username (Firebase Auth display name) until the first save.
+- `updateProfile` writes `username` and `bio` with a merge: it creates the document on the first save and never overwrites `pictureUrl`.
+- The rules refuse any other field, a username that is not trimmed or outside 3 to 30 characters, and a bio above 300 characters. The profile ViewModel checks the same limits. Deletion is refused (it comes with account deletion, section 9).
+- **Stats are not stored.** `getProfileStats` counts on the server (`count()`), filtering on the caller as the rules require: groups with `participantIds` containing the user (joined) and also `gameMasterId` equal to the user (created), and the user's own `TEXT` and `CHARACTER` documents (folders and group roots are not files). These filters need no composite index.
 
 ---
 
@@ -290,7 +302,7 @@ Concurrent writes (a player placing a document in a folder at the moment it leav
 | Read the game session (`gm_data`) | n/a | yes | yes | no |
 | Write the game session (`gm_data`) | n/a | yes | no | no |
 
-A `get` of an id that does not exist (in `documents` or `campaign_groups`), and an `update` of a missing id in `documents`, are allowed to any signed-in user, so the app receives "not found" instead of a denial. It only tells that the id does not exist, and an update never creates a document.
+A `get` of an id that does not exist (in `documents`, `campaign_groups` or `gm_lore`), and an `update` of a missing id in `documents`, are allowed to any signed-in user, so the app receives "not found" instead of a denial. It only tells that the id does not exist, and an update never creates a document.
 
 The rules cannot tell who changes a placement entry (see 7.5): "who may hide or reveal" is enforced by the UI, not by the rules. Reattachments are a side effect of unsharing or deleting a container: they are performed on other users' documents by whoever triggers the cascade, through exception 2 of 7.5.
 
@@ -328,24 +340,30 @@ A user who left a group can join it again with the same code as long as the GM h
 | Only owner deletes | yes | | yes | emulator |
 | GM can unshare others' docs | exception 7.5.1 | yes | | emulator |
 | Reattach after unshare / delete | yes, broad (7.5, exception 2) | yes | | emulator |
-| `users/{uid}.groupIds` agrees with `participantIds` | yes | same batch | | emulator |
+| `users/{uid}.groupIds` agrees with `participantIds` | yes | same batch | | emulator, rules tests |
 | Unshare and delete follow the same reattachment rules | | pure functions in `CascadeRules.kt` | | yes |
 | `GROUP_ROOT` immutable | yes | yes | yes | emulator |
 | Group and root names stay equal | | batch | | yes |
 | Personal queries exclude `GROUP_ROOT` | | single filter | | yes |
 | `isHidden` filtering | no (not a boundary) | none (view model) | single function | yes |
 | Batch size limit | | yes | | yes |
-| Invitation and `inviteCode` point to each other (no ghost code) | yes (`getAfter` both ways, 1.7) | transaction / same batch | | emulator (repository, no rules) |
+| Invitation and `inviteCode` point to each other (no ghost code) | yes (`getAfter` both ways, 1.7) | transaction / same batch | | emulator (repository), rules tests (invitation side) |
 | One valid code per group | yes | transaction (`createInvitation`) | | emulator (repository, no rules) |
-| Old code stops working after regeneration | yes (redemption needs the current code) | delete + create in one batch | | emulator (repository, no rules) |
+| Old code stops working after regeneration | yes (redemption needs the current code) | delete + create in one batch | | emulator (repository), rules tests (redemption) |
 | Join writes redemption, `participantIds` and `groupIds` together | yes (`existsAfter`, `getAfter`) | same batch | | emulator (repository, no rules) |
 | Join adds only the current user | yes (`isSelfJoin`) | `arrayUnion(userId)` | | emulator (repository, no rules) |
-| Only the GM writes `inviteCode` and invitations | yes | checked before writing | | emulator (repository, no rules) |
-| Invitations cannot be listed | yes | | | not tested yet |
+| Only the GM writes `inviteCode` and invitations | yes | checked before writing | | emulator (repository), rules tests (invitations) |
+| Invitations cannot be listed | yes | | | rules tests |
 | Already member refused before any write | | yes (`users/{uid}.groupIds`) | | emulator |
 | Code generation: alphabet, length, normalization | | pure functions (`InvitationCodes`) | | yes |
+| Only the owner reads and writes their profile | yes | | | emulator |
+| Profile username trimmed, 3 to 30 characters; bio at most 300 | yes | | view model | emulator |
+| Profile update never overwrites `pictureUrl` | | merge of `username` and `bio` only | | emulator |
+| Dice rolls and activities: added by a member under their own `userId`, server timestamp, never edited | yes | | | rules tests |
+| Game session (`gm_data`) and lore (`gm_lore`): members read (lore only if shared), the GM writes | yes | | | rules tests |
+| `map_sessions` read-only; any other collection denied | yes | | | rules tests |
 
-Rules and batch behavior must be tested with the **Firebase emulator** (member / non-member / GM / owner), not only with mocks.
+Rules and batch behavior must be tested with the **Firebase emulator** (member / non-member / GM / owner), not only with mocks. "Rules tests" are the classes of `app/src/test/.../firestoreRules/`, one per collection or group of related rules: each sends requests as signed-in users and checks that the rules allow them, or deny them and write nothing.
  
 ---
 
@@ -357,12 +375,15 @@ Rules and batch behavior must be tested with the **Firebase emulator** (member /
 - The client does not check who calls an operation: this is the job of the security rules.
 - Moving documents between folders is not supported yet.
 - Placement entry changes are open to any member of the group (7.5, exception 2).
-- The invitation rules (1.7) have no rules tests yet: the repository tests run on the emulator without the security rules. Rules tests that load `firestore.rules` with signed-in users come with the test refactor. Until then, the "denied" cases (listing, old code, adding another user, another field, non-GM) are not verified automatically.
+- `users/{userId}` does not check who writes it: any signed-in user may write any users document, as long as `groupIds` follows `participantIds` (one group added if the user is a participant after the write, one removed if they no longer are). This is needed by the GM's operations on other members, which write those members' users documents: adding a player (`addUserToGroup`), banning one (`removeUserFromGroup`) and deleting the group (`deleteGroup`). These operations are planned but not wired to a screen yet. Meanwhile, a modified client could let a GM add a user to their group without an invitation code. Accepted, since it can only make `groupIds` consistent with the groups; `uid() == userId` would close it, but would also block these GM operations.
+- The invitation rules (1.7) are covered by rules tests for `invitations`, `redemptions` and `users`. The `campaign_groups` side of the join and of the invite code (`isSelfJoin`, `isInviteCodeEdit`) has no rules test yet.
 - The join makes about 6 to 8 document-access calls in the rules (limit: 20 per batched write). The emulator does not apply the limit: to check once on a real Firestore project.
 - Deleting or regenerating an invitation does not delete its `redemptions` subcollection (Firestore never cascades): the documents stay as harmless orphans. To handle with the group lifecycle (9).
 - `deleteGroup` does not delete the group's invitation: the code stays known but points to nothing. Under the security rules, a join with that code is refused (`PERMISSION_DENIED`) and reported as `NETWORK`, not `GROUP_NOT_FOUND`. `deleteGroup` could delete the invitation in its own batch (the delete rule allows it, since the group still exists before the batch), so the code really stops existing.
 - `regenerateInvitation` checks that the new code is free with a plain read, not atomically (the collision probability is negligible). Two simultaneous regenerations can leave one valid invitation that the group no longer knows.
 - A refused write (`PERMISSION_DENIED`) during an invitation operation is mapped to a generic error (`NETWORK` for a join, `NOT_GAME_MASTER` for create and regenerate), because the real cause is not known to the client.
+- Profile picture upload (1.8) is not implemented yet: it needs Firebase Storage, its rules and the Storage emulator in CI. Until then `uploadProfilePicture` fails.
+- Sign-up accepts any non-blank username, while a profile requires 3 to 30 characters (1.8): a user with a shorter sign-up name must change it before saving their profile.
 ---
 ---
 *Note: The structure and technical constraints detailed in this document were formulated with the help of Claude Sonnet 5.5.*
