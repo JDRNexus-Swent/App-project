@@ -1,3 +1,4 @@
+// Co-authored-by: Codex <noreply@openai.com>
 package com.github.se.jdrnexus.resources
 
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
@@ -18,6 +19,26 @@ package com.github.se.jdrnexus.resources
  */
 object C {
   object Tag {
+    const val game_player_back = "game_player_back"
+    const val game_player_current_hp = "game_player_current_hp"
+    const val game_player_hp_decrease = "game_player_hp_decrease"
+    const val game_player_hp_increase = "game_player_hp_increase"
+    const val game_player_save = "game_player_save"
+    const val game_player_save_success = "game_player_save_success"
+    const val game_player_leave_error = "game_player_leave_error"
+    const val game_player_leave_anyway = "game_player_leave_anyway"
+    const val game_player_stay = "game_player_stay"
+    const val game_player_loading = "game_player_loading"
+    const val game_player_empty = "game_player_empty"
+    const val game_player_error = "game_player_error"
+    const val game_player_character_name = "game_player_character_name"
+    const val game_player_saving = "game_player_saving"
+    const val game_player_workspace = "game_player_workspace"
+
+    fun gamePlayerStatRoll(statId: String) = "game_player_stat_roll_$statId"
+
+    fun gamePlayerNavigationTab(name: String) = "game_player_navigation_$name"
+
     const val main_screen_container = "main_screen_container"
 
     const val shared_top_bar = "shared_top_bar"
@@ -110,8 +131,14 @@ object C {
     const val join_cancel = "join_cancel"
 
     const val enter_workspace_button = "enter_workspace_button"
+    const val play_button = "play_button"
     const val workspace_actions_fab = "workspace_actions_fab"
-    const val workspace_add_folder = "workspace_add_folder"
+    const val workspace_create_item = "workspace_create_item"
+    const val workspace_create_item_dialog = "create_item_dialog"
+    const val workspace_create_item_folder = "create_item_folder"
+    const val workspace_create_item_character = "create_item_character"
+    const val workspace_create_item_text = "create_item_text"
+    const val workspace_create_item_cancel = "create_item_cancel"
     const val workspace_add_file = "workspace_add_file"
     const val workspace_add_files_dialog = "add_files_dialog"
     const val workspace_add_files_list = "add_files_list"
@@ -157,6 +184,9 @@ object C {
     const val game_gm_enemy_max_hp = "game_gm_enemy_max_hp"
     const val game_gm_enemy_ac = "game_gm_enemy_ac"
     const val game_gm_enemy_condition = "game_gm_enemy_condition"
+    const val game_gm_start_game = "game_gm_start_game"
+    const val game_gm_start_game_progress = "game_gm_start_game_progress"
+    const val game_gm_game_in_progress = "game_gm_game_in_progress"
     const val game_gm_start_combat = "game_gm_start_combat"
     const val game_gm_next_round = "game_gm_next_round"
     const val game_gm_end_combat = "game_gm_end_combat"

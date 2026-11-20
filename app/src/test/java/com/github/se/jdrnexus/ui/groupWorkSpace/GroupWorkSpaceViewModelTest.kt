@@ -2,6 +2,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
+import com.github.se.jdrnexus.codec.JDRFileJsonCodec
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.FileEdit
@@ -29,6 +30,7 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -106,9 +108,9 @@ class GroupWorkSpaceViewModelTest {
     assertEquals(setOf(visible.id, hidden.id), gm.uiState.value.items.map { it.id }.toSet())
     assertEquals(listOf(visible.id), player.uiState.value.items.map { it.id })
     assertEquals(LoadState.Success, player.uiState.value.loadState)
-    assertTrue(gm.uiState.value.canCreateFolder)
+    assertTrue(gm.uiState.value.isGameMaster)
     assertTrue(gm.uiState.value.canEditItems)
-    assertFalse(player.uiState.value.canCreateFolder)
+    assertFalse(player.uiState.value.isGameMaster)
     assertFalse(player.uiState.value.canEditItems)
   }
 
@@ -342,7 +344,7 @@ class GroupWorkSpaceViewModelTest {
         viewModel.uiState.value.loadState,
     )
     assertTrue(viewModel.uiState.value.items.isEmpty())
-    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.isGameMaster)
     assertFalse(viewModel.uiState.value.canEditItems)
 
     groupRepository.group.value = null
@@ -370,7 +372,7 @@ class GroupWorkSpaceViewModelTest {
 
     runCurrent()
     assertEquals(setOf(visible.id, hidden.id), viewModel.uiState.value.items.map { it.id }.toSet())
-    assertTrue(viewModel.uiState.value.canCreateFolder)
+    assertTrue(viewModel.uiState.value.isGameMaster)
     assertTrue(viewModel.uiState.value.canEditItems)
 
     groupRepository.group.value =
@@ -383,7 +385,7 @@ class GroupWorkSpaceViewModelTest {
 
     assertEquals(listOf(visible.id), viewModel.uiState.value.items.map { it.id })
     assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.isGameMaster)
     assertFalse(viewModel.uiState.value.canEditItems)
   }
 
@@ -411,7 +413,7 @@ class GroupWorkSpaceViewModelTest {
     )
     assertTrue(viewModel.uiState.value.items.isEmpty())
     assertEquals("", viewModel.uiState.value.currentFolderId)
-    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.isGameMaster)
     assertFalse(viewModel.uiState.value.canEditItems)
 
     groupRepository.group.value = groupForRole(GroupWorkspaceRole.PLAYER)
@@ -419,7 +421,7 @@ class GroupWorkSpaceViewModelTest {
 
     assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
     assertEquals(listOf(file), viewModel.uiState.value.items)
-    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.isGameMaster)
     assertFalse(viewModel.uiState.value.canEditItems)
   }
 
@@ -438,7 +440,7 @@ class GroupWorkSpaceViewModelTest {
 
     runCurrent()
     assertEquals(listOf(visible.id), viewModel.uiState.value.items.map { it.id })
-    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.isGameMaster)
     assertFalse(viewModel.uiState.value.canEditItems)
 
     groupRepository.group.value =
@@ -451,7 +453,7 @@ class GroupWorkSpaceViewModelTest {
 
     assertEquals(setOf(visible.id, hidden.id), viewModel.uiState.value.items.map { it.id }.toSet())
     assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
-    assertTrue(viewModel.uiState.value.canCreateFolder)
+    assertTrue(viewModel.uiState.value.isGameMaster)
     assertTrue(viewModel.uiState.value.canEditItems)
   }
 
@@ -479,7 +481,7 @@ class GroupWorkSpaceViewModelTest {
     assertTrue(viewModel.uiState.value.items.isEmpty())
     assertEquals("", viewModel.uiState.value.currentFolderId)
     assertEquals("", viewModel.uiState.value.currentFolderName)
-    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.isGameMaster)
     assertFalse(viewModel.uiState.value.canEditItems)
     assertEquals(
         LoadState.Error("membership unavailable"),
@@ -506,7 +508,7 @@ class GroupWorkSpaceViewModelTest {
 
     assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
     assertEquals(listOf(file), viewModel.uiState.value.items)
-    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.isGameMaster)
     assertFalse(viewModel.uiState.value.canEditItems)
   }
 
@@ -721,33 +723,255 @@ class GroupWorkSpaceViewModelTest {
     assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
   }
 
-  // Only a Game Master can create a folder, and the new folder uses the selected parent placement.
+  // A Game Master's new folder uses the placement of the selected parent.
   @Test
-  fun gameMasterCreatesFolderInSelectedWorkspaceAndPlayersCannotCreateOne() = runTest {
+  fun gameMasterCreatesFolderInSelectedWorkspace() = runTest {
     val parent = groupFolder("parent")
     val repository = FakeWorkspaceRepository(listOf(parent))
     val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
-    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
     runCurrent()
     gm.loadWorkspace(parent.id)
     runCurrent()
 
     gm.createFolder(" New folder ")
     runCurrent()
+
     val created = repository.files.getValue("new-folder-1")
     assertEquals("New folder", created.name)
     assertEquals(OWNER_ID, created.ownerId)
     assertEquals(Placement(parent.id, false), created.placements[GROUP_ID])
     assertEquals(listOf(created), gm.uiState.value.items)
+  }
 
-    player.createFolder("Forbidden")
+  // A player's folder at the group root is stored with all its expected fields.
+  @Test
+  fun playerCreatesFolderInGroupRootWithExpectedFields() = runTest {
+    val repository = FakeWorkspaceRepository()
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
     runCurrent()
-    assertFalse(repository.files.values.any { it.name == "Forbidden" })
+
+    player.createFolder(" Maps ")
+    runCurrent()
+
+    val expected =
+        JDRFile(
+            id = "new-folder-1",
+            name = "Maps",
+            ownerId = OWNER_ID,
+            sharedGroupsIds = listOf(GROUP_ID),
+            placements = mapOf(GROUP_ID to Placement(GROUP_ID, false)),
+            personalParentId = PERSONAL_ROOT_ID,
+            type = DocumentType.FOLDER,
+            content = "",
+        )
+    assertEquals(expected, repository.files.getValue("new-folder-1"))
+    assertEquals(listOf(expected), player.uiState.value.items)
+    assertEquals("", player.uiState.value.errorMessage)
+  }
+
+  // Each created item gets its own document ID.
+  @Test
+  fun playerCreatedFoldersReceiveDistinctIds() = runTest {
+    val repository = FakeWorkspaceRepository()
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    player.createFolder("First")
+    player.createFolder("Second")
+    runCurrent()
+
     assertEquals(
-        "Only the GameMaster can perform this operation.",
+        mapOf("new-folder-1" to "First", "new-folder-2" to "Second"),
+        repository.files.mapValues { it.value.name },
+    )
+  }
+
+  // A folder created inside a visible folder stays visible.
+  @Test
+  fun playerCreatesVisibleFolderInsideVisibleFolder() = runTest {
+    val parent = groupFolder("visible-parent")
+
+    val created = createFolderAsPlayerIn(parent.id, listOf(parent))
+
+    assertEquals(Placement(parent.id, false), created.placements[GROUP_ID])
+  }
+
+  // A player can create inside their own hidden folder, and the new folder is hidden.
+  @Test
+  fun playerCreatesHiddenFolderInsideOwnHiddenFolder() = runTest {
+    val parent = groupFolder("own-hidden", ownerId = OWNER_ID, hidden = true)
+
+    val created = createFolderAsPlayerIn(parent.id, listOf(parent))
+
+    assertEquals(Placement(parent.id, true), created.placements[GROUP_ID])
+  }
+
+  // A foreign hidden folder directly holding the player's item accepts new folders.
+  @Test
+  fun playerCreatesHiddenFolderInsideHiddenFolderHoldingOwnedItem() = runTest {
+    val parent = groupFolder("foreign-hidden", hidden = true)
+    val owned = groupFile("owned", parentId = parent.id, ownerId = OWNER_ID, hidden = true)
+
+    val created = createFolderAsPlayerIn(parent.id, listOf(parent, owned))
+
+    assertEquals(Placement(parent.id, true), created.placements[GROUP_ID])
+  }
+
+  // An item owned deeper in the tree also grants access to the hidden ancestor.
+  @Test
+  fun playerCreatesHiddenFolderInsideHiddenFolderWithOwnedDescendant() = runTest {
+    val parent = groupFolder("foreign-hidden", hidden = true)
+    val child = groupFolder("foreign-child", parentId = parent.id, hidden = true)
+    val owned = groupFile("owned", parentId = child.id, ownerId = OWNER_ID, hidden = true)
+
+    val created = createFolderAsPlayerIn(parent.id, listOf(parent, child, owned))
+
+    assertEquals(Placement(parent.id, true), created.placements[GROUP_ID])
+  }
+
+  // A player can also create a character inside a hidden folder they can access.
+  @Test
+  fun playerCreatesHiddenCharacterInsideAccessibleHiddenFolder() = runTest {
+    val parent = groupFolder("own-hidden", ownerId = OWNER_ID, hidden = true)
+    val repository = FakeWorkspaceRepository(listOf(parent))
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+    player.loadWorkspace(parent.id)
+    runCurrent()
+
+    player.createCharacter {}
+    runCurrent()
+
+    assertEquals(
+        Placement(parent.id, true),
+        repository.files.getValue("new-folder-1").placements[GROUP_ID],
+    )
+  }
+
+  // A hidden folder with nothing owned by the player can be neither opened nor filled.
+  @Test
+  fun playerCannotOpenOrCreateInsideForeignHiddenFolder() = runTest {
+    val hidden = groupFolder("foreign-hidden", hidden = true)
+    val foreignChild = groupFile("foreign-file", parentId = hidden.id, hidden = true)
+    val repository = FakeWorkspaceRepository(listOf(hidden, foreignChild))
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    val createdIds = mutableListOf<String>()
+    runCurrent()
+    assertEquals(emptyList<JDRFile>(), player.uiState.value.items)
+
+    player.loadWorkspace(hidden.id)
+    runCurrent()
+    assertEquals("You cannot access this folder.", player.uiState.value.errorMessage)
+    assertEquals(emptyList<JDRFile>(), player.uiState.value.items)
+
+    player.clearError()
+    player.createFolder("Intruder")
+    runCurrent()
+    assertEquals("You cannot access this folder.", player.uiState.value.errorMessage)
+
+    player.clearError()
+    player.createCharacter { createdIds += it }
+    runCurrent()
+    assertEquals("You cannot access this folder.", player.uiState.value.errorMessage)
+    assertEquals(emptyList<String>(), createdIds)
+    assertEquals(setOf(hidden, foreignChild), repository.files.values.toSet())
+  }
+
+  // The Game Master can still create inside any hidden folder.
+  @Test
+  fun gameMasterCreatesHiddenFolderInsideForeignHiddenFolder() = runTest {
+    val parent = groupFolder("foreign-hidden", hidden = true)
+    val repository = FakeWorkspaceRepository(listOf(parent))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+    gm.loadWorkspace(parent.id)
+    runCurrent()
+
+    gm.createFolder("Secrets")
+    runCurrent()
+
+    assertEquals(
+        Placement(parent.id, true),
+        repository.files.getValue("new-folder-1").placements[GROUP_ID],
+    )
+  }
+
+  // Owning a folder gives a player no rights over other members' files inside it.
+  @Test
+  fun playerFolderOwnershipDoesNotGrantManagementOfForeignFiles() = runTest {
+    val folder = groupFolder("own-folder", ownerId = OWNER_ID)
+    val foreign = groupFile("foreign", parentId = folder.id)
+    val repository = FakeWorkspaceRepository(listOf(folder, foreign))
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+    player.loadWorkspace(folder.id)
+    runCurrent()
+
+    player.editItem(foreign.copy(name = "Renamed"))
+    runCurrent()
+    assertEquals(
+        "You cannot edit an item that you do not own.",
         player.uiState.value.errorMessage,
     )
-    assertEquals(setOf(parent, created), repository.files.values.toSet())
+
+    player.clearError()
+    player.setItemHidden(foreign, true)
+    runCurrent()
+    assertEquals(
+        "You are not allowed to perform this operation.",
+        player.uiState.value.errorMessage,
+    )
+
+    player.clearError()
+    player.removeItem(foreign)
+    runCurrent()
+    assertEquals(
+        "You are not allowed to perform this operation.",
+        player.uiState.value.errorMessage,
+    )
+    assertEquals(foreign, repository.files.getValue(foreign.id))
+    assertTrue(repository.hiddenRequests.isEmpty())
+    assertTrue(repository.removeRequests.isEmpty())
+  }
+
+  // A repository failure is shown to the player and leaves nothing behind.
+  @Test
+  fun failedFolderCreationReportsError() = runTest {
+    val repository = FakeWorkspaceRepository().apply { createFailure = Exception("Create denied") }
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    player.createFolder("Maps")
+    runCurrent()
+
+    assertEquals("Create denied", player.uiState.value.errorMessage)
+    assertFalse(player.uiState.value.isOperationInProgress)
+    assertEquals(emptyMap<String, JDRFile>(), repository.files.toMap())
+  }
+
+  // Someone outside the group still cannot create a folder.
+  @Test
+  fun nonMemberCannotCreateFolder() = runTest {
+    val repository = FakeWorkspaceRepository()
+    val group =
+        CampaignGroup(
+            id = GROUP_ID,
+            gameMasterId = OTHER_USER_ID,
+            participantIds = listOf(OTHER_USER_ID),
+        )
+    val outsider =
+        viewModel(
+            repository,
+            GroupWorkspaceRole.PLAYER,
+            groupRepository = FakeGroupRepository(group),
+        )
+    runCurrent()
+
+    outsider.createFolder("Maps")
+    runCurrent()
+
+    assertEquals("You are not a member of this group.", outsider.uiState.value.errorMessage)
+    assertEquals(emptyMap<String, JDRFile>(), repository.files.toMap())
   }
 
   // Players may add their own files to an accessible folder using the requested placement.
@@ -1198,14 +1422,14 @@ class GroupWorkSpaceViewModelTest {
 
     assertEquals(LoadState.Success, viewModel.uiState.value.loadState)
     assertEquals(listOf(groupFile("notes")), viewModel.uiState.value.items)
-    assertTrue(viewModel.uiState.value.canCreateFolder)
+    assertTrue(viewModel.uiState.value.isGameMaster)
 
     authRepository.setUser(null)
     runCurrent()
 
     assertEquals(LoadState.SignedOut, viewModel.uiState.value.loadState)
     assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
-    assertFalse(viewModel.uiState.value.canCreateFolder)
+    assertFalse(viewModel.uiState.value.isGameMaster)
     assertFalse(viewModel.uiState.value.canEditItems)
   }
 
@@ -1232,6 +1456,64 @@ class GroupWorkSpaceViewModelTest {
         Placement(hiddenParent.id, true),
         repository.files.getValue("new-folder-2").placements[GROUP_ID],
     )
+  }
+
+  // A player can create a character at the group root and receives its ID.
+  @Test
+  fun playerCreatesCharacterInGroupRootAndReceivesItsId() = runTest {
+    val repository = FakeWorkspaceRepository()
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    val createdIds = mutableListOf<String>()
+    runCurrent()
+
+    player.createCharacter { createdIds += it }
+    runCurrent()
+
+    val created = repository.files.getValue("new-folder-1")
+    assertEquals(listOf("new-folder-1"), createdIds)
+    assertEquals("New character", created.name)
+    assertEquals(DocumentType.CHARACTER, created.type)
+    assertEquals(OWNER_ID, created.ownerId)
+    assertEquals(JDRFileJsonCodec.serializeCharacter(null), created.content)
+    assertEquals(listOf(GROUP_ID), created.sharedGroupsIds)
+    assertEquals(Placement(GROUP_ID, false), created.placements[GROUP_ID])
+    assertEquals(listOf(created), player.uiState.value.items)
+  }
+
+  // A character created in a hidden folder is hidden too.
+  @Test
+  fun createdCharacterInheritsCurrentHiddenFolder() = runTest {
+    val hiddenParent = groupFolder("hidden-parent", hidden = true)
+    val repository = FakeWorkspaceRepository(listOf(hiddenParent))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+    gm.loadWorkspace(hiddenParent.id)
+    runCurrent()
+
+    gm.createCharacter {}
+    runCurrent()
+
+    assertEquals(
+        Placement(hiddenParent.id, true),
+        repository.files.getValue("new-folder-1").placements[GROUP_ID],
+    )
+  }
+
+  // A failed creation exposes the error, stores nothing and skips the callback.
+  @Test
+  fun failedCharacterCreationReportsErrorWithoutCallback() = runTest {
+    val repository = FakeWorkspaceRepository().apply { createFailure = Exception("Create denied") }
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    val createdIds = mutableListOf<String>()
+    runCurrent()
+
+    gm.createCharacter { createdIds += it }
+    runCurrent()
+
+    assertEquals(emptyList<String>(), createdIds)
+    assertEquals("Create denied", gm.uiState.value.errorMessage)
+    assertFalse(gm.uiState.value.isOperationInProgress)
+    assertEquals(emptyMap<String, JDRFile>(), repository.files.toMap())
   }
 
   // Group roots and missing items cannot be shared to the workspace.
@@ -1402,6 +1684,23 @@ class GroupWorkSpaceViewModelTest {
     assertFalse(gm.uiState.value.isOperationInProgress)
   }
 
+  private fun TestScope.createFolderAsPlayerIn(
+      folderId: String,
+      files: List<JDRFile>,
+  ): JDRFile {
+    val repository = FakeWorkspaceRepository(files)
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+    player.loadWorkspace(folderId)
+    runCurrent()
+
+    player.createFolder("New folder")
+    runCurrent()
+
+    assertEquals("", player.uiState.value.errorMessage)
+    return repository.files.getValue("new-folder-1")
+  }
+
   private fun viewModel(
       repository: FakeWorkspaceRepository,
       role: GroupWorkspaceRole,
@@ -1456,6 +1755,7 @@ class GroupWorkSpaceViewModelTest {
     private val personalFlows =
         mutableMapOf<Pair<String, String>, MutableStateFlow<List<JDRFile>>>()
     private var nextId = 0
+    var createFailure: Exception? = null
     var updateFailure: Exception? = null
     var hiddenFailure: Exception? = null
     var addFailure: Exception? = null
@@ -1472,6 +1772,9 @@ class GroupWorkSpaceViewModelTest {
     override fun getNewUid(): String = "new-folder-${++nextId}"
 
     override suspend fun createFile(file: JDRFile): Result<Unit> {
+      createFailure?.let {
+        return Result.failure(it)
+      }
       if (file.id in files)
           return Result.failure(IllegalStateException("A document with this ID already exists."))
       files[file.id] = file
