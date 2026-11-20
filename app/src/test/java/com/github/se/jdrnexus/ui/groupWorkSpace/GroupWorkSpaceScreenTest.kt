@@ -1,18 +1,30 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.codec.JDRFileJsonCodec
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import org.junit.Assert.assertEquals
+import org.junit.Rule
 import org.junit.Test
+import org.junit.runner.RunWith
 
-/** Pure-logic tests for the item-sharing picker filter of [GroupWorkSpaceScreen]. */
+/** Tests of the item-sharing picker filter and of the [WorkspaceCard] of [GroupWorkSpaceScreen]. */
+@RunWith(AndroidJUnit4::class)
 class GroupWorkSpaceScreenTest {
+  @get:Rule val composeTestRule = createComposeRule()
 
   private companion object {
     const val GROUP_ID = "group-1"
     const val USER_ID = "user-1"
     const val OTHER_USER_ID = "user-2"
+    const val CARD_ID = "card"
   }
 
   @Test
@@ -54,5 +66,146 @@ class GroupWorkSpaceScreenTest {
     val available = availableItemsToShare(listOf(elsewhere), GROUP_ID, USER_ID)
 
     assertEquals(listOf(elsewhere), available)
+  }
+
+  @Test
+  fun characterCardShowsTheSheetNameRatherThanTheFileName() {
+    setCard(character(fileName = "New character", sheetName = "Aria"))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), useUnmergedTree = true)
+        .assertTextEquals("Aria")
+  }
+
+  @Test
+  fun characterCardWithEmptySheetNameShowsNewCharacter() {
+    setCard(character(fileName = "Aria", sheetName = ""))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), useUnmergedTree = true)
+        .assertTextEquals("New character")
+  }
+
+  @Test
+  fun characterCardWithWhitespaceOnlySheetNameShowsNewCharacter() {
+    setCard(character(fileName = "Aria", sheetName = "   "))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), useUnmergedTree = true)
+        .assertTextEquals("New character")
+  }
+
+  @Test
+  fun characterCardShowsCurrentAndMaxHp() {
+    setCard(character(sheetName = "Aria", hp = """{"current":25,"max":40}"""))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), useUnmergedTree = true)
+        .assertTextEquals("HP: 25 / 40")
+  }
+
+  @Test
+  fun characterCardWithoutHpShowsTheFallbackInsteadOfTheJson() {
+    setCard(character(sheetName = "Aria"))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), useUnmergedTree = true)
+        .assertTextEquals("No description available")
+  }
+
+  @Test
+  fun characterCardWithUnsetMaxHpShowsTheFallback() {
+    setCard(character(sheetName = "Aria", hp = """{"current":0,"max":0}"""))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), useUnmergedTree = true)
+        .assertTextEquals("No description available")
+  }
+
+  @Test
+  fun newlyCreatedCharacterCardShowsNewCharacterAndTheFallback() {
+    setCard(
+        JDRFile(
+            id = CARD_ID,
+            name = "New character",
+            type = DocumentType.CHARACTER,
+            content = JDRFileJsonCodec.serializeCharacter(null),
+        )
+    )
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), useUnmergedTree = true)
+        .assertTextEquals("New character")
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), useUnmergedTree = true)
+        .assertTextEquals("No description available")
+  }
+
+  @Test
+  fun characterCardWithUnreadableSheetShowsNeitherTheJsonNorTheFileName() {
+    setCard(
+        JDRFile(id = CARD_ID, name = "Aria", type = DocumentType.CHARACTER, content = "{broken")
+    )
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), useUnmergedTree = true)
+        .assertTextEquals("New character")
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), useUnmergedTree = true)
+        .assertTextEquals("No description available")
+  }
+
+  @Test
+  fun textCardKeepsItsFileNameAndContent() {
+    setCard(JDRFile(id = CARD_ID, name = "Journal", type = DocumentType.TEXT, content = "Day one"))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), useUnmergedTree = true)
+        .assertTextEquals("Journal")
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), useUnmergedTree = true)
+        .assertTextEquals("Day one")
+  }
+
+  @Test
+  fun folderCardKeepsItsFileNameAndOpenFolderDescription() {
+    setCard(JDRFile(id = CARD_ID, name = "Maps", type = DocumentType.FOLDER))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), useUnmergedTree = true)
+        .assertTextEquals("Maps")
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), useUnmergedTree = true)
+        .assertTextEquals("Open folder to view its contents")
+  }
+
+  private fun character(fileName: String = "Aria", sheetName: String, hp: String? = null) =
+      JDRFile(
+          id = CARD_ID,
+          name = fileName,
+          type = DocumentType.CHARACTER,
+          content =
+              """{"version":1,"type":"character","character":{"name":"$sheetName"""" +
+                  (hp?.let { ""","hp":$it""" } ?: "") +
+                  "}}",
+      )
+
+  private fun setCard(file: JDRFile) {
+    composeTestRule.setContent {
+      SampleAppTheme {
+        WorkspaceCard(
+            file = file,
+            canEdit = false,
+            canRemove = false,
+            isHidden = false,
+            canChangeVisibility = false,
+            operationInProgress = false,
+            onOpen = {},
+            onEdit = {},
+            onRemove = {},
+            onToggleVisibility = {},
+        )
+      }
+    }
   }
 }
