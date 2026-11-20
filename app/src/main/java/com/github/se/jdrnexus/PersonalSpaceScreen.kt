@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus
 
 import androidx.activity.compose.BackHandler
@@ -61,7 +62,6 @@ import com.github.se.jdrnexus.model.personalSpace.isContainer
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
-import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import com.github.se.jdrnexus.viewmodel.LoadState
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 
@@ -77,13 +77,13 @@ fun PersonalSpaceScreen(
   val uiState by personalSpaceViewModel.uiState.collectAsState()
   val personalSpaceItems = uiState.items
 
-  val themeColors = LocalAppUiColors.current
+  val themeColors = MaterialTheme.colorScheme
   val cardColor = themeColors.surface
-  val iconBackground = themeColors.iconBackground
-  val primaryText = themeColors.primaryText
-  val secondaryText = themeColors.secondaryText
+  val iconBackground = themeColors.surfaceContainerLowest
+  val primaryText = themeColors.onSurface
+  val secondaryText = themeColors.onSurfaceVariant
   val borderColor = themeColors.outline
-  val accentColor = themeColors.accent
+  val accentColor = themeColors.primary
 
   val handleBack = {
     if (personalSpaceViewModel.uiState.value.canNavigateUp) {
@@ -121,12 +121,12 @@ fun PersonalSpaceScreen(
                 onClick = personalSpaceViewModel::onAddClicked,
                 shape = RoundedCornerShape(50),
                 containerColor = accentColor,
-                contentColor = themeColors.accentContent,
+                contentColor = themeColors.onPrimary,
             ) {
               Icon(
                   imageVector = Icons.Filled.Add,
                   contentDescription = "Add item",
-                  tint = themeColors.accentContent,
+                  tint = themeColors.onPrimary,
               )
             }
             DropdownMenu(

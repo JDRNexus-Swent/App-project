@@ -10,6 +10,7 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -18,7 +19,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
-import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 
 /** Largest unread count written in full on the badge; anything above shows as "9+". */
 internal const val MAX_DISPLAYED_UNREAD_COUNT = 9
@@ -43,7 +43,7 @@ fun NotificationBell(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   val hasUnread = unreadCount > 0
   val description =
       stringResource(
@@ -57,8 +57,8 @@ fun NotificationBell(
                 modifier =
                     Modifier.border(BADGE_RING_WIDTH, colors.surface, CircleShape)
                         .testTag(C.Tag.notification_unread_badge),
-                containerColor = colors.accent,
-                contentColor = colors.accentContent,
+                containerColor = colors.primary,
+                contentColor = colors.onPrimary,
             ) {
               Text(
                   if (unreadCount > MAX_DISPLAYED_UNREAD_COUNT) {

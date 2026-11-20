@@ -41,7 +41,6 @@ import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.notification.NotificationBell
-import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 
 object TestTags {
   const val TITLE = "home_title"
@@ -74,7 +73,7 @@ fun HomeScreen(
   val logoutRequested = remember { mutableStateOf(false) }
   val canNavigate = { !logoutRequested.value && uiState.status !is AuthStatus.Loading }
   val context = LocalContext.current
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
 
   LaunchedEffect(uiState.status) {
     when (uiState.status) {
@@ -143,14 +142,14 @@ fun HomeScreen(
         Text(
             text = "More features coming soon",
             style = MaterialTheme.typography.bodyLarge,
-            color = colors.secondaryText,
+            color = colors.onSurfaceVariant,
         )
       }
       Text(
           text = "Quicktools",
           modifier = Modifier.testTag(TestTags.QUICKTOOLS),
           style = MaterialTheme.typography.headlineSmall,
-          color = colors.primaryText,
+          color = colors.onSurface,
       )
       Row(
           modifier = Modifier.fillMaxWidth(2f / 3f).padding(top = 12.dp),
@@ -163,7 +162,7 @@ fun HomeScreen(
             shape = RoundedCornerShape(8.dp),
             colors =
                 ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.onPrimary,
+                    containerColor = MaterialTheme.colorScheme.surface,
                     contentColor = MaterialTheme.colorScheme.primary,
                 ),
         ) {
@@ -180,7 +179,7 @@ fun HomeScreen(
             shape = RoundedCornerShape(8.dp),
             colors =
                 ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.onPrimary,
+                    containerColor = MaterialTheme.colorScheme.surface,
                     contentColor = MaterialTheme.colorScheme.primary,
                 ),
         ) {
@@ -197,7 +196,7 @@ fun HomeScreen(
             shape = RoundedCornerShape(8.dp),
             colors =
                 ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.onPrimary,
+                    containerColor = MaterialTheme.colorScheme.surface,
                     contentColor = MaterialTheme.colorScheme.primary,
                 ),
         ) {

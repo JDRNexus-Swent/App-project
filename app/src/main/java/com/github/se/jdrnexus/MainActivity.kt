@@ -31,6 +31,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.github.se.jdrnexus.model.gameManagement.GameSessionRepository
+import com.github.se.jdrnexus.model.gameManagement.GameSessionRepositoryFirestore
 import com.github.se.jdrnexus.model.notification.Notification
 import com.github.se.jdrnexus.model.notification.NotificationRepositoryProvider
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
@@ -42,6 +44,7 @@ import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import com.github.se.jdrnexus.model.repository.AuthRepositoryProvider
+import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.showComingSoon
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
@@ -50,7 +53,11 @@ import com.github.se.jdrnexus.ui.authentication.SignUpScreen
 import com.github.se.jdrnexus.ui.dice.DiceOfflineScreen
 import com.github.se.jdrnexus.ui.edition.EditFileCharacter
 import com.github.se.jdrnexus.ui.edition.EditFileLore
+import com.github.se.jdrnexus.ui.game.GamePlayerViewModel
+import com.github.se.jdrnexus.ui.game.GameScreenPlayer
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementScreen
+import com.github.se.jdrnexus.ui.gameManagement.GameScreenGM
+import com.github.se.jdrnexus.ui.gameManagement.GameViewModelGMViewModel
 import com.github.se.jdrnexus.ui.groupWorkSpace.GroupWorkSpaceScreen
 import com.github.se.jdrnexus.ui.groupWorkSpace.GroupWorkspaceViewModel
 import com.github.se.jdrnexus.ui.home.HomeScreen
@@ -66,10 +73,13 @@ import com.github.se.jdrnexus.ui.search.DocumentSearchScreen
 import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
+import com.github.se.jdrnexus.viewmodel.GroupRole
 import com.github.se.jdrnexus.viewmodel.NotificationViewModel
 import com.github.se.jdrnexus.viewmodel.NotificationViewModelInterface
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -131,6 +141,24 @@ object GroupDocumentSearchRoute {
   fun createRoute(groupId: String): String = "group_document_search/${Uri.encode(groupId)}"
 }
 
+/** Route of the Game Master's game screen for one group. */
+object GameMasterRoute {
+  const val route = "game_master/{groupId}"
+  const val groupIdArgument = "groupId"
+
+  /** Builds the route opening the Game Master's game screen of [groupId]. */
+  fun createRoute(groupId: String): String = "game_master/${Uri.encode(groupId)}"
+}
+
+/** Route of the player's game screen for one group. */
+object GamePlayerRoute {
+  const val route = "game_player/{groupId}"
+  const val groupIdArgument = "groupId"
+
+  /** Builds the route opening the player's game screen of [groupId]. */
+  fun createRoute(groupId: String): String = "game_player/${Uri.encode(groupId)}"
+}
+
 /**
  * Optional dependencies let navigation tests use production screens with deterministic fakes.
  *
@@ -150,6 +178,7 @@ fun JDRNexusApp(
     personalSearchViewModel: DocumentSearchInterfaceVM? = null,
     groupSearchViewModel: DocumentSearchInterfaceVM? = null,
     notificationViewModel: NotificationViewModelInterface? = null,
+    gameSessionRepository: GameSessionRepository? = null,
 ) {
   val activeAuthViewModel = authViewModel ?: viewModel(factory = AuthViewModel.Factory)
   val activeAuthRepository = authRepository ?: AuthRepositoryFirebase()
@@ -194,6 +223,14 @@ fun JDRNexusApp(
       NotificationDestination.Campaigns ->
           navigation.navigate(AllRoutes.GroupManagement.name) { launchSingleTop = true }
       null -> Unit
+    }
+  }
+  val onGameTabSelected: (String) -> Unit = { tab ->
+    when (tab) {
+      "Home" -> navigation.popBackStack(AllRoutes.Home.name, inclusive = false)
+      "Campaigns" -> navigation.popBackStack(AllRoutes.GroupManagement.name, inclusive = false)
+      "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
+      "Map" -> navigation.navigate(AllRoutes.Map.name)
     }
   }
 
@@ -350,6 +387,14 @@ fun JDRNexusApp(
                 launchSingleTop = true
               }
             },
+            onPlay = { groupId, role ->
+              val route =
+                  when (role) {
+                    GroupRole.GAME_MASTER -> GameMasterRoute.createRoute(groupId)
+                    GroupRole.PLAYER -> GamePlayerRoute.createRoute(groupId)
+                  }
+              navigation.navigate(route) { launchSingleTop = true }
+            },
             onManageGroup = { showComingSoon(context, "Group management") },
             onTabSelected = { tab ->
               when (tab) {
@@ -359,6 +404,73 @@ fun JDRNexusApp(
                 "Map" -> navigation.navigate(AllRoutes.Map.name)
               }
             },
+        )
+      }
+
+      composable(route = GameMasterRoute.route) { backStackEntry ->
+        val groupId =
+            requireNotNull(backStackEntry.arguments?.getString(GameMasterRoute.groupIdArgument))
+        val gameViewModel: GameViewModelGMViewModel =
+            viewModel(
+                factory =
+                    viewModelFactory {
+                      initializer {
+                        val firestore = FirebaseFirestore.getInstance()
+                        GameViewModelGMViewModel(
+                            sessionRepository =
+                                gameSessionRepository
+                                    ?: GameSessionRepositoryFirestore(
+                                        firestore,
+                                        DiceRepositoryFirestore(firestore, activeAuthRepository),
+                                    ),
+                            groupId = groupId,
+                        )
+                      }
+                    }
+            )
+        // The title stays blank if the group cannot be read; the session stays usable.
+        val groupName by
+            remember(groupId) {
+                  activeGroupRepository
+                      .getGroupFlow(groupId)
+                      .map { group -> group?.name.orEmpty() }
+                      .catch { emit("") }
+                }
+                .collectAsState(initial = "")
+        GameScreenGM(
+            viewModel = gameViewModel,
+            groupName = groupName,
+            onBack = { navigation.popBackStack() },
+            onTabSelected = onGameTabSelected,
+            onDiceClick = { navigation.navigate(AllRoutes.Dice.name) { launchSingleTop = true } },
+        )
+      }
+
+      composable(route = GamePlayerRoute.route) { backStackEntry ->
+        val groupId =
+            requireNotNull(backStackEntry.arguments?.getString(GamePlayerRoute.groupIdArgument))
+        val gameViewModel: GamePlayerViewModel =
+            viewModel(
+                factory =
+                    viewModelFactory {
+                      initializer {
+                        GamePlayerViewModel(
+                            workspaceRepository = activeWorkspaceRepository,
+                            groupRepository = activeGroupRepository,
+                            authRepository = activeAuthRepository,
+                        )
+                      }
+                    }
+            )
+        GameScreenPlayer(
+            groupId = groupId,
+            viewModel = gameViewModel,
+            onBack = { navigation.popBackStack() },
+            onOpenDice = { navigation.navigate(AllRoutes.Dice.name) { launchSingleTop = true } },
+            onOpenGroupWorkspace = { id ->
+              navigation.navigate(GroupWorkspaceRoute.createRoute(id)) { launchSingleTop = true }
+            },
+            onTabSelected = onGameTabSelected,
         )
       }
 
@@ -394,7 +506,7 @@ fun JDRNexusApp(
             onTabSelected = { tab ->
               when (tab) {
                 "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
-                "Campaigns" -> navigation.popBackStack()
+                "Campaigns" -> navigation.popBackStack(AllRoutes.GroupManagement.name, false)
                 "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
                 "Map" -> navigation.navigate(AllRoutes.Map.name)
               }

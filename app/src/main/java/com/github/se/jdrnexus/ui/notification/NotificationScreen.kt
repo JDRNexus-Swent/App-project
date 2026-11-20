@@ -72,7 +72,6 @@ import com.github.se.jdrnexus.model.notification.NotificationType
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
-import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.NotificationLoadState
 import com.github.se.jdrnexus.viewmodel.NotificationUiState
@@ -115,12 +114,6 @@ private const val MESSAGE_MAX_LINES = 3
 
 /** Thickness of the line between two notification rows. */
 private val DIVIDER_THICKNESS = 1.dp
-
-/**
- * Opacity of the line between rows. The full outline color is too strong for a separator that
- * repeats on every row.
- */
-private const val DIVIDER_ALPHA = 0.6f
 
 /** Space between the top bar and the first row, showing the background as in the design. */
 private val LIST_TOP_PADDING = 8.dp
@@ -175,7 +168,7 @@ fun NotificationScreen(
     modifier: Modifier = Modifier,
 ) {
   val uiState by viewModel.notificationUiState.collectAsState()
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
   var confirmingMarkAll by remember { mutableStateOf(false) }
@@ -245,7 +238,7 @@ fun NotificationScreen(
               header = {
                 CircularProgressIndicator(
                     modifier = Modifier.testTag(C.Tag.notification_loading),
-                    color = colors.accent,
+                    color = colors.primary,
                 )
               },
           )
@@ -288,7 +281,8 @@ fun NotificationScreen(
               )
               HorizontalDivider(
                   thickness = DIVIDER_THICKNESS,
-                  color = colors.outline.copy(alpha = DIVIDER_ALPHA),
+                  // `outline` is the 3:1 border role; the decorative separator uses its variant.
+                  color = colors.outlineVariant,
               )
             }
           }
@@ -303,7 +297,7 @@ private fun NotificationRow(
     onClick: () -> Unit,
     onMarkAsRead: () -> Unit,
 ) {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   val unread = !notification.isRead
   val readState =
       stringResource(
@@ -324,14 +318,14 @@ private fun NotificationRow(
         modifier =
             Modifier.size(TYPE_ICON_CONTAINER_SIZE)
                 .clip(CircleShape)
-                .background(if (unread) colors.iconBackground else colors.surface),
+                .background(if (unread) colors.surfaceContainerLowest else colors.surface),
         contentAlignment = Alignment.Center,
     ) {
       Icon(
           imageVector = notification.type.icon(),
           contentDescription = null,
           modifier = Modifier.size(TYPE_ICON_SIZE),
-          tint = if (unread) colors.accent else colors.secondaryText,
+          tint = if (unread) colors.primary else colors.onSurfaceVariant,
       )
     }
     Column(
@@ -347,21 +341,21 @@ private fun NotificationRow(
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal,
-            color = if (unread) colors.primaryText else colors.secondaryText,
+            color = if (unread) colors.onSurface else colors.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = relativeTime(notification.createdAt),
             style = MaterialTheme.typography.labelSmall,
-            color = colors.secondaryText,
+            color = colors.onSurfaceVariant,
         )
         if (unread) {
           Box(
               modifier =
                   Modifier.size(UNREAD_DOT_SIZE)
                       .clip(CircleShape)
-                      .background(colors.accent)
+                      .background(colors.primary)
                       .testTag(C.Tag.notificationUnreadDot(notification.id))
           )
         }
@@ -369,7 +363,7 @@ private fun NotificationRow(
       Text(
           text = notification.message,
           style = MaterialTheme.typography.bodyMedium,
-          color = if (unread) colors.primaryText else colors.secondaryText,
+          color = if (unread) colors.onSurface else colors.onSurfaceVariant,
           maxLines = MESSAGE_MAX_LINES,
           overflow = TextOverflow.Ellipsis,
       )
@@ -381,7 +375,7 @@ private fun NotificationRow(
                     .testTag(C.Tag.notificationMarkAsRead(notification.id))
                     .padding(top = ROW_TEXT_SPACING),
             style = MaterialTheme.typography.labelMedium,
-            color = colors.accent,
+            color = colors.primary,
         )
       }
     }
@@ -401,7 +395,7 @@ private fun NotificationState(
     action: @Composable (() -> Unit)? = null,
     titleFontFamily: FontFamily? = null,
 ) {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   Box(modifier = modifier.padding(STATE_PADDING), contentAlignment = Alignment.Center) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -413,14 +407,14 @@ private fun NotificationState(
             text = title,
             style = MaterialTheme.typography.titleMedium,
             fontFamily = titleFontFamily,
-            color = colors.primaryText,
+            color = colors.onSurface,
             textAlign = TextAlign.Center,
         )
       }
       Text(
           text = body,
           style = MaterialTheme.typography.bodyMedium,
-          color = colors.secondaryText,
+          color = colors.onSurfaceVariant,
           textAlign = TextAlign.Center,
       )
       if (action != null) {
@@ -438,34 +432,34 @@ private fun StateIcon(icon: ImageVector) {
       imageVector = icon,
       contentDescription = null,
       modifier = Modifier.size(STATE_ICON_SIZE),
-      tint = LocalAppUiColors.current.secondaryText,
+      tint = MaterialTheme.colorScheme.onSurfaceVariant,
   )
 }
 
 /** Outlined "Retry" button of the error state. */
 @Composable
 private fun RetryButton(onClick: () -> Unit) {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   OutlinedButton(
       onClick = onClick,
       modifier = Modifier.widthIn(min = RETRY_BUTTON_MIN_WIDTH).testTag(C.Tag.notification_retry),
-      border = BorderStroke(RETRY_BORDER_WIDTH, colors.accent),
+      border = BorderStroke(RETRY_BORDER_WIDTH, colors.primary),
   ) {
     Icon(
         imageVector = Icons.Filled.Refresh,
         contentDescription = null,
         modifier = Modifier.size(RETRY_ICON_SIZE),
-        tint = colors.accent,
+        tint = colors.primary,
     )
     Spacer(Modifier.size(RETRY_ICON_SPACING))
-    Text(stringResource(R.string.notifications_retry), color = colors.accent)
+    Text(stringResource(R.string.notifications_retry), color = colors.primary)
   }
 }
 
 /** Snackbar in the app's accent colors, with tagged buttons so tests can confirm or dismiss it. */
 @Composable
 private fun NotificationSnackbar(data: SnackbarData) {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   Snackbar(
       modifier = Modifier.padding(SNACKBAR_PADDING).testTag(C.Tag.notification_snackbar),
       action =
@@ -475,7 +469,7 @@ private fun NotificationSnackbar(data: SnackbarData) {
                   onClick = data::performAction,
                   modifier = Modifier.testTag(C.Tag.notification_snackbar_action),
               ) {
-                Text(label, color = colors.accentContent, fontWeight = FontWeight.Bold)
+                Text(label, color = colors.onPrimary, fontWeight = FontWeight.Bold)
               }
             }
           },
@@ -489,15 +483,15 @@ private fun NotificationSnackbar(data: SnackbarData) {
                 Icon(
                     imageVector = Icons.Filled.Close,
                     contentDescription = stringResource(R.string.notifications_dismiss),
-                    tint = colors.accentContent,
+                    tint = colors.onPrimary,
                 )
               }
             }
           } else {
             null
           },
-      containerColor = colors.accent,
-      contentColor = colors.accentContent,
+      containerColor = colors.primary,
+      contentColor = colors.onPrimary,
   ) {
     Text(data.visuals.message)
   }

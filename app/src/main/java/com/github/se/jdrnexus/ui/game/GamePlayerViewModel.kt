@@ -58,7 +58,11 @@ class GamePlayerViewModel(
 
   override fun loadSession(groupId: String) {
     val state = uiState.value
-    if (state.groupId == groupId && state.navigation != null) return
+    // The screen calls this each time it reappears. Skip the reload while the session is live
+    // (unsaved edits survive) or while edits are being saved before leaving.
+    if (state.groupId == groupId && (sessionJob?.isActive == true || state.navigation != null)) {
+      return
+    }
     navigationSaveJob?.cancel()
     sessionJob?.cancel()
     _uiState.value = GamePlayerUiState(groupId = groupId, isLoading = true)

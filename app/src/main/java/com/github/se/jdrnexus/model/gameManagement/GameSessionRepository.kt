@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.gameManagement
 
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
@@ -20,12 +21,17 @@ data class GameNpc(
     val information: String,
 )
 
-/** Persisted combat and NPC state for one campaign. */
+/**
+ * Persisted combat and NPC state for one campaign.
+ *
+ * @property isGameStarted Whether the Game Master has started the campaign's game session.
+ */
 data class GameSessionSnapshot(
     val enemies: List<GameCombatNPC> = emptyList(),
     val isCombatActive: Boolean = false,
     val currentRound: Int = 1,
     val npcs: List<GameNpc> = emptyList(),
+    val isGameStarted: Boolean = false,
 ) {
   /** Checks the invariants required before this session can be persisted or used by the UI. */
   fun validate() {
