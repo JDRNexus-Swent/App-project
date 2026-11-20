@@ -17,6 +17,7 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
 import junit.framework.TestCase.assertEquals
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
@@ -124,6 +125,7 @@ internal object TestFirebaseEmulators {
 
     FirebaseAuth.getInstance().useEmulator("10.0.2.2", 9099)
     FirebaseFirestore.getInstance().useEmulator("10.0.2.2", 8080)
+    FirebaseStorage.getInstance().useEmulator("10.0.2.2", 9199)
     configured = true
   }
 

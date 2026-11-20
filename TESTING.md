@@ -78,8 +78,11 @@ How we test, for the team and for AI agents. Every PR that adds or changes code 
     - Wait on listeners with `flow.waitFor { condition }` and on callbacks with `pumpMainLooperUntil { … }`.
 - After every write operation, **read the documents back** and assert the stored fields and invariants (e.g. `placements.keys == sharedGroupsIds`), not only that the call returned success.
 - Test each documented failure (`"Reveal the parent folder first."`, item not in group, above 500 writes) by asserting the error **and** that nothing was written.
+- **Security rules** are tested in `firestoreRules/`, one class per collection or group of related rules, named after what it covers, with direct Firestore calls (no repository, which never sends a forbidden request). Each rule gets an allowed case and a denied one: `assertPermissionDenied("case") { … }` fails unless the rules answer PERMISSION_DENIED, then check that nothing was written. Denied variants of one rule go in one test, each with its own case name.
+    - The emulator reloads `firestore.rules` only for the project given to `--project`, while the tests use the project of `google-services.json`: after editing the rules, restart the emulator before running the tests, and run them with `--rerun` (Gradle does not see the rules file as a test input).
 - `mockk` of Firestore classes is acceptable only for paths the emulator cannot reach (a listener error, a thrown exception). Keep those few tests in the same class.
 - Repositories that wrap Firebase behind an interface (`FirebaseAuthClient`) get a fake of that interface for their translation logic, plus an emulator test class for the real errors.
+- **Storage is the exception:** its SDK cannot read the Storage emulator's responses under Robolectric (case-sensitive headers on the JVM). Storage tests go in `app/src/androidTest/` (instrumented, on an Android emulator, e.g. `ProfilePictureUploadTest`); everything else stays in Robolectric.
 
 ### 4.3 ViewModels
 

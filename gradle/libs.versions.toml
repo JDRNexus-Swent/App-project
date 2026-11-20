@@ -11,6 +11,7 @@ material = "1.14.0"
 composeBom = "2026.08.00"
 composeActivity = "1.13.0"
 composeViewModel = "2.11.0"
+coil = "3.6.3"
 lifecycleRuntimeKtx = "2.11.0"
 kaspresso = "1.6.1"
 mockk = "1.14.11"
@@ -37,6 +38,8 @@ mapsCompose = "6.4.1"
 sceneview = "4.61.0"
 
 [libraries]
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
@@ -70,6 +73,7 @@ androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics", ve
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
 firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
 firebase-auth = { module = "com.google.firebase:firebase-auth" }
+firebase-storage = { module = "com.google.firebase:firebase-storage" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
 firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
 firebase-dataconnect = { module = "com.google.firebase:firebase-dataconnect" }

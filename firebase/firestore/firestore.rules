@@ -381,7 +381,12 @@ service cloud.firestore {
       }
 
       match /gm_lore/{loreId} {
-        allow read: if signedIn()
+        // A get of a missing id is allowed so the app receives "not found" instead of a denial.
+        allow get: if signedIn()
+          && (resource == null
+              || isGm(groupId)
+              || (isMember(groupId) && resource.data.isShared == true));
+        allow list: if signedIn()
           && (isGm(groupId) || (isMember(groupId) && resource.data.isShared == true));
         allow write: if signedIn() && isGm(groupId);
       }
