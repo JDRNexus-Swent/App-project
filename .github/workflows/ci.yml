@@ -84,7 +84,7 @@ jobs:
           # SwiftShader through ANGLE: the default legacy GLES translator fails to compile
           # Filament's shaders (3D die), which crashes the whole instrumented run.
           emulator-options: -no-window -gpu swangle_indirect -no-snapshot -noaudio -no-boot-anim
-          script: firebase emulators:exec --only auth,firestore './gradlew createDebugAndroidTestCoverageReport' --project demo-jdrnexus || { adb logcat -d -v time '*:W' || true; exit 1; }
+          script: firebase emulators:exec --only auth,firestore,storage './gradlew createDebugAndroidTestCoverageReport' --project demo-jdrnexus || { adb logcat -d -v time '*:W' || true; exit 1; }
 
       - name: Cache Sonar packages
         uses: actions/cache@v4
