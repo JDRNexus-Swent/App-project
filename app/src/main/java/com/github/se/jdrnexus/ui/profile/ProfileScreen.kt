@@ -82,7 +82,18 @@ fun ProfileScreen(
   LaunchedEffect(viewModel) { viewModel.loadProfile() }
   BackHandler { if (state.isEditing) viewModel.cancelEditing() else onBack() }
 
-  ProfileContent(state, viewModel, onBack, onTabSelected, selectedTab) {
+  ProfileContent(
+      state,
+      onRetry = viewModel::loadProfile,
+      onStartEditing = viewModel::startEditing,
+      onUsernameChange = viewModel::onUsernameChange,
+      onBioChange = viewModel::onBioChange,
+      onCancel = viewModel::cancelEditing,
+      onSave = viewModel::saveProfile,
+      onBack = onBack,
+      onTabSelected = onTabSelected,
+      selectedTab = selectedTab,
+  ) {
     pickPicture.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly))
   }
 }
@@ -90,7 +101,12 @@ fun ProfileScreen(
 @Composable
 private fun ProfileContent(
     state: ProfileUiState,
-    viewModel: ProfileViewModelInterface,
+    onRetry: () -> Unit,
+    onStartEditing: () -> Unit,
+    onUsernameChange: (String) -> Unit,
+    onBioChange: (String) -> Unit,
+    onCancel: () -> Unit,
+    onSave: () -> Unit,
     onBack: () -> Unit,
     onTabSelected: (String) -> Unit,
     selectedTab: String,
@@ -127,7 +143,7 @@ private fun ProfileContent(
           )
           if (!profileLoaded && !state.isEditing) {
             TextButton(
-                onClick = viewModel::loadProfile,
+                onClick = onRetry,
                 modifier = Modifier.testTag(C.Tag.profile_retry),
             ) {
               Text("Retry")
@@ -144,7 +160,7 @@ private fun ProfileContent(
             enabled = !state.isSaving,
         )
         if (state.isEditing) {
-          ProfileEditor(state, viewModel)
+          ProfileEditor(state, onUsernameChange, onBioChange, onCancel, onSave)
         } else {
           Text(
               profile.username.ifBlank { NO_USERNAME },
@@ -160,7 +176,7 @@ private fun ProfileContent(
           )
           ProfileStatistics(state.stats)
           OutlinedButton(
-              onClick = viewModel::startEditing,
+              onClick = onStartEditing,
               modifier = Modifier.fillMaxWidth().testTag(C.Tag.profile_edit),
               enabled = !state.isSaving,
               border = BorderStroke(1.dp, colors.accent),
@@ -177,13 +193,19 @@ private fun ProfileContent(
 }
 
 @Composable
-private fun ProfileEditor(state: ProfileUiState, viewModel: ProfileViewModelInterface) {
+private fun ProfileEditor(
+    state: ProfileUiState,
+    onUsernameChange: (String) -> Unit,
+    onBioChange: (String) -> Unit,
+    onCancel: () -> Unit,
+    onSave: () -> Unit,
+) {
   ProfileTextField(
       label = "Username",
       hint = "Choose a username",
       tag = C.Tag.profile_username,
       value = state.usernameDraft,
-      onValueChange = viewModel::onUsernameChange,
+      onValueChange = onUsernameChange,
       enabled = !state.isSaving,
       error = state.usernameError,
   )
@@ -192,21 +214,21 @@ private fun ProfileEditor(state: ProfileUiState, viewModel: ProfileViewModelInte
       hint = "Tell other players about yourself",
       tag = C.Tag.profile_bio,
       value = state.bioDraft,
-      onValueChange = viewModel::onBioChange,
+      onValueChange = onBioChange,
       enabled = !state.isSaving,
       error = state.bioError,
       minLines = 3,
   )
   Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
     TextButton(
-        onClick = viewModel::cancelEditing,
+        onClick = onCancel,
         modifier = Modifier.testTag(C.Tag.profile_cancel),
         enabled = !state.isSaving,
     ) {
       Text("Cancel")
     }
     Button(
-        onClick = viewModel::saveProfile,
+        onClick = onSave,
         modifier = Modifier.testTag(C.Tag.profile_save),
         enabled = state.canSave && !state.isSaving,
     ) {
