@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.viewmodel
 
 import androidx.lifecycle.ViewModel
@@ -11,6 +12,7 @@ import com.github.se.jdrnexus.model.personalSpace.PERSONAL_ROOT_ID
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.model.personalSpace.isContainer
+import com.github.se.jdrnexus.model.personalSpace.toEdit
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import kotlinx.coroutines.CancellationException
@@ -46,6 +48,7 @@ sealed interface LoadState {
  * - currentFolderId == "" means the user is at the Root.
  * - canNavigateUp is true when there is a previous folder to go back to (Back goes up a folder);
  *   false means Back should leave the screen.
+ * - renamingItemId is the folder whose rename dialog is open, or null when it is closed.
  */
 data class PersonalSpaceUiState(
     val items: List<JDRFile> = emptyList(),
@@ -58,6 +61,10 @@ data class PersonalSpaceUiState(
     val newFolderName: String = "",
     val newFolderError: String = "",
     val isCreatingFolder: Boolean = false,
+    val renamingItemId: String? = null,
+    val renameName: String = "",
+    val renameError: String = "",
+    val isRenaming: Boolean = false,
 )
 
 // ============ Definition of the ViewModel ============
@@ -290,6 +297,73 @@ class PersonalSpaceViewModel(
     }
   }
 
+  // ============ Renaming functions ============
+
+  /**
+   * Opens the rename dialog for [item], filled with its current name. Only folders can be renamed
+   * from the Personal Space; other items are ignored.
+   */
+  fun onRenameSelected(item: JDRFile) {
+    if (item.type != DocumentType.FOLDER) return
+    _uiState.update { it.copy(renamingItemId = item.id, renameName = item.name, renameError = "") }
+  }
+
+  /** Call from the rename field's text-change callback. */
+  fun onRenameNameChanged(name: String) {
+    _uiState.update { it.copy(renameName = name) }
+  }
+
+  /** Closes the rename dialog and clears its draft, unless a rename is running. */
+  fun onRenameDialogDismissed() {
+    if (_uiState.value.isRenaming) return
+    _uiState.update { it.copy(renamingItemId = null, renameName = "", renameError = "") }
+  }
+
+  /**
+   * Call when the user confirms the rename dialog. Saves the trimmed name through
+   * [WorkspaceRepository.updateFile], with the same rules as the Group Workspace: the name cannot
+   * be blank and only the folder's owner may rename it. Only the name changes, so the folder keeps
+   * its content, children and place.
+   *
+   * On success the dialog closes and the item-list flow loaded by [fetchItems] shows the new name;
+   * on failure the dialog stays open and the error is exposed in
+   * [PersonalSpaceUiState.renameError].
+   */
+  fun renameFolder() {
+    val state = _uiState.value
+    val itemId = state.renamingItemId ?: return
+    if (state.isRenaming) return
+    val name = state.renameName.trim()
+    if (name.isEmpty()) {
+      _uiState.update { it.copy(renameError = BLANK_NAME_ERROR) }
+      return
+    }
+    _uiState.update { it.copy(isRenaming = true, renameError = "") }
+
+    launchAction {
+      try {
+        val uid = requireUid()
+        val existing =
+            repository.getFile(itemId).getOrThrow()
+                ?: throw IllegalStateException(ITEM_NOT_FOUND_ERROR)
+        check(existing.type == DocumentType.FOLDER) { NOT_A_FOLDER_ERROR }
+        check(existing.ownerId == uid) { NOT_OWNER_ERROR }
+
+        repository.updateFile(existing.copy(name = name).toEdit()).getOrThrow()
+        currentCoroutineContext().ensureActive()
+        _uiState.update { it.copy(renamingItemId = null, renameName = "", renameError = "") }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        currentCoroutineContext().ensureActive()
+        val message = e.message?.takeIf(String::isNotBlank) ?: RENAME_ERROR
+        _uiState.update { it.copy(renameError = message) }
+      } finally {
+        _uiState.update { it.copy(isRenaming = false) }
+      }
+    }
+  }
+
   /**
    * Creates an empty character file in the current folder, then passes its ID to the UI for
    * navigation to the editor.
@@ -321,5 +395,14 @@ class PersonalSpaceViewModel(
       currentCoroutineContext().ensureActive()
       navigateToEditFile(file.id)
     }
+  }
+
+  internal companion object {
+    // Same messages as the Group Workspace rename.
+    const val BLANK_NAME_ERROR = "The item name cannot be blank."
+    const val ITEM_NOT_FOUND_ERROR = "Item no longer exists."
+    const val NOT_OWNER_ERROR = "You cannot edit an item that you do not own."
+    const val NOT_A_FOLDER_ERROR = "Only folders can be renamed here."
+    const val RENAME_ERROR = "Unable to rename the folder."
   }
 }
