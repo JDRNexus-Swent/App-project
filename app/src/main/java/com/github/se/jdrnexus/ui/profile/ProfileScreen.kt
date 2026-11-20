@@ -112,10 +112,10 @@ private fun ProfileContent(
     selectedTab: String,
     onPickPicture: () -> Unit,
 ) {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   Scaffold(
       containerColor = colors.background,
-      contentColor = colors.primaryText,
+      contentColor = colors.onBackground,
       topBar = { AppTopBar(title = "Profile", onBack = onBack) },
       bottomBar = { ScreenBottomBar(selectedTab, onTabSelected) },
   ) { padding ->
@@ -139,7 +139,7 @@ private fun ProfileContent(
           Text(
               error,
               Modifier.testTag(C.Tag.profile_error),
-              color = MaterialTheme.colorScheme.error,
+              color = colors.error,
           )
           if (!profileLoaded && !state.isEditing) {
             TextButton(
@@ -171,7 +171,7 @@ private fun ProfileContent(
           Text(
               profile.bio.ifBlank { NO_DESCRIPTION },
               Modifier.testTag(C.Tag.profile_bio),
-              color = colors.secondaryText,
+              color = colors.onSurfaceVariant,
               textAlign = TextAlign.Center,
           )
           ProfileStatistics(state.stats)
@@ -179,8 +179,8 @@ private fun ProfileContent(
               onClick = onStartEditing,
               modifier = Modifier.fillMaxWidth().testTag(C.Tag.profile_edit),
               enabled = !state.isSaving,
-              border = BorderStroke(1.dp, colors.accent),
-              colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.accent),
+              border = BorderStroke(1.dp, colors.primary),
+              colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary),
           ) {
             Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
@@ -264,7 +264,7 @@ private fun ProfileTextField(
 
 @Composable
 private fun ProfileStatistics(stats: ProfileStats) {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   val counters =
       listOf(
           "Campaigns created" to stats.campaignsCreated,
@@ -280,7 +280,7 @@ private fun ProfileStatistics(stats: ProfileStats) {
           modifier = Modifier.weight(1f).fillMaxHeight(),
           shape = MaterialTheme.shapes.medium,
           color = colors.surface,
-          contentColor = colors.primaryText,
+          contentColor = colors.onSurface,
           border = BorderStroke(1.dp, colors.outline),
       ) {
         Column(
@@ -291,7 +291,7 @@ private fun ProfileStatistics(stats: ProfileStats) {
           Text(value.toString(), style = MaterialTheme.typography.headlineSmall)
           Text(
               label,
-              color = colors.secondaryText,
+              color = colors.onSurfaceVariant,
               style = MaterialTheme.typography.labelSmall,
               textAlign = TextAlign.Center,
           )
@@ -308,8 +308,7 @@ private fun ProfilePicture(
     onPickPicture: () -> Unit,
     enabled: Boolean,
 ) {
-  val colors = LocalAppUiColors.current
-  val logo = painterResource(R.drawable.app_logo_dark)
+  val colors = MaterialTheme.colorScheme
   val pickerModifier =
       if (!isEditable) {
         Modifier
@@ -331,7 +330,15 @@ private fun ProfilePicture(
   ) {
     val imageModifier = Modifier.fillMaxSize().testTag(C.Tag.profile_picture)
     if (pictureUrl.isBlank()) {
-      Image(logo, "Default profile picture", imageModifier, contentScale = ContentScale.Crop)
+      val logo =
+          if (LocalAppUiColors.current.isDarkTheme) R.drawable.app_logo_dark
+          else R.drawable.app_logo_light
+      Image(
+          painterResource(logo),
+          "Default profile picture",
+          imageModifier,
+          contentScale = ContentScale.Crop,
+      )
     } else {
       AsyncImage(
           model = pictureUrl,
@@ -352,7 +359,7 @@ private fun ProfilePicture(
                   .background(colors.surface, CircleShape)
                   .padding(5.dp)
                   .size(16.dp),
-          tint = colors.accent,
+          tint = colors.primary,
       )
     }
   }
