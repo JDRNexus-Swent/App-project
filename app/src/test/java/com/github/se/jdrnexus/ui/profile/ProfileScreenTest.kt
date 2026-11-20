@@ -1,5 +1,6 @@
-// Co-authored-by: OpenAI Codex <codex@openai.com>
 package com.github.se.jdrnexus.ui.profile
+
+// Co-authored-by: Codex <codex@openai.com>
 
 import android.app.Activity
 import android.content.Intent
@@ -9,9 +10,11 @@ import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties.EditableText
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
@@ -20,15 +23,18 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasAnySibling
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.text.AnnotatedString
 import androidx.core.app.ActivityOptionsCompat
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.profile.ProfileStats
 import com.github.se.jdrnexus.model.profile.UserProfile
@@ -70,9 +76,24 @@ class ProfileScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.profile_username).assertTextContains("Rowan")
     composeTestRule.onNodeWithTag(C.Tag.profile_bio).assertTextContains("Dungeon guide")
     composeTestRule.onNodeWithTag(C.Tag.profile_stats).performScrollTo().assertIsDisplayed()
-    for (label in listOf("Campaigns created", "Groups joined", "Files created")) {
-      composeTestRule.onNodeWithText(label, substring = true).assertIsDisplayed()
+    for ((label, count) in
+        listOf("Campaigns created" to "2", "Groups joined" to "5", "Files created" to "8")) {
+      composeTestRule
+          .onNode(hasText(label) and hasAnySibling(hasText(count)), useUnmergedTree = true)
+          .assertIsDisplayed()
     }
+  }
+
+  @Test
+  fun profileWithPictureUrlShowsAccessibleProfilePicture() {
+    val state = loadedState.copy(profile = profile.copy(pictureUrl = "file:///profile-test.png"))
+
+    setContent(RecordingProfileViewModel(state))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.profile_picture)
+        .assertIsDisplayed()
+        .assertContentDescriptionEquals("Profile picture")
   }
 
   @Test
@@ -108,18 +129,15 @@ class ProfileScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.profile_edit).performScrollTo().performClick()
 
     val emptyEditableText = SemanticsMatcher.expectValue(EditableText, AnnotatedString(""))
-    composeTestRule
-        .onNodeWithTag(C.Tag.profile_username)
-        .performScrollTo()
-        .assertIsDisplayed()
-        .assertTextContains("No username")
-        .assert(emptyEditableText)
-    composeTestRule
-        .onNodeWithTag(C.Tag.profile_bio)
-        .performScrollTo()
-        .assertIsDisplayed()
-        .assertTextContains("No description")
-        .assert(emptyEditableText)
+    for ((tag, hint) in
+        listOf(
+            C.Tag.profile_username to "Choose a username",
+            C.Tag.profile_bio to "Tell other players about yourself",
+        )) {
+      val field = composeTestRule.onNodeWithTag(tag).performScrollTo()
+      field.performSemanticsAction(SemanticsActions.RequestFocus)
+      field.assertIsDisplayed().assertTextContains(hint).assert(emptyEditableText)
+    }
   }
 
   @Test
@@ -137,6 +155,46 @@ class ProfileScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.profile_retry).performClick()
 
     assertEquals(2, viewModel.loadCalls)
+  }
+
+  @Test
+  fun errorOnLoadedBlankProfileShowsNoRetry() {
+    val state =
+        loadedState.copy(
+            profile = UserProfile(userId = profile.userId),
+            errorMessage = "Could not update profile picture",
+        )
+
+    setContent(RecordingProfileViewModel(state))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.profile_error)
+        .assertTextContains("Could not update profile picture")
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_retry).assertCountEquals(0)
+  }
+
+  @Test
+  fun savingShowsProgressAndDisablesEditingActions() {
+    val state = loadedState.copy(isEditing = true, isSaving = true, canSave = true)
+
+    setContent(RecordingProfileViewModel(state))
+
+    composeTestRule.onNodeWithTag(C.Tag.profile_saving).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.profile_save).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.profile_cancel).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.profile_pick_picture).assertIsNotEnabled()
+  }
+
+  @Test
+  fun invalidUsernameShowsErrorInField() {
+    val state = loadedState.copy(isEditing = true, usernameError = "Username is too long")
+
+    setContent(RecordingProfileViewModel(state))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.profile_username)
+        .performScrollTo()
+        .assertTextContains("Username is too long")
   }
 
   @Test
@@ -256,6 +314,20 @@ class ProfileScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
 
     assertEquals(1, backCalls)
+  }
+
+  @Test
+  fun systemBackCancelsEditingWithoutLeavingProfile() {
+    var backCalls = 0
+    val viewModel = RecordingProfileViewModel(loadedState)
+    setContent(viewModel, onBack = { backCalls++ })
+    composeTestRule.onNodeWithTag(C.Tag.profile_edit).performScrollTo().performClick()
+
+    Espresso.pressBack()
+
+    assertEquals(1, viewModel.cancelEditingCalls)
+    assertEquals(0, backCalls)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_save).assertCountEquals(0)
   }
 
   @Test

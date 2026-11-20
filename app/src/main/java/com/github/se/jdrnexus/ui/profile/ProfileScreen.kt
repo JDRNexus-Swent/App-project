@@ -1,5 +1,6 @@
-// Co-authored-by: Codex <codex@openai.com>
 package com.github.se.jdrnexus.ui.profile
+
+// Co-authored-by: Codex <codex@openai.com>
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -53,9 +54,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -82,7 +80,7 @@ fun ProfileScreen(
         uri?.let(viewModel::updateProfilePicture)
       }
   LaunchedEffect(viewModel) { viewModel.loadProfile() }
-  BackHandler(onBack = onBack)
+  BackHandler { if (state.isEditing) viewModel.cancelEditing() else onBack() }
 
   ProfileContent(state, viewModel, onBack, onTabSelected, selectedTab) {
     pickPicture.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly))
@@ -117,9 +115,7 @@ private fun ProfileContent(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
       val profile = state.profile
-      // isEmpty might be redundant depending on the VM implementation. Subject to changes
-      val isEmpty =
-          profile.username.isBlank() && profile.bio.isBlank() && profile.pictureUrl.isBlank()
+      val profileLoaded = profile.userId.isNotBlank()
       if (state.isLoading) {
         CircularProgressIndicator(Modifier.testTag(C.Tag.profile_loading))
       } else {
@@ -129,7 +125,7 @@ private fun ProfileContent(
               Modifier.testTag(C.Tag.profile_error),
               color = MaterialTheme.colorScheme.error,
           )
-          if (isEmpty && !state.isEditing) {
+          if (!profileLoaded && !state.isEditing) {
             TextButton(
                 onClick = viewModel::loadProfile,
                 modifier = Modifier.testTag(C.Tag.profile_retry),
@@ -184,7 +180,7 @@ private fun ProfileContent(
 private fun ProfileEditor(state: ProfileUiState, viewModel: ProfileViewModelInterface) {
   ProfileTextField(
       label = "Username",
-      hint = NO_USERNAME,
+      hint = "Choose a username",
       tag = C.Tag.profile_username,
       value = state.usernameDraft,
       onValueChange = viewModel::onUsernameChange,
@@ -193,7 +189,7 @@ private fun ProfileEditor(state: ProfileUiState, viewModel: ProfileViewModelInte
   )
   ProfileTextField(
       label = "Description",
-      hint = NO_DESCRIPTION,
+      hint = "Tell other players about yourself",
       tag = C.Tag.profile_bio,
       value = state.bioDraft,
       onValueChange = viewModel::onBioChange,
@@ -230,20 +226,18 @@ private fun ProfileTextField(
     error: String?,
     minLines: Int = 1,
 ) {
-  Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-    Text(label, Modifier.clearAndSetSemantics {}, style = MaterialTheme.typography.labelLarge)
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = Modifier.fillMaxWidth().testTag(tag).semantics { contentDescription = label },
-        enabled = enabled,
-        placeholder = { Text(hint) },
-        isError = error != null,
-        supportingText = error?.let { message -> { Text(message) } },
-        singleLine = minLines == 1,
-        minLines = minLines,
-    )
-  }
+  OutlinedTextField(
+      value = value,
+      onValueChange = onValueChange,
+      modifier = Modifier.fillMaxWidth().testTag(tag),
+      enabled = enabled,
+      label = { Text(label) },
+      placeholder = { Text(hint) },
+      isError = error != null,
+      supportingText = error?.let { message -> { Text(message) } },
+      singleLine = minLines == 1,
+      minLines = minLines,
+  )
 }
 
 @Composable
@@ -321,8 +315,8 @@ private fun ProfilePicture(
           model = pictureUrl,
           contentDescription = "Profile picture",
           modifier = imageModifier,
-          placeholder = painterResource(R.drawable.loading),
-          error = painterResource(R.drawable.error),
+          placeholder = painterResource(R.drawable.profile_picture_loading),
+          error = painterResource(R.drawable.profile_picture_error),
           contentScale = ContentScale.Crop,
       )
     }

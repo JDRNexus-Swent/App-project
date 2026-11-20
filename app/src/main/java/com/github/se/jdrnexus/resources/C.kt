@@ -39,7 +39,6 @@ object C {
     const val profile_retry = "profile_retry"
     const val profile_loading = "profile_loading"
     const val profile_saving = "profile_saving"
-    const val profile_empty = "profile_empty"
     const val profile_error = "profile_error"
 
     const val sign_in_email = "auth_sign_in_email"
