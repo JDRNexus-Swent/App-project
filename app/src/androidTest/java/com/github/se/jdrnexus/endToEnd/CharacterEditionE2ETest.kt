@@ -42,6 +42,7 @@ class CharacterEditionE2ETest {
   companion object {
 
     private const val SEEDED_NAME = "E2E seeded hero"
+    private const val EDITED_NAME = "E2E edited"
     private const val TIMEOUT_MS = 40_000L
 
     @BeforeClass @JvmStatic fun configureFirebaseEmulators() = TestFirebaseEmulators.configure()
@@ -100,7 +101,7 @@ class CharacterEditionE2ETest {
     waitForTag(EditFileCharacterTestTags.LIST)
 
     // name modification
-    composeRule.onNodeWithTag("edit_character_name").performTextReplacement("E2E edited")
+    composeRule.onNodeWithTag("edit_character_name").performTextReplacement(EDITED_NAME)
     // Close the keyboard: while it slides in, it can cover the save button.
     Espresso.closeSoftKeyboard()
 
@@ -113,14 +114,20 @@ class CharacterEditionE2ETest {
     composeRule.onNodeWithTag(EditFileCharacterTestTags.LIST).assertDoesNotExist()
     composeRule.onNodeWithText("CHARACTER SHEET").assertIsDisplayed()
     composeRule.onNodeWithText("1 items").assertIsDisplayed()
+    // Saving the sheet renames the file too, so Personal Space lists the character by its new name.
+    waitForText(EDITED_NAME)
+    composeRule.onNodeWithText(EDITED_NAME).assertIsDisplayed()
+    composeRule.onAllNodesWithText(SEEDED_NAME).fetchSemanticsNodes().let {
+      org.junit.Assert.assertTrue("Old name must no longer be listed", it.isEmpty())
+    }
     runBlocking {
       kotlinx.coroutines.delay(1000)
 
       val updatedFile = WorkspaceRepositoryProvider.repository.getFile(fileId).getOrThrow()
-      org.junit.Assert.assertEquals(SEEDED_NAME, updatedFile?.name)
+      org.junit.Assert.assertEquals(EDITED_NAME, updatedFile?.name)
       org.junit.Assert.assertTrue(
           "Json must contain new name",
-          updatedFile?.content?.contains("E2E edited") == true,
+          updatedFile?.content?.contains(EDITED_NAME) == true,
       )
     }
   }
