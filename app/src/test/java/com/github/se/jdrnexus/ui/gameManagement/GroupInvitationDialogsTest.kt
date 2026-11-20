@@ -531,6 +531,7 @@ class GroupInvitationDialogsTest {
             onRetryLoad = {},
             onDismissSuccess = {},
             onEnterWorkspace = {},
+            onPlay = { _, _ -> },
             onManageGroup = {},
             invitationVM = invitationVM,
             onTabSelected = {},

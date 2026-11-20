@@ -3,6 +3,7 @@ package com.github.se.jdrnexus.model.profile
 
 import android.net.Uri
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryFirestore
 import com.github.se.jdrnexus.model.personalSpace.safeFirestoreRequest
 import com.google.firebase.firestore.AggregateSource
 import com.google.firebase.firestore.FirebaseFirestore
@@ -74,7 +75,7 @@ class ProfileRepositoryFirestore(
                 .whereArrayContains("participantIds", userId)
         val ownFiles =
             firestore
-                .collection(DOCUMENTS_COLLECTION_PATH)
+                .collection(WorkspaceRepositoryFirestore.COLLECTION_PATH)
                 .whereEqualTo("ownerId", userId)
                 .whereIn("type", listOf(DocumentType.TEXT.name, DocumentType.CHARACTER.name))
         coroutineScope {
@@ -107,7 +108,6 @@ class ProfileRepositoryFirestore(
     const val NO_PROFILE_MESSAGE = "Save your profile before adding a picture."
 
     private const val GROUPS_COLLECTION_PATH = "campaign_groups"
-    private const val DOCUMENTS_COLLECTION_PATH = "documents"
 
     // Each upload gets a new download URL, so phones may keep a downloaded picture for 30 days.
     private val JPEG_METADATA =

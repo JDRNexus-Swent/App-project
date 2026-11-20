@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
 <resources>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
+    <!-- Brand colours for the Android window theme (themes.xml), drawn before Compose starts.
+         They repeat values of LightColorScheme / DarkColorScheme in ui/theme/Theme.kt. -->
+    <color name="brand_brown">#FF704222</color>
+    <color name="brand_gold">#FFE2BC32</color>
+    <color name="brand_gold_light">#FFD9B87A</color>
+    <color name="brand_gold_dark">#FF735927</color>
+    <color name="text_on_light">#FF33251D</color>
+    <color name="text_on_dark">#FFE9DDD2</color>
+    <color name="background_dark">#FF17100D</color>
+    <!-- Background layer of the launcher icon (mipmap-anydpi-v26/ic_launcher*.xml). -->
     <color name="app_logo_background">#FF1C1916</color>
 </resources>

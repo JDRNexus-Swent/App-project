@@ -172,8 +172,8 @@ fun SignUpScreen(
           modifier = Modifier.fillMaxWidth().testTag(C.Tag.sign_up_username),
           colors =
               darkFieldColors(
-                  container = colors.onBackground,
-                  border = colors.onSurface,
+                  container = colors.surfaceContainerHighest,
+                  border = colors.outline,
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
@@ -208,8 +208,8 @@ fun SignUpScreen(
           modifier = Modifier.fillMaxWidth().testTag(C.Tag.sign_up_email),
           colors =
               darkFieldColors(
-                  container = colors.onBackground,
-                  border = colors.onSurface,
+                  container = colors.surfaceContainerHighest,
+                  border = colors.outline,
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),
@@ -265,8 +265,8 @@ fun SignUpScreen(
           modifier = Modifier.fillMaxWidth().testTag(C.Tag.sign_up_password),
           colors =
               darkFieldColors(
-                  container = colors.onBackground,
-                  border = colors.onSurface,
+                  container = colors.surfaceContainerHighest,
+                  border = colors.outline,
                   textPrimary = colors.onSecondary,
                   primary = colors.primary,
               ),

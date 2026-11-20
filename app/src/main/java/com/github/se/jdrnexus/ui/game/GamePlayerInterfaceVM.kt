@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.game
 
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
@@ -17,6 +18,27 @@ data class SessionCharacter(
     val hasUnsavedChanges: Boolean = false,
 )
 
+sealed interface GamePlayerDestination {
+  data object Back : GamePlayerDestination
+
+  data class Workspace(val groupId: String) : GamePlayerDestination
+
+  data class Dice(val modifier: Int) : GamePlayerDestination
+
+  data class Tab(val name: String) : GamePlayerDestination
+}
+
+sealed interface GamePlayerNavigation {
+  data class Saving(val destination: GamePlayerDestination) : GamePlayerNavigation
+
+  data class SaveFailed(
+      val destination: GamePlayerDestination,
+      val saveBeforeLeavingError: String,
+  ) : GamePlayerNavigation
+
+  data class Ready(val destination: GamePlayerDestination) : GamePlayerNavigation
+}
+
 /** Observable data needed to render the player's game screen. */
 data class GamePlayerUiState(
     /** The group whose session is loaded, or null before [GamePlayerInterfaceVM.loadSession]. */
@@ -29,6 +51,7 @@ data class GamePlayerUiState(
     val error: String? = null,
     /** Displayable reason why the last HP update was rejected, cleared by the next valid one. */
     val hpError: String? = null,
+    val navigation: GamePlayerNavigation? = null,
 )
 
 /**
@@ -42,7 +65,11 @@ interface GamePlayerInterfaceVM {
   /** StateFlow containing the player's character and operation status. */
   val uiState: StateFlow<GamePlayerUiState>
 
-  /** Starts observing the files of [groupId], replacing any previous session. Also retries. */
+  /**
+   * Starts observing the files of [groupId], replacing any previous session. Calling it again for
+   * the same group while that session is live, or while [requestNavigation] is saving, does
+   * nothing, so unsaved edits survive; after a failed load, it starts again.
+   */
   fun loadSession(groupId: String)
 
   /**
@@ -53,6 +80,16 @@ interface GamePlayerInterfaceVM {
 
   /** Persists the player's character so that the other participants receive the change. */
   fun saveCharacter()
+
+  /** Saves pending edits before making [destination] available to the screen. */
+  fun requestNavigation(destination: GamePlayerDestination)
+
+  fun stayOnScreen()
+
+  fun leaveAnyway()
+
+  /** Returns and clears a destination that is ready to open. */
+  fun consumeNavigation(): GamePlayerDestination?
 
   /** Clears [GamePlayerUiState.error] after the screen has displayed it. */
   fun dismissError()

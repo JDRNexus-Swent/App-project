@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.resources
 
 import android.content.Context
@@ -13,6 +14,7 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -24,7 +26,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 
 private data class ScreenTab(
     val label: String,
@@ -51,7 +52,7 @@ fun AppTopBar(
     leadingContent: @Composable () -> Unit = {},
     trailingContent: @Composable () -> Unit = {},
 ) {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   CenterAlignedTopAppBar(
       modifier = modifier.testTag(C.Tag.shared_top_bar),
       title = {
@@ -77,9 +78,9 @@ fun AppTopBar(
       colors =
           TopAppBarDefaults.topAppBarColors(
               containerColor = colors.surface,
-              titleContentColor = colors.primaryText,
-              navigationIconContentColor = colors.accent,
-              actionIconContentColor = colors.accent,
+              titleContentColor = colors.onSurface,
+              navigationIconContentColor = colors.primary,
+              actionIconContentColor = colors.primary,
           ),
   )
 }
@@ -91,7 +92,7 @@ fun ScreenBottomBar(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   NavigationBar(
       modifier = modifier.testTag(C.Tag.shared_bottom_bar),
       containerColor = colors.surface,
@@ -109,11 +110,11 @@ fun ScreenBottomBar(
               },
           colors =
               NavigationBarItemDefaults.colors(
-                  selectedIconColor = colors.accent,
-                  selectedTextColor = colors.accent,
-                  indicatorColor = colors.raisedSurface,
-                  unselectedIconColor = colors.secondaryText,
-                  unselectedTextColor = colors.secondaryText,
+                  selectedIconColor = colors.primary,
+                  selectedTextColor = colors.primary,
+                  indicatorColor = colors.surfaceContainerLowest,
+                  unselectedIconColor = colors.onSurfaceVariant,
+                  unselectedTextColor = colors.onSurfaceVariant,
               ),
       )
     }
