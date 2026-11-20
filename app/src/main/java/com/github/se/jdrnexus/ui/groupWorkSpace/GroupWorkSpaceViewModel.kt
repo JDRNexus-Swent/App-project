@@ -36,6 +36,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/** One emission of the displayed folder: its items, whether it is still valid, and its name. */
+private data class FolderUpdate(
+    val items: List<JDRFile>,
+    val folderValid: Boolean,
+    val folderName: String,
+)
+
 enum class GroupWorkspaceRole {
   GAME_MASTER,
   PLAYER,
@@ -460,20 +467,20 @@ class GroupWorkspaceViewModel(
 
         val updates =
             if (folderId.isEmpty()) {
-              source.map { items -> items to true }
+              source.map { items -> FolderUpdate(items, folderValid = true, folderName = "") }
             } else {
-              // Observe both folder contents and changes to the selected folder.
+              // Observe both folder contents and changes to the selected folder, such as a rename.
               combine(source, repository.getFileFlow(folderId)) { items, folder ->
                 val folderValid =
                     folder != null &&
                         folder.type == DocumentType.FOLDER &&
                         groupId in folder.sharedGroupsIds
 
-                items to folderValid
+                FolderUpdate(items, folderValid, folder?.name.orEmpty())
               }
             }
 
-        updates.collect { (items, folderValid) ->
+        updates.collect { (items, folderValid, latestFolderName) ->
           if (requestGeneration != fetchGeneration) return@collect
 
           // If the selected folder is no longer available, return to the group root.
@@ -502,6 +509,7 @@ class GroupWorkspaceViewModel(
             _uiState.update {
               it.copy(
                   items = visibleItems,
+                  currentFolderName = latestFolderName,
                   loadState = LoadState.Success,
               )
             }

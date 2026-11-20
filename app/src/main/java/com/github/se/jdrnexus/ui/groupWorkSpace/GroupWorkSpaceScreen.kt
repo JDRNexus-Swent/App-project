@@ -437,87 +437,28 @@ fun GroupWorkSpaceScreen(
     uiState.items
         .firstOrNull { it.id == itemId }
         ?.let { file ->
-          AlertDialog(
-              modifier = Modifier.testTag(C.Tag.workspace_edit_item_dialog),
-              containerColor = color().surface,
-              onDismissRequest = {
-                if (!uiState.isOperationInProgress) {
-                  itemToEditId = null
-                  gwViewModel.clearError()
-                }
-              },
-              title = {
-                Text(
-                    if (file.type == DocumentType.FOLDER) {
-                      stringResource(R.string.workspace_edit_folder)
-                    } else {
-                      stringResource(R.string.workspace_edit_file)
-                    },
-                    color = color().tertiary,
-                )
-              },
-              text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                  OutlinedTextField(
-                      modifier = Modifier.testTag(C.Tag.workspace_edit_item_name_input),
-                      value = editedName,
-                      onValueChange = { editedName = it },
-                      label = {
-                        Text(stringResource(R.string.workspace_name), color = color().primary)
-                      },
-                      singleLine = true,
-                      enabled = !uiState.isOperationInProgress,
-                      colors = workspaceFieldColors(),
-                      isError = uiState.errorMessage.isNotBlank(),
-                      supportingText = {
-                        if (uiState.errorMessage.isNotBlank()) {
-                          Text(text = uiState.errorMessage)
-                        }
-                      },
-                  )
-                }
-              },
-              confirmButton = {
-                TextButton(
-                    modifier = Modifier.testTag(C.Tag.workspace_edit_item_save),
-                    enabled = !uiState.isOperationInProgress,
-                    onClick = {
-                      gwViewModel.clearError()
+          EditItemDialog(
+              isFolder = file.type == DocumentType.FOLDER,
+              name = editedName,
+              onNameChange = { editedName = it },
+              errorMessage = uiState.errorMessage,
+              isInProgress = uiState.isOperationInProgress,
+              onSave = {
+                gwViewModel.clearError()
 
-                      scope.launch {
-                        val job =
-                            gwViewModel.editItem(
-                                file.copy(
-                                    name = editedName.trim(),
-                                )
-                            )
+                scope.launch {
+                  val job = gwViewModel.editItem(file.copy(name = editedName.trim()))
 
-                        job?.join()
+                  job?.join()
 
-                        if (gwViewModel.uiState.value.errorMessage.isEmpty()) {
-                          itemToEditId = null
-                        }
-                      }
-                    },
-                ) {
-                  OperationButtonContent(
-                      isInProgress = uiState.isOperationInProgress,
-                      progressTag = C.Tag.workspace_edit_item_progress,
-                      label = stringResource(R.string.workspace_save),
-                  )
+                  if (gwViewModel.uiState.value.errorMessage.isEmpty()) {
+                    itemToEditId = null
+                  }
                 }
               },
-              dismissButton = {
-                TextButton(
-                    modifier = Modifier.testTag(C.Tag.workspace_edit_item_cancel),
-                    enabled = !uiState.isOperationInProgress,
-                    onClick = {
-                      itemToEditId = null
-                      gwViewModel.clearError()
-                    },
-                ) {
-                  Text(stringResource(R.string.workspace_cancel), color = color().primary)
-                }
+              onCancel = {
+                itemToEditId = null
+                gwViewModel.clearError()
               },
           )
         }
@@ -1010,6 +951,90 @@ private fun WorkspaceContent(
       }
     }
   }
+}
+
+/**
+ * The dialog that renames a file or folder, shared by the Group Workspace and the Personal Space so
+ * both look and behave the same. It cannot be dismissed while [isInProgress].
+ *
+ * @param isFolder Whether the item is a folder, which picks the dialog title.
+ * @param name Current text of the name field.
+ * @param onNameChange Called with the new text when the user edits the name.
+ * @param errorMessage Error to show under the field, or blank for none.
+ * @param isInProgress Whether the rename is running: disables the field and buttons.
+ * @param onSave Called when the user confirms the new name.
+ * @param onCancel Called when the user cancels or dismisses the dialog.
+ */
+@Composable
+fun EditItemDialog(
+    isFolder: Boolean,
+    name: String,
+    onNameChange: (String) -> Unit,
+    errorMessage: String,
+    isInProgress: Boolean,
+    onSave: () -> Unit,
+    onCancel: () -> Unit,
+) {
+  AlertDialog(
+      modifier = Modifier.testTag(C.Tag.workspace_edit_item_dialog),
+      containerColor = color().surface,
+      onDismissRequest = {
+        if (!isInProgress) {
+          onCancel()
+        }
+      },
+      title = {
+        Text(
+            if (isFolder) {
+              stringResource(R.string.workspace_edit_folder)
+            } else {
+              stringResource(R.string.workspace_edit_file)
+            },
+            color = color().tertiary,
+        )
+      },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          OutlinedTextField(
+              modifier = Modifier.testTag(C.Tag.workspace_edit_item_name_input),
+              value = name,
+              onValueChange = onNameChange,
+              label = { Text(stringResource(R.string.workspace_name), color = color().primary) },
+              singleLine = true,
+              enabled = !isInProgress,
+              colors = workspaceFieldColors(),
+              isError = errorMessage.isNotBlank(),
+              supportingText = {
+                if (errorMessage.isNotBlank()) {
+                  Text(text = errorMessage)
+                }
+              },
+          )
+        }
+      },
+      confirmButton = {
+        TextButton(
+            modifier = Modifier.testTag(C.Tag.workspace_edit_item_save),
+            enabled = !isInProgress,
+            onClick = onSave,
+        ) {
+          OperationButtonContent(
+              isInProgress = isInProgress,
+              progressTag = C.Tag.workspace_edit_item_progress,
+              label = stringResource(R.string.workspace_save),
+          )
+        }
+      },
+      dismissButton = {
+        TextButton(
+            modifier = Modifier.testTag(C.Tag.workspace_edit_item_cancel),
+            enabled = !isInProgress,
+            onClick = onCancel,
+        ) {
+          Text(stringResource(R.string.workspace_cancel), color = color().primary)
+        }
+      },
+  )
 }
 
 @Composable
