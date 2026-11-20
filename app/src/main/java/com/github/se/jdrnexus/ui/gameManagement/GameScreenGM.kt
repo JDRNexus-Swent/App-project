@@ -60,7 +60,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -79,7 +78,6 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
-import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 
 /**
  * Dashboard sections the GM can hide, in the order they are listed when hidden.
@@ -141,20 +139,20 @@ fun GameScreenGM(
 @Composable
 private fun GameStartControl(uiState: GameViewModelGMUiState, onStartGame: () -> Unit) {
   if (uiState.isGameStarted) {
-    val colors = LocalAppUiColors.current
+    val colors = MaterialTheme.colorScheme
     Row(
         modifier =
             Modifier.testTag(C.Tag.game_gm_game_in_progress)
                 .clip(CircleShape)
-                .background(colors.raisedSurface)
+                .background(colors.surfaceContainerLowest)
                 .padding(horizontal = 10.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-      Box(Modifier.size(6.dp).clip(CircleShape).background(colors.accent))
+      Box(Modifier.size(6.dp).clip(CircleShape).background(colors.primary))
       Text(
           stringResource(R.string.game_gm_game_in_progress),
-          color = colors.primaryText,
+          color = colors.onSurface,
           style = MaterialTheme.typography.labelMedium,
       )
     }
@@ -625,7 +623,7 @@ private fun EnemyRow(
       when {
         hpRatio >= 0.65f -> MaterialTheme.colorScheme.onSecondary
         hpRatio >= 0.35f -> MaterialTheme.colorScheme.primary
-        else -> Color.Red
+        else -> MaterialTheme.colorScheme.error
       }
 
   Column(

@@ -99,18 +99,19 @@ internal data class GameManagementColors(
 /** Reads [GameManagementColors] from the current app theme. */
 @Composable
 internal fun gameManagementColors(): GameManagementColors {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
+  val extras = LocalAppUiColors.current
   return GameManagementColors(
       background = colors.background,
       card = colors.surface,
-      raised = colors.raisedSurface,
-      text = colors.primaryText,
-      secondaryText = colors.secondaryText,
+      raised = colors.surfaceContainerLowest,
+      text = colors.onSurface,
+      secondaryText = colors.onSurfaceVariant,
       outline = colors.outline,
-      accent = colors.accent,
-      accentContent = colors.accentContent,
-      bannerText = colors.bannerText,
-      bannerColors = colors.bannerColors,
+      accent = colors.primary,
+      accentContent = colors.onPrimary,
+      bannerText = extras.bannerText,
+      bannerColors = extras.bannerColors,
   )
 }
 

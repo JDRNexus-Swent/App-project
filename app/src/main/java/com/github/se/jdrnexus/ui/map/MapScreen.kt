@@ -184,13 +184,13 @@ fun MapScreen(
 private fun MapPanel(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(16.dp),
-    borderColor: Color = LocalAppUiColors.current.outline,
+    borderColor: Color = MaterialTheme.colorScheme.outline,
     content: @Composable () -> Unit,
 ) {
   Surface(
       modifier = modifier,
       shape = shape,
-      color = LocalAppUiColors.current.raisedSurface,
+      color = MaterialTheme.colorScheme.surfaceContainerLowest,
       border = BorderStroke(1.dp, borderColor),
       shadowElevation = 4.dp,
       content = content,
@@ -214,12 +214,12 @@ private val INITIAL_CAMERA = CameraPosition.fromLatLngZoom(LatLng(0.0, 0.0), 2f)
  */
 @Composable
 private fun MapLayer(uiState: MapUiState, onSelectGame: (String) -> Unit, bottomPadding: Dp) {
-  val colors = LocalAppUiColors.current
+  val isDarkTheme = LocalAppUiColors.current.isDarkTheme
   val context = LocalContext.current
   val cameraPositionState = rememberCameraPositionState { position = INITIAL_CAMERA }
   val mapProperties =
-      remember(colors.isDarkTheme) {
-        val style = if (colors.isDarkTheme) R.raw.map_style_dark else R.raw.map_style_light
+      remember(isDarkTheme) {
+        val style = if (isDarkTheme) R.raw.map_style_dark else R.raw.map_style_light
         MapProperties(mapStyleOptions = MapStyleOptions.loadRawResourceStyle(context, style))
       }
 
@@ -245,7 +245,7 @@ private fun MapLayer(uiState: MapUiState, onSelectGame: (String) -> Unit, bottom
         // The pin is drawn once into a bitmap and redrawn only when these keys change.
         MarkerComposable(
             selected,
-            colors.isDarkTheme,
+            isDarkTheme,
             state = rememberMarkerStateAt(game.coordinates),
             onClick = {
               onSelectGame(game.id)
@@ -282,13 +282,13 @@ private fun MapCoordinates.toLatLng() = LatLng(latitude, longitude)
 @VisibleForTesting
 @Composable
 internal fun GamePin(selected: Boolean) {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   Box(
       modifier =
           Modifier.testTag(C.Tag.map_game_pin)
               .size(if (selected) 56.dp else 36.dp)
               .background(
-                  if (selected) colors.accent.copy(alpha = 0.2f) else Color.Transparent,
+                  if (selected) colors.primary.copy(alpha = 0.2f) else Color.Transparent,
                   CircleShape,
               ),
       contentAlignment = Alignment.Center,
@@ -296,14 +296,17 @@ internal fun GamePin(selected: Boolean) {
     Box(
         modifier =
             Modifier.size(if (selected) 40.dp else 32.dp)
-                .background(if (selected) colors.accent else colors.raisedSurface, CircleShape)
-                .border(2.dp, colors.accent, CircleShape),
+                .background(
+                    if (selected) colors.primary else colors.surfaceContainerLowest,
+                    CircleShape,
+                )
+                .border(2.dp, colors.primary, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
       Icon(
           Icons.Default.LocationOn,
           contentDescription = null,
-          tint = if (selected) colors.accentContent else colors.accent,
+          tint = if (selected) colors.onPrimary else colors.primary,
           modifier = Modifier.size(if (selected) 22.dp else 18.dp),
       )
     }
@@ -316,25 +319,25 @@ internal fun GamePin(selected: Boolean) {
 @VisibleForTesting
 @Composable
 internal fun UserLocationPin() {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   Column(horizontalAlignment = Alignment.CenterHorizontally) {
     Box(
         modifier =
-            Modifier.size(48.dp).background(colors.primaryText.copy(alpha = 0.15f), CircleShape),
+            Modifier.size(48.dp).background(colors.onSurface.copy(alpha = 0.15f), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
       Box(
           modifier =
               Modifier.size(16.dp)
-                  .background(colors.primaryText, CircleShape)
-                  .border(3.dp, colors.raisedSurface, CircleShape)
+                  .background(colors.onSurface, CircleShape)
+                  .border(3.dp, colors.surfaceContainerLowest, CircleShape)
       )
     }
     MapPanel(shape = RoundedCornerShape(8.dp)) {
       Text(
           stringResource(R.string.map_you),
           modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-          color = colors.primaryText,
+          color = colors.onSurface,
           style = MaterialTheme.typography.labelSmall,
       )
     }
@@ -365,7 +368,7 @@ private fun MapSearchBar(
     onToggleFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
 
   MapPanel(modifier = modifier) {
     Column(
@@ -386,7 +389,7 @@ private fun MapSearchBar(
                 Icon(
                     Icons.Default.Search,
                     contentDescription = stringResource(R.string.map_search_city_description),
-                    tint = colors.accent,
+                    tint = colors.primary,
                 )
               }
             },
@@ -395,11 +398,11 @@ private fun MapSearchBar(
             keyboardActions = KeyboardActions(onSearch = { onSearch() }),
             colors =
                 OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = colors.primaryText,
-                    unfocusedTextColor = colors.primaryText,
-                    focusedLabelColor = colors.secondaryText,
-                    unfocusedLabelColor = colors.secondaryText,
-                    cursorColor = colors.accent,
+                    focusedTextColor = colors.onSurface,
+                    unfocusedTextColor = colors.onSurface,
+                    focusedLabelColor = colors.onSurfaceVariant,
+                    unfocusedLabelColor = colors.onSurfaceVariant,
+                    cursorColor = colors.primary,
                     focusedBorderColor = Color.Transparent,
                     unfocusedBorderColor = Color.Transparent,
                 ),
@@ -412,7 +415,7 @@ private fun MapSearchBar(
           Icon(
               Icons.Default.Tune,
               contentDescription = stringResource(R.string.map_show_filters_description),
-              tint = colors.accent,
+              tint = colors.primary,
           )
         }
       }
@@ -434,7 +437,7 @@ private fun MapFiltersPanel(
     onFiltersChange: (MapFilters) -> Unit,
     onApply: () -> Unit,
 ) {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   Row(
       modifier = Modifier.fillMaxWidth(),
       horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -449,17 +452,17 @@ private fun MapFiltersPanel(
         singleLine = true,
         colors =
             OutlinedTextFieldDefaults.colors(
-                focusedTextColor = colors.primaryText,
-                unfocusedTextColor = colors.primaryText,
-                focusedBorderColor = colors.accent,
+                focusedTextColor = colors.onSurface,
+                unfocusedTextColor = colors.onSurface,
+                focusedBorderColor = colors.primary,
                 unfocusedBorderColor = colors.outline,
-                focusedLabelColor = colors.accent,
-                unfocusedLabelColor = colors.secondaryText,
-                cursorColor = colors.accent,
+                focusedLabelColor = colors.primary,
+                unfocusedLabelColor = colors.onSurfaceVariant,
+                cursorColor = colors.primary,
             ),
     )
     TextButton(onClick = onApply, modifier = Modifier.testTag(C.Tag.map_apply_filters)) {
-      Text(stringResource(R.string.map_apply_filters), color = colors.accent)
+      Text(stringResource(R.string.map_apply_filters), color = colors.primary)
     }
   }
   Row(
@@ -467,15 +470,15 @@ private fun MapFiltersPanel(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.SpaceBetween,
   ) {
-    Text(stringResource(R.string.map_open_seats_only), color = colors.primaryText)
+    Text(stringResource(R.string.map_open_seats_only), color = colors.onSurface)
     Switch(
         checked = filters.onlyGamesWithAvailableSeats,
         onCheckedChange = { onFiltersChange(filters.copy(onlyGamesWithAvailableSeats = it)) },
         modifier = Modifier.testTag(C.Tag.map_available_seats_filter),
         colors =
             SwitchDefaults.colors(
-                checkedThumbColor = colors.accentContent,
-                checkedTrackColor = colors.accent,
+                checkedThumbColor = colors.onPrimary,
+                checkedTrackColor = colors.primary,
             ),
     )
   }
@@ -497,7 +500,7 @@ private fun MapBottomOverlay(
     onViewGameDetails: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
     MapPanel(modifier = Modifier.align(Alignment.End), shape = CircleShape) {
       IconButton(
@@ -507,7 +510,7 @@ private fun MapBottomOverlay(
         Icon(
             Icons.Default.MyLocation,
             contentDescription = stringResource(R.string.map_use_device_location_description),
-            tint = colors.accent,
+            tint = colors.primary,
         )
       }
     }
@@ -534,7 +537,7 @@ private fun MapStatusBanner(
     status: MapStatus?,
     onRetry: (MapOperation) -> Unit,
 ) {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   MapPanel(modifier = Modifier.fillMaxWidth()) {
     Row(
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -542,14 +545,14 @@ private fun MapStatusBanner(
         verticalAlignment = Alignment.CenterVertically,
     ) {
       if (isLoading) {
-        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = colors.accent)
+        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = colors.primary)
       }
       status?.let {
         Text(
             it.message,
             modifier = Modifier.weight(1f).testTag(C.Tag.map_status_message),
             color =
-                if (it.type == MapStatusType.EMPTY) colors.secondaryText
+                if (it.type == MapStatusType.EMPTY) colors.onSurfaceVariant
                 else MaterialTheme.colorScheme.error,
         )
         if (it.canRetry) {
@@ -557,7 +560,7 @@ private fun MapStatusBanner(
               onClick = { onRetry(it.operation) },
               modifier = Modifier.testTag(C.Tag.map_retry),
           ) {
-            Text(stringResource(R.string.map_retry), color = colors.accent)
+            Text(stringResource(R.string.map_retry), color = colors.primary)
           }
         }
       }
@@ -578,8 +581,8 @@ private fun SelectedGameCard(
     searchedCity: MapCoordinates?,
     onViewDetails: () -> Unit,
 ) {
-  val colors = LocalAppUiColors.current
-  MapPanel(modifier = Modifier.fillMaxWidth(), borderColor = colors.accent.copy(alpha = 0.4f)) {
+  val colors = MaterialTheme.colorScheme
+  MapPanel(modifier = Modifier.fillMaxWidth(), borderColor = colors.primary.copy(alpha = 0.4f)) {
     Column(modifier = Modifier.padding(16.dp)) {
       // Drag handle, as on a bottom sheet.
       Box(
@@ -596,7 +599,7 @@ private fun SelectedGameCard(
       ) {
         Text(
             stringResource(R.string.map_nearby_adventure),
-            color = colors.accent,
+            color = colors.primary,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
         )
@@ -606,14 +609,14 @@ private fun SelectedGameCard(
                 count = game.availableSeats,
                 game.availableSeats,
             ),
-            color = colors.secondaryText,
+            color = colors.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
         )
       }
       // Serif title: intentional branding from the mockup.
       Text(
           text = game.title,
-          color = colors.primaryText,
+          color = colors.onSurface,
           style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Serif),
           modifier = Modifier.testTag(C.Tag.map_selected_game_title),
       )
@@ -658,8 +661,8 @@ private fun SelectedGameCard(
               Modifier.fillMaxWidth().padding(top = 12.dp).testTag(C.Tag.map_view_game_details),
           colors =
               ButtonDefaults.buttonColors(
-                  containerColor = colors.accent,
-                  contentColor = colors.accentContent,
+                  containerColor = colors.primary,
+                  contentColor = colors.onPrimary,
               ),
           shape = RoundedCornerShape(12.dp),
       ) {
@@ -674,14 +677,14 @@ private fun SelectedGameCard(
 /** One line of game information: a small accent icon followed by [text]. */
 @Composable
 private fun GameInfo(icon: ImageVector, text: String, modifier: Modifier = Modifier) {
-  val colors = LocalAppUiColors.current
+  val colors = MaterialTheme.colorScheme
   Row(
       modifier = modifier,
       horizontalArrangement = Arrangement.spacedBy(8.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
-    Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.size(16.dp))
-    Text(text, color = colors.primaryText, style = MaterialTheme.typography.bodySmall)
+    Icon(icon, contentDescription = null, tint = colors.primary, modifier = Modifier.size(16.dp))
+    Text(text, color = colors.onSurface, style = MaterialTheme.typography.bodySmall)
   }
 }
 
