@@ -90,7 +90,7 @@ class ProfileViewModelTest {
   private val repository = FakeProfileRepository()
 
   private fun viewModel(user: AuthUser? = AuthUser(USER_ID, null, null)) =
-      ProfileViewModel(repository, FakeAuthRepository(user))
+      ProfileViewModel(repository, FakeAuthRepository(user)).apply { loadProfile() }
 
   // ============ Loading ============
 

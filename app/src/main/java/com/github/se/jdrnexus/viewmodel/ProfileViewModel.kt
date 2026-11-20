@@ -54,10 +54,6 @@ class ProfileViewModel(
   /** The running load, cancelled by a reload so an old response never overwrites a newer one. */
   private var loadJob: Job? = null
 
-  init {
-    loadProfile()
-  }
-
   // ============ Internal helpers ============
 
   /** UID of the signed-in user, read from the auth repository. */
