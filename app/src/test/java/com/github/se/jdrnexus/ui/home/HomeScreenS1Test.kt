@@ -5,10 +5,14 @@ package com.github.se.jdrnexus.ui.home
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onChild
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -218,6 +222,35 @@ class HomeScreenS1Test {
     Assert.assertTrue(clicked)
   }
 
+  @Test
+  fun notificationBellIsHiddenWithoutNotificationCallback() {
+    composeTestRule.setContent { SampleAppTheme { HomeScreen(createViewModel()) } }
+
+    composeTestRule.onAllNodesWithTag(C.Tag.notification_bell).assertCountEquals(0)
+  }
+
+  @Test
+  fun notificationBellShowsUnreadCountAndOpensNotifications() {
+    var notificationClicks = 0
+    composeTestRule.setContent {
+      SampleAppTheme {
+        HomeScreen(
+            createViewModel(),
+            unreadNotificationCount = UNREAD_NOTIFICATIONS,
+            onNotificationsClick = { notificationClicks++ },
+        )
+      }
+    }
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.notification_unread_badge, useUnmergedTree = true)
+        .onChild()
+        .assertTextEquals("2")
+    composeTestRule.onNodeWithTag(C.Tag.notification_bell).performClick()
+
+    Assert.assertEquals(1, notificationClicks)
+  }
+
   private fun createViewModel() = AuthViewModel(FakeAuthRepository())
 
   private class FakeAuthRepository(
@@ -245,5 +278,10 @@ class HomeScreenS1Test {
       signOutCalls++
       return signOutAction()
     }
+  }
+
+  private companion object {
+    /** Unread notifications passed to Home, shown on the bell's badge. */
+    const val UNREAD_NOTIFICATIONS = 2
   }
 }

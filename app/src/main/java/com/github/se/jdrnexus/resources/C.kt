@@ -217,5 +217,27 @@ object C {
 
     /** Tag of the search result item with [fileId]. */
     fun searchResult(fileId: String) = "document_search_result_$fileId"
+
+    const val notification_bell = "notification_bell"
+    const val notification_unread_badge = "notification_unread_badge"
+    const val notification_mark_all = "notification_mark_all"
+    const val notification_list = "notification_list"
+    const val notification_loading = "notification_loading"
+    const val notification_empty = "notification_empty"
+    const val notification_signed_out = "notification_signed_out"
+    const val notification_error = "notification_error"
+    const val notification_retry = "notification_retry"
+    const val notification_snackbar = "notification_snackbar"
+    const val notification_snackbar_action = "notification_snackbar_action"
+    const val notification_snackbar_dismiss = "notification_snackbar_dismiss"
+
+    /** Tag of the notification row with [notificationId]. */
+    fun notificationItem(notificationId: String) = "notification_item_$notificationId"
+
+    /** Tag of the "Mark as read" action of the unread notification row with [notificationId]. */
+    fun notificationMarkAsRead(notificationId: String) = "notification_mark_as_read_$notificationId"
+
+    /** Tag of the unread dot shown on the notification row with [notificationId]. */
+    fun notificationUnreadDot(notificationId: String) = "notification_unread_dot_$notificationId"
   }
 }
