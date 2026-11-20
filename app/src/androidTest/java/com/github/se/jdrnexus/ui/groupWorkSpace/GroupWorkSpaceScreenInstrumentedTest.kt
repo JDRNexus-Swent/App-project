@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -626,6 +627,98 @@ class GroupWorkSpaceScreenInstrumentedTest {
     composeTestRule.onAllNodesWithTag(C.Tag.workspaceRemove("foreign"), true).assertCountEquals(0)
     composeTestRule
         .onAllNodesWithTag(C.Tag.workspaceVisibility("foreign"), true)
+        .assertCountEquals(0)
+  }
+
+  // Folders use the shared folder card; the role and ownership only decide its actions.
+  @Test
+  fun playerSeesEveryActionOnlyOnTheirOwnFolderCard() {
+    val own = file("own-folder", "Own", DocumentType.FOLDER, ownerId = USER)
+    val foreign = file("foreign-folder", "Foreign", DocumentType.FOLDER, ownerId = OTHER)
+    showScreen(WorkspaceFakeRepository(listOf(own, foreign)), Role.PLAYER)
+
+    composeTestRule.assertSharedFolderCard(
+        id = "own-folder",
+        name = "Own",
+        actions = FolderCardAction.entries.toSet(),
+    )
+    composeTestRule.assertSharedFolderCard(id = "foreign-folder", name = "Foreign")
+  }
+
+  @Test
+  fun gameMasterCanRemoveAndHideButNotRenameAnotherMembersFolderCard() {
+    val foreign = file("foreign-folder", "Foreign", DocumentType.FOLDER, ownerId = OTHER)
+    showScreen(WorkspaceFakeRepository(listOf(foreign)), Role.GAME_MASTER)
+
+    composeTestRule.assertSharedFolderCard(
+        id = "foreign-folder",
+        name = "Foreign",
+        actions = setOf(FolderCardAction.REMOVE, FolderCardAction.VISIBILITY),
+    )
+  }
+
+  // A folder is renamed through the same edit dialog as files, and its card shows the new name.
+  @Test
+  fun ownerRenamesFolderThroughTheSharedEditDialog() {
+    val folder = file("maps", "Maps", DocumentType.FOLDER, ownerId = USER)
+    val child = file("atlas", "Atlas", DocumentType.TEXT, parent = folder.id)
+    val repository = WorkspaceFakeRepository(listOf(folder, child))
+    showScreen(repository, Role.PLAYER)
+
+    composeTestRule.onNodeWithTag(C.Tag.workspaceEdit("maps"), true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_dialog, true).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Edit folder").assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_edit_item_name_input, true)
+        .assertTextContains("Maps")
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_name_input, true).performTextClearance()
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_edit_item_name_input, true)
+        .performTextInput("World maps")
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_save, true).performClick()
+
+    composeTestRule.waitUntil(5_000) {
+      composeTestRule
+          .onAllNodesWithTag(C.Tag.workspace_edit_item_dialog, true)
+          .fetchSemanticsNodes()
+          .isEmpty()
+    }
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspaceItemTitle("maps"), true)
+        .assertTextEquals("World maps")
+    assertEquals(folder.copy(name = "World maps"), repository.files.getValue(folder.id))
+    assertEquals(child, repository.files.getValue(child.id))
+  }
+
+  // Cancelling the edit dialog leaves the folder's name as it was.
+  @Test
+  fun cancellingFolderRenameKeepsItsName() {
+    val folder = file("maps", "Maps", DocumentType.FOLDER, ownerId = USER)
+    val repository = WorkspaceFakeRepository(listOf(folder))
+    showScreen(repository, Role.PLAYER)
+
+    composeTestRule.onNodeWithTag(C.Tag.workspaceEdit("maps"), true).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_name_input, true).performTextClearance()
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_edit_item_name_input, true)
+        .performTextInput("World maps")
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_cancel, true).performClick()
+
+    composeTestRule.onAllNodesWithTag(C.Tag.workspace_edit_item_dialog, true).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItemTitle("maps"), true).assertTextEquals("Maps")
+    assertEquals(folder, repository.files.getValue(folder.id))
+  }
+
+  // Even the Game Master only gets the rename action on the folders they own.
+  @Test
+  fun gameMasterSeesRenameActionOnlyOnOwnFolders() {
+    val own = file("own-folder", "Own", DocumentType.FOLDER, ownerId = USER)
+    val foreign = file("foreign-folder", "Foreign", DocumentType.FOLDER, ownerId = OTHER)
+    showScreen(WorkspaceFakeRepository(listOf(own, foreign)), Role.GAME_MASTER)
+
+    composeTestRule.onNodeWithTag(C.Tag.workspaceEdit("own-folder"), true).assertIsDisplayed()
+    composeTestRule
+        .onAllNodesWithTag(C.Tag.workspaceEdit("foreign-folder"), true)
         .assertCountEquals(0)
   }
 
