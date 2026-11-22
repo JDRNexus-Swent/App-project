@@ -18,13 +18,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasProgressBarRangeInfo
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -32,6 +36,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -152,6 +157,15 @@ class PersonalSpaceScreenTests {
         )
       }
     }
+  }
+
+  /**
+   * Scrolls the item list until the item matching [matcher] is on screen. The list is lazy: on a
+   * short screen (the CI emulator is 320x640 dp) the last items are not composed until scrolled to,
+   * so a test must not assume every item fits.
+   */
+  private fun scrollToItem(matcher: SemanticsMatcher) {
+    composeTestRule.onNode(hasScrollToIndexAction()).performScrollToNode(matcher)
   }
 
   /** Sends the system back button [times] times in a row, with no recomposition in between. */
@@ -380,21 +394,31 @@ class PersonalSpaceScreenTests {
 
     composeTestRule.onNodeWithText("4 items").assertIsDisplayed()
 
+    // Both folders show the folder card, with its FOLDER label.
+    scrollToItem(hasTestTag(C.Tag.workspaceItem("ashen-realms")))
     composeTestRule.onNodeWithText("The Ashen Realms").assertIsDisplayed()
-    composeTestRule.onAllNodesWithText("FOLDER", useUnmergedTree = true).assertCountEquals(2)
     composeTestRule.assertSharedFolderCard(
         id = "ashen-realms",
         name = "The Ashen Realms",
         description = "8 files · World lore & maps",
         actions = setOf(FolderCardAction.EDIT),
     )
+    scrollToItem(hasTestTag(C.Tag.workspaceItem("silver-covenant")))
+    composeTestRule.assertSharedFolderCard(
+        id = "silver-covenant",
+        name = "The Silver Covenant",
+        description = "4 files · Allies & adversaries",
+        actions = setOf(FolderCardAction.EDIT),
+    )
 
+    scrollToItem(hasText("Elara Moonwhisper"))
     composeTestRule.onNodeWithText("Elara Moonwhisper").assertIsDisplayed()
     composeTestRule.onNodeWithText("CHARACTER SHEET").assertIsDisplayed()
     composeTestRule
         .onNodeWithContentDescription("Character", useUnmergedTree = true)
         .assertIsDisplayed()
 
+    scrollToItem(hasText("The Sunken Citadel"))
     composeTestRule.onNodeWithText("The Sunken Citadel").assertIsDisplayed()
     composeTestRule.onNodeWithText("TEXT DOCUMENT").assertIsDisplayed()
     composeTestRule
@@ -696,9 +720,14 @@ class PersonalSpaceScreenTests {
   fun onlyFoldersShowTheRenameAction() {
     renamableScreen()
 
+    scrollToItem(hasTestTag(C.Tag.workspaceItem("ashen-realms")))
     composeTestRule.onNodeWithTag(C.Tag.workspaceEdit("ashen-realms")).assertIsDisplayed()
+    scrollToItem(hasTestTag(C.Tag.workspaceItem("silver-covenant")))
     composeTestRule.onNodeWithTag(C.Tag.workspaceEdit("silver-covenant")).assertIsDisplayed()
+    // Bring each document on screen first, so its missing action is checked on a composed row.
+    scrollToItem(hasText("Elara Moonwhisper"))
     composeTestRule.onAllNodesWithTag(C.Tag.workspaceEdit("elara-moonwhisper")).assertCountEquals(0)
+    scrollToItem(hasText("The Sunken Citadel"))
     composeTestRule.onAllNodesWithTag(C.Tag.workspaceEdit("sunken-citadel")).assertCountEquals(0)
   }
 
