@@ -187,4 +187,20 @@
     <string name="invitation_error_already_member">You\'re already in this group.</string>
     <string name="invitation_error_network">Something went wrong. Check your connection and try again.</string>
     <string name="join_error_network">Something went wrong. You may already have joined: check your groups list before trying again.</string>
+
+    <!-- Help sheet, shared by every screen with a help -->
+    <string name="help_button_description">Help</string>
+    <string name="help_next">Next</string>
+    <string name="help_done">Got it</string>
+    <string name="help_page_indicator_description">Page %1$d of %2$d</string>
+
+    <!-- Help pages of the Campaigns screen -->
+    <string name="campaign_help_start_title">Campaigns</string>
+    <string name="campaign_help_start_body">This screen gathers your role-playing groups, each with a GameMaster and players. Create a group to become its GameMaster, or join one with the code a GameMaster gives you.</string>
+    <string name="campaign_help_roles_title">Roles and invitations</string>
+    <string name="campaign_help_roles_body">The badge shows your role in the group. The GameMaster sees every shared file and can hide or remove any of them; players can hide or remove only their own. As GameMaster, tap \"Invite\" to get the code to send to your players.</string>
+    <string name="campaign_help_workspace_title">Workspace and play</string>
+    <string name="campaign_help_workspace_body">\"Enter workspace\" opens the group\'s shared files: your personal files (Files tab) stay private until you share them, and a hidden file is seen only by its owner and the GameMaster. \"Play\" opens the game: the session screen for the GameMaster, their character for players.</string>
+    <string name="campaign_help_example_name">The Sunken Crown</string>
+    <string name="campaign_help_example_system">Fantasy campaign</string>
 </resources>

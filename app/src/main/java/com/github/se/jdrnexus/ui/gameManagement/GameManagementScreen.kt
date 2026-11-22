@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -65,6 +66,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.resources.AppTopBar
@@ -72,6 +74,8 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.JdrNexusLogo
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.resources.showComingSoon
+import com.github.se.jdrnexus.ui.help.HelpSheet
+import com.github.se.jdrnexus.ui.help.HelpViewModel
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementUiState
@@ -128,7 +132,8 @@ internal object GameManagementTestTags {
  * Selecting "Enter workspace" invokes [onEnterWorkspace] with that group's ID so the destination
  * can load its shared files. Selecting "Play" invokes [onPlay] with that group's ID and the user's
  * role in it, so the destination can open the matching game screen. [gameManagementViewModel]
- * provides the loading and creation state.
+ * provides the loading and creation state. [helpViewModel] decides when the help sheet, opened by
+ * the top bar's help button, is shown.
  */
 @Composable
 fun GameManagementScreen(
@@ -137,8 +142,10 @@ fun GameManagementScreen(
     onManageGroup: (String) -> Unit,
     onTabSelected: (String) -> Unit,
     gameManagementViewModel: GameManagementViewModel,
+    helpViewModel: HelpViewModel = viewModel(),
 ) {
   val uiState by gameManagementViewModel.uiState.collectAsState()
+  val helpState by helpViewModel.uiState.collectAsState()
   LaunchedEffect(gameManagementViewModel) { gameManagementViewModel.loadGroups() }
 
   GameManagementScreenContent(
@@ -154,6 +161,9 @@ fun GameManagementScreen(
       onManageGroup = onManageGroup,
       invitationVM = gameManagementViewModel,
       onTabSelected = onTabSelected,
+      showHelp = helpState.showHelp,
+      onHelpClick = helpViewModel::onHelpClicked,
+      onHelpDismiss = helpViewModel::onHelpDismissed,
   )
 }
 
@@ -163,6 +173,9 @@ fun GameManagementScreen(
  *
  * @param onPlay receives the group ID and the user's role when a card's Play button is tapped.
  * @param invitationVM receives the invite and join actions of the dialogs.
+ * @param showHelp whether the help sheet with [campaignHelpPages] is shown.
+ * @param onHelpClick called by the top bar's help button.
+ * @param onHelpDismiss called once the help sheet has been closed.
  * @param renderDialogsAsWindow whether dialogs open in their own window; tests render them inline.
  */
 @Composable
@@ -179,6 +192,9 @@ internal fun GameManagementScreenContent(
     onManageGroup: (String) -> Unit,
     invitationVM: GroupInvitationVM,
     onTabSelected: (String) -> Unit,
+    showHelp: Boolean = false,
+    onHelpClick: () -> Unit = {},
+    onHelpDismiss: () -> Unit = {},
     renderDialogsAsWindow: Boolean = true,
 ) {
   val colors = gameManagementColors()
@@ -190,7 +206,7 @@ internal fun GameManagementScreenContent(
 
   Scaffold(
       containerColor = colors.background,
-      topBar = { GameManagementHeader(colors) },
+      topBar = { GameManagementHeader(colors = colors, onHelpClick = onHelpClick) },
       bottomBar = {
         ScreenBottomBar(
             selectedTab = "Campaigns",
@@ -206,29 +222,15 @@ internal fun GameManagementScreenContent(
       item { GroupHeading(uiState = uiState, colors = colors) }
       if (uiState.loadState != GroupLoadState.SignedOut) {
         item {
-          Button(
+          CreateGroupButton(
+              colors = colors,
               onClick = onCreateGroupClick,
-              modifier =
-                  Modifier.fillMaxWidth()
-                      .height(48.dp)
-                      .testTag(GameManagementTestTags.CREATE_GROUP_BUTTON),
-              shape = RoundedCornerShape(50),
-              colors =
-                  ButtonDefaults.buttonColors(
-                      containerColor = colors.accent,
-                      contentColor = colors.accentContent,
-                  ),
-          ) {
-            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Create a new group", fontWeight = FontWeight.Medium)
-          }
+              modifier = Modifier.testTag(GameManagementTestTags.CREATE_GROUP_BUTTON),
+          )
         }
         item {
-          OutlinedActionButton(
-              label = stringResource(R.string.join_group_action),
+          JoinGroupButton(
               colors = colors,
-              icon = { Icon(Icons.AutoMirrored.Filled.Login, null, Modifier.size(16.dp)) },
               onClick = {
                 // Clears the result of an earlier join, so its error isn't shown again.
                 invitationVM.resetJoinState()
@@ -349,11 +351,18 @@ internal fun GameManagementScreenContent(
         onDismiss = onDismissCreateDialog,
     )
   }
+
+  if (showHelp) {
+    HelpSheet(pages = campaignHelpPages(), onDismiss = onHelpDismiss)
+  }
 }
 
-/** Shows the profile, app identity, and notification affordance at the top of the screen. */
+/**
+ * Shows the profile, app identity, help button and notification affordance at the top of the
+ * screen. The help button calls [onHelpClick].
+ */
 @Composable
-private fun GameManagementHeader(colors: GameManagementColors) {
+private fun GameManagementHeader(colors: GameManagementColors, onHelpClick: () -> Unit) {
   val context = LocalContext.current
   AppTopBar(
       title = "JDRNexus",
@@ -382,6 +391,16 @@ private fun GameManagementHeader(colors: GameManagementColors) {
         }
       },
       trailingContent = {
+        IconButton(
+            onClick = onHelpClick,
+            modifier = Modifier.size(38.dp).testTag(C.Tag.help_button),
+        ) {
+          Icon(
+              Icons.AutoMirrored.Outlined.HelpOutline,
+              contentDescription = stringResource(R.string.help_button_description),
+              tint = colors.accent,
+          )
+        }
         IconButton(
             onClick = { showComingSoon(context, "Notifications") },
             modifier = Modifier.size(38.dp),
@@ -559,9 +578,57 @@ private fun EmptyGroupsCard(
   }
 }
 
-/** Shows a campaign's details and actions appropriate to the user's role. */
+/** The "Create a new group" button at the top of the Campaigns screen; calls [onClick]. */
 @Composable
-private fun CampaignGroupCard(
+internal fun CreateGroupButton(
+    colors: GameManagementColors,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+  Button(
+      onClick = onClick,
+      modifier = modifier.fillMaxWidth().height(48.dp),
+      shape = RoundedCornerShape(50),
+      colors =
+          ButtonDefaults.buttonColors(
+              containerColor = colors.accent,
+              contentColor = colors.accentContent,
+          ),
+  ) {
+    Icon(
+        Icons.Filled.Add,
+        contentDescription = null,
+        modifier = Modifier.size(18.dp),
+    )
+    Spacer(Modifier.width(8.dp))
+    Text("Create a new group", fontWeight = FontWeight.Medium)
+  }
+}
+
+/** The "Join a group" button at the top of the Campaigns screen; calls [onClick]. */
+@Composable
+internal fun JoinGroupButton(
+    colors: GameManagementColors,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+  OutlinedActionButton(
+      label = stringResource(R.string.join_group_action),
+      colors = colors,
+      icon = { Icon(Icons.AutoMirrored.Filled.Login, null, Modifier.size(16.dp)) },
+      onClick = onClick,
+      modifier = modifier,
+  )
+}
+
+/**
+ * Shows a campaign's details and actions appropriate to the user's role.
+ *
+ * @param highlighted the parts the Campaigns help points at: they are outlined and the rest of the
+ *   card is faded. Empty on the Campaigns screen, where the card is drawn as is.
+ */
+@Composable
+internal fun CampaignGroupCard(
     group: CampaignGroup,
     isGameMaster: Boolean,
     colors: GameManagementColors,
@@ -570,6 +637,7 @@ private fun CampaignGroupCard(
     onManageGroup: () -> Unit,
     onInvite: () -> Unit,
     inviteEnabled: Boolean,
+    highlighted: Set<CampaignCardElement> = emptySet(),
 ) {
   Column(
       modifier =
@@ -578,12 +646,15 @@ private fun CampaignGroupCard(
               .background(colors.card)
               .border(1.dp, colors.outline, RoundedCornerShape(18.dp)),
   ) {
-    CampaignBanner(groupName = group.name, colors = colors)
+    Box(Modifier.campaignCardHighlight(null, highlighted, colors)) {
+      CampaignBanner(groupName = group.name, colors = colors)
+    }
     Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
       Row(verticalAlignment = Alignment.CenterVertically) {
         Row(
             modifier =
-                Modifier.clip(RoundedCornerShape(5.dp))
+                Modifier.campaignCardHighlight(CampaignCardElement.ROLE, highlighted, colors)
+                    .clip(RoundedCornerShape(5.dp))
                     .background(colors.raised)
                     .padding(horizontal = 7.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -602,7 +673,12 @@ private fun CampaignGroupCard(
           )
         }
         Spacer(Modifier.weight(1f))
-        Text("Your group", color = colors.secondaryText, fontSize = 10.sp)
+        Text(
+            "Your group",
+            color = colors.secondaryText,
+            fontSize = 10.sp,
+            modifier = Modifier.campaignCardHighlight(null, highlighted, colors),
+        )
       }
       Text(
           text = group.name,
@@ -612,7 +688,7 @@ private fun CampaignGroupCard(
           letterSpacing = 0.8.sp,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis,
-          modifier = Modifier.padding(top = 7.dp),
+          modifier = Modifier.padding(top = 7.dp).campaignCardHighlight(null, highlighted, colors),
       )
       val details = group.description.takeIf(String::isNotBlank) ?: "Campaign system not set"
       val memberCount = group.participantIds.size
@@ -623,7 +699,9 @@ private fun CampaignGroupCard(
           fontSize = 10.sp,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis,
-          modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
+          modifier =
+              Modifier.padding(top = 4.dp, bottom = 10.dp)
+                  .campaignCardHighlight(null, highlighted, colors),
       )
       Row(
           modifier = Modifier.fillMaxWidth(),
@@ -632,14 +710,20 @@ private fun CampaignGroupCard(
         PlayButton(
             colors = colors,
             onClick = onPlay,
-            modifier = Modifier.weight(2f).testTag(C.Tag.play_button),
+            modifier =
+                Modifier.weight(2f)
+                    .campaignCardHighlight(CampaignCardElement.PLAY, highlighted, colors)
+                    .testTag(C.Tag.play_button),
         )
         OutlinedActionButton(
             label = stringResource(R.string.enter_workspace_action),
             colors = colors,
             icon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.size(16.dp)) },
             onClick = onEnterWorkspace,
-            modifier = Modifier.weight(3f).testTag(C.Tag.enter_workspace_button),
+            modifier =
+                Modifier.weight(3f)
+                    .campaignCardHighlight(CampaignCardElement.ENTER_WORKSPACE, highlighted, colors)
+                    .testTag(C.Tag.enter_workspace_button),
         )
       }
       if (isGameMaster) {
@@ -651,6 +735,7 @@ private fun CampaignGroupCard(
           TextButton(
               onClick = onManageGroup,
               contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+              modifier = Modifier.campaignCardHighlight(null, highlighted, colors),
           ) {
             Icon(Icons.Filled.Settings, null, tint = colors.accent, modifier = Modifier.size(13.dp))
             Text(
@@ -660,12 +745,18 @@ private fun CampaignGroupCard(
                 modifier = Modifier.padding(start = 4.dp),
             )
           }
-          Text("·", color = colors.outline)
+          Text(
+              "·",
+              color = colors.outline,
+              modifier = Modifier.campaignCardHighlight(null, highlighted, colors),
+          )
           TextButton(
               onClick = onInvite,
               enabled = inviteEnabled,
               contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
-              modifier = Modifier.testTag(C.Tag.invite_button),
+              modifier =
+                  Modifier.campaignCardHighlight(CampaignCardElement.INVITE, highlighted, colors)
+                      .testTag(C.Tag.invite_button),
           ) {
             Icon(
                 Icons.Filled.PersonAdd,
