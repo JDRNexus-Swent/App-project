@@ -8,11 +8,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.dp
 import com.github.se.jdrnexus.resources.C
 import kotlin.math.roundToInt
 
@@ -37,7 +36,7 @@ internal fun HelpIllustration(
     modifier: Modifier = Modifier,
     maxHeightFraction: Float = DEFAULT_HELP_ILLUSTRATION_HEIGHT_FRACTION,
 ) {
-  val maxHeight = LocalConfiguration.current.screenHeightDp.dp * maxHeightFraction
+  val maxHeight = LocalWindowInfo.current.containerDpSize.height * maxHeightFraction
   Box(
       modifier = modifier.fillMaxWidth().clearAndSetSemantics { testTag = C.Tag.help_illustration },
   ) {

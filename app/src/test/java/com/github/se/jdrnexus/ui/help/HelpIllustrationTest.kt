@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
@@ -54,9 +54,9 @@ class HelpIllustrationTest {
 
   @Test
   fun tallContentIsShrunkToAFifthOfTheWindowHeight() {
-    var windowHeightDp = 0
+    var windowHeight = 0.dp
     composeTestRule.setContent {
-      windowHeightDp = LocalConfiguration.current.screenHeightDp
+      windowHeight = LocalWindowInfo.current.containerDpSize.height
       SampleAppTheme(darkTheme = false) {
         HelpIllustration(content = { Box(Modifier.fillMaxWidth().height(2000.dp)) })
       }
@@ -66,14 +66,14 @@ class HelpIllustrationTest {
     val height = bounds.bottom - bounds.top
 
     assertTrue(height > 0.dp)
-    assertTrue(height <= (windowHeightDp / 5f + 1).dp)
+    assertTrue(height <= windowHeight / 5f + 1.dp)
   }
 
   @Test
   fun largerFractionLetsTheIllustrationTakeMoreHeight() {
-    var windowHeightDp = 0
+    var windowHeight = 0.dp
     composeTestRule.setContent {
-      windowHeightDp = LocalConfiguration.current.screenHeightDp
+      windowHeight = LocalWindowInfo.current.containerDpSize.height
       SampleAppTheme(darkTheme = false) {
         HelpIllustration(
             content = { Box(Modifier.fillMaxWidth().height(2000.dp)) },
@@ -84,13 +84,13 @@ class HelpIllustrationTest {
 
     val height = illustrationHeight()
 
-    assertTrue(height > (windowHeightDp / 5f + 1).dp)
-    assertTrue(height <= (windowHeightDp / 2f + 1).dp)
+    assertTrue(height > windowHeight / 5f + 1.dp)
+    assertTrue(height <= windowHeight / 2f + 1.dp)
   }
 
   @Test
   fun pageFractionReachesItsIllustration() {
-    var windowHeightDp = 0
+    var windowHeight = 0.dp
     val page =
         HelpPage(
             R.string.campaign_help_start_title,
@@ -99,11 +99,11 @@ class HelpIllustrationTest {
             illustrationMaxHeightFraction = 0.5f,
         )
     composeTestRule.setContent {
-      windowHeightDp = LocalConfiguration.current.screenHeightDp
+      windowHeight = LocalWindowInfo.current.containerDpSize.height
       SampleAppTheme(darkTheme = false) { HelpPagerContent(pages = listOf(page), onDone = {}) }
     }
 
-    assertTrue(illustrationHeight() > (windowHeightDp / 5f + 1).dp)
+    assertTrue(illustrationHeight() > windowHeight / 5f + 1.dp)
   }
 
   @Test
