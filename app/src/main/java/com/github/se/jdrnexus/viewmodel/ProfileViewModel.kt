@@ -51,7 +51,7 @@ class ProfileViewModel(
   private val _uiState = MutableStateFlow(ProfileUiState())
   override val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
 
-  /** The running load, cancelled by a reload so an old response never overwrites a newer one. */
+  /** The running load, so a second [loadProfile] call does not restart it. */
   private var loadJob: Job? = null
 
   // ============ Internal helpers ============
@@ -59,6 +59,24 @@ class ProfileViewModel(
   /** UID of the signed-in user, read from the auth repository. */
   private suspend fun requireUid(): String =
       authRepository.authState.first()?.uid ?: throw IllegalStateException("You must be signed in.")
+
+  /** True once a profile is loaded: the repository always returns it with its user ID. */
+  private val ProfileUiState.profileLoaded: Boolean
+    get() = profile.userId.isNotBlank()
+
+  /**
+   * UID of the loaded profile, checked against the signed-in user, so a write never sends one
+   * user's drafts to another user's profile. On a mismatch, drops the loaded profile and throws.
+   */
+  private suspend fun requireLoadedUid(): String {
+    val uid = requireUid()
+    if (uid != _uiState.value.profile.userId) {
+      // Drop the other account's profile: the screen then offers Retry, which loads this one's.
+      _uiState.update { ProfileUiState(isLoading = false) }
+      throw IllegalStateException("The signed-in account changed. Reload the profile.")
+    }
+    return uid
+  }
 
   /**
    * Clears [ProfileUiState.errorMessage]. Called when a new repository operation starts, so the
@@ -69,12 +87,12 @@ class ProfileViewModel(
     _uiState.update { it.copy(errorMessage = null) }
   }
 
-  /** Recomputes [ProfileUiState.canSave] from the drafts, the saved profile and the save status. */
+  /** Recomputes [ProfileUiState.canSave] from the loaded profile, drafts and save status. */
   private fun ProfileUiState.withCanSave(): ProfileUiState {
     val username = usernameDraft.trim()
     val changed = username != profile.username || bioDraft.trim() != profile.bio
     val valid = usernameError(usernameDraft) == null && bioError(bioDraft) == null
-    return copy(canSave = isEditing && changed && valid && !isSaving)
+    return copy(canSave = isEditing && profileLoaded && changed && valid && !isSaving)
   }
 
   /** Message of [e], or [fallback] when it has none. */
@@ -84,7 +102,9 @@ class ProfileViewModel(
   // ============ Loading ============
 
   override fun loadProfile() {
-    loadJob?.cancel()
+    // The screen calls this again when recreated (e.g. rotation): keep the running load or the
+    // loaded profile. Retry is only offered while no profile is loaded.
+    if (loadJob?.isActive == true || _uiState.value.profileLoaded) return
     clearError()
     _uiState.update { it.copy(isLoading = true) }
     loadJob = viewModelScope.launch {
@@ -106,6 +126,8 @@ class ProfileViewModel(
   // ============ Edit form ============
 
   override fun startEditing() {
+    // Editing an unloaded profile would save empty drafts over the real username and bio.
+    if (!_uiState.value.profileLoaded) return
     _uiState.update {
       it.copy(
               isEditing = true,
@@ -149,11 +171,11 @@ class ProfileViewModel(
     val username = state.usernameDraft.trim()
     val bio = state.bioDraft.trim()
     clearError()
-    _uiState.update { it.copy(isSaving = true).withCanSave() }
+    _uiState.update { it.copy(isSaving = true, canSave = false) }
 
     viewModelScope.launch {
       try {
-        profileRepository.updateProfile(requireUid(), username, bio).getOrThrow()
+        profileRepository.updateProfile(requireLoadedUid(), username, bio).getOrThrow()
         _uiState.update {
           it.copy(
               profile = it.profile.copy(username = username, bio = bio),
@@ -176,13 +198,13 @@ class ProfileViewModel(
   }
 
   override fun updateProfilePicture(image: Uri) {
-    if (_uiState.value.isSaving) return
+    if (_uiState.value.isSaving || !_uiState.value.profileLoaded) return
     clearError()
-    _uiState.update { it.copy(isSaving = true).withCanSave() }
+    _uiState.update { it.copy(isSaving = true, canSave = false) }
 
     viewModelScope.launch {
       try {
-        val url = profileRepository.uploadProfilePicture(requireUid(), image).getOrThrow()
+        val url = profileRepository.uploadProfilePicture(requireLoadedUid(), image).getOrThrow()
         _uiState.update {
           it.copy(profile = it.profile.copy(pictureUrl = url), isSaving = false).withCanSave()
         }

@@ -12,8 +12,7 @@ import com.github.se.jdrnexus.utils.MainDispatcherRule
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -74,8 +73,9 @@ class ProfileViewModelTest {
     override suspend fun getProfileStats(userId: String): Result<ProfileStats> = statsResult
   }
 
+  /** Signed in as the given user; tests switch user through [authState]. */
   private class FakeAuthRepository(user: AuthUser?) : AuthRepository {
-    override val authState: Flow<AuthUser?> = flowOf(user)
+    override val authState = MutableStateFlow(user)
 
     override suspend fun signUpWithEmail(email: String, password: String, username: String) =
         error("unused")
@@ -89,8 +89,10 @@ class ProfileViewModelTest {
 
   private val repository = FakeProfileRepository()
 
-  private fun viewModel(user: AuthUser? = AuthUser(USER_ID, null, null)) =
-      ProfileViewModel(repository, FakeAuthRepository(user)).apply { loadProfile() }
+  private fun viewModel(
+      user: AuthUser? = AuthUser(USER_ID, null, null),
+      auth: FakeAuthRepository = FakeAuthRepository(user),
+  ) = ProfileViewModel(repository, auth).apply { loadProfile() }
 
   // ============ Loading ============
 
@@ -130,6 +132,38 @@ class ProfileViewModelTest {
     runCurrent()
 
     assertEquals("Permission denied", vm.uiState.value.errorMessage)
+    assertFalse(vm.uiState.value.isLoading)
+  }
+
+  @Test
+  fun loadIsSkippedWhenProfileAlreadyLoaded() = runTest {
+    val vm = viewModel() // first load, completes on runCurrent()
+    runCurrent()
+
+    vm.loadProfile()
+    runCurrent()
+
+    assertEquals(listOf(USER_ID), repository.profileRequests)
+    assertFalse(vm.uiState.value.isLoading)
+    assertEquals(SAVED_PROFILE, vm.uiState.value.profile)
+  }
+
+  @Test
+  fun loadIsNotRestartedWhileOneRuns() = runTest {
+    repository.gate = CompletableDeferred()
+    val vm = viewModel() // starts the first load, held at the gate
+    runCurrent()
+    assertTrue(vm.uiState.value.isLoading)
+    assertEquals(listOf(USER_ID), repository.profileRequests)
+
+    vm.loadProfile()
+    runCurrent()
+    repository.gate!!.complete(Unit)
+    runCurrent()
+
+    assertEquals(listOf(USER_ID), repository.profileRequests)
+    assertEquals(SAVED_PROFILE, vm.uiState.value.profile)
+    assertFalse(vm.uiState.value.isLoading)
   }
 
   @Test
@@ -172,6 +206,19 @@ class ProfileViewModelTest {
   }
 
   @Test
+  fun startEditingIsIgnoredUntilProfileLoaded() = runTest {
+    repository.profileResult = Result.failure(Exception("Network down"))
+    val vm = viewModel()
+    runCurrent()
+
+    vm.startEditing()
+
+    assertFalse(vm.uiState.value.isEditing)
+    assertFalse(vm.uiState.value.canSave)
+    assertEquals("Network down", vm.uiState.value.errorMessage)
+  }
+
+  @Test
   fun usernameShorterThanThreeTrimmedCharactersIsRejected() = runTest {
     val vm = viewModel()
     runCurrent()
@@ -204,6 +251,7 @@ class ProfileViewModelTest {
     vm.onUsernameChange("   ")
 
     assertEquals("Enter a username.", vm.uiState.value.usernameError)
+    assertFalse(vm.uiState.value.canSave)
   }
 
   @Test
@@ -306,7 +354,7 @@ class ProfileViewModelTest {
   }
 
   @Test
-  fun retriedSaveClearsPreviousError() = runTest {
+  fun retriedSaveClearsErrorAndSavesOnSuccess() = runTest {
     repository.updateResult = Result.failure(Exception("Permission denied"))
     val vm = viewModel()
     runCurrent()
@@ -318,7 +366,48 @@ class ProfileViewModelTest {
     repository.gate = CompletableDeferred()
 
     vm.saveProfile()
+    assertNull(vm.uiState.value.errorMessage)
+    assertTrue(vm.uiState.value.isSaving)
 
+    repository.gate!!.complete(Unit)
+    runCurrent()
+
+    val attempt = Triple(USER_ID, "Aria the Bold", SAVED_PROFILE.bio)
+    assertEquals(listOf(attempt, attempt), repository.updates)
+    val state = vm.uiState.value
+    assertEquals(SAVED_PROFILE.copy(username = "Aria the Bold"), state.profile)
+    assertFalse(state.isEditing)
+    assertFalse(state.isSaving)
+    assertNull(state.errorMessage)
+  }
+
+  @Test
+  fun saveIsRefusedWhenSignedInUserChanged() = runTest {
+    val auth = FakeAuthRepository(AuthUser(USER_ID, null, null))
+    val vm = viewModel(auth = auth)
+    runCurrent()
+    vm.startEditing()
+    vm.onUsernameChange("Aria the Bold")
+    auth.authState.value = AuthUser("other-user", null, null)
+
+    vm.saveProfile()
+    runCurrent()
+
+    assertEquals(emptyList<Triple<String, String, String>>(), repository.updates)
+    val state = vm.uiState.value
+    assertEquals("The signed-in account changed. Reload the profile.", state.errorMessage)
+    assertEquals(UserProfile(), state.profile)
+    assertFalse(state.isEditing)
+    assertFalse(state.isSaving)
+
+    // Retry now loads the new account's profile instead of staying stuck on the old one.
+    val otherProfile = UserProfile("other-user", "Brann", "", "")
+    repository.profileResult = Result.success(otherProfile)
+    vm.loadProfile()
+    runCurrent()
+
+    assertEquals(listOf(USER_ID, "other-user"), repository.profileRequests)
+    assertEquals(otherProfile, vm.uiState.value.profile)
     assertNull(vm.uiState.value.errorMessage)
   }
 
@@ -344,21 +433,62 @@ class ProfileViewModelTest {
   }
 
   @Test
-  fun pictureUploadIsIgnoredWhileAnotherOperationRuns() = runTest {
+  fun pictureUploadIsIgnoredWhileAnotherUploadRuns() = runTest {
     val vm = viewModel()
     runCurrent()
+    val first = mockk<Uri>()
+    val second = mockk<Uri>()
     repository.gate = CompletableDeferred()
-    vm.updateProfilePicture(mockk())
+    vm.updateProfilePicture(first)
+    runCurrent()
+
+    vm.updateProfilePicture(second)
+    runCurrent()
+    repository.gate!!.complete(Unit)
+    runCurrent()
+
+    assertEquals(listOf(USER_ID to first), repository.uploads)
+    assertEquals(PICTURE_URL, vm.uiState.value.profile.pictureUrl)
+    assertFalse(vm.uiState.value.isSaving)
+  }
+
+  @Test
+  fun pictureUploadIsIgnoredUntilProfileLoaded() = runTest {
+    repository.profileResult = Result.failure(Exception("Network down"))
+    val vm = viewModel()
     runCurrent()
 
     vm.updateProfilePicture(mockk())
     runCurrent()
 
-    assertEquals(1, repository.uploads.size)
+    assertEquals(emptyList<Pair<String, Uri>>(), repository.uploads)
+    assertFalse(vm.uiState.value.isSaving)
+    assertEquals("Network down", vm.uiState.value.errorMessage)
+  }
+
+  @Test
+  fun pictureUploadIsRefusedWhenSignedInUserChanged() = runTest {
+    val auth = FakeAuthRepository(AuthUser(USER_ID, null, null))
+    val vm = viewModel(auth = auth)
+    runCurrent()
+    auth.authState.value = AuthUser("other-user", null, null)
+
+    vm.updateProfilePicture(mockk())
+    runCurrent()
+
+    assertEquals(emptyList<Pair<String, Uri>>(), repository.uploads)
+    assertEquals(
+        "The signed-in account changed. Reload the profile.",
+        vm.uiState.value.errorMessage,
+    )
+    assertEquals(UserProfile(), vm.uiState.value.profile)
+    assertFalse(vm.uiState.value.isSaving)
   }
 
   @Test
   fun failedPictureUploadKeepsOldPictureAndExposesError() = runTest {
+    val oldPicture = "https://example.com/old.png"
+    repository.profileResult = Result.success(SAVED_PROFILE.copy(pictureUrl = oldPicture))
     repository.uploadResult = Result.failure(Exception("Upload failed"))
     val vm = viewModel()
     runCurrent()
@@ -367,7 +497,7 @@ class ProfileViewModelTest {
     runCurrent()
 
     assertEquals("Upload failed", vm.uiState.value.errorMessage)
-    assertEquals("", vm.uiState.value.profile.pictureUrl)
+    assertEquals(oldPicture, vm.uiState.value.profile.pictureUrl)
     assertFalse(vm.uiState.value.isSaving)
   }
 }

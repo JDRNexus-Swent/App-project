@@ -46,10 +46,13 @@ interface ProfileViewModelInterface {
   /** Current profile, stats, edit form and operation status. */
   val uiState: StateFlow<ProfileUiState>
 
-  /** Loads (or reloads) the profile and stats of the signed-in user. */
+  /**
+   * Loads the profile and stats of the signed-in user. Ignored while a load runs or once the
+   * profile is loaded.
+   */
   fun loadProfile()
 
-  /** Opens the edit form, with the drafts set to the saved values. */
+  /** Opens the edit form, with the drafts set to the saved values. Ignored until it is loaded. */
   fun startEditing()
 
   /** Updates the username draft and its validation error. */
@@ -66,6 +69,7 @@ interface ProfileViewModelInterface {
 
   /**
    * Uploads the picked [image] as the new profile picture and shows it once the upload succeeds.
+   * Ignored until the profile is loaded or while another save or upload runs.
    */
   fun updateProfilePicture(image: Uri)
 }
