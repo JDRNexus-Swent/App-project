@@ -131,6 +131,16 @@ object C {
     const val join_loading = "join_loading"
     const val join_cancel = "join_cancel"
 
+    const val help_button = "help_button"
+    const val help_sheet = "help_sheet"
+    const val help_next = "help_next"
+    const val help_done = "help_done"
+    const val help_page_indicator = "help_page_indicator"
+    const val help_illustration = "help_illustration"
+
+    /** Tag of the help page at [index] (0 for the first page) in a help sheet. */
+    fun helpPage(index: Int) = "help_page_$index"
+
     const val enter_workspace_button = "enter_workspace_button"
     const val play_button = "play_button"
     const val workspace_actions_fab = "workspace_actions_fab"
