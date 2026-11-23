@@ -23,8 +23,8 @@ data class CharacterSheetSummary(
  * Reads the summary of the character sheet stored in [content]. An unreadable sheet gives an empty
  * summary rather than an error, so a card never shows the raw JSON.
  *
- * HP are only reported when the maximum is above 0: the codec reads a sheet without HP as 0 / 0,
- * and a maximum of 0 is never a value a player chose, so showing it would be misleading.
+ * HP are only reported when the maximum is non-negative: the codec reads a sheet without HP as 0
+ * / 0.
  */
 fun characterSheetSummary(content: String): CharacterSheetSummary {
   val character =

@@ -72,54 +72,48 @@ class GroupWorkSpaceScreenTest {
   fun characterCardShowsTheSheetNameRatherThanTheFileName() {
     setCard(character(fileName = "New character", sheetName = "Aria"))
 
-    composeTestRule
-        .onNodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), useUnmergedTree = true)
-        .assertTextEquals("Aria")
+    nodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), "Aria")
   }
 
   @Test
   fun characterCardWithEmptySheetNameShowsNewCharacter() {
     setCard(character(fileName = "Aria", sheetName = ""))
 
-    composeTestRule
-        .onNodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), useUnmergedTree = true)
-        .assertTextEquals("New character")
+    nodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), "New character")
   }
 
   @Test
   fun characterCardWithWhitespaceOnlySheetNameShowsNewCharacter() {
     setCard(character(fileName = "Aria", sheetName = "   "))
 
-    composeTestRule
-        .onNodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), useUnmergedTree = true)
-        .assertTextEquals("New character")
+    nodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), "New character")
   }
 
   @Test
   fun characterCardShowsCurrentAndMaxHp() {
     setCard(character(sheetName = "Aria", hp = """{"current":25,"max":40}"""))
 
-    composeTestRule
-        .onNodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), useUnmergedTree = true)
-        .assertTextEquals("HP: 25 / 40")
+    nodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), "HP: 25 / 40")
   }
 
   @Test
   fun characterCardWithoutHpShowsTheFallbackInsteadOfTheJson() {
     setCard(character(sheetName = "Aria"))
 
-    composeTestRule
-        .onNodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), useUnmergedTree = true)
-        .assertTextEquals("No description available")
+    nodeWithTag(
+        C.Tag.workspaceItemDescription(CARD_ID),
+        "No description available",
+    )
   }
 
   @Test
   fun characterCardWithUnsetMaxHpShowsTheFallback() {
     setCard(character(sheetName = "Aria", hp = """{"current":0,"max":0}"""))
 
-    composeTestRule
-        .onNodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), useUnmergedTree = true)
-        .assertTextEquals("No description available")
+    nodeWithTag(
+        C.Tag.workspaceItemDescription(CARD_ID),
+        "No description available",
+    )
   }
 
   @Test
@@ -133,12 +127,11 @@ class GroupWorkSpaceScreenTest {
         )
     )
 
-    composeTestRule
-        .onNodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), useUnmergedTree = true)
-        .assertTextEquals("New character")
-    composeTestRule
-        .onNodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), useUnmergedTree = true)
-        .assertTextEquals("No description available")
+    nodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), "New character")
+    nodeWithTag(
+        C.Tag.workspaceItemDescription(CARD_ID),
+        "No description available",
+    )
   }
 
   @Test
@@ -147,36 +140,34 @@ class GroupWorkSpaceScreenTest {
         JDRFile(id = CARD_ID, name = "Aria", type = DocumentType.CHARACTER, content = "{broken")
     )
 
-    composeTestRule
-        .onNodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), useUnmergedTree = true)
-        .assertTextEquals("New character")
-    composeTestRule
-        .onNodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), useUnmergedTree = true)
-        .assertTextEquals("No description available")
+    nodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), "New character")
+    nodeWithTag(
+        C.Tag.workspaceItemDescription(CARD_ID),
+        "No description available",
+    )
   }
 
   @Test
   fun textCardKeepsItsFileNameAndContent() {
     setCard(JDRFile(id = CARD_ID, name = "Journal", type = DocumentType.TEXT, content = "Day one"))
 
-    composeTestRule
-        .onNodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), useUnmergedTree = true)
-        .assertTextEquals("Journal")
-    composeTestRule
-        .onNodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), useUnmergedTree = true)
-        .assertTextEquals("Day one")
+    nodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), "Journal")
+    nodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), "Day one")
   }
 
   @Test
   fun folderCardKeepsItsFileNameAndOpenFolderDescription() {
     setCard(JDRFile(id = CARD_ID, name = "Maps", type = DocumentType.FOLDER))
 
-    composeTestRule
-        .onNodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), useUnmergedTree = true)
-        .assertTextEquals("Maps")
-    composeTestRule
-        .onNodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), useUnmergedTree = true)
-        .assertTextEquals("Open folder to view its contents")
+    nodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), value = "Maps")
+    nodeWithTag(
+        C.Tag.workspaceItemDescription(CARD_ID),
+        "Open folder to view its contents",
+    )
+  }
+
+  private fun nodeWithTag(tag: String, value: String, useUnmergedTree: Boolean = true) {
+    composeTestRule.onNodeWithTag(tag, useUnmergedTree).assertTextEquals(value)
   }
 
   private fun character(fileName: String = "Aria", sheetName: String, hp: String? = null) =
