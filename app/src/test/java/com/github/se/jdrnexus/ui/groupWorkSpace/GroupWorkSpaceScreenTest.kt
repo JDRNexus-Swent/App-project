@@ -72,35 +72,35 @@ class GroupWorkSpaceScreenTest {
   fun characterCardShowsTheSheetNameRatherThanTheFileName() {
     setCard(character(fileName = "New character", sheetName = "Aria"))
 
-    nodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), "Aria")
+    assertTagText(C.Tag.workspaceItemTitle(CARD_ID), "Aria")
   }
 
   @Test
   fun characterCardWithEmptySheetNameShowsNewCharacter() {
     setCard(character(fileName = "Aria", sheetName = ""))
 
-    nodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), "New character")
+    assertTagText(C.Tag.workspaceItemTitle(CARD_ID), "New character")
   }
 
   @Test
   fun characterCardWithWhitespaceOnlySheetNameShowsNewCharacter() {
     setCard(character(fileName = "Aria", sheetName = "   "))
 
-    nodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), "New character")
+    assertTagText(C.Tag.workspaceItemTitle(CARD_ID), "New character")
   }
 
   @Test
   fun characterCardShowsCurrentAndMaxHp() {
     setCard(character(sheetName = "Aria", hp = """{"current":25,"max":40}"""))
 
-    nodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), "HP: 25 / 40")
+    assertTagText(C.Tag.workspaceItemDescription(CARD_ID), "HP: 25 / 40")
   }
 
   @Test
   fun characterCardWithoutHpShowsTheFallbackInsteadOfTheJson() {
     setCard(character(sheetName = "Aria"))
 
-    nodeWithTag(
+    assertTagText(
         C.Tag.workspaceItemDescription(CARD_ID),
         "No description available",
     )
@@ -110,7 +110,7 @@ class GroupWorkSpaceScreenTest {
   fun characterCardWithUnsetMaxHpShowsTheFallback() {
     setCard(character(sheetName = "Aria", hp = """{"current":0,"max":0}"""))
 
-    nodeWithTag(
+    assertTagText(
         C.Tag.workspaceItemDescription(CARD_ID),
         "No description available",
     )
@@ -127,8 +127,8 @@ class GroupWorkSpaceScreenTest {
         )
     )
 
-    nodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), "New character")
-    nodeWithTag(
+    assertTagText(C.Tag.workspaceItemTitle(CARD_ID), "New character")
+    assertTagText(
         C.Tag.workspaceItemDescription(CARD_ID),
         "No description available",
     )
@@ -140,8 +140,8 @@ class GroupWorkSpaceScreenTest {
         JDRFile(id = CARD_ID, name = "Aria", type = DocumentType.CHARACTER, content = "{broken")
     )
 
-    nodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), "New character")
-    nodeWithTag(
+    assertTagText(C.Tag.workspaceItemTitle(CARD_ID), "New character")
+    assertTagText(
         C.Tag.workspaceItemDescription(CARD_ID),
         "No description available",
     )
@@ -151,22 +151,22 @@ class GroupWorkSpaceScreenTest {
   fun textCardKeepsItsFileNameAndContent() {
     setCard(JDRFile(id = CARD_ID, name = "Journal", type = DocumentType.TEXT, content = "Day one"))
 
-    nodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), "Journal")
-    nodeWithTag(C.Tag.workspaceItemDescription(CARD_ID), "Day one")
+    assertTagText(C.Tag.workspaceItemTitle(CARD_ID), "Journal")
+    assertTagText(C.Tag.workspaceItemDescription(CARD_ID), "Day one")
   }
 
   @Test
   fun folderCardKeepsItsFileNameAndOpenFolderDescription() {
     setCard(JDRFile(id = CARD_ID, name = "Maps", type = DocumentType.FOLDER))
 
-    nodeWithTag(C.Tag.workspaceItemTitle(CARD_ID), value = "Maps")
-    nodeWithTag(
+    assertTagText(C.Tag.workspaceItemTitle(CARD_ID), value = "Maps")
+    assertTagText(
         C.Tag.workspaceItemDescription(CARD_ID),
         "Open folder to view its contents",
     )
   }
 
-  private fun nodeWithTag(tag: String, value: String, useUnmergedTree: Boolean = true) {
+  private fun assertTagText(tag: String, value: String, useUnmergedTree: Boolean = true) {
     composeTestRule.onNodeWithTag(tag, useUnmergedTree).assertTextEquals(value)
   }
 
