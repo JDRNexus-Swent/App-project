@@ -4,7 +4,10 @@ package com.github.se.jdrnexus.ui.groupWorkSpace
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.se.jdrnexus.codec.JDRFileCodecException
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
+import com.github.se.jdrnexus.model.filerepresentation.DEFAULT_CHARACTER_NAME
+import com.github.se.jdrnexus.model.filerepresentation.renameCharacterSheet
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
@@ -570,7 +573,7 @@ class GroupWorkspaceViewModel(
         createdId =
             createItemInFolder(
                 parentId = parentId,
-                name = "New character",
+                name = DEFAULT_CHARACTER_NAME,
                 type = DocumentType.CHARACTER,
                 content = JDRFileJsonCodec.serializeCharacter(null),
             )
@@ -696,16 +699,20 @@ class GroupWorkspaceViewModel(
         requireItemInCurrentWorkspace(existing, folderId)
         requireCanEdit(existing, uid)
 
-        repository
-            .updateFile(
-                existing
-                    .copy(
-                        name = updatedItem.name.trim(),
-                        content = updatedItem.content,
-                    )
-                    .toEdit()
-            )
-            .getOrThrow()
+        val name = updatedItem.name.trim()
+        // A character's name lives in its sheet: rename both in the same write.
+        val content =
+            if (existing.type == DocumentType.CHARACTER) {
+              try {
+                renameCharacterSheet(updatedItem.content, name)
+              } catch (_: JDRFileCodecException) {
+                throw IllegalStateException(CHARACTER_SHEET_UNREADABLE)
+              }
+            } else {
+              updatedItem.content
+            }
+
+        repository.updateFile(existing.copy(name = name, content = content).toEdit()).getOrThrow()
       }
     }
   }
@@ -756,5 +763,9 @@ class GroupWorkspaceViewModel(
   /** clears the current operation error */
   fun clearError() {
     _uiState.update { it.copy(errorMessage = "") }
+  }
+
+  internal companion object {
+    const val CHARACTER_SHEET_UNREADABLE = "Unable to rename: the character sheet cannot be read."
   }
 }

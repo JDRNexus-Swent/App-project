@@ -748,6 +748,23 @@ class GroupWorkSpaceScreenInstrumentedTest {
     composeTestRule.onNodeWithText("Updated").assertIsDisplayed()
   }
 
+  // Verifies a character is renamed from the name its card shows (the sheet's), not the file's.
+  @Test
+  fun editDialogOfCharacterIsPrefilledWithTheSheetName() {
+    val character =
+        file("hero", "New character", DocumentType.CHARACTER, ownerId = USER)
+            .copy(content = """{"version":1,"type":"character","character":{"name":"Aria"}}""")
+    showScreen(WorkspaceFakeRepository(listOf(character)), Role.PLAYER)
+    composeTestRule.onNodeWithTag(C.Tag.workspaceItemTitle("hero"), true).assertTextEquals("Aria")
+
+    composeTestRule.onNodeWithTag(C.Tag.workspaceEdit("hero"), true).performClick()
+
+    composeTestRule.onNodeWithTag(C.Tag.workspace_edit_item_dialog, true).assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(C.Tag.workspace_edit_item_name_input, true)
+        .assertTextEquals("Aria")
+  }
+
   // Verifies the edit dialog and entered text survive saved-state restoration.
   @Test
   fun editDialogRestoresVisibilityAndText() {
