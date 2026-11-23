@@ -5,6 +5,7 @@ import android.net.Uri
 import com.github.se.jdrnexus.model.soundboard.SoundEffectIcon
 import com.github.se.jdrnexus.model.soundboard.Soundboard
 import com.github.se.jdrnexus.model.soundboard.SoundboardError
+import com.github.se.jdrnexus.model.soundboard.SoundboardRepository
 import kotlinx.coroutines.flow.StateFlow
 
 /** Whether the editor is opening a draft, ready to edit it, or unable to open it. */
@@ -16,7 +17,7 @@ sealed interface SoundboardEditLoadState {
   data class Failed(val reason: SoundboardError) : SoundboardEditLoadState
 }
 
-/** Progress of editor operations. Saved and Discarded let the screen close after success. */
+/** Progress of editor operations. [SAVED] and [DISCARDED] let the screen close. */
 enum class SoundboardEditStatus {
   IDLE,
   IMPORTING,
@@ -31,12 +32,10 @@ sealed interface SoundboardEditError {
   data class Import(val reason: SoundboardError) : SoundboardEditError
 
   data class Save(val reason: SoundboardError) : SoundboardEditError
-
-  data class Discard(val reason: SoundboardError) : SoundboardEditError
 }
 
-/** Validation errors displayed below the soundboard title field. */
-enum class SoundboardTitleError {
+/** Validation errors displayed below the soundboard name field. */
+enum class SoundboardNameError {
   EMPTY,
   TOO_LONG,
 }
@@ -50,12 +49,12 @@ enum class SoundboardTitleError {
  * @property selectedPlaylistId The playlist being edited, or null if there are no playlists.
  * @property selectedTrackId The highlighted track in the selected playlist, if any.
  * @property hasUnsavedChanges Whether leaving would discard draft changes or imported copies.
- * @property titleError The validation error for the title, or null when none is displayed.
+ * @property nameError The validation error for the soundboard name, or null when none is displayed.
  * @property canSave Whether Save is enabled. Requires an editable, idle draft with changes and a
- *   valid title and nonblank playlist, track, and effect names.
- * @property status The operation in progress or the successful completion of save or discard.
- * @property error Feedback for a failed import, save, or discard. On failure, status returns to
- *   idle and the draft remains available.
+ *   valid board name and nonblank playlist, track, and effect names.
+ * @property status The operation in progress or the completion of save or discard.
+ * @property error Feedback for a failed import or save. On failure, status returns to idle and the
+ *   draft remains available.
  */
 data class SoundboardEditUiState(
     val draft: Soundboard? = null,
@@ -63,7 +62,7 @@ data class SoundboardEditUiState(
     val selectedPlaylistId: String? = null,
     val selectedTrackId: String? = null,
     val hasUnsavedChanges: Boolean = false,
-    val titleError: SoundboardTitleError? = null,
+    val nameError: SoundboardNameError? = null,
     val canSave: Boolean = false,
     val status: SoundboardEditStatus = SoundboardEditStatus.IDLE,
     val error: SoundboardEditError? = null,
@@ -73,18 +72,18 @@ data class SoundboardEditUiState(
  * Edits the signed-in user's local soundboard as a draft. Track and effect IDs are the IDs of their
  * imported audio. A successful import copies the audio immediately. Draft changes are applied
  * together by [save], which also removes private copies no longer used by any of the user's boards.
+ * Item renaming, reordering and effect icon selection support follow-up editor controls.
  */
 interface SoundboardEditViewModelInterface {
   companion object {
-    const val MAX_TITLE_LENGTH = 80
+    const val MAX_NAME_LENGTH = 80
   }
 
   val uiState: StateFlow<SoundboardEditUiState>
 
   /**
-   * Keeps the entered title in the draft and updates its inline error. Checks that the trimmed
-   * title is nonempty and at most [MAX_TITLE_LENGTH] characters long. An invalid title disables
-   * Save.
+   * Keeps the entered name in the draft and updates its inline error. Checks that the trimmed name
+   * is nonempty and at most [MAX_NAME_LENGTH] characters long. An invalid name disables Save.
    */
   fun renameSoundboard(name: String)
 
@@ -136,7 +135,10 @@ interface SoundboardEditViewModelInterface {
   /** Saves the draft by ID, preserving the latest persisted volumes for an existing board. */
   fun save()
 
-  /** Abandons the draft and removes unsaved imports when leaving the editor. */
+  /**
+   * Abandons the draft and attempts to remove unsaved imports. Sets the status to
+   * [SoundboardEditStatus.DISCARDED] even if cleanup fails so the screen can close.
+   */
   fun discard()
 
   /**
