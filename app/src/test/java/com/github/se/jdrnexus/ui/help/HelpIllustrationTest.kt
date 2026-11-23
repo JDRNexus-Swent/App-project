@@ -4,6 +4,7 @@ package com.github.se.jdrnexus.ui.help
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
@@ -53,7 +54,7 @@ class HelpIllustrationTest {
   }
 
   @Test
-  fun tallContentIsShrunkToAFifthOfTheWindowHeight() {
+  fun tallContentIsShrunkToTheDefaultShareOfTheWindowHeight() {
     var windowHeight = 0.dp
     composeTestRule.setContent {
       windowHeight = LocalWindowInfo.current.containerDpSize.height
@@ -62,15 +63,15 @@ class HelpIllustrationTest {
       }
     }
 
-    val bounds = composeTestRule.onNodeWithTag(C.Tag.help_illustration).getUnclippedBoundsInRoot()
-    val height = bounds.bottom - bounds.top
-
-    assertTrue(height > 0.dp)
-    assertTrue(height <= windowHeight / 5f + 1.dp)
+    assertEquals(
+        (windowHeight * DEFAULT_HELP_ILLUSTRATION_HEIGHT_FRACTION).value,
+        illustrationHeight().value,
+        1f,
+    )
   }
 
   @Test
-  fun largerFractionLetsTheIllustrationTakeMoreHeight() {
+  fun givenFractionSetsTheIllustrationHeight() {
     var windowHeight = 0.dp
     composeTestRule.setContent {
       windowHeight = LocalWindowInfo.current.containerDpSize.height
@@ -82,10 +83,7 @@ class HelpIllustrationTest {
       }
     }
 
-    val height = illustrationHeight()
-
-    assertTrue(height > windowHeight / 5f + 1.dp)
-    assertTrue(height <= windowHeight / 2f + 1.dp)
+    assertEquals((windowHeight * 0.5f).value, illustrationHeight().value, 1f)
   }
 
   @Test
@@ -103,7 +101,7 @@ class HelpIllustrationTest {
       SampleAppTheme(darkTheme = false) { HelpPagerContent(pages = listOf(page), onDone = {}) }
     }
 
-    assertTrue(illustrationHeight() > windowHeight / 5f + 1.dp)
+    assertEquals((windowHeight * 0.5f).value, illustrationHeight().value, 1f)
   }
 
   @Test
@@ -111,6 +109,22 @@ class HelpIllustrationTest {
     setIllustration { Box(Modifier.fillMaxWidth().height(40.dp)) }
 
     composeTestRule.onNodeWithTag(C.Tag.help_illustration).assertHeightIsEqualTo(40.dp)
+  }
+
+  @Test
+  fun scrollableContentIsShrunkInsteadOfCrashing() {
+    var windowHeight = 0.dp
+    composeTestRule.setContent {
+      windowHeight = LocalWindowInfo.current.containerDpSize.height
+      SampleAppTheme(darkTheme = false) {
+        HelpIllustration(content = { LazyColumn { items(50) { Text("Row $it") } } })
+      }
+    }
+
+    val height = illustrationHeight()
+
+    assertTrue(height > 0.dp)
+    assertTrue(height <= windowHeight * DEFAULT_HELP_ILLUSTRATION_HEIGHT_FRACTION + 1.dp)
   }
 
   @Test

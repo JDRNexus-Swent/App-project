@@ -11,7 +11,6 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.testTag
-import androidx.compose.ui.unit.Constraints
 import com.github.se.jdrnexus.resources.C
 import kotlin.math.roundToInt
 
@@ -22,10 +21,10 @@ const val DEFAULT_HELP_ILLUSTRATION_HEIGHT_FRACTION = 0.2f
  * Draws [content] as a picture: scaled down so it is at most [maxHeightFraction] of the window
  * height, centred, and inert.
  *
- * [content] is first measured at the full width of the help page, with as much height as it needs,
- * so it lays itself out as on a screen of that width; it is then drawn smaller as a whole, and
- * never enlarged. Taps on it reach nothing, while horizontal swipes still move the pager, and
- * screen readers skip it: the page's text describes it.
+ * [content] is first measured at the full width of the help page and at most the window height, so
+ * it lays itself out as on a phone screen of that width, a scrolling list included; it is then
+ * drawn smaller as a whole, and never enlarged. Taps on it reach nothing, while horizontal swipes
+ * still move the pager, and screen readers skip it: the page's text describes it.
  *
  * @param content the composables to show, usually a screen's own components with example data.
  * @param maxHeightFraction largest share of the window height the picture may take, in (0, 1].
@@ -36,17 +35,23 @@ internal fun HelpIllustration(
     modifier: Modifier = Modifier,
     maxHeightFraction: Float = DEFAULT_HELP_ILLUSTRATION_HEIGHT_FRACTION,
 ) {
-  val maxHeight = LocalWindowInfo.current.containerDpSize.height * maxHeightFraction
+  val windowHeight = LocalWindowInfo.current.containerDpSize.height
+  val maxHeight = windowHeight * maxHeightFraction
   Box(
       modifier = modifier.fillMaxWidth().clearAndSetSemantics { testTag = C.Tag.help_illustration },
   ) {
     Layout(content = { Box { content() } }) { measurables, constraints ->
-      // Natural size: the full available width, and as much height as the content wants.
+      // Natural size: the full available width, and at most the window height, as on a screen.
+      // A bounded height also lets a scrolling list measure itself; an unbounded one would throw.
       val placeable =
           measurables
               .single()
               .measure(
-                  constraints.copy(minWidth = 0, minHeight = 0, maxHeight = Constraints.Infinity)
+                  constraints.copy(
+                      minWidth = 0,
+                      minHeight = 0,
+                      maxHeight = windowHeight.roundToPx(),
+                  )
               )
       val maxHeightPx = maxHeight.roundToPx()
       // Never enlarge, only shrink; an empty content keeps scale 1 instead of dividing by zero.

@@ -61,7 +61,10 @@ fun HelpSheet(pages: List<HelpPage>, onDismiss: () -> Unit) {
         pages = pages,
         onDone = {
           // Slides the sheet down before removing it, as a swipe would, instead of cutting it off.
-          scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
+          // If the user grabs the sheet during the slide, the slide stops and the sheet stays open.
+          scope
+              .launch { sheetState.hide() }
+              .invokeOnCompletion { if (!sheetState.isVisible) onDismiss() }
         },
     )
   }
