@@ -15,7 +15,6 @@ import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -207,7 +206,7 @@ class DocumentsRulesTest {
   // ========================================== get
 
   @Test
-  fun theOwnerAndTheGroupsMembersCanGetADocument() = runBlocking {
+  fun onlyTheOwnerAndTheGroupsMembersCanGetADocument() = runBlocking {
     assertEquals(playerPrivate, player.doc(playerPrivate).get().await().id)
     assertEquals("Notes", companion.doc(playerFile).get().await().getString("name"))
     // Hiding is not a security boundary (DATA_ARCHITECTURE.md §5): members can read hidden ones.
@@ -233,7 +232,7 @@ class DocumentsRulesTest {
   // ========================================== list
 
   @Test
-  fun aUserCanListTheirPersonalFolderAndTheirGroupsFolders() = runBlocking {
+  fun aUserCanListTheirPersonalRootAndTheirGroupRoot() = runBlocking {
     // WorkspaceRepositoryFirestore.getPersonalFolderFiles
     val personal =
         player
@@ -304,11 +303,13 @@ class DocumentsRulesTest {
   }
 
   @Test
-  fun invalidDocumentsAreDenied() = runBlocking {
+  fun invalidDocumentCreationsAreDenied() = runBlocking {
     listOf(
             "another owner" to document(newId, ownerId = COMPANION_ID),
             "an extra field" to document(newId) + ("tags" to listOf<String>()),
             "a missing field" to document(newId) - "content",
+            "a name that is not a string" to document(newId) + ("name" to 5),
+            "content that is not a string" to document(newId) + ("content" to 5),
             "an id that is not the document's" to document(newId) + ("id" to "$run-other"),
             "an unknown type" to document(newId, type = "IMAGE"),
             // A root comes only with its group (CampaignGroupsRulesTest).
@@ -377,24 +378,22 @@ class DocumentsRulesTest {
 
   @Test
   fun invalidEditsAreDenied() = runBlocking {
-    FirebaseEmulatorTestUtils.assertPermissionDenied("the game master, not the owner") {
-      edit(gm, playerFile)
-    }
-    FirebaseEmulatorTestUtils.assertPermissionDenied("changing the owner") {
-      player.doc(playerFile).update("ownerId", COMPANION_ID).await()
-    }
-    FirebaseEmulatorTestUtils.assertPermissionDenied("moving it in the personal space") {
-      player.doc(playerFile).update("personalParentId", playerFolder).await()
-    }
-    FirebaseEmulatorTestUtils.assertPermissionDenied("a name that is not a string") {
-      player.doc(playerFile).update("name", 5).await()
-    }
-    FirebaseEmulatorTestUtils.assertPermissionDenied("content that is not a string") {
-      player.doc(playerFile).update("content", 5).await()
-    }
-    FirebaseEmulatorTestUtils.assertPermissionDenied("the group root renamed alone") {
-      gm.doc(groupId).update("name", "Renamed").await()
-    }
+    listOf(
+            Triple("the game master, not the owner", gm, playerFile) to
+                FileEdit(playerFile, "Renamed", "New content").toMap(),
+            Triple("changing the owner", player, playerFile) to mapOf("ownerId" to COMPANION_ID),
+            Triple("moving it in the personal space", player, playerFile) to
+                mapOf("personalParentId" to playerFolder),
+            Triple("a name that is not a string", player, playerFile) to mapOf("name" to 5),
+            Triple("content that is not a string", player, playerFile) to mapOf("content" to 5),
+            Triple("the group root renamed alone", gm, groupId) to mapOf("name" to "Renamed"),
+        )
+        .forEach { (target, write) ->
+          val (case, client, id) = target
+          FirebaseEmulatorTestUtils.assertPermissionDenied(case) {
+            client.doc(id).update(write).await()
+          }
+        }
     // The group's rename is valid, so only the root's own rule refuses.
     FirebaseEmulatorTestUtils.assertPermissionDenied("the group root renamed with its content") {
       val batch = gm.batch()
@@ -412,12 +411,10 @@ class DocumentsRulesTest {
 
   @Test
   fun updatingAMissingDocumentGivesNotFound() = runBlocking {
-    try {
+    FirebaseEmulatorTestUtils.assertFirestoreError(FirebaseFirestoreException.Code.NOT_FOUND) {
       edit(player, "$run-missing")
-      fail("expected NOT_FOUND")
-    } catch (e: FirebaseFirestoreException) {
-      assertEquals(FirebaseFirestoreException.Code.NOT_FOUND, e.code)
     }
+
     assertEquals(seededIds.sorted(), storedIds())
   }
 
@@ -501,15 +498,18 @@ class DocumentsRulesTest {
 
   @Test
   fun invalidUnsharesAreDenied() = runBlocking {
-    FirebaseEmulatorTestUtils.assertPermissionDenied("another member") {
-      companion.doc(playerFile).update(unshared(groupId)).await()
-    }
-    FirebaseEmulatorTestUtils.assertPermissionDenied("with another field") {
-      player.doc(playerFile).update(unshared(groupId) + ("name" to "Gone")).await()
-    }
-    FirebaseEmulatorTestUtils.assertPermissionDenied("the group root") {
-      gm.doc(groupId).update(unshared(groupId)).await()
-    }
+    listOf(
+            Triple("another member", companion, playerFile) to unshared(groupId),
+            Triple("with another field", player, playerFile) to
+                unshared(groupId) + ("name" to "Gone"),
+            Triple("the group root", gm, groupId) to unshared(groupId),
+        )
+        .forEach { (target, write) ->
+          val (case, client, id) = target
+          FirebaseEmulatorTestUtils.assertPermissionDenied(case) {
+            client.doc(id).update(write).await()
+          }
+        }
 
     assertEquals(listOf(groupId), stored(playerFile, "sharedGroupsIds"))
     assertEquals(listOf(groupId), stored(groupId, "sharedGroupsIds"))
@@ -535,29 +535,26 @@ class DocumentsRulesTest {
 
   @Test
   fun invalidPlacementEntryChangesAreDenied() = runBlocking {
-    FirebaseEmulatorTestUtils.assertPermissionDenied("an outsider") {
-      outsider.doc(playerFile).update("placements.$groupId.isHidden", true).await()
-    }
-    FirebaseEmulatorTestUtils.assertPermissionDenied("with the content") {
-      player
-          .doc(playerFile)
-          .update(mapOf("placements.$groupId.isHidden" to true, "content" to "Secret"))
-          .await()
-    }
-    // The group would stay in sharedGroupsIds without a placement.
-    FirebaseEmulatorTestUtils.assertPermissionDenied("removing the entry") {
-      companion.doc(playerFile).update("placements.$groupId", FieldValue.delete()).await()
-    }
-    FirebaseEmulatorTestUtils.assertPermissionDenied("two entries at once") {
-      gm.doc(gmBoth)
-          .update(
-              mapOf(
-                  "placements.$groupId.isHidden" to true,
-                  "placements.$otherGroupId.isHidden" to true,
-              )
-          )
-          .await()
-    }
+    listOf(
+            Triple("an outsider", outsider, playerFile) to
+                mapOf("placements.$groupId.isHidden" to true),
+            Triple("with the content", player, playerFile) to
+                mapOf("placements.$groupId.isHidden" to true, "content" to "Secret"),
+            // The group would stay in sharedGroupsIds without a placement.
+            Triple("removing the entry", companion, playerFile) to
+                mapOf("placements.$groupId" to FieldValue.delete()),
+            Triple("two entries at once", gm, gmBoth) to
+                mapOf(
+                    "placements.$groupId.isHidden" to true,
+                    "placements.$otherGroupId.isHidden" to true,
+                ),
+        )
+        .forEach { (target, write) ->
+          val (case, client, id) = target
+          FirebaseEmulatorTestUtils.assertPermissionDenied(case) {
+            client.doc(id).update(write).await()
+          }
+        }
 
     assertEquals(placement(groupId), stored(playerFile, "placements.$groupId"))
     assertEquals(listOf(groupId), stored(playerFile, "sharedGroupsIds"))
@@ -568,9 +565,10 @@ class DocumentsRulesTest {
     )
   }
 
-  // Known gap (DATA_ARCHITECTURE.md §12), to fix later: an entry change does not check the
-  // entry's shape, so a member can write one the app cannot read, hiding the document from
-  // everyone, its owner included.
+  // Known gap (DATA_ARCHITECTURE.md §12): an entry change does not check the entry's shape, so a
+  // member can write one the app cannot read, hiding the document from everyone, its owner
+  // included. If the rules come to check the entry, this test fails and must become an
+  // assertPermissionDenied.
   @Test
   fun aMemberCanStillWriteAMalformedPlacementEntry() = runBlocking {
     companion.doc(playerFile).update("placements.$groupId.isHidden", "yes").await()

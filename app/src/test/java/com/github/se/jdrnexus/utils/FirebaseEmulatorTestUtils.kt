@@ -187,7 +187,20 @@ object FirebaseEmulatorTestUtils {
    * reason never passes as a rules denial. [case] names the request in the failure message, for
    * tests that check several requests in a row.
    */
-  suspend fun assertPermissionDenied(case: String = "request", action: suspend () -> Unit) {
+  suspend fun assertPermissionDenied(case: String = "request", action: suspend () -> Unit) =
+      assertFirestoreError(FirebaseFirestoreException.Code.PERMISSION_DENIED, case, action)
+
+  /**
+   * Runs [action] (a Firestore request, as for [assertPermissionDenied]) and fails unless it throws
+   * a FirebaseFirestoreException with exactly [code]. Any other outcome fails: success, another
+   * code, or another exception. Coroutine cancellation is rethrown, not counted as the expected
+   * error. [case] names the request in the failure message.
+   */
+  suspend fun assertFirestoreError(
+      code: FirebaseFirestoreException.Code,
+      case: String = "request",
+      action: suspend () -> Unit,
+  ) {
     val failure =
         try {
           action()
@@ -197,14 +210,8 @@ object FirebaseEmulatorTestUtils {
         } catch (e: Exception) {
           e
         }
-    if (
-        failure !is FirebaseFirestoreException ||
-            failure.code != FirebaseFirestoreException.Code.PERMISSION_DENIED
-    ) {
-      throw AssertionError(
-          "$case: expected PERMISSION_DENIED from the security rules, got: ${failure ?: "success"}",
-          failure,
-      )
+    if (failure !is FirebaseFirestoreException || failure.code != code) {
+      throw AssertionError("$case: expected $code, got: ${failure ?: "success"}", failure)
     }
   }
 
