@@ -54,8 +54,7 @@ sealed interface SoundboardPlaybackError {
  * @property isAmbienceLooping Whether playback returns to the start after the last playlist track.
  * @property playingEffectIds Effects currently playing, independently of ambience and each other.
  * @property pendingEffectIds Effects with a playback action in progress.
- * @property error Inline feedback for the latest playback or volume action. The ViewModel clears it
- *   when a new playback or volume action starts or when another board is loaded.
+ * @property error The latest playback or volume failure, or null when there is none.
  */
 data class SoundboardUiState(
     val soundboard: Soundboard? = null,
@@ -120,4 +119,7 @@ interface SoundboardViewModelInterface {
    * [SoundboardError.SOUNDBOARD_NOT_FOUND].
    */
   fun loadSoundboard(soundboardId: String)
+
+  /** Clears [SoundboardUiState.error] after the screen has displayed it. */
+  fun clearError()
 }
