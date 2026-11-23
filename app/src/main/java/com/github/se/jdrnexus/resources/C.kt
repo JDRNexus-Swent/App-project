@@ -1,4 +1,5 @@
 // Co-authored-by: Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.resources
 
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
@@ -44,6 +45,7 @@ object C {
     const val shared_top_bar = "shared_top_bar"
     const val shared_back_button = "shared_back_button"
     const val shared_bottom_bar = "shared_bottom_bar"
+    const val offline_banner = "offline_banner"
     const val search_open = "document_search_open"
     const val search_query = "document_search_query"
     const val search_clear = "document_search_clear"

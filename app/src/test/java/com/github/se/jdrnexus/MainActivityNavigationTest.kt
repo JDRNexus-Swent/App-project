@@ -305,6 +305,7 @@ class MainActivityNavigationTest {
             authRepository = repository,
             groupRepository = FakeGroupRepository(),
             workspaceRepository = NavigationWorkspaceRepository(),
+            connectivityRepository = FakeConnectivityRepository(),
         )
       }
     }
@@ -588,6 +589,7 @@ class MainActivityNavigationTest {
           authRepository = authRepository,
           groupRepository = groupRepository,
           workspaceRepository = workspaceRepository,
+          connectivityRepository = FakeConnectivityRepository(),
       )
     }
     signInAndOpenCampaigns()
@@ -690,6 +692,7 @@ class MainActivityNavigationTest {
           workspaceRepository = workspaceRepository,
           personalSearchViewModel = searchViewModel,
           groupSearchViewModel = searchViewModel,
+          connectivityRepository = FakeConnectivityRepository(),
       )
     }
 
@@ -1120,6 +1123,7 @@ class MainActivityNavigationTest {
           workspaceRepository = workspaceRepository,
           personalSearchViewModel = documentSearchViewModel,
           groupSearchViewModel = documentSearchViewModel,
+          connectivityRepository = FakeConnectivityRepository(),
       )
     }
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")

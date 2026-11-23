@@ -81,6 +81,7 @@ import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.JdrNexusLogo
+import com.github.se.jdrnexus.resources.OfflineBanner
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.resources.darkFieldColors
 import com.github.se.jdrnexus.viewmodel.LoadState
@@ -205,6 +206,7 @@ fun GroupWorkSpaceScreen(
                   null
                 },
         )
+        OfflineBanner()
 
         Spacer(Modifier.height(16.dp))
 

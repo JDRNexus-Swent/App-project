@@ -6,7 +6,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -38,7 +40,14 @@ class OfflineBannerTest {
       }
     }
 
-    banner().assertIsDisplayed().assertTextContains("You're offline")
+    banner().assertIsDisplayed()
+    // The text is a child of the tagged row: look for it inside the banner.
+    composeTestRule
+        .onNode(
+            hasText("You're offline") and hasAnyAncestor(hasTestTag(C.Tag.offline_banner)),
+            useUnmergedTree = true,
+        )
+        .assertIsDisplayed()
     composeTestRule.runOnIdle { darkTheme = true }
     banner().assertIsDisplayed()
 
