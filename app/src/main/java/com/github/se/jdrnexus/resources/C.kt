@@ -1,4 +1,5 @@
 // Co-authored-by: Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.resources
 
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
@@ -161,6 +162,10 @@ object C {
     const val workspace_loading = "workspace_loading"
 
     fun workspaceItem(fileId: String) = "workspace_item_$fileId"
+
+    fun workspaceItemTitle(fileId: String) = "workspace_item_title_$fileId"
+
+    fun workspaceItemDescription(fileId: String) = "workspace_item_description_$fileId"
 
     fun workspaceEdit(fileId: String) = "workspace_edit_$fileId"
 

@@ -4,6 +4,7 @@ package com.github.se.jdrnexus.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
+import com.github.se.jdrnexus.model.filerepresentation.DEFAULT_CHARACTER_NAME
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.PERSONAL_ROOT_ID
@@ -301,7 +302,7 @@ class PersonalSpaceViewModel(
           try {
             JDRFile(
                     id = repository.getNewUid(),
-                    name = "New character",
+                    name = DEFAULT_CHARACTER_NAME,
                     ownerId = requireUid(),
                     personalParentId = parentFolderId,
                     type = DocumentType.CHARACTER,

@@ -107,6 +107,8 @@
     <string name="workspace_group_root_type">GROUP ROOT</string>
     <string name="workspace_open_folder_description">Open folder to view its contents</string>
     <string name="workspace_no_description">No description available</string>
+    <string name="workspace_new_character">New character</string>
+    <string name="workspace_character_hp">HP: %1$d / %2$d</string>
     <string name="workspace_edit_description">Edit %1$s</string>
     <string name="workspace_remove_description">Remove %1$s</string>
     <string name="workspace_show_description">Show %1$s</string>

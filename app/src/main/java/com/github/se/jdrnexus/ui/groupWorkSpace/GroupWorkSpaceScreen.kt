@@ -77,6 +77,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.se.jdrnexus.R
+import com.github.se.jdrnexus.model.filerepresentation.characterSheetSummary
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.resources.C
@@ -227,7 +228,13 @@ fun GroupWorkSpaceScreen(
             onEdit = {
               gwViewModel.clearError()
               itemToEditId = it.id
-              editedName = it.name
+              // A character is renamed from the name its card shows: the sheet's.
+              editedName =
+                  if (it.type == DocumentType.CHARACTER) {
+                    characterSheetSummary(it.content).name ?: it.name
+                  } else {
+                    it.name
+                  }
             },
             onRemove = {
               gwViewModel.clearError()
@@ -696,14 +703,30 @@ fun WorkspaceCard(
             color = color().tertiary,
         )
 
+        // A character's content is its sheet JSON: show what it holds, never the JSON itself.
+        val character =
+            if (file.type == DocumentType.CHARACTER) {
+              remember(file.content) { characterSheetSummary(file.content) }
+            } else {
+              null
+            }
+        val title =
+            if (character == null) file.name
+            else character.name ?: stringResource(R.string.workspace_new_character)
+        val description =
+            if (character == null) file.content
+            else
+                character.hp?.let {
+                  stringResource(R.string.workspace_character_hp, it.current, it.max)
+                } ?: ""
+
         Text(
-            text = file.name,
+            text = title,
+            modifier = Modifier.testTag(C.Tag.workspaceItemTitle(file.id)),
             style = MaterialTheme.typography.titleMedium,
             color = color().onSecondary,
         )
 
-        // A character's content is its saved JSON: never show it.
-        val description = if (file.type == DocumentType.CHARACTER) "" else file.content
         Text(
             text =
                 description.replace("\n", " ").ifBlank {
@@ -713,6 +736,7 @@ fun WorkspaceCard(
                     stringResource(R.string.workspace_no_description)
                   }
                 },
+            modifier = Modifier.testTag(C.Tag.workspaceItemDescription(file.id)),
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 2,
             color = color().tertiary,
