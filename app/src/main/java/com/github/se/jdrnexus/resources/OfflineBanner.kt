@@ -18,6 +18,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.github.se.jdrnexus.R
 
@@ -46,6 +49,9 @@ fun OfflineBanner(modifier: Modifier = Modifier) {
               .fillMaxWidth()
               .background(colors.surfaceVariant)
               .padding(horizontal = 16.dp, vertical = 6.dp)
+              // Screen readers announce the banner as soon as it appears, without waiting for
+              // the user to move onto it.
+              .semantics { liveRegion = LiveRegionMode.Polite }
               .testTag(C.Tag.offline_banner),
       horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
       verticalAlignment = Alignment.CenterVertically,

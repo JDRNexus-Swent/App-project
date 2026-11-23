@@ -5,6 +5,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
@@ -53,5 +57,22 @@ class OfflineBannerTest {
 
     composeTestRule.runOnIdle { isOnline = true }
     banner().assertDoesNotExist()
+  }
+
+  /**
+   * Screen readers such as TalkBack only read what the user moves onto, unless a node is marked as
+   * a "live region": then they announce it by themselves when it appears or changes. Robolectric
+   * has no screen reader, so the test checks the marker the reader relies on: the banner's
+   * semantics carry `LiveRegionMode.Polite` (announced after the reader finishes its current
+   * sentence, rather than interrupting it).
+   */
+  @Test
+  fun isAnnouncedByScreenReadersWhenItAppears() {
+    composeTestRule.setContent {
+      SampleAppTheme { CompositionLocalProvider(LocalIsOnline provides false) { OfflineBanner() } }
+    }
+
+    banner()
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
   }
 }
