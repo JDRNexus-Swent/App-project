@@ -1,8 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.firestoreRules
 
-import com.github.se.jdrnexus.model.personalSpace.DocumentType
-import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -64,16 +62,6 @@ class CampaignGroupsRulesTest {
 
   private fun FirebaseFirestore.invitation(code: String) = collection("invitations").document(code)
 
-  // The root the app writes with a group (GroupRepositoryFirestore.rootFileOf).
-  private fun rootOf(id: String, ownerId: String, name: String) =
-      JDRFile(
-          id = id,
-          name = name,
-          ownerId = ownerId,
-          sharedGroupsIds = listOf(id),
-          type = DocumentType.GROUP_ROOT,
-      )
-
   // The users writes of the app: arrayUnion / arrayRemove with merge.
   private fun added(id: String) = mapOf("groupIds" to FieldValue.arrayUnion(id))
 
@@ -85,23 +73,14 @@ class CampaignGroupsRulesTest {
     player = FirebaseEmulatorTestUtils.signInAs(PLAYER_ID)
     outsider = FirebaseEmulatorTestUtils.signInAs(OUTSIDER_ID)
     runBlocking {
-      // CampaignGroup has no inviteCode field, so the group is written as a map.
-      FirebaseEmulatorTestUtils.writeBypassingRules(
+      FirebaseEmulatorTestUtils.writeGroupBypassingRules(
           gm,
-          "campaign_groups/$groupId",
-          mapOf(
-              "id" to groupId,
-              "name" to NAME,
-              "description" to "",
-              "gameMasterId" to GM_ID,
-              "participantIds" to listOf(GM_ID, PLAYER_ID, COMPANION_ID),
-              "inviteCode" to CODE,
-          ),
-      )
-      FirebaseEmulatorTestUtils.writeBypassingRules(
-          gm,
-          "documents/$groupId",
-          rootOf(groupId, GM_ID, NAME),
+          groupId,
+          GM_ID,
+          listOf(GM_ID, PLAYER_ID, COMPANION_ID),
+          name = NAME,
+          inviteCode = CODE,
+          withRoot = true,
       )
       FirebaseEmulatorTestUtils.writeBypassingRules(
           gm,
@@ -210,7 +189,10 @@ class CampaignGroupsRulesTest {
     val batch = client.batch()
     batch.set(client.group(newGroupId), group)
     if (withRoot) {
-      batch.set(client.root(newGroupId), rootOf(newGroupId, OUTSIDER_ID, group["name"] as String))
+      batch.set(
+          client.root(newGroupId),
+          FirebaseEmulatorTestUtils.groupRootOf(newGroupId, OUTSIDER_ID, group["name"] as String),
+      )
     }
     if (withMembership) batch.set(client.user(OUTSIDER_ID), added(newGroupId), SetOptions.merge())
     batch.commit().await()

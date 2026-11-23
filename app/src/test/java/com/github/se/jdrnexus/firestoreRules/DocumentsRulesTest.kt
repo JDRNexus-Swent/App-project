@@ -108,29 +108,15 @@ class DocumentsRulesTest {
   private suspend fun seed(id: String, data: Map<String, Any>) =
       FirebaseEmulatorTestUtils.writeBypassingRules(gm, "documents/$id", data)
 
-  private suspend fun seedGroup(id: String, participantIds: List<String>) {
-    FirebaseEmulatorTestUtils.writeBypassingRules(
-        gm,
-        "campaign_groups/$id",
-        mapOf(
-            "id" to id,
-            "name" to GROUP_NAME,
-            "description" to "",
-            "gameMasterId" to GM_ID,
-            "participantIds" to participantIds,
-        ),
-    )
-    seed(
-        id,
-        document(
-            id,
-            name = GROUP_NAME,
-            ownerId = GM_ID,
-            type = "GROUP_ROOT",
-            sharedGroupsIds = listOf(id),
-        ),
-    )
-  }
+  private suspend fun seedGroup(id: String, participantIds: List<String>) =
+      FirebaseEmulatorTestUtils.writeGroupBypassingRules(
+          gm,
+          id,
+          GM_ID,
+          participantIds,
+          name = GROUP_NAME,
+          withRoot = true,
+      )
 
   @Before
   fun setUp() {
