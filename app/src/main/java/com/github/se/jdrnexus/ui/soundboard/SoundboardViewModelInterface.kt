@@ -1,6 +1,8 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.soundboard
 
+import com.github.se.jdrnexus.model.soundboard.MAX_VOLUME
+import com.github.se.jdrnexus.model.soundboard.MIN_VOLUME
 import com.github.se.jdrnexus.model.soundboard.Soundboard
 import com.github.se.jdrnexus.model.soundboard.SoundboardError
 import kotlinx.coroutines.flow.StateFlow
@@ -44,24 +46,21 @@ sealed interface SoundboardPlaybackError {
 /**
  * State rendered by the soundboard during a game session. Sound IDs are the model's audio file IDs.
  *
+ * @property soundboard The loaded board, including its current volumes, or null if unavailable.
  * @property selectedPlaylistId The playlist being browsed, which can differ from the playing one.
  * @property ambience The current track, or null when ambience is stopped.
  * @property isAmbienceLooping Whether playback returns to the start after the last playlist track.
  * @property playingEffectIds Effects currently playing, independently of ambience and each other.
  * @property pendingEffectIds Effects with a playback action in progress.
- * @property ambienceVolume Ambience gain from 0f (muted) to 1f (full).
- * @property soundEffectVolume Gain for all effects, with the same range as ambience.
  */
 data class SoundboardUiState(
-    val soundboard: Soundboard = Soundboard(),
+    val soundboard: Soundboard? = null,
     val loadState: SoundboardLoadState = SoundboardLoadState.Loading,
     val selectedPlaylistId: String? = null,
     val ambience: AmbiencePlayback? = null,
     val isAmbienceLooping: Boolean = true,
     val playingEffectIds: Set<String> = emptySet(),
     val pendingEffectIds: Set<String> = emptySet(),
-    val ambienceVolume: Float = 1f,
-    val soundEffectVolume: Float = 1f,
     val error: SoundboardPlaybackError? = null,
 )
 
@@ -92,10 +91,14 @@ interface SoundboardViewModelInterface {
   /** Starts the one-shot effect or stops it if already playing. Other sounds can continue. */
   fun toggleSoundEffect(audioId: String)
 
-  /** Applies the ambience gain immediately and persists the latest value in `0f..1f`. */
+  /**
+   * Updates and persists [Soundboard.ambienceVolume]. Accepts values in [MIN_VOLUME]..[MAX_VOLUME].
+   */
   fun setAmbienceVolume(volume: Float)
 
-  /** Applies the effect gain immediately and persists the latest value in `0f..1f`. */
+  /**
+   * Updates and persists [Soundboard.effectsVolume]. Accepts values in [MIN_VOLUME]..[MAX_VOLUME].
+   */
   fun setSoundEffectVolume(volume: Float)
 
   /** Mutes ambience or restores its last audible gain. */
@@ -107,6 +110,10 @@ interface SoundboardViewModelInterface {
   /** Stops all sounds and cancels pending starts on session exit. Safe to call repeatedly. */
   fun stopAll()
 
-  /** Loads the saved soundboard and observes subsequent changes. */
-  fun loadSoundboard()
+  /**
+   * Loads and observes the saved board with [soundboardId]. Switching boards stops playback from
+   * the previous board. If the requested board is missing or deleted, stop its playback and report
+   * [SoundboardError.SOUNDBOARD_NOT_FOUND].
+   */
+  fun loadSoundboard(soundboardId: String)
 }
