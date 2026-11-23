@@ -7,6 +7,15 @@ import com.github.se.jdrnexus.model.soundboard.Soundboard
 import com.github.se.jdrnexus.model.soundboard.SoundboardError
 import kotlinx.coroutines.flow.StateFlow
 
+/** Whether the editor is opening a draft, ready to edit it, or unable to open it. */
+sealed interface SoundboardEditLoadState {
+  data object Loading : SoundboardEditLoadState
+
+  data object Ready : SoundboardEditLoadState
+
+  data class Failed(val reason: SoundboardError) : SoundboardEditLoadState
+}
+
 /** Progress of editor operations. Saved and Discarded let the screen close after success. */
 enum class SoundboardEditStatus {
   IDLE,
@@ -35,8 +44,8 @@ enum class SoundboardTitleError {
 /**
  * State rendered by the soundboard editor.
  *
- * @property draft Editable snapshot. Names and item order are reflected here as they change.
- * @property loadState State of loading the saved board into the draft. An empty board is editable.
+ * @property draft Editable snapshot, or null until a draft is available.
+ * @property loadState State of opening the draft. An empty board is ready to edit.
  * @property selectedPlaylistId The playlist being edited, or null if there are no playlists.
  * @property selectedTrackId The highlighted track in the selected playlist, if any.
  * @property hasUnsavedChanges Whether leaving would discard draft changes or imported copies.
@@ -48,8 +57,8 @@ enum class SoundboardTitleError {
  *   remains available to correct or retry.
  */
 data class SoundboardEditUiState(
-    val draft: Soundboard = Soundboard(),
-    val loadState: SoundboardLoadState = SoundboardLoadState.Loading,
+    val draft: Soundboard? = null,
+    val loadState: SoundboardEditLoadState = SoundboardEditLoadState.Loading,
     val selectedPlaylistId: String? = null,
     val selectedTrackId: String? = null,
     val hasUnsavedChanges: Boolean = false,
@@ -62,7 +71,7 @@ data class SoundboardEditUiState(
 /**
  * Edits the signed-in user's local soundboard as a draft. Track and effect IDs are the IDs of their
  * imported audio. A successful import copies the audio immediately. Draft changes are applied
- * together by [save], which also removes private copies no longer used by the board.
+ * together by [save], which also removes private copies no longer used by any of the user's boards.
  */
 interface SoundboardEditViewModelInterface {
   companion object {
@@ -123,12 +132,16 @@ interface SoundboardEditViewModelInterface {
   /** Moves the effect to its final zero-based position in the draft. */
   fun moveSoundEffect(audioId: String, toIndex: Int)
 
-  /** Saves an eligible draft while preserving the board's latest persisted playback volumes. */
+  /** Saves the draft by ID, preserving the latest persisted volumes for an existing board. */
   fun save()
 
   /** Abandons the draft and removes unsaved imports when leaving the editor. */
   fun discard()
 
-  /** Loads the saved soundboard into the editor draft. */
-  fun loadSoundboard()
+  /**
+   * Opens the saved board with [soundboardId], or creates an unsaved draft with an ID from
+   * [SoundboardRepository.getNewSoundboardId] when the ID is null. A missing saved board is
+   * reported as [SoundboardError.SOUNDBOARD_NOT_FOUND].
+   */
+  fun loadSoundboard(soundboardId: String?)
 }
