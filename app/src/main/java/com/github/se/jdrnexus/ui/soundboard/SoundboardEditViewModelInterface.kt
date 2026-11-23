@@ -44,7 +44,8 @@ enum class SoundboardTitleError {
 /**
  * State rendered by the soundboard editor.
  *
- * @property draft Editable snapshot, or null until a draft is available.
+ * @property draft Editable snapshot, or null while opening it or after a load failure. An empty
+ *   draft still has a soundboard ID.
  * @property loadState State of opening the draft. An empty board is ready to edit.
  * @property selectedPlaylistId The playlist being edited, or null if there are no playlists.
  * @property selectedTrackId The highlighted track in the selected playlist, if any.
@@ -53,8 +54,8 @@ enum class SoundboardTitleError {
  * @property canSave Whether Save is enabled. Requires an editable, idle draft with changes and a
  *   valid title and nonblank playlist, track, and effect names.
  * @property status The operation in progress or the successful completion of save or discard.
- * @property error The last failed operation. On failure, status returns to idle and the draft
- *   remains available to correct or retry.
+ * @property error Feedback for a failed import, save, or discard. On failure, status returns to
+ *   idle and the draft remains available.
  */
 data class SoundboardEditUiState(
     val draft: Soundboard? = null,
@@ -144,4 +145,7 @@ interface SoundboardEditViewModelInterface {
    * reported as [SoundboardError.SOUNDBOARD_NOT_FOUND].
    */
   fun loadSoundboard(soundboardId: String?)
+
+  /** Clears [SoundboardEditUiState.error] after the screen has displayed it. */
+  fun clearError()
 }
