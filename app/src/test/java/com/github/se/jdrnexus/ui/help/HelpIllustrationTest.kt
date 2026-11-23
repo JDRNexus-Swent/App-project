@@ -25,7 +25,6 @@ import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -117,14 +116,18 @@ class HelpIllustrationTest {
     composeTestRule.setContent {
       windowHeight = LocalWindowInfo.current.containerDpSize.height
       SampleAppTheme(darkTheme = false) {
-        HelpIllustration(content = { LazyColumn { items(50) { Text("Row $it") } } })
+        // 50 rows of 100dp: the list is taller than any window, so it fills the window height.
+        HelpIllustration(
+            content = { LazyColumn { items(50) { Box(Modifier.fillMaxWidth().height(100.dp)) } } }
+        )
       }
     }
 
-    val height = illustrationHeight()
-
-    assertTrue(height > 0.dp)
-    assertTrue(height <= windowHeight * DEFAULT_HELP_ILLUSTRATION_HEIGHT_FRACTION + 1.dp)
+    assertEquals(
+        (windowHeight * DEFAULT_HELP_ILLUSTRATION_HEIGHT_FRACTION).value,
+        illustrationHeight().value,
+        1f,
+    )
   }
 
   @Test
