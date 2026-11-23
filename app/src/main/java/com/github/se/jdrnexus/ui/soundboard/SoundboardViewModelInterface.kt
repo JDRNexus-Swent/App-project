@@ -7,7 +7,7 @@ import com.github.se.jdrnexus.model.soundboard.Soundboard
 import com.github.se.jdrnexus.model.soundboard.SoundboardError
 import kotlinx.coroutines.flow.StateFlow
 
-/** Load state of the signed-in user's local soundboard. */
+/** Load state of the selected local soundboard. */
 sealed interface SoundboardLoadState {
   data object Loading : SoundboardLoadState
 
@@ -46,12 +46,16 @@ sealed interface SoundboardPlaybackError {
 /**
  * State rendered by the soundboard during a game session. Sound IDs are the model's audio file IDs.
  *
- * @property soundboard The loaded board, including its current volumes, or null if unavailable.
+ * @property soundboard The loaded board, including its current volumes, or null while loading or
+ *   after a load failure. An empty saved board still has an ID and uses
+ *   [SoundboardLoadState.Empty].
  * @property selectedPlaylistId The playlist being browsed, which can differ from the playing one.
  * @property ambience The current track, or null when ambience is stopped.
  * @property isAmbienceLooping Whether playback returns to the start after the last playlist track.
  * @property playingEffectIds Effects currently playing, independently of ambience and each other.
  * @property pendingEffectIds Effects with a playback action in progress.
+ * @property error Inline feedback for the latest playback or volume action. The ViewModel clears it
+ *   when a new playback or volume action starts or when another board is loaded.
  */
 data class SoundboardUiState(
     val soundboard: Soundboard? = null,
