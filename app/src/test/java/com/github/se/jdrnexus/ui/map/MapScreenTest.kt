@@ -4,6 +4,7 @@ package com.github.se.jdrnexus.ui.map
 
 import android.Manifest
 import android.app.Application
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -26,6 +27,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.resources.LocalIsOnline
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import java.time.LocalDateTime
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,6 +64,23 @@ class MapScreenTest {
     assertEquals(1, mapVM.applyRequests)
     assertEquals("Dungeons & Dragons", mapVM.uiState.value.filters.gameSystem)
     assertEquals(true, mapVM.uiState.value.filters.onlyGamesWithAvailableSeats)
+  }
+
+  @Test
+  fun offlineBannerShowsAboveTheMapOnlyWhileOffline() {
+    var isOnline by mutableStateOf(false)
+    val mapVM = FakeMapVM()
+    composeTestRule.setContent {
+      SampleAppTheme {
+        CompositionLocalProvider(LocalIsOnline provides isOnline) { MapScreen(mapVM) }
+      }
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.map_city_search_field).assertIsDisplayed()
+
+    composeTestRule.runOnIdle { isOnline = true }
+    composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertDoesNotExist()
   }
 
   @Test

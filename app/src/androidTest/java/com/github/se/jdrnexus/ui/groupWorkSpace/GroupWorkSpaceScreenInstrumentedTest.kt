@@ -2,6 +2,9 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -34,6 +37,7 @@ import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.resources.LocalIsOnline
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.LoadState
 import java.util.concurrent.atomic.AtomicBoolean
@@ -101,6 +105,18 @@ class GroupWorkSpaceScreenInstrumentedTest {
     composeTestRule.onNodeWithText("Sign in to view this workspace.").assertIsDisplayed()
     composeTestRule.onAllNodesWithTag(C.Tag.workspaceItem("notes"), true).assertCountEquals(0)
     composeTestRule.onAllNodesWithTag(C.Tag.workspace_actions_fab, true).assertCountEquals(0)
+  }
+
+  @Test
+  fun offlineBannerShowsUnderTheHeaderOnlyWhileOffline() {
+    val isOnline = mutableStateOf(false)
+    showScreen(WorkspaceFakeRepository(), Role.PLAYER, isOnline = isOnline)
+
+    composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertIsDisplayed()
+    composeTestRule.onNodeWithText("No files yet").assertIsDisplayed()
+
+    composeTestRule.runOnIdle { isOnline.value = true }
+    composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertDoesNotExist()
   }
 
   // Verifies the shared bottom navigation destinations and selection behavior.
@@ -970,6 +986,7 @@ class GroupWorkSpaceScreenInstrumentedTest {
       onCharacterCreated: (String) -> Unit = {},
       setContent: Boolean = true,
       authRepository: FakeAuthRepository = FakeAuthRepository(),
+      isOnline: MutableState<Boolean> = mutableStateOf(true),
   ): GroupWorkspaceViewModel {
     viewModelStore?.clear()
     val group =
@@ -990,16 +1007,18 @@ class GroupWorkSpaceScreenInstrumentedTest {
     if (setContent) {
       composeTestRule.setContent {
         SampleAppTheme {
-          GroupWorkSpaceScreen(
-              gwViewModel = viewModel,
-              groupId = GROUP,
-              groupName = "Ashen Realms",
-              onBack = onBack,
-              onTabSelected = onTabSelected,
-              onItemClicked = onItemClicked,
-              personalItems = personalItems,
-              onCharacterCreated = onCharacterCreated,
-          )
+          CompositionLocalProvider(LocalIsOnline provides isOnline.value) {
+            GroupWorkSpaceScreen(
+                gwViewModel = viewModel,
+                groupId = GROUP,
+                groupName = "Ashen Realms",
+                onBack = onBack,
+                onTabSelected = onTabSelected,
+                onItemClicked = onItemClicked,
+                personalItems = personalItems,
+                onCharacterCreated = onCharacterCreated,
+            )
+          }
         }
       }
     }
