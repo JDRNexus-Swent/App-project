@@ -96,7 +96,7 @@ fun HomeScreen(
             title = "JDRNexus",
             titleModifier = Modifier.testTag(TestTags.TITLE),
             trailingContent = {
-              // Hidden until the app provides notifications, so the bell never leads nowhere.
+              // Shown only when the caller can open the notifications, so the bell is never dead.
               if (onNotificationsClick != null) {
                 NotificationBell(
                     unreadCount = unreadNotificationCount,
