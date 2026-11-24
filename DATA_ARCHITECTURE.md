@@ -127,6 +127,7 @@ Because the second part is a normal document, placements, hiding, sharing and un
     - read: the owner, or a signed-in user when `documents/{fileId}` exists, its `type` is `IMAGE`, its `ownerId` equals the `ownerId` of the path, and its `sharedGroupsIds` contains one of the reader's `users/{uid}.groupIds` (1.6). A hidden placement still counts: hidden is a display preference, not a security boundary (5). A user without a `users` document is refused;
     - delete: only the owner.
 - **Two documents per check.** The read rule reads `documents/{fileId}` and `users/{uid}` with `firestore.get` / `firestore.exists`. Storage rules may read at most two Firestore documents per evaluation (Firebase Blog, "Announcing cross-service Security Rules", 2022-09-22); repeated calls on the same document do not count again.
+- **`ImageRepository` writes the two parts in order:** the picture first, then the document, so a document never points to a missing picture. When the upload or the document fails, the picture is deleted again. `deleteImage` deletes the picture, then the document.
 - **Download URLs stay valid.** The rules check who asks for a download URL. After that, anyone holding the URL can load the picture, also after leaving the group, like profile pictures (1.8). Accepted: pictures are not sensitive.
 - **First deploy:** deploying these Storage rules asks once to let Storage read Firestore (cross-service rules).
 - **Emulator:** the Storage emulator reads Firestore under the project given to `firebase emulators:exec --project` (`demo-jdrnexus`), not the project of `google-services.json` that the app writes to. The instrumented Storage rules tests (`storageRules/`) therefore write the documents the rules read directly there, with `StorageEmulatorTestUtils`.
@@ -406,7 +407,7 @@ Rules and batch behavior must be tested with the **Firebase emulator** (member /
 - `deleteGroup` does not delete the group's invitation: the code stays known but points to nothing. Under the security rules, a join with that code is refused (`PERMISSION_DENIED`) and reported as `NETWORK`, not `GROUP_NOT_FOUND`. `deleteGroup` could delete the invitation in its own batch (the delete rule allows it, since the group still exists before the batch), so the code really stops existing.
 - `regenerateInvitation` checks that the new code is free with a plain read, not atomically (the collision probability is negligible). Two simultaneous regenerations can leave one valid invitation that the group no longer knows.
 - A refused write (`PERMISSION_DENIED`) during an invitation operation is mapped to a generic error (`NETWORK` for a join, `NOT_GAME_MASTER` for create and regenerate), because the real cause is not known to the client.
-- Deleting an image document, or a folder holding images, with `WorkspaceRepository.deleteFile` removes only the documents: the pictures stay in Storage, readable by their owner only (1.9).
+- Deleting an image document, or a folder holding images, with `WorkspaceRepository.deleteFile` removes only the documents: the pictures stay in Storage, readable by their owner only (1.9). `ImageRepository.deleteImage` deletes one image with its picture.
 - Sign-up accepts any non-blank username, while a profile requires 3 to 30 characters (1.8): a user with a shorter sign-up name must change it before saving their profile.
 ---
 ---

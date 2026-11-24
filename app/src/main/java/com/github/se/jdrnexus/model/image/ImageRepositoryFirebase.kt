@@ -168,7 +168,7 @@ class ImageRepositoryFirebase(
     val IMAGE_TYPES = setOf("image/jpeg", "image/png", "image/webp")
     // The same limit as the Storage rule (<=).
     const val MAX_BYTES = 10L * 1024 * 1024
-    // Progress comes once per chunk, and a 4 MiB chunk takes about 35 seconds at 1 Mbit/s.
+    // Progress comes once per chunk, and a 4 MiB chunk takes about 34 seconds at 1 Mbit/s.
     const val STALL_LIMIT_MS = 60_000L
     const val CLEANUP_LIMIT_MS = 10_000L
     // A picture's path never changes, so phones may cache it for 30 days.
