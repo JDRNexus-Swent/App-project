@@ -179,6 +179,9 @@ object C {
 
     fun workspaceEdit(fileId: String) = "workspace_edit_$fileId"
 
+    /** Rename button of a folder card in the Personal Space. */
+    fun personalSpaceRename(fileId: String) = "personal_space_rename_$fileId"
+
     fun workspaceRemove(fileId: String) = "workspace_remove_$fileId"
 
     fun workspaceVisibility(fileId: String) = "workspace_visibility_$fileId"
