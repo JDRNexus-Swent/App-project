@@ -36,12 +36,14 @@ private val BADGE_RING_WIDTH = 1.5.dp
  *
  * @param unreadCount Number of unread notifications of the signed-in user.
  * @param onClick Called when the user opens the notification screen.
+ * @param enabled Whether the bell reacts to taps; Home disables it while the user signs out.
  */
 @Composable
 fun NotificationBell(
     unreadCount: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
   val colors = MaterialTheme.colorScheme
   val hasUnread = unreadCount > 0
@@ -49,7 +51,11 @@ fun NotificationBell(
       stringResource(
           if (hasUnread) R.string.notifications_open_unread else R.string.notifications_open
       )
-  IconButton(onClick = onClick, modifier = modifier.testTag(C.Tag.notification_bell)) {
+  IconButton(
+      onClick = onClick,
+      enabled = enabled,
+      modifier = modifier.testTag(C.Tag.notification_bell),
+  ) {
     BadgedBox(
         badge = {
           if (hasUnread) {

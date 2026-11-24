@@ -101,6 +101,7 @@ fun HomeScreen(
                 NotificationBell(
                     unreadCount = unreadNotificationCount,
                     onClick = { if (canNavigate()) onNotificationsClick() },
+                    enabled = canNavigate(),
                 )
               }
               TextButton(
