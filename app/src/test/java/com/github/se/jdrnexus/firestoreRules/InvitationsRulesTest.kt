@@ -50,19 +50,13 @@ class InvitationsRulesTest {
   private fun invitationData(createdBy: String = GM_ID) =
       mapOf("groupId" to groupId, "createdBy" to createdBy)
 
-  // CampaignGroup has no inviteCode field, so the group is written as a map.
   private suspend fun writeGroupWithCode(code: String) =
-      FirebaseEmulatorTestUtils.writeBypassingRules(
+      FirebaseEmulatorTestUtils.writeGroupBypassingRules(
           gm,
-          "campaign_groups/$groupId",
-          mapOf(
-              "id" to groupId,
-              "name" to "The Sunken Crown",
-              "description" to "",
-              "gameMasterId" to GM_ID,
-              "participantIds" to listOf(GM_ID, PLAYER_ID),
-              "inviteCode" to code,
-          ),
+          groupId,
+          GM_ID,
+          listOf(GM_ID, PLAYER_ID),
+          inviteCode = code,
       )
 
   @Before

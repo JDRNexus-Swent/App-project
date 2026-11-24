@@ -6,6 +6,8 @@ import android.content.Context
 import android.os.Looper
 import android.util.Log
 import androidx.test.core.app.ApplicationProvider
+import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
@@ -171,6 +173,48 @@ object FirebaseEmulatorTestUtils {
       userId: String,
       vararg groupIds: String,
   ) = writeBypassingRules(firestore, "users/$userId", mapOf("groupIds" to groupIds.toList()))
+
+  /**
+   * The root document of the group [id], as GroupRepositoryFirestore writes it with the group: same
+   * id and name, owned by the game master, of type GROUP_ROOT and shared with the group itself.
+   */
+  fun groupRootOf(id: String, gameMasterId: String, name: String) =
+      JDRFile(
+          id = id,
+          name = name,
+          ownerId = gameMasterId,
+          sharedGroupsIds = listOf(id),
+          type = DocumentType.GROUP_ROOT,
+      )
+
+  /**
+   * Writes the group `campaign_groups/[id]`, bypassing the security rules. For test setup only.
+   * [inviteCode] is written when given (CampaignGroup has no such field, so the group is written as
+   * a map). With [withRoot], the group's root document ([groupRootOf]) is written too, in
+   * `documents`: the class must then clear that collection in its tear down.
+   */
+  suspend fun writeGroupBypassingRules(
+      firestore: FirebaseFirestore,
+      id: String,
+      gameMasterId: String,
+      participantIds: List<String>,
+      name: String = "The Sunken Crown",
+      inviteCode: String? = null,
+      withRoot: Boolean = false,
+  ) {
+    val group =
+        mapOf(
+            "id" to id,
+            "name" to name,
+            "description" to "",
+            "gameMasterId" to gameMasterId,
+            "participantIds" to participantIds,
+        ) + listOfNotNull(inviteCode?.let { "inviteCode" to it })
+    writeBypassingRules(firestore, "campaign_groups/$id", group)
+    if (withRoot) {
+      writeBypassingRules(firestore, "documents/$id", groupRootOf(id, gameMasterId, name))
+    }
+  }
 
   /**
    * The `groupIds` field of `users/[userId]`, read as that user so the rules apply; null when the
