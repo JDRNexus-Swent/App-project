@@ -84,9 +84,10 @@ fun FolderCard(
 }
 
 /**
- * The layout of every Group Workspace card, folders ([FolderCard]) and files alike: an icon in a
- * lighter square, the type label, title and description, the allowed actions and, for a folder, the
- * open arrow. An action is shown only when its callback is not null.
+ * The layout shared by workspace cards: every Group Workspace card, folders ([FolderCard]) and
+ * files alike, and the Personal Space folder cards. It shows an icon in a lighter square, the type
+ * label, title and description, the allowed actions and, for a folder, the open arrow. An action is
+ * shown only when its callback is not null.
  */
 @Composable
 internal fun WorkspaceItemCard(

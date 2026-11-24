@@ -756,9 +756,19 @@ class PersonalSpaceScreenTests {
   fun documentsKeepTheirOwnCard() {
     setScreen()
 
+    // Bring each document on screen and check its own card first, so the missing shared card is
+    // checked on a composed row.
+    scrollToItem(hasText("Elara Moonwhisper"))
+    composeTestRule
+        .onNode(hasText("CHARACTER SHEET") and hasText("Elara Moonwhisper"))
+        .assertIsDisplayed()
     composeTestRule
         .onAllNodesWithTag(C.Tag.workspaceItem("elara-moonwhisper"), useUnmergedTree = true)
         .assertCountEquals(0)
+    scrollToItem(hasText("The Sunken Citadel"))
+    composeTestRule
+        .onNode(hasText("TEXT DOCUMENT") and hasText("The Sunken Citadel"))
+        .assertIsDisplayed()
     composeTestRule
         .onAllNodesWithTag(C.Tag.workspaceItem("sunken-citadel"), useUnmergedTree = true)
         .assertCountEquals(0)
