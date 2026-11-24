@@ -18,13 +18,19 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.resources.darkFieldColors
 
 /**
  * The folder card shared by the Group Workspace and the Personal Space, so folders look and behave
@@ -215,3 +222,121 @@ private fun CardAction(
     Icon(icon, contentDescription = description, tint = MaterialTheme.colorScheme.onSecondary)
   }
 }
+
+/**
+ * The dialog that renames a file or folder, shared by the Group Workspace and the Personal Space so
+ * both look and behave the same. It cannot be dismissed while [isInProgress].
+ *
+ * @param isFolder Whether the item is a folder, which picks the dialog title.
+ * @param name Current text of the name field.
+ * @param onNameChange Called with the new text when the user edits the name.
+ * @param errorMessage Error to show under the field, or blank for none.
+ * @param isInProgress Whether the rename is running: disables the field and buttons.
+ * @param onSave Called when the user confirms the new name.
+ * @param onCancel Called when the user cancels or dismisses the dialog.
+ */
+@Composable
+fun EditItemDialog(
+    isFolder: Boolean,
+    name: String,
+    onNameChange: (String) -> Unit,
+    errorMessage: String,
+    isInProgress: Boolean,
+    onSave: () -> Unit,
+    onCancel: () -> Unit,
+) {
+  AlertDialog(
+      modifier = Modifier.testTag(C.Tag.workspace_edit_item_dialog),
+      containerColor = color().surface,
+      onDismissRequest = {
+        if (!isInProgress) {
+          onCancel()
+        }
+      },
+      title = {
+        Text(
+            if (isFolder) {
+              stringResource(R.string.workspace_edit_folder)
+            } else {
+              stringResource(R.string.workspace_edit_file)
+            },
+            color = color().tertiary,
+        )
+      },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          OutlinedTextField(
+              modifier = Modifier.testTag(C.Tag.workspace_edit_item_name_input),
+              value = name,
+              onValueChange = onNameChange,
+              label = { Text(stringResource(R.string.workspace_name), color = color().primary) },
+              singleLine = true,
+              enabled = !isInProgress,
+              colors = workspaceFieldColors(),
+              isError = errorMessage.isNotBlank(),
+              supportingText = {
+                if (errorMessage.isNotBlank()) {
+                  Text(text = errorMessage)
+                }
+              },
+          )
+        }
+      },
+      confirmButton = {
+        TextButton(
+            modifier = Modifier.testTag(C.Tag.workspace_edit_item_save),
+            enabled = !isInProgress,
+            onClick = onSave,
+        ) {
+          OperationButtonContent(
+              isInProgress = isInProgress,
+              progressTag = C.Tag.workspace_edit_item_progress,
+              label = stringResource(R.string.workspace_save),
+          )
+        }
+      },
+      dismissButton = {
+        TextButton(
+            modifier = Modifier.testTag(C.Tag.workspace_edit_item_cancel),
+            enabled = !isInProgress,
+            onClick = onCancel,
+        ) {
+          Text(stringResource(R.string.workspace_cancel), color = color().primary)
+        }
+      },
+  )
+}
+
+@Composable
+internal fun OperationButtonContent(
+    isInProgress: Boolean,
+    progressTag: String,
+    label: String,
+) {
+  Row(
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    if (isInProgress) {
+      CircularProgressIndicator(
+          modifier = Modifier.size(16.dp).testTag(progressTag),
+          strokeWidth = 2.dp,
+      )
+    }
+    Text(label, color = color().primary)
+  }
+}
+
+@Composable
+internal fun color(): ColorScheme {
+  return MaterialTheme.colorScheme
+}
+
+@Composable
+internal fun workspaceFieldColors(): TextFieldColors =
+    darkFieldColors(
+        container = color().surfaceContainerHighest,
+        border = color().outline,
+        textPrimary = color().onSecondary,
+        primary = color().primary,
+    )

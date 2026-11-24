@@ -30,7 +30,7 @@ import org.junit.runner.RunWith
 
 /** Tests of the [FolderCard] shared by the Group Workspace and the Personal Space. */
 @RunWith(AndroidJUnit4::class)
-class FolderCardTest {
+class FolderComponentsTest {
   @get:Rule val composeTestRule = createComposeRule()
 
   private val folder = JDRFile(id = "maps", name = "Maps", type = DocumentType.FOLDER)
