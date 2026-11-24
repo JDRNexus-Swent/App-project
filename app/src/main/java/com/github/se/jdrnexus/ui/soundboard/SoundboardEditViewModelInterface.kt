@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.soundboard
 
 import android.net.Uri
@@ -20,16 +21,28 @@ sealed interface SoundboardEditLoadState {
 /** Progress of editor operations. [SAVED] and [DISCARDED] let the screen close. */
 enum class SoundboardEditStatus {
   IDLE,
-  IMPORTING,
+
+  /** A picked file is being imported as an ambience track. */
+  IMPORTING_TRACK,
+
+  /** A picked file is being imported as a sound effect. */
+  IMPORTING_EFFECT,
   SAVING,
   DISCARDING,
   SAVED,
   DISCARDED,
 }
 
-/** The operation and typed repository reason for an editor failure. */
+/**
+ * The operation and typed repository reason for an editor failure. The screen shows each one
+ * inline, next to the control that started the operation.
+ */
 sealed interface SoundboardEditError {
-  data class Import(val reason: SoundboardError) : SoundboardEditError
+  /** Importing a file as an ambience track failed. */
+  data class ImportTrack(val reason: SoundboardError) : SoundboardEditError
+
+  /** Importing a file as a sound effect failed. */
+  data class ImportEffect(val reason: SoundboardError) : SoundboardEditError
 
   data class Save(val reason: SoundboardError) : SoundboardEditError
 }
@@ -55,6 +68,8 @@ enum class SoundboardNameError {
  * @property status The operation in progress or the completion of save or discard.
  * @property error Feedback for a failed import or save. On failure, status returns to idle and the
  *   draft remains available. Null when there is no import or save error.
+ * @property isDiscardDialogVisible Whether the editor asks the Game Master to confirm discarding
+ *   the unsaved changes.
  */
 data class SoundboardEditUiState(
     val draft: Soundboard? = null,
@@ -66,6 +81,7 @@ data class SoundboardEditUiState(
     val canSave: Boolean = false,
     val status: SoundboardEditStatus = SoundboardEditStatus.IDLE,
     val error: SoundboardEditError? = null,
+    val isDiscardDialogVisible: Boolean = false,
 )
 
 /**
@@ -137,15 +153,26 @@ interface SoundboardEditViewModelInterface {
   fun save()
 
   /**
+   * Called when the Game Master leaves the editor. Shows the discard dialog when
+   * [SoundboardEditUiState.hasUnsavedChanges] is true; otherwise calls [discard].
+   */
+  fun requestLeave()
+
+  /** Hides the discard dialog and keeps the draft. */
+  fun dismissDiscardDialog()
+
+  /**
    * Abandons the draft and attempts to remove unsaved imports. Sets the status to
-   * [SoundboardEditStatus.DISCARDED] even if cleanup fails so the screen can close.
+   * [SoundboardEditStatus.DISCARDED] even if cleanup fails so the screen can close. Also hides the
+   * discard dialog.
    */
   fun discard()
 
   /**
    * Opens the saved board with [soundboardId], or creates an unsaved draft with an ID from
    * [SoundboardRepository.getNewSoundboardId] when the ID is null. A missing saved board is
-   * reported as [SoundboardError.SOUNDBOARD_NOT_FOUND].
+   * reported as [SoundboardError.SOUNDBOARD_NOT_FOUND]. Starts from [SoundboardEditStatus.IDLE]
+   * with no error and the discard dialog hidden, so a reopened editor never closes at once.
    */
   fun loadSoundboard(soundboardId: String?)
 }
