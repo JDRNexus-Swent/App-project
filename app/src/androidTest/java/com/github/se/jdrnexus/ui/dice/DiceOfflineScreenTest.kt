@@ -24,19 +24,15 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.github.se.jdrnexus.model.repository.AuthError
-import com.github.se.jdrnexus.model.repository.AuthRepository
-import com.github.se.jdrnexus.model.repository.AuthResult
-import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.model.repository.DiceLogic
-import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
+import com.github.se.jdrnexus.model.repository.DiceRepository
+import com.github.se.jdrnexus.model.repository.DiceRollEntity
 import com.github.se.jdrnexus.model.sensor.ShakeDetector
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -47,19 +43,19 @@ import org.junit.Test
 import org.junit.rules.Timeout
 import org.junit.runner.RunWith
 
-/** Signed-out user: any roll synced to a group fails before reaching Firestore. */
-private object SignedOutAuthRepository : AuthRepository {
-  override val authState: Flow<AuthUser?> = flowOf(null)
+/** Dice repository whose every call fails, as when syncing a roll to a group is refused. */
+private object FailingDiceRepository : DiceRepository {
+  private val failure = IllegalStateException("Roll sync refused")
 
-  override suspend fun signUpWithEmail(email: String, password: String, username: String) =
-      AuthResult.Failure(AuthError.UNKNOWN)
+  override suspend fun saveRollResult(groupId: String, rollResult: DiceRollResult): Result<Unit> =
+      Result.failure(failure)
 
-  override suspend fun signInWithEmail(email: String, password: String) =
-      AuthResult.Failure(AuthError.UNKNOWN)
+  override suspend fun getDiceRollsHistory(groupId: String): Result<List<DiceRollEntity>> =
+      Result.failure(failure)
 
-  override suspend fun signInWithGoogle(idToken: String) = AuthResult.Failure(AuthError.UNKNOWN)
-
-  override suspend fun signOut() = AuthResult.Failure(AuthError.UNKNOWN)
+  override fun getDiceRollsStream(groupId: String): Flow<List<DiceRollEntity>> = flow {
+    throw failure
+  }
 }
 
 /** Upper bound for a roll to end after a click, far above the screen's roll animation. */
@@ -96,8 +92,7 @@ class DiceOfflineScreenTest {
   private fun createViewModel(groupId: String? = null): DiceViewModel =
       DiceViewModelFactory(
               diceLogic = DiceLogic(),
-              diceRepository =
-                  DiceRepositoryFirestore(FirebaseFirestore.getInstance(), SignedOutAuthRepository),
+              diceRepository = FailingDiceRepository,
               groupId = groupId,
           )
           .create(DiceViewModel::class.java)
