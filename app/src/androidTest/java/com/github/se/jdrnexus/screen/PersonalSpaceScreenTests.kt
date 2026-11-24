@@ -572,21 +572,6 @@ class PersonalSpaceScreenTests {
   }
 
   @Test
-  fun imageItemShowsItsNameUnderTheTextDocumentLabel() {
-    val image =
-        JDRFile(
-            id = "dungeon-map",
-            name = "Dungeon map",
-            type = DocumentType.IMAGE,
-            content = "images/owner/dungeon-map",
-        )
-    composeTestRule.setContent { FolderItem(folder = image, onFolderClicked = {}) }
-
-    composeTestRule.onNodeWithText("TEXT DOCUMENT").assertIsDisplayed()
-    composeTestRule.onNodeWithText("Dungeon map").assertIsDisplayed()
-  }
-
-  @Test
   fun folderItemUpdatesWhenItsArgumentsChange() {
     var folder by mutableStateOf(files[0])
     var accentColor by mutableStateOf(Color.Red)

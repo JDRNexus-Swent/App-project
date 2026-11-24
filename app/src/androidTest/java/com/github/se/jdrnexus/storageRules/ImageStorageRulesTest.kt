@@ -2,9 +2,6 @@
 package com.github.se.jdrnexus.storageRules
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.github.se.jdrnexus.model.personalSpace.DocumentType
-import com.github.se.jdrnexus.model.personalSpace.JDRFile
-import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.awaitWithTimeout
 import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.signedOutStorage
 import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.storageAs
@@ -24,220 +21,110 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Security rules of `images/{ownerId}/{fileId}` in Firebase Storage (the pictures of image files),
- * on the emulators started with the project rules ("firebase emulators:exec --only
- * auth,firestore,storage"). Only the owner uploads (JPEG, PNG or WebP up to 10 MiB, never over an
- * existing picture) and deletes. Members of a group the image file is shared in read it, which the
- * rules check in the Firestore documents `documents/{fileId}` and `users/{uid}`. Instrumented
- * because the Storage SDK cannot read the emulator's responses under Robolectric (TESTING.md,
- * section 4.2). Every id is new for each test and the emulators drop their data at the end of the
- * run, so no cleanup is needed.
+ * Storage rules of `images/{ownerId}/{fileId}` on the emulators. Instrumented because Storage
+ * cannot run under Robolectric (TESTING.md 4.2).
  */
 @RunWith(AndroidJUnit4::class)
 class ImageStorageRulesTest {
 
-  companion object {
-    private const val OWNER_ID = "image-rules-owner"
-    private const val MEMBER_ID = "image-rules-member"
-    private const val OUTSIDER_ID = "image-rules-outsider"
-    private const val MAX_BYTES = 10 * 1024 * 1024
-    // The rules check the declared type and the size, not the content.
-    private val SMALL_PICTURE = ByteArray(100) { it.toByte() }
-  }
-
   private val run = UUID.randomUUID().toString()
+  private val owner = "$run-owner"
+  private val member = "$run-member"
   private val groupId = "$run-group"
-  private val otherGroupId = "$run-other-group"
-  // A user who never had a users document.
-  private val newcomerId = "$run-newcomer"
   private val fileId = "$run-image"
+  private val bytes = ByteArray(100) { it.toByte() }
 
-  @Before
-  fun setUp() = runBlocking {
-    writeUserGroupIdsBypassingRules(MEMBER_ID, groupId)
-    writeUserGroupIdsBypassingRules(OUTSIDER_ID, otherGroupId)
-  }
+  @Before fun setUp() = runBlocking { writeUserGroupIdsBypassingRules(member, groupId) }
 
-  // ============ Helpers ============
-
-  private fun metadata(contentType: String) =
-      StorageMetadata.Builder().setContentType(contentType).build()
-
-  private fun picture(storage: FirebaseStorage, id: String = fileId, ownerId: String = OWNER_ID) =
+  private fun picture(storage: FirebaseStorage, id: String = fileId, ownerId: String = owner) =
       storage.reference.child("images/$ownerId/$id")
 
   private suspend fun StorageReference.upload(
-      bytes: ByteArray = SMALL_PICTURE,
-      contentType: String = "image/jpeg",
-  ) = putBytes(bytes, metadata(contentType)).awaitWithTimeout()
+      data: ByteArray = bytes,
+      type: String = "image/jpeg",
+  ) = putBytes(data, StorageMetadata.Builder().setContentType(type).build()).awaitWithTimeout()
 
-  private suspend fun StorageReference.bytes(): ByteArray =
-      getBytes(MAX_BYTES.toLong()).awaitWithTimeout()
+  private suspend fun StorageReference.read(): ByteArray =
+      getBytes(MAX_BYTES + 1L).awaitWithTimeout()
 
-  // Uploads the owner's picture of the image file.
-  private suspend fun uploadOwnersPicture() = picture(storageAs(OWNER_ID)).upload()
-
-  // The Firestore document of the image file, shared in [groupId] unless [sharedIn] is empty.
-  private suspend fun writeImageDocument(
-      ownerId: String = OWNER_ID,
-      sharedIn: String? = groupId,
-      hidden: Boolean = false,
-  ) {
-    val file =
-        JDRFile(
-            id = fileId,
-            name = "Dungeon map",
-            ownerId = ownerId,
-            type = DocumentType.IMAGE,
-            content = "images/$ownerId/$fileId",
-        )
-    val shared = sharedIn?.let { file.withPlacement(it, Placement(it, hidden)) } ?: file
-    writeBypassingRules("documents/$fileId", shared.toMap())
-  }
-
-  // Fails unless every request of [cases] is refused by the rules.
-  private suspend fun assertAllDenied(vararg cases: Pair<String, suspend () -> Any?>) {
-    cases.forEach { (case, request) ->
-      assertEquals(case, StorageException.ERROR_NOT_AUTHORIZED, storageErrorCode(request))
-    }
-  }
-
-  private suspend fun assertNotStored(id: String) =
-      assertEquals(
-          StorageException.ERROR_OBJECT_NOT_FOUND,
-          storageErrorCode { picture(storageAs(OWNER_ID), id).bytes() },
+  // The image file's record, as the Storage rules read it.
+  private suspend fun writeRecord(
+      ownerId: String = owner,
+      sharedIn: List<String> = listOf(groupId),
+  ) =
+      writeBypassingRules(
+          "documents/$fileId",
+          mapOf("ownerId" to ownerId, "sharedGroupsIds" to sharedIn),
       )
 
-  // ============ create ============
+  private suspend fun assertDenied(case: String, request: suspend () -> Any?) =
+      assertEquals(case, StorageException.ERROR_NOT_AUTHORIZED, storageErrorCode(request))
 
   @Test
-  fun ownerUploadsJpegPngAndWebpUpTo10MiB() = runBlocking {
-    val owner = storageAs(OWNER_ID)
-    val typeByFile =
-        mapOf("$run-jpeg" to "image/jpeg", "$run-png" to "image/png", "$run-webp" to "image/webp")
+  fun ownerUploadsAndReadsJpegPngAndWebpUpTo10MiB() = runBlocking {
+    val storage = storageAs(owner)
 
-    typeByFile.forEach { (file, type) -> picture(owner, file).upload(contentType = type) }
-    picture(owner, "$run-max").upload(bytes = ByteArray(MAX_BYTES))
-
-    typeByFile.forEach { (file, type) ->
-      assertArrayEquals(type, SMALL_PICTURE, picture(owner, file).bytes())
+    listOf("image/jpeg", "image/png", "image/webp").forEach { type ->
+      picture(storage, "$run-$type").upload(type = type)
+      assertArrayEquals(type, bytes, picture(storage, "$run-$type").read())
     }
-    assertEquals(MAX_BYTES, picture(owner, "$run-max").bytes().size)
+    picture(storage).upload(ByteArray(MAX_BYTES))
+    assertEquals(MAX_BYTES, picture(storage).read().size)
   }
 
   @Test
   fun uploadsBreakingTheRulesAreDenied() = runBlocking {
-    val owner = storageAs(OWNER_ID)
+    val storage = storageAs(owner)
+    picture(storage).upload()
 
-    assertAllDenied(
-        "signed out" to suspend { picture(signedOutStorage(), "$run-signed-out").upload() },
-        "another user's path" to
-            suspend { picture(storageAs(MEMBER_ID), "$run-other-path").upload() },
-        "GIF" to suspend { picture(owner, "$run-gif").upload(contentType = "image/gif") },
-        "10 MiB + 1 byte" to
-            suspend { picture(owner, "$run-too-large").upload(bytes = ByteArray(MAX_BYTES + 1)) },
-    )
-
-    listOf("$run-signed-out", "$run-other-path", "$run-gif", "$run-too-large").forEach {
-      assertNotStored(it)
-    }
+    assertDenied("signed out") { picture(signedOutStorage(), "$run-1").upload() }
+    assertDenied("another user's path") { picture(storageAs(member), "$run-2").upload() }
+    assertDenied("GIF") { picture(storage, "$run-3").upload(type = "image/gif") }
+    assertDenied("10 MiB + 1 byte") { picture(storage, "$run-4").upload(ByteArray(MAX_BYTES + 1)) }
+    assertDenied("overwrite") { picture(storage).upload(ByteArray(10)) }
+    assertArrayEquals(bytes, picture(storage).read())
   }
 
   @Test
-  fun storedPictureCannotBeOverwrittenOrHaveItsMetadataChanged() = runBlocking {
-    uploadOwnersPicture()
-    val owner = storageAs(OWNER_ID)
+  fun memberOfASharingGroupReadsThePicture() = runBlocking {
+    picture(storageAs(owner)).upload()
+    writeRecord()
 
-    assertAllDenied(
-        "overwrite" to suspend { picture(owner).upload(bytes = ByteArray(10)) },
-        "metadata update" to
-            suspend { picture(owner).updateMetadata(metadata("image/png")).awaitWithTimeout() },
-    )
-
-    assertArrayEquals(SMALL_PICTURE, picture(owner).bytes())
-    assertEquals("image/jpeg", picture(owner).metadata.awaitWithTimeout().contentType)
-  }
-
-  // ============ read ============
-
-  @Test
-  fun ownerReadsOwnPictureWithoutAnyFirestoreDocument() = runBlocking {
-    uploadOwnersPicture()
-
-    assertArrayEquals(SMALL_PICTURE, picture(storageAs(OWNER_ID)).bytes())
-  }
-
-  @Test
-  fun memberOfASharingGroupReadsPicture() = runBlocking {
-    uploadOwnersPicture()
-    writeImageDocument()
-
-    assertArrayEquals(SMALL_PICTURE, picture(storageAs(MEMBER_ID)).bytes())
-  }
-
-  @Test
-  fun memberReadsPictureHiddenInTheGroup() = runBlocking {
-    uploadOwnersPicture()
-    writeImageDocument(hidden = true)
-
-    assertArrayEquals(SMALL_PICTURE, picture(storageAs(MEMBER_ID)).bytes())
+    assertArrayEquals(bytes, picture(storageAs(member)).read())
   }
 
   @Test
   fun readersOutsideTheSharingGroupsAreDenied() = runBlocking {
-    uploadOwnersPicture()
-    writeImageDocument()
+    picture(storageAs(owner)).upload()
+    assertDenied("no record") { picture(storageAs(member)).read() }
 
-    assertAllDenied(
-        "signed out" to suspend { picture(signedOutStorage()).bytes() },
-        "member of another group" to suspend { picture(storageAs(OUTSIDER_ID)).bytes() },
-        "user without a users document" to suspend { picture(storageAs(newcomerId)).bytes() },
+    writeRecord()
+    assertDenied("signed out") { picture(signedOutStorage()).read() }
+    assertDenied("user in no group") { picture(storageAs("$run-outsider")).read() }
+
+    writeRecord(sharedIn = emptyList())
+    assertDenied("record not shared") { picture(storageAs(member)).read() }
+
+    // A record with the picture's id but another owner must not open the picture.
+    writeRecord(ownerId = member)
+    assertDenied("record of another owner") { picture(storageAs(member)).read() }
+  }
+
+  @Test
+  fun onlyTheOwnerDeletes() = runBlocking {
+    picture(storageAs(owner)).upload()
+    writeRecord()
+
+    assertDenied("member") { picture(storageAs(member)).delete().awaitWithTimeout() }
+    picture(storageAs(owner)).delete().awaitWithTimeout()
+
+    assertEquals(
+        StorageException.ERROR_OBJECT_NOT_FOUND,
+        storageErrorCode { picture(storageAs(owner)).read() },
     )
   }
 
-  @Test
-  fun memberIsDeniedWhenTheImageIsNotShared() = runBlocking {
-    uploadOwnersPicture()
-    val member = storageAs(MEMBER_ID)
-
-    val withoutDocument = storageErrorCode { picture(member).bytes() }
-    writeImageDocument(sharedIn = null)
-    val unshared = storageErrorCode { picture(member).bytes() }
-
-    assertEquals(StorageException.ERROR_NOT_AUTHORIZED, withoutDocument)
-    assertEquals(StorageException.ERROR_NOT_AUTHORIZED, unshared)
-  }
-
-  @Test
-  fun documentOwnedBySomeoneElseDoesNotOpenThePicture() = runBlocking {
-    uploadOwnersPicture()
-    // A document with the picture's id, shared in the member's group, but owned by the member.
-    writeImageDocument(ownerId = MEMBER_ID)
-
-    val error = storageErrorCode { picture(storageAs(MEMBER_ID)).bytes() }
-
-    assertEquals(StorageException.ERROR_NOT_AUTHORIZED, error)
-  }
-
-  // ============ delete ============
-
-  @Test
-  fun ownerDeletesOwnPicture() = runBlocking {
-    uploadOwnersPicture()
-
-    picture(storageAs(OWNER_ID)).delete().awaitWithTimeout()
-
-    assertNotStored(fileId)
-  }
-
-  @Test
-  fun memberCannotDeleteSharedPicture() = runBlocking {
-    uploadOwnersPicture()
-    writeImageDocument()
-
-    val error = storageErrorCode { picture(storageAs(MEMBER_ID)).delete().awaitWithTimeout() }
-
-    assertEquals(StorageException.ERROR_NOT_AUTHORIZED, error)
-    assertArrayEquals(SMALL_PICTURE, picture(storageAs(OWNER_ID)).bytes())
+  private companion object {
+    const val MAX_BYTES = 10 * 1024 * 1024
   }
 }

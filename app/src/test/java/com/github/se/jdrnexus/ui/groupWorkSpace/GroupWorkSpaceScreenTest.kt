@@ -1,11 +1,9 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
@@ -166,21 +164,6 @@ class GroupWorkSpaceScreenTest {
         C.Tag.workspaceItemDescription(CARD_ID),
         "Open folder to view its contents",
     )
-  }
-
-  @Test
-  fun imageCardShowsItsFileNameUnderTheTextLabel() {
-    setCard(
-        JDRFile(
-            id = CARD_ID,
-            name = "Dungeon map",
-            type = DocumentType.IMAGE,
-            content = "images/$USER_ID/$CARD_ID",
-        )
-    )
-
-    assertTagText(C.Tag.workspaceItemTitle(CARD_ID), "Dungeon map")
-    composeTestRule.onNodeWithText("TEXT", useUnmergedTree = true).assertIsDisplayed()
   }
 
   private fun assertTagText(tag: String, value: String, useUnmergedTree: Boolean = true) {

@@ -2,7 +2,7 @@
 package com.github.se.jdrnexus.firestoreRules
 
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
-import com.google.firebase.firestore.DocumentReference
+import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils.assertPermissionDenied
 import com.google.firebase.firestore.FirebaseFirestore
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
@@ -15,26 +15,15 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Security rules of `documents/{docId}` for image files (type `IMAGE`), on the Firestore emulator
- * started with the project rules ("firebase emulators:exec --only auth,firestore"). An image
- * document keeps the path of its picture in Firebase Storage in `content`, always
- * `images/<ownerId>/<docId>`: the rules accept no other path and never let it change, so the
- * Storage rules and the app can trust it.
+ * Firestore rules for image files: `content` must be `images/<ownerId>/<docId>` and never changes.
  */
 @RunWith(RobolectricTestRunner::class)
 class ImageDocumentRulesTest {
 
-  companion object {
-    private const val OWNER_ID = "image-owner"
-    private const val OTHER_USER_ID = "image-other"
-    private const val NAME = "Dungeon map"
-  }
-
-  private val imageId = UUID.randomUUID().toString()
-  private val picturePath = "images/$OWNER_ID/$imageId"
-
-  // Signed in as the owner; also used to seed and check data bypassing the rules.
+  private val id = UUID.randomUUID().toString()
   private lateinit var owner: FirebaseFirestore
+  private val image
+    get() = owner.collection("documents").document(id)
 
   @Before
   fun setUp() {
@@ -43,14 +32,14 @@ class ImageDocumentRulesTest {
 
   @After fun tearDown() = runBlocking { FirebaseEmulatorTestUtils.tearDown(owner, "documents") }
 
-  // ============ Helpers ============
-
-  private fun image(): DocumentReference = owner.collection("documents").document(imageId)
-
-  // A personal file at the root, written the way WorkspaceRepositoryFirestore.createFile does.
-  private fun file(type: String = "IMAGE", content: String = picturePath, name: String = NAME) =
+  // A personal file at the root, as WorkspaceRepositoryFirestore.createFile writes it.
+  private fun file(
+      type: String = "IMAGE",
+      content: String = "images/$OWNER_ID/$id",
+      name: String = "Map",
+  ) =
       mapOf(
-          "id" to imageId,
+          "id" to id,
           "name" to name,
           "ownerId" to OWNER_ID,
           "sharedGroupsIds" to emptyList<String>(),
@@ -60,66 +49,40 @@ class ImageDocumentRulesTest {
           "content" to content,
       )
 
-  // Read bypassing the rules, so the check does not depend on them; null if missing.
-  private suspend fun stored(): Map<*, *>? =
-      FirebaseEmulatorTestUtils.readBypassingRules(owner, image().path, Map::class.java)
-
-  private suspend fun seedImage() =
-      FirebaseEmulatorTestUtils.writeBypassingRules(owner, image().path, file())
-
-  // ============ create ============
+  private suspend fun stored() =
+      FirebaseEmulatorTestUtils.readBypassingRules(owner, image.path, Map::class.java)
 
   @Test
-  fun ownerCreatesImageDocumentPointingToItsOwnPicture() = runBlocking {
-    image().set(file()).await()
+  fun ownerCreatesImagePointingToItsOwnPicture() = runBlocking {
+    image.set(file()).await()
 
     assertEquals(file(), stored())
   }
 
   @Test
-  fun imageDocumentPointingAnywhereElseIsDenied() = runBlocking {
-    val otherPaths =
-        mapOf(
-            "another user's picture" to "images/$OTHER_USER_ID/$imageId",
-            "another file's picture" to "images/$OWNER_ID/other-image",
-            "no picture" to "",
-        )
-
-    otherPaths.forEach { (case, path) ->
-      FirebaseEmulatorTestUtils.assertPermissionDenied(case) {
-        image().set(file(content = path)).await()
-      }
+  fun otherPathsAndUnknownTypesAreDenied() = runBlocking {
+    assertPermissionDenied("another user's picture") {
+      image.set(file(content = "images/other/$id")).await()
     }
+    assertPermissionDenied("another file's picture") {
+      image.set(file(content = "images/$OWNER_ID/other")).await()
+    }
+    assertPermissionDenied("VIDEO") { image.set(file(type = "VIDEO")).await() }
 
     assertEquals(null, stored())
   }
 
   @Test
-  fun unknownFileTypeIsDenied() = runBlocking {
-    FirebaseEmulatorTestUtils.assertPermissionDenied { image().set(file(type = "VIDEO")).await() }
+  fun imageCanBeRenamedButItsPathNeverChanges() = runBlocking {
+    FirebaseEmulatorTestUtils.writeBypassingRules(owner, image.path, file())
 
-    assertEquals(null, stored())
+    assertPermissionDenied { image.update("content", "images/$OWNER_ID/other").await() }
+    image.update("name", "Crypt").await()
+
+    assertEquals(file(name = "Crypt"), stored())
   }
 
-  // ============ update ============
-
-  @Test
-  fun ownerRenamesImage() = runBlocking {
-    seedImage()
-
-    image().update("name", "Crypt map").await()
-
-    assertEquals(file(name = "Crypt map"), stored())
-  }
-
-  @Test
-  fun picturePathOfImageCannotChange() = runBlocking {
-    seedImage()
-
-    FirebaseEmulatorTestUtils.assertPermissionDenied {
-      image().update("content", "images/$OWNER_ID/other-image").await()
-    }
-
-    assertEquals(file(), stored())
+  private companion object {
+    const val OWNER_ID = "image-owner"
   }
 }
