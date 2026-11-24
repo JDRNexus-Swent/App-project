@@ -172,6 +172,8 @@ dependencies {
   implementation(libs.compose.viewmodel)
   // Android Studio Preview support
   implementation(libs.compose.preview)
+  implementation(libs.coil.compose)
+  implementation(libs.coil.network.okhttp)
   debugImplementation(libs.compose.tooling)
   // UI Tests
   globalTestImplementation(libs.compose.test.junit)
@@ -192,6 +194,7 @@ dependencies {
 
   implementation(libs.firebase.firestore)
   implementation(libs.firebase.auth)
+  implementation(libs.firebase.storage)
   implementation(libs.firebase.messaging)
   implementation(libs.firebase.dataconnect)
   implementation(libs.geofire.android.common)

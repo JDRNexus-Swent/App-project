@@ -9,6 +9,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -268,6 +270,41 @@ class GameManagementScreenTest {
     assertEquals(1, dismissals)
   }
 
+  @Test
+  fun helpButtonIsShownAndReportsTaps() {
+    var helpClicks = 0
+    setContent(uiState = stateFor(), onHelpClick = { helpClicks++ })
+
+    composeTestRule.onNodeWithTag(C.Tag.help_button).assertIsDisplayed().performClick()
+
+    assertEquals(1, helpClicks)
+  }
+
+  @Test
+  fun helpSheetIsHiddenWhileShowHelpIsFalse() {
+    setContent(uiState = stateFor(), showHelp = false)
+
+    composeTestRule.onAllNodesWithTag(C.Tag.help_sheet).assertCountEquals(0)
+  }
+
+  @Test
+  fun helpSheetShowsTheCampaignPagesWhileShowHelpIsTrue() {
+    setContent(uiState = stateFor(), showHelp = true)
+
+    composeTestRule.onNodeWithTag(C.Tag.help_sheet).assertIsDisplayed()
+    // The page title "Campaigns" is also the bottom bar's tab, so the page is found by its text.
+    composeTestRule
+        .onNodeWithText("This screen gathers your role-playing groups", substring = true)
+        .assertIsDisplayed()
+    // Every page is composed, so the first page's picture is the one inside page 0.
+    composeTestRule
+        .onNode(
+            hasTestTag(C.Tag.help_illustration) and hasAnyAncestor(hasTestTag(C.Tag.helpPage(0)))
+        )
+        .assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.help_next).assertIsDisplayed()
+  }
+
   private fun assertPlayReports(gameMasterId: String, expectedRole: GroupRole) {
     var played: Pair<String, GroupRole>? = null
     setContent(
@@ -289,6 +326,8 @@ class GameManagementScreenTest {
       onDismissCreateDialog: () -> Unit = {},
       onRetryLoad: () -> Unit = {},
       onDismissSuccess: () -> Unit = {},
+      showHelp: Boolean = false,
+      onHelpClick: () -> Unit = {},
   ) {
     if (uiState.isCreateDialogOpen) {
       composeTestRule.mainClock.autoAdvance = false
@@ -311,6 +350,8 @@ class GameManagementScreenTest {
             onManageGroup = {},
             invitationVM = RecordingInvitationVM(),
             onTabSelected = {},
+            showHelp = showHelp,
+            onHelpClick = onHelpClick,
             renderDialogsAsWindow = false,
         )
       }

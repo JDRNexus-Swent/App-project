@@ -4,7 +4,10 @@ package com.github.se.jdrnexus.ui.groupWorkSpace
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.se.jdrnexus.codec.JDRFileCodecException
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
+import com.github.se.jdrnexus.model.filerepresentation.DEFAULT_CHARACTER_NAME
+import com.github.se.jdrnexus.model.filerepresentation.renameCharacterSheet
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
@@ -16,6 +19,7 @@ import com.github.se.jdrnexus.model.personalSpace.isContainer
 import com.github.se.jdrnexus.model.personalSpace.toEdit
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryProvider
+import com.github.se.jdrnexus.viewmodel.ItemErrors
 import com.github.se.jdrnexus.viewmodel.LoadState
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
@@ -32,6 +36,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
+/** One emission of the displayed folder: its items, whether it is still valid, and its name. */
+private data class FolderUpdate(
+    val items: List<JDRFile>,
+    val folderValid: Boolean,
+    val folderName: String,
+)
 
 enum class GroupWorkspaceRole {
   GAME_MASTER,
@@ -104,7 +115,7 @@ class GroupWorkspaceViewModel(
   /** Ensures that the user is allowed to edit the specified item. */
   private fun requireCanEdit(item: JDRFile, uid: String) {
     requireMember()
-    check(item.ownerId == uid) { "You cannot edit an item that you do not own." }
+    check(item.ownerId == uid) { ItemErrors.NOT_OWNER }
   }
 
   /** ensure that only the owner or the game master can perform a certain operation */
@@ -457,20 +468,20 @@ class GroupWorkspaceViewModel(
 
         val updates =
             if (folderId.isEmpty()) {
-              source.map { items -> items to true }
+              source.map { items -> FolderUpdate(items, folderValid = true, folderName = "") }
             } else {
-              // Observe both folder contents and changes to the selected folder.
+              // Observe both folder contents and changes to the selected folder, such as a rename.
               combine(source, repository.getFileFlow(folderId)) { items, folder ->
                 val folderValid =
                     folder != null &&
                         folder.type == DocumentType.FOLDER &&
                         groupId in folder.sharedGroupsIds
 
-                items to folderValid
+                FolderUpdate(items, folderValid, folder?.name.orEmpty())
               }
             }
 
-        updates.collect { (items, folderValid) ->
+        updates.collect { (items, folderValid, latestFolderName) ->
           if (requestGeneration != fetchGeneration) return@collect
 
           // If the selected folder is no longer available, return to the group root.
@@ -499,6 +510,7 @@ class GroupWorkspaceViewModel(
             _uiState.update {
               it.copy(
                   items = visibleItems,
+                  currentFolderName = latestFolderName,
                   loadState = LoadState.Success,
               )
             }
@@ -570,7 +582,7 @@ class GroupWorkspaceViewModel(
         createdId =
             createItemInFolder(
                 parentId = parentId,
-                name = "New character",
+                name = DEFAULT_CHARACTER_NAME,
                 type = DocumentType.CHARACTER,
                 content = JDRFileJsonCodec.serializeCharacter(null),
             )
@@ -664,7 +676,7 @@ class GroupWorkspaceViewModel(
       performOperation {
         val uid = requireUid()
 
-        val existing = getItem(item.id, "Item no longer exists.")
+        val existing = getItem(item.id, ItemErrors.ITEM_NOT_FOUND)
 
         requireItemInCurrentWorkspace(existing, parentId)
         requireOwnerOrGameMaster(existing, uid)
@@ -683,7 +695,7 @@ class GroupWorkspaceViewModel(
   /** Edits an item's name/content while preserving its ownership and workspace references. */
   fun editItem(updatedItem: JDRFile): Job? {
     if (updatedItem.name.isBlank()) {
-      showError("The item name cannot be blank.")
+      showError(ItemErrors.BLANK_NAME)
       return null
     }
 
@@ -691,21 +703,25 @@ class GroupWorkspaceViewModel(
     return viewModelScope.launch {
       performOperation {
         val uid = requireUid()
-        val existing = getItem(updatedItem.id, "Item no longer exists.")
+        val existing = getItem(updatedItem.id, ItemErrors.ITEM_NOT_FOUND)
 
         requireItemInCurrentWorkspace(existing, folderId)
         requireCanEdit(existing, uid)
 
-        repository
-            .updateFile(
-                existing
-                    .copy(
-                        name = updatedItem.name.trim(),
-                        content = updatedItem.content,
-                    )
-                    .toEdit()
-            )
-            .getOrThrow()
+        val name = updatedItem.name.trim()
+        // A character's name lives in its sheet: rename both in the same write.
+        val content =
+            if (existing.type == DocumentType.CHARACTER) {
+              try {
+                renameCharacterSheet(updatedItem.content, name)
+              } catch (_: JDRFileCodecException) {
+                throw IllegalStateException(CHARACTER_SHEET_UNREADABLE)
+              }
+            } else {
+              updatedItem.content
+            }
+
+        repository.updateFile(existing.copy(name = name, content = content).toEdit()).getOrThrow()
       }
     }
   }
@@ -716,7 +732,7 @@ class GroupWorkspaceViewModel(
     return viewModelScope.launch {
       performOperation {
         val uid = requireUid()
-        val existing = getItem(item.id, "Item no longer exists.")
+        val existing = getItem(item.id, ItemErrors.ITEM_NOT_FOUND)
         requireItemInCurrentWorkspace(existing, folderId)
         requireOwnerOrGameMaster(existing, uid)
         repository.setItemHidden(existing.id, groupId, isHidden).getOrThrow()
@@ -756,5 +772,9 @@ class GroupWorkspaceViewModel(
   /** clears the current operation error */
   fun clearError() {
     _uiState.update { it.copy(errorMessage = "") }
+  }
+
+  internal companion object {
+    const val CHARACTER_SHEET_UNREADABLE = "Unable to rename: the character sheet cannot be read."
   }
 }

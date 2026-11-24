@@ -1,8 +1,10 @@
 // Co-authored-by: Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.resources
 
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Codex <codex@openai.com>
 
 // Like R, but C
 /**
@@ -47,6 +49,19 @@ object C {
     const val search_query = "document_search_query"
     const val search_clear = "document_search_clear"
     const val search_loading = "document_search_loading"
+
+    const val profile_picture = "profile_picture"
+    const val profile_username = "profile_username"
+    const val profile_bio = "profile_bio"
+    const val profile_stats = "profile_stats"
+    const val profile_edit = "profile_edit"
+    const val profile_save = "profile_save"
+    const val profile_cancel = "profile_cancel"
+    const val profile_pick_picture = "profile_pick_picture"
+    const val profile_retry = "profile_retry"
+    const val profile_loading = "profile_loading"
+    const val profile_saving = "profile_saving"
+    const val profile_error = "profile_error"
 
     const val sign_in_email = "auth_sign_in_email"
     const val sign_in_password = "auth_sign_in_password"
@@ -116,6 +131,16 @@ object C {
     const val join_loading = "join_loading"
     const val join_cancel = "join_cancel"
 
+    const val help_button = "help_button"
+    const val help_sheet = "help_sheet"
+    const val help_next = "help_next"
+    const val help_done = "help_done"
+    const val help_page_indicator = "help_page_indicator"
+    const val help_illustration = "help_illustration"
+
+    /** Tag of the help page at [index] (0 for the first page) in a help sheet. */
+    fun helpPage(index: Int) = "help_page_$index"
+
     const val enter_workspace_button = "enter_workspace_button"
     const val play_button = "play_button"
     const val workspace_actions_fab = "workspace_actions_fab"
@@ -147,6 +172,10 @@ object C {
     const val workspace_loading = "workspace_loading"
 
     fun workspaceItem(fileId: String) = "workspace_item_$fileId"
+
+    fun workspaceItemTitle(fileId: String) = "workspace_item_title_$fileId"
+
+    fun workspaceItemDescription(fileId: String) = "workspace_item_description_$fileId"
 
     fun workspaceEdit(fileId: String) = "workspace_edit_$fileId"
 
