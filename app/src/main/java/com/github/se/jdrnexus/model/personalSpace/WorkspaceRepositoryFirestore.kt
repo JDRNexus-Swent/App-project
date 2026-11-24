@@ -168,7 +168,6 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     val subtree =
         if (includeContent && item.isContainer()) collectPersonalSubtree(item) else emptyList()
 
-    // TODO(offline): transactions fail without the network. Out of the personal-space scope.
     firestore
         .runTransaction { transaction ->
           val currentItem =
@@ -227,7 +226,6 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     // Pre-calculate the group subtree if we're hiding, because it needs queries
     val subtree = if (isHidden) collectGroupSubtree(item, groupId) else emptyList()
 
-    // TODO(offline): transactions fail without the network. Out of the personal-space scope.
     firestore
         .runTransaction { transaction ->
           val currentItemSnapshot = transaction.get(collection.document(itemId))
