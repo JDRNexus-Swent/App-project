@@ -237,7 +237,7 @@ class CampaignGroupsRulesTest {
     FirebaseEmulatorTestUtils.writeBypassingRules(
         gm,
         "documents/$newGroupId",
-        rootOf(newGroupId, GM_ID, "The Drowned Keep"),
+        FirebaseEmulatorTestUtils.groupRootOf(newGroupId, GM_ID, "The Drowned Keep"),
     )
     FirebaseEmulatorTestUtils.assertPermissionDenied("another user as GM") {
       create(newGroup(gameMasterId = GM_ID), withRoot = false)
