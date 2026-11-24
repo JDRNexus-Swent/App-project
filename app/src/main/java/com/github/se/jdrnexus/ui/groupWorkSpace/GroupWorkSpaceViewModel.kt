@@ -19,6 +19,7 @@ import com.github.se.jdrnexus.model.personalSpace.isContainer
 import com.github.se.jdrnexus.model.personalSpace.toEdit
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryProvider
+import com.github.se.jdrnexus.viewmodel.ItemErrors
 import com.github.se.jdrnexus.viewmodel.LoadState
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
@@ -114,7 +115,7 @@ class GroupWorkspaceViewModel(
   /** Ensures that the user is allowed to edit the specified item. */
   private fun requireCanEdit(item: JDRFile, uid: String) {
     requireMember()
-    check(item.ownerId == uid) { "You cannot edit an item that you do not own." }
+    check(item.ownerId == uid) { ItemErrors.NOT_OWNER }
   }
 
   /** ensure that only the owner or the game master can perform a certain operation */
@@ -675,7 +676,7 @@ class GroupWorkspaceViewModel(
       performOperation {
         val uid = requireUid()
 
-        val existing = getItem(item.id, "Item no longer exists.")
+        val existing = getItem(item.id, ItemErrors.ITEM_NOT_FOUND)
 
         requireItemInCurrentWorkspace(existing, parentId)
         requireOwnerOrGameMaster(existing, uid)
@@ -694,7 +695,7 @@ class GroupWorkspaceViewModel(
   /** Edits an item's name/content while preserving its ownership and workspace references. */
   fun editItem(updatedItem: JDRFile): Job? {
     if (updatedItem.name.isBlank()) {
-      showError("The item name cannot be blank.")
+      showError(ItemErrors.BLANK_NAME)
       return null
     }
 
@@ -702,7 +703,7 @@ class GroupWorkspaceViewModel(
     return viewModelScope.launch {
       performOperation {
         val uid = requireUid()
-        val existing = getItem(updatedItem.id, "Item no longer exists.")
+        val existing = getItem(updatedItem.id, ItemErrors.ITEM_NOT_FOUND)
 
         requireItemInCurrentWorkspace(existing, folderId)
         requireCanEdit(existing, uid)
@@ -731,7 +732,7 @@ class GroupWorkspaceViewModel(
     return viewModelScope.launch {
       performOperation {
         val uid = requireUid()
-        val existing = getItem(item.id, "Item no longer exists.")
+        val existing = getItem(item.id, ItemErrors.ITEM_NOT_FOUND)
         requireItemInCurrentWorkspace(existing, folderId)
         requireOwnerOrGameMaster(existing, uid)
         repository.setItemHidden(existing.id, groupId, isHidden).getOrThrow()

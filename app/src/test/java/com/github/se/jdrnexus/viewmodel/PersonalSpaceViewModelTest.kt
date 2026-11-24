@@ -45,7 +45,6 @@ class PersonalSpaceViewModelTest {
     shadowOf(Looper.getMainLooper()).idle()
   }
 
-  // ============ Workspace repository fake ============
   // ============ Rename test data ============
   private val ownedFolder =
       JDRFile("maps", "Maps", ownerId = "authenticated-user-42", type = DocumentType.FOLDER)
@@ -70,6 +69,8 @@ class PersonalSpaceViewModelTest {
     viewModel.onRenameSelected(folder)
     return viewModel
   }
+
+  // ============ Workspace repository fake ============
 
   private class FakePersonalSpaceRepository(
       private val rootItems: List<JDRFile> = emptyList(),

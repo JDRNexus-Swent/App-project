@@ -335,7 +335,7 @@ class PersonalSpaceViewModel(
     if (state.isRenaming) return
     val name = state.renameName.trim()
     if (name.isEmpty()) {
-      _uiState.update { it.copy(renameError = BLANK_NAME_ERROR) }
+      _uiState.update { it.copy(renameError = ItemErrors.BLANK_NAME) }
       return
     }
     _uiState.update { it.copy(isRenaming = true, renameError = "") }
@@ -345,9 +345,9 @@ class PersonalSpaceViewModel(
         val uid = requireUid()
         val existing =
             repository.getFile(itemId).getOrThrow()
-                ?: throw IllegalStateException(ITEM_NOT_FOUND_ERROR)
+                ?: throw IllegalStateException(ItemErrors.ITEM_NOT_FOUND)
         check(existing.type == DocumentType.FOLDER) { NOT_A_FOLDER_ERROR }
-        check(existing.ownerId == uid) { NOT_OWNER_ERROR }
+        check(existing.ownerId == uid) { ItemErrors.NOT_OWNER }
 
         repository.updateFile(existing.copy(name = name).toEdit()).getOrThrow()
         currentCoroutineContext().ensureActive()
@@ -398,10 +398,6 @@ class PersonalSpaceViewModel(
   }
 
   internal companion object {
-    // Same messages as the Group Workspace rename.
-    const val BLANK_NAME_ERROR = "The item name cannot be blank."
-    const val ITEM_NOT_FOUND_ERROR = "Item no longer exists."
-    const val NOT_OWNER_ERROR = "You cannot edit an item that you do not own."
     const val NOT_A_FOLDER_ERROR = "Only folders can be renamed here."
     const val RENAME_ERROR = "Unable to rename the folder."
   }
