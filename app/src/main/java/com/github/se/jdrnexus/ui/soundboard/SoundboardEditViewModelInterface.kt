@@ -54,7 +54,7 @@ enum class SoundboardNameError {
  *   valid board name and nonblank playlist, track, and effect names.
  * @property status The operation in progress or the completion of save or discard.
  * @property error Feedback for a failed import or save. On failure, status returns to idle and the
- *   draft remains available.
+ *   draft remains available. Null when there is no import or save error.
  */
 data class SoundboardEditUiState(
     val draft: Soundboard? = null,
@@ -79,6 +79,7 @@ interface SoundboardEditViewModelInterface {
     const val MAX_NAME_LENGTH = 80
   }
 
+  /** State for the editor to render. The ViewModel sets and clears errors. */
   val uiState: StateFlow<SoundboardEditUiState>
 
   /**
@@ -147,7 +148,4 @@ interface SoundboardEditViewModelInterface {
    * reported as [SoundboardError.SOUNDBOARD_NOT_FOUND].
    */
   fun loadSoundboard(soundboardId: String?)
-
-  /** Clears [SoundboardEditUiState.error] after the screen has displayed it. */
-  fun clearError()
 }
