@@ -21,11 +21,11 @@ All items (text files, character sheets, folders, group roots) are stored in a s
 | `id` | `String` | Document id. Never `""`. |
 | `ownerId` | `String` | The user who owns the document. Only the owner can delete it. |
 | `name` | `String` | Display name. |
-| `type` | `DocumentType` | `FOLDER`, `TEXT`, `CHARACTER`, `GROUP_ROOT`. |
+| `type` | `DocumentType` | `FOLDER`, `TEXT`, `CHARACTER`, `GROUP_ROOT`, `IMAGE` (1.9). |
 | `personalParentId` | `String` | Parent container in the owner's personal space. `""` = personal root. |
 | `placements` | `Map<groupId, Placement>` | **Source of truth** for group placements: at most one entry per group. |
 | `sharedGroupsIds` | `List<String>` | **Derived** from `placements.keys`. Used only for indexing and security rules. |
-| `content` | `String` | Empty for containers. |
+| `content` | `String` | Empty for containers. For an `IMAGE`, the Storage path of its picture (1.9). |
 
 ```
 Placement = { folderId: String, isHidden: Boolean }
@@ -108,9 +108,28 @@ The repository does not authenticate: the caller passes the user id (like `addUs
 - **Only the owner reads and writes it for now.** The `read` rule must be widened when other users need to see a profile (e.g. the members of a shared group).
 - A user who never saved a profile has no document: `ProfileRepository.getProfile` returns empty fields, and the profile ViewModel shows the sign-up username (Firebase Auth display name) until the first save.
 - `updateProfile` writes `username` and `bio` with a merge: it creates the document on the first save and never overwrites `pictureUrl`.
-- `uploadProfilePicture` needs a saved profile. It shrinks the picked image to a JPEG of at most 256 px, stores it in Firebase Storage at `profilePictures/{userId}.jpg` (a new upload replaces the old file) and saves its download URL in `pictureUrl`. The Storage rules only let the owner read or write that file, as a JPEG under 1 MB; every other path is denied.
+- `uploadProfilePicture` needs a saved profile. It shrinks the picked image to a JPEG of at most 256 px, stores it in Firebase Storage at `profilePictures/{userId}.jpg` (a new upload replaces the old file) and saves its download URL in `pictureUrl`. The Storage rules only let the owner read or write that file, as a JPEG under 1 MB; every other path is denied, except the pictures of images (1.9).
 - The rules refuse any other field, a username that is not trimmed or outside 3 to 30 characters, and a bio above 300 characters. The profile ViewModel checks the same limits. Deletion is refused (it comes with account deletion, section 9).
 - **Stats are not stored.** `getProfileStats` counts on the server (`count()`), filtering on the caller as the rules require: groups with `participantIds` containing the user (joined) and also `gameMasterId` equal to the user (created), and the user's own `TEXT` and `CHARACTER` documents (folders and group roots are not files). These filters need no composite index.
+
+### 1.9 Images (`IMAGE` documents and `images/{ownerId}/{fileId}` in Storage)
+
+An image is two parts:
+
+1. the picture, in Firebase Storage at `images/{ownerId}/{fileId}`;
+2. a normal `JDRFile` in `documents/{fileId}` with `type == IMAGE` and `content == "images/{ownerId}/{fileId}"` (the path, never the picture).
+
+Because the second part is a normal document, placements, hiding, sharing and unsharing (sections 4 to 7) work on images unchanged.
+
+- **The path is locked by the Firestore rules.** On create, an `IMAGE` document's `content` must be `'images/' + uid() + '/' + docId`. On update, its `content` never changes; renaming stays allowed (`isOwnEdit`). The stored path can therefore be trusted by the app and by the Storage rules.
+- **Storage rules for `images/{ownerId}/{fileId}`:**
+    - create: only the user `ownerId`, as `image/jpeg`, `image/png` or `image/webp`, at most 10 MiB (10,485,760 bytes, `<=`). No overwrite (`resource == null`) and no metadata update (no `update` rule);
+    - read: the owner, or a signed-in user when `documents/{fileId}` exists, its `ownerId` equals the `ownerId` of the path, and its `sharedGroupsIds` contains one of the reader's `users/{uid}.groupIds` (1.6). A hidden placement still counts: hidden is a display preference, not a security boundary (5). A user without a `users` document is refused;
+    - delete: only the owner.
+- **Two documents per check.** The read rule reads `documents/{fileId}` and `users/{uid}` with `firestore.get` / `firestore.exists`. Storage rules may read at most two Firestore documents per evaluation (Firebase Blog, "Announcing cross-service Security Rules", 2022-09-22); repeated calls on the same document do not count again.
+- **Download URLs stay valid.** The rules check who asks for a download URL. After that, anyone holding the URL can load the picture, also after leaving the group, like profile pictures (1.8). Accepted: pictures are not sensitive.
+- **First deploy:** deploying these Storage rules asks once to let Storage read Firestore (cross-service rules).
+- **Emulator:** the Storage emulator reads Firestore under the project given to `firebase emulators:exec --project` (`demo-jdrnexus`), not the project of `google-services.json` that the app writes to. The instrumented Storage rules tests (`storageRules/`) therefore write the documents the rules read directly there, with `StorageEmulatorTestUtils`.
 
 ---
 
@@ -361,6 +380,8 @@ A user who left a group can join it again with the same code as long as the GM h
 | Profile username trimmed, 3 to 30 characters; bio at most 300 | yes | | view model | emulator |
 | Profile update never overwrites `pictureUrl` | | merge of `username` and `bio` only | | emulator |
 | Only the owner reads and writes their picture, a JPEG under 1 MB | yes (Storage rules) | | | Storage emulator (instrumented) |
+| An `IMAGE` document points to its own picture, path never changes | yes | | | rules tests |
+| Image picture: owner creates (JPEG/PNG/WebP, at most 10 MiB, no overwrite) and deletes; members of a sharing group read | yes (Storage rules) | | | Storage emulator (instrumented) |
 | Picture shrunk to 256 px, replaced on upload, needs a saved profile | | yes | | Storage emulator (instrumented) |
 | Dice rolls and activities: added by a member under their own `userId`, server timestamp, never edited | yes | | | rules tests |
 | Game session (`gm_data`) and lore (`gm_lore`): members read (lore only if shared), the GM writes | yes | | | rules tests |
@@ -385,7 +406,10 @@ Rules and batch behavior must be tested with the **Firebase emulator** (member /
 - `deleteGroup` does not delete the group's invitation: the code stays known but points to nothing. Under the security rules, a join with that code is refused (`PERMISSION_DENIED`) and reported as `NETWORK`, not `GROUP_NOT_FOUND`. `deleteGroup` could delete the invitation in its own batch (the delete rule allows it, since the group still exists before the batch), so the code really stops existing.
 - `regenerateInvitation` checks that the new code is free with a plain read, not atomically (the collision probability is negligible). Two simultaneous regenerations can leave one valid invitation that the group no longer knows.
 - A refused write (`PERMISSION_DENIED`) during an invitation operation is mapped to a generic error (`NETWORK` for a join, `NOT_GAME_MASTER` for create and regenerate), because the real cause is not known to the client.
+- Deleting an image document, or a folder holding images, with `WorkspaceRepository.deleteFile` removes only the documents: the pictures stay in Storage, readable by their owner only (1.9).
 - Sign-up accepts any non-blank username, while a profile requires 3 to 30 characters (1.8): a user with a shorter sign-up name must change it before saving their profile.
 ---
 ---
 *Note: The structure and technical constraints detailed in this document were formulated with the help of Claude Sonnet 5.5.*
+
+*Section 1.9 (images) was written with the help of Claude Opus 5.5.*

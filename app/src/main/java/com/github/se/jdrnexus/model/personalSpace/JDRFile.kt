@@ -84,6 +84,10 @@ enum class DocumentType {
   TEXT,
   CHARACTER,
   GROUP_ROOT,
+  /**
+   * A picture. The file's [JDRFile.content] is the path of the picture in Firebase Storage,
+   * `images/<ownerId>/<fileId>`, never the picture itself (DATA_ARCHITECTURE.md, section 1.9).
+   */
   IMAGE;
 
   /** Whether files of this type can hold other files. */

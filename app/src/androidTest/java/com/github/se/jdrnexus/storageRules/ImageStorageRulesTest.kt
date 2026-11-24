@@ -113,16 +113,15 @@ class ImageStorageRulesTest {
   @Test
   fun ownerUploadsJpegPngAndWebpUpTo10MiB() = runBlocking {
     val owner = storageAs(OWNER_ID)
-    val maxSize = ByteArray(MAX_BYTES)
+    val typeByFile =
+        mapOf("$run-jpeg" to "image/jpeg", "$run-png" to "image/png", "$run-webp" to "image/webp")
 
-    picture(owner, "$run-jpeg").upload(contentType = "image/jpeg")
-    picture(owner, "$run-png").upload(contentType = "image/png")
-    picture(owner, "$run-webp").upload(contentType = "image/webp")
-    picture(owner, "$run-max").upload(bytes = maxSize)
+    typeByFile.forEach { (file, type) -> picture(owner, file).upload(contentType = type) }
+    picture(owner, "$run-max").upload(bytes = ByteArray(MAX_BYTES))
 
-    assertArrayEquals(SMALL_PICTURE, picture(owner, "$run-jpeg").bytes())
-    assertArrayEquals(SMALL_PICTURE, picture(owner, "$run-png").bytes())
-    assertArrayEquals(SMALL_PICTURE, picture(owner, "$run-webp").bytes())
+    typeByFile.forEach { (file, type) ->
+      assertArrayEquals(type, SMALL_PICTURE, picture(owner, file).bytes())
+    }
     assertEquals(MAX_BYTES, picture(owner, "$run-max").bytes().size)
   }
 

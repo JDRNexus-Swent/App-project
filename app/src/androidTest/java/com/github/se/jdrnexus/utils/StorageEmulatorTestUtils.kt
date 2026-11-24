@@ -173,6 +173,8 @@ object StorageEmulatorTestUtils {
         val connection = URL(url).openConnection() as HttpURLConnection
         try {
           connection.requestMethod = "POST"
+          connection.connectTimeout = TIMEOUT_MS.toInt()
+          connection.readTimeout = TIMEOUT_MS.toInt()
           connection.setRequestProperty("Authorization", "Bearer owner")
           connection.setRequestProperty("Content-Type", "application/json")
           connection.doOutput = true

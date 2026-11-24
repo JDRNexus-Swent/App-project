@@ -41,6 +41,9 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class EditFileViewModelTest {
+  // An image file's content is the Storage path of its picture.
+  private val imagePath = "images/owner/image"
+
   private val characterJson =
       """{"version":1,"type":"character","character":{"name":"Jean-claude","stats":[{"statID":"strength","name":"Strength","value":16},{"statID":"dexterity","name":"Dexterity","value":12}],"actions":[{"actionID":"sword_attack","name":"Sword Attack","description":"Attack"},{"actionID":"heavy_strike","name":"Heavy Strike","description":"Strike"}],"hp":{"current":18,"max":24}}}"""
   private val loreJson =
@@ -339,6 +342,10 @@ class EditFileViewModelTest {
 
     val folder = loadedViewModel(JDRFile(id = "folder", type = DocumentType.FOLDER, content = ""))
     assertEquals(EditFileViewModel.FOLDER_ERROR, folder.uiState.value.error)
+
+    val image =
+        loadedViewModel(JDRFile(id = "image", type = DocumentType.IMAGE, content = imagePath))
+    assertEquals(EditFileViewModel.FOLDER_ERROR, image.uiState.value.error)
 
     val malformed = loadedViewModel(JDRFile(id = "broken", type = DocumentType.TEXT, content = "{"))
     assertTrue(malformed.uiState.value.error?.isNotBlank() == true)
@@ -1057,6 +1064,7 @@ class EditFileViewModelTest {
             JDRFile(id = "character", type = DocumentType.CHARACTER, content = loreJson),
             JDRFile(id = "lore", type = DocumentType.TEXT, content = characterJson),
             JDRFile(id = "folder", type = DocumentType.FOLDER, content = ""),
+            JDRFile(id = "image", type = DocumentType.IMAGE, content = imagePath),
         )
     val repositories = files.map { FakeRepository(it) }
     val viewModels = files.zip(repositories).map { (file, repo) -> loadedViewModel(file, repo) }
@@ -1069,25 +1077,11 @@ class EditFileViewModelTest {
             EditFileViewModel.CHARACTER_REQUIRED_ERROR,
             EditFileViewModel.LORE_REQUIRED_ERROR,
             EditFileViewModel.FOLDER_ERROR,
+            EditFileViewModel.FOLDER_ERROR,
         ),
         viewModels.map { it.uiState.value.error },
     )
     assertEquals(emptyList<JDRFile>(), repositories.flatMap { it.updatedFiles })
-  }
-
-  @Test
-  fun imageFileIsRefusedByTheEditorAndNeverSaved() = runTest {
-    val image = JDRFile(id = "image", type = DocumentType.IMAGE, content = "images/owner/image")
-    val repository = FakeRepository(image)
-    val viewModel = loadedViewModel(image, repository)
-    val loadError = viewModel.uiState.value.error
-
-    viewModel.saveJDRfile()
-    runCurrent()
-
-    assertEquals(EditFileViewModel.FOLDER_ERROR, loadError)
-    assertEquals(EditFileViewModel.FOLDER_ERROR, viewModel.uiState.value.error)
-    assertEquals(emptyList<JDRFile>(), repository.updatedFiles)
   }
 
   @Test
