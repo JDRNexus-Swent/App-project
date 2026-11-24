@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Sonnet 5.5
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.personalSpace
 
 import android.util.Log
@@ -82,14 +83,9 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     batch.commit().await()
   }
 
+  // toObject is null for a missing document.
   override suspend fun getFile(fileId: String): Result<JDRFile?> = safeFirestoreRequest {
-    val documentSnapshot = collection.document(fileId).get().await()
-
-    if (!documentSnapshot.exists()) {
-      throw Exception("Document not found in Firestore")
-    }
-
-    documentSnapshot.toObject(JDRFile::class.java)
+    collection.document(fileId).get().await().toObject(JDRFile::class.java)
   }
 
   override suspend fun removeItemFromGroup(

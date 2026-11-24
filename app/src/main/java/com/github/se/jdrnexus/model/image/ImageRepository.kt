@@ -14,10 +14,11 @@ interface ImageRepository {
 
   /**
    * Uploads the picture at [image] (a JPEG, PNG or WebP of at most 10 MiB) and creates its image
-   * file from [file]. Fails with [ImageError.NETWORK] after 30 seconds without progress. On any
-   * failure the uploaded picture is deleted again.
+   * file from [file]. Fails with [ImageError.NETWORK] after 60 seconds without progress. On any
+   * failure the uploaded picture is deleted again; if that delete gets no answer within 10 seconds,
+   * the picture stays in Storage, readable only by its owner.
    *
-   * @param onProgress receives the fraction uploaded, from 0 to 1, on the main thread.
+   * @param onProgress receives the fraction uploaded, from 0 to 1.
    */
   suspend fun uploadImage(
       file: JDRFile,

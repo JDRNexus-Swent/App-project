@@ -12,6 +12,7 @@ import androidx.test.filters.SdkSuppress
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryFirestore
+import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.MAX_IMAGE_BYTES
 import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.TIMEOUT_MS
 import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.awaitWithTimeout
 import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.firestoreAs
@@ -43,7 +44,7 @@ class ImageRepositoryFirebaseTest {
 
   private val resolver = ApplicationProvider.getApplicationContext<Context>().contentResolver
   private val run = UUID.randomUUID().toString()
-  private val ownerId = "$run-owner"
+  private val ownerId = "image-repo-owner"
   private val fileId = "$run-image"
   private val owner = repositoryAs(ownerId)
   private val picked = mutableListOf<Uri>()
@@ -91,7 +92,8 @@ class ImageRepositoryFirebaseTest {
 
   private fun storedPicture() = storageAs(ownerId).reference.child("images/$ownerId/$fileId")
 
-  private suspend fun storedBytes() = storedPicture().getBytes(MAX_BYTES).awaitWithTimeout()
+  private suspend fun storedBytes() =
+      storedPicture().getBytes(MAX_IMAGE_BYTES.toLong()).awaitWithTimeout()
 
   private suspend fun storedRecord(): JDRFile? =
       firestoreAs(ownerId)
@@ -164,7 +166,7 @@ class ImageRepositoryFirebaseTest {
 
   @Test
   fun refusedUploadsLeaveNothingBehind() = runBlocking {
-    val tooLarge = pick(ByteArray(MAX_BYTES.toInt() + 1), "image/jpeg", "jpg")
+    val tooLarge = pick(ByteArray(MAX_IMAGE_BYTES + 1), "image/jpeg", "jpg")
     val gif = pick("GIF89a".toByteArray(), "image/gif", "gif")
 
     assertRefused("too large", ImageError.TOO_LARGE, upload(uri = tooLarge))
@@ -178,7 +180,7 @@ class ImageRepositoryFirebaseTest {
   @Test
   fun anotherUserCanNeitherReadNorDeleteTheImage() = runBlocking {
     val created = upload().getOrThrow()
-    val other = repositoryAs("$run-other")
+    val other = repositoryAs("image-repo-other")
 
     assertEquals(ImageError.PERMISSION_DENIED, errorOf(timed { other.getDownloadUrl(created) }))
     assertEquals(ImageError.PERMISSION_DENIED, errorOf(timed { other.deleteImage(fileId) }))
@@ -195,9 +197,5 @@ class ImageRepositoryFirebaseTest {
     assertEquals(ImageError.NOT_AN_IMAGE, errorOf(timed { owner.getDownloadUrl(text) }))
     assertEquals(ImageError.NOT_AN_IMAGE, errorOf(timed { owner.deleteImage(fileId) }))
     assertEquals(text, storedRecord())
-  }
-
-  private companion object {
-    const val MAX_BYTES = 10L * 1024 * 1024
   }
 }
