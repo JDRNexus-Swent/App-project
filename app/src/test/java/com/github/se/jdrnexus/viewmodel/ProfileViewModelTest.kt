@@ -127,8 +127,13 @@ class ProfileViewModelTest {
   @Test
   fun exposesErrorWhenStatsLoadFails() = runTest {
     repository.statsResult = Result.failure(Exception("Permission denied"))
+    repository.gate = CompletableDeferred()
 
     val vm = viewModel()
+    runCurrent()
+    assertTrue(vm.uiState.value.isLoading)
+
+    repository.gate!!.complete(Unit)
     runCurrent()
 
     assertEquals("Permission denied", vm.uiState.value.errorMessage)
