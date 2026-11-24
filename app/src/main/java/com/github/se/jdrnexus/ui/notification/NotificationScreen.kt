@@ -44,6 +44,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -58,6 +59,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
@@ -364,10 +366,12 @@ private fun NotificationRow(
       if (unread) {
         Text(
             text = stringResource(R.string.notifications_mark_as_read),
+            // The text alone is too small to tap: without the minimum touch size, a tap just
+            // above or below it lands on the row and opens the notification.
             modifier =
-                Modifier.clickable(onClick = onMarkAsRead)
+                Modifier.clickable(role = Role.Button, onClick = onMarkAsRead)
                     .testTag(C.Tag.notificationMarkAsRead(notification.id))
-                    .padding(top = ROW_TEXT_SPACING),
+                    .minimumInteractiveComponentSize(),
             style = MaterialTheme.typography.labelMedium,
             color = colors.primary,
         )

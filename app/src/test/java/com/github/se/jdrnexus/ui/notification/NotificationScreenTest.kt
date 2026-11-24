@@ -5,6 +5,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.notification.Notification
 import com.github.se.jdrnexus.resources.C
@@ -151,6 +153,15 @@ class NotificationScreenTest {
     assertEquals(emptyList<Notification>(), opened)
   }
 
+  @Test
+  fun markAsReadLinkHasAFullTouchTarget() {
+    setScreen(FakeNotificationViewModel(loadedNotifications(unread)))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.notificationMarkAsRead(UNREAD_ID), useUnmergedTree = true)
+        .assertHeightIsAtLeast(MIN_TOUCH_TARGET)
+  }
+
   // ---------- Mark all as read ----------
 
   @Test
@@ -273,6 +284,9 @@ class NotificationScreenTest {
 
     /** Longest wait for the snackbar, which appears and resumes asynchronously. */
     const val TIMEOUT_MS = 5_000L
+
+    /** Smallest touch target Android recommends for anything tappable. */
+    val MIN_TOUCH_TARGET = 48.dp
 
     val unread = testNotification(UNREAD_ID)
     val read = testNotification(READ_ID, isRead = true)
