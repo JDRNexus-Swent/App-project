@@ -323,14 +323,16 @@ fun FolderItem(
             imageVector =
                 when (folder.type) {
                   DocumentType.FOLDER,
-                  DocumentType.GROUP_ROOT -> Icons.Filled.Folder
+                  DocumentType.GROUP_ROOT,
+                  DocumentType.IMAGE -> Icons.Filled.Folder
                   DocumentType.CHARACTER -> Icons.Filled.Person
                   DocumentType.TEXT -> Icons.AutoMirrored.Filled.MenuBook
                 },
             contentDescription =
                 when (folder.type) {
                   DocumentType.FOLDER,
-                  DocumentType.GROUP_ROOT -> "Folder"
+                  DocumentType.GROUP_ROOT,
+                  DocumentType.IMAGE -> "Folder"
                   DocumentType.CHARACTER -> "Character"
                   DocumentType.TEXT -> "Text document"
                 },
@@ -343,7 +345,8 @@ fun FolderItem(
             text =
                 when (folder.type) {
                   DocumentType.FOLDER,
-                  DocumentType.GROUP_ROOT -> "FOLDER"
+                  DocumentType.GROUP_ROOT,
+                  DocumentType.IMAGE -> "FOLDER"
                   DocumentType.CHARACTER -> "CHARACTER SHEET"
                   DocumentType.TEXT -> "TEXT DOCUMENT"
                 },

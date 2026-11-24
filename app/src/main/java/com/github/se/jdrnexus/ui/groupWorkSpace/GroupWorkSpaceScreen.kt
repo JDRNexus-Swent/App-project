@@ -404,7 +404,8 @@ fun GroupWorkSpaceScreen(
                               DocumentType.FOLDER -> Icons.Default.Folder
                               DocumentType.TEXT -> Icons.Default.Description
                               DocumentType.CHARACTER -> Icons.Default.People
-                              DocumentType.GROUP_ROOT -> Icons.Default.Folder
+                              DocumentType.GROUP_ROOT,
+                              DocumentType.IMAGE -> Icons.Default.Folder
                             },
                         contentDescription = null,
                         tint = color().primary,
@@ -1295,4 +1296,5 @@ private val DocumentType.labelResource: Int
         DocumentType.TEXT -> R.string.workspace_text_type
         DocumentType.CHARACTER -> R.string.workspace_character_type
         DocumentType.GROUP_ROOT -> R.string.workspace_group_root_type
+        DocumentType.IMAGE -> R.string.workspace_folder_type
       }

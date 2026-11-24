@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Sonnet 5.5
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.personalSpace
 
 import com.google.firebase.firestore.PropertyName
@@ -82,7 +83,8 @@ enum class DocumentType {
   FOLDER,
   TEXT,
   CHARACTER,
-  GROUP_ROOT;
+  GROUP_ROOT,
+  IMAGE;
 
   /** Whether files of this type can hold other files. */
   fun isContainer(): Boolean = this == FOLDER || this == GROUP_ROOT

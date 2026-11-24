@@ -71,6 +71,7 @@ class EditFileViewModel(
             when (file.type) {
               DocumentType.CHARACTER -> JDRFileJsonCodec.deserializeCharacter(file.content) to null
               DocumentType.TEXT -> null to JDRFileJsonCodec.deserializeLore(file.content)
+              DocumentType.IMAGE -> null to null
               DocumentType.FOLDER,
               DocumentType.GROUP_ROOT -> throw IllegalArgumentException(FOLDER_ERROR)
             }
@@ -367,6 +368,7 @@ class EditFileViewModel(
           when (file.type) {
             DocumentType.CHARACTER -> JDRFileJsonCodec.serializeCharacter(state.character)
             DocumentType.TEXT -> JDRFileJsonCodec.serializeLore(state.lore)
+            DocumentType.IMAGE -> file.content
             DocumentType.FOLDER,
             DocumentType.GROUP_ROOT -> return reportError(FOLDER_ERROR)
           }
@@ -490,6 +492,7 @@ class EditFileViewModel(
     return when (file.type) {
       DocumentType.CHARACTER -> if (state.character == null) CHARACTER_REQUIRED_ERROR else null
       DocumentType.TEXT -> if (state.lore == null) LORE_REQUIRED_ERROR else null
+      DocumentType.IMAGE -> null
       DocumentType.FOLDER,
       DocumentType.GROUP_ROOT -> FOLDER_ERROR
     }

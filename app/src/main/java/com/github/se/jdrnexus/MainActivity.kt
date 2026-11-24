@@ -184,7 +184,8 @@ fun JDRNexusApp(
       DocumentType.CHARACTER -> navigation.navigate(AllRoutes.EditChar.name)
       DocumentType.TEXT -> navigation.navigate(AllRoutes.EditLore.name)
       DocumentType.FOLDER,
-      DocumentType.GROUP_ROOT -> Unit
+      DocumentType.GROUP_ROOT,
+      DocumentType.IMAGE -> Unit
     }
   }
   val onGameTabSelected: (String) -> Unit = { tab ->

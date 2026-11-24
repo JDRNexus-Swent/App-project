@@ -1076,6 +1076,21 @@ class EditFileViewModelTest {
   }
 
   @Test
+  fun imageFileIsRefusedByTheEditorAndNeverSaved() = runTest {
+    val image = JDRFile(id = "image", type = DocumentType.IMAGE, content = "images/owner/image")
+    val repository = FakeRepository(image)
+    val viewModel = loadedViewModel(image, repository)
+    val loadError = viewModel.uiState.value.error
+
+    viewModel.saveJDRfile()
+    runCurrent()
+
+    assertEquals(EditFileViewModel.FOLDER_ERROR, loadError)
+    assertEquals(EditFileViewModel.FOLDER_ERROR, viewModel.uiState.value.error)
+    assertEquals(emptyList<JDRFile>(), repository.updatedFiles)
+  }
+
+  @Test
   fun saveIgnoresSecondTapWhileSaving() = runTest {
     val file = JDRFile(id = "character", type = DocumentType.CHARACTER, content = characterJson)
     val saveGate = CompletableDeferred<Unit>()
