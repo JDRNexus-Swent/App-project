@@ -523,6 +523,26 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun campaignsHelpButtonOpensTheHelpWhichCanBeClosedAndReopened() {
+    showApp(groupRepository = groupRepository("user-1"))
+    signInAndOpenCampaigns()
+
+    waitForTag(C.Tag.help_button)
+    composeTestRule.onNodeWithTag(C.Tag.help_button).performClick()
+    waitForTag(C.Tag.help_sheet)
+
+    composeTestRule.onNodeWithTag(C.Tag.help_next).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.help_next).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.help_done).performClick()
+    composeTestRule.waitUntil(5_000) {
+      composeTestRule.onAllNodesWithTag(C.Tag.help_sheet).fetchSemanticsNodes().isEmpty()
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.help_button).performClick()
+    waitForTag(C.Tag.help_sheet)
+  }
+
+  @Test
   fun systemBackFromWorkspaceReturnsToCampaigns() {
     val groupRepository = groupRepository("user-1")
     showApp(groupRepository = groupRepository)

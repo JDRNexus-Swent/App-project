@@ -3,6 +3,10 @@
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
+import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
+import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
+import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
+import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.FileEdit
@@ -1701,6 +1705,218 @@ class GroupWorkSpaceViewModelTest {
     return repository.files.getValue("new-folder-1")
   }
 
+  // Renaming a character from the workspace renames it in its sheet too, keeping the rest of it.
+  @Test
+  fun renamingCharacterUpdatesTheNameInItsSheet() = runTest {
+    val character =
+        groupFile(
+            "character",
+            ownerId = OWNER_ID,
+            type = DocumentType.CHARACTER,
+            name = "Aria",
+            content = CHARACTER_SHEET_JSON,
+        )
+    val repository = FakeWorkspaceRepository(listOf(character))
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    player.editItem(character.copy(name = "  Brann  "))
+    runCurrent()
+
+    val stored = repository.files.getValue(character.id)
+    assertEquals("", player.uiState.value.errorMessage)
+    assertEquals("Brann", stored.name)
+    assertEquals(
+        CharacterFile(
+            "Brann",
+            listOf(CharacterStat("strength", "Strength", 16.0)),
+            listOf(CharacterAction("slash", "Slash", "Swing the sword")),
+            CharacterHealthPoints(25, 40),
+        ),
+        JDRFileJsonCodec.deserializeCharacter(stored.content),
+    )
+  }
+
+  // The new name is stored, so a workspace opened later shows it in both the file and the sheet.
+  @Test
+  fun renamedCharacterKeepsItsNameAfterReopeningTheWorkspace() = runTest {
+    val character =
+        groupFile(
+            "character",
+            ownerId = OWNER_ID,
+            type = DocumentType.CHARACTER,
+            name = "New character",
+            content = JDRFileJsonCodec.serializeCharacter(null),
+        )
+    val repository = FakeWorkspaceRepository(listOf(character))
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+    player.editItem(character.copy(name = "Brann"))
+    runCurrent()
+
+    val reopened = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    val reloaded = reopened.uiState.value.items.single()
+    assertEquals("Brann", reloaded.name)
+    assertEquals("Brann", JDRFileJsonCodec.deserializeCharacter(reloaded.content).name)
+  }
+
+  // A character whose sheet cannot be read is not renamed, so file and sheet never disagree.
+  @Test
+  fun renamingCharacterWithUnreadableSheetFailsWithoutWriting() = runTest {
+    val character =
+        groupFile(
+            "character",
+            ownerId = OWNER_ID,
+            type = DocumentType.CHARACTER,
+            name = "Aria",
+            content = "not json",
+        )
+    val repository = FakeWorkspaceRepository(listOf(character))
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    player.editItem(character.copy(name = "Brann"))
+    runCurrent()
+
+    assertEquals(
+        GroupWorkspaceViewModel.CHARACTER_SHEET_UNREADABLE,
+        player.uiState.value.errorMessage,
+    )
+    assertEquals(character, repository.files.getValue(character.id))
+  }
+
+  // Folders and text documents are renamed as before: their content is left untouched.
+  @Test
+  fun renamingFolderOrTextDocumentKeepsItsContentAsIs() = runTest {
+    val folder = groupFolder("folder", ownerId = OWNER_ID)
+    val text = groupFile("text", ownerId = OWNER_ID, content = "Some notes")
+    val repository = FakeWorkspaceRepository(listOf(folder, text))
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    player.editItem(folder.copy(name = "Maps"))
+    runCurrent()
+    player.editItem(text.copy(name = "Journal"))
+    runCurrent()
+
+    assertEquals("", player.uiState.value.errorMessage)
+    assertEquals(folder.copy(name = "Maps"), repository.files.getValue(folder.id))
+    assertEquals(text.copy(name = "Journal"), repository.files.getValue(text.id))
+  }
+
+  // A renamed folder shows its new name in the folder that holds it straight away.
+  @Test
+  fun renamedFolderAppearsWithItsNewNameInItsParent() = runTest {
+    val folder = groupFolder("maps", ownerId = OWNER_ID).copy(name = "Maps")
+    val repository = FakeWorkspaceRepository(listOf(folder))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    gm.editItem(folder.copy(name = "  World maps  "))
+    runCurrent()
+
+    assertEquals("", gm.uiState.value.errorMessage)
+    assertEquals(listOf("World maps"), gm.uiState.value.items.map { it.name })
+  }
+
+  // Renaming a folder changes only its name: placement, visibility, content and children stay.
+  @Test
+  fun renamingFolderKeepsItsPlacementAndContentsUnchanged() = runTest {
+    val folder = groupFolder("maps", ownerId = OWNER_ID, hidden = true).copy(name = "Maps")
+    val child = groupFile("atlas", parentId = folder.id)
+    val nested = groupFolder("regions", parentId = folder.id)
+    val nestedChild = groupFile("north", parentId = nested.id)
+    val repository = FakeWorkspaceRepository(listOf(folder, child, nested, nestedChild))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    gm.editItem(folder.copy(name = "World maps"))
+    runCurrent()
+    gm.openFolder(folder.id)
+    runCurrent()
+
+    assertEquals(folder.copy(name = "World maps"), repository.files.getValue(folder.id))
+    assertEquals(child, repository.files.getValue(child.id))
+    assertEquals(nested, repository.files.getValue(nested.id))
+    assertEquals(nestedChild, repository.files.getValue(nestedChild.id))
+    assertEquals(setOf(child.id, nested.id), gm.uiState.value.items.map { it.id }.toSet())
+    assertEquals("World maps", gm.uiState.value.currentFolderName)
+  }
+
+  // The new name is stored, so a workspace opened later shows it on the card and in the header.
+  @Test
+  fun renamedFolderKeepsItsNameAfterReopeningTheWorkspace() = runTest {
+    val folder = groupFolder("maps", ownerId = OWNER_ID).copy(name = "Maps")
+    val repository = FakeWorkspaceRepository(listOf(folder))
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+    player.editItem(folder.copy(name = "World maps"))
+    runCurrent()
+
+    val reopened = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+    val cardName = reopened.uiState.value.items.single().name
+    reopened.openFolder(folder.id)
+    runCurrent()
+
+    assertEquals("World maps", cardName)
+    assertEquals("World maps", reopened.uiState.value.currentFolderName)
+  }
+
+  // The header of the open folder follows a rename made from another session.
+  @Test
+  fun openFolderHeaderFollowsARenameMadeElsewhere() = runTest {
+    val folder = groupFolder("maps", ownerId = OWNER_ID).copy(name = "Maps")
+    val repository = FakeWorkspaceRepository(listOf(folder))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+    gm.openFolder(folder.id)
+    runCurrent()
+    assertEquals("Maps", gm.uiState.value.currentFolderName)
+
+    repository.updateFile(FileEdit(folder.id, "World maps", ""))
+    runCurrent()
+
+    assertEquals("World maps", gm.uiState.value.currentFolderName)
+    assertEquals(folder.id, gm.uiState.value.currentFolderId)
+  }
+
+  // Only a folder's owner may rename it, whatever their role.
+  @Test
+  fun onlyTheOwnerCanRenameAFolder() = runTest {
+    val gmFolder = groupFolder("gm-folder", ownerId = OWNER_ID)
+    val playerFolder = groupFolder("player-folder", ownerId = OTHER_USER_ID)
+    val repository = FakeWorkspaceRepository(listOf(gmFolder, playerFolder))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    val player =
+        viewModel(
+            repository,
+            GroupWorkspaceRole.PLAYER,
+            authRepository = FakeAuthRepository(AuthUser(OTHER_USER_ID, null, null)),
+            groupRepository =
+                FakeGroupRepository(
+                    CampaignGroup(
+                        id = GROUP_ID,
+                        gameMasterId = OWNER_ID,
+                        participantIds = listOf(OTHER_USER_ID),
+                    )
+                ),
+        )
+    runCurrent()
+
+    gm.editItem(playerFolder.copy(name = "Taken"))
+    runCurrent()
+    player.editItem(gmFolder.copy(name = "Taken"))
+    runCurrent()
+
+    assertEquals("You cannot edit an item that you do not own.", gm.uiState.value.errorMessage)
+    assertEquals("You cannot edit an item that you do not own.", player.uiState.value.errorMessage)
+    assertEquals(gmFolder, repository.files.getValue(gmFolder.id))
+    assertEquals(playerFolder, repository.files.getValue(playerFolder.id))
+  }
+
   private fun viewModel(
       repository: FakeWorkspaceRepository,
       role: GroupWorkspaceRole,
@@ -1999,6 +2215,8 @@ class GroupWorkSpaceViewModelTest {
     const val OTHER_GROUP_ID = "group-8"
     const val OWNER_ID = "authenticated-user-42"
     const val OTHER_USER_ID = "another-user"
+    const val CHARACTER_SHEET_JSON =
+        """{"version":1,"type":"character","character":{"name":"Aria","stats":[{"statID":"strength","name":"Strength","value":16}],"actions":[{"actionID":"slash","name":"Slash","description":"Swing the sword"}],"hp":{"current":25,"max":40}}}"""
   }
 }
 

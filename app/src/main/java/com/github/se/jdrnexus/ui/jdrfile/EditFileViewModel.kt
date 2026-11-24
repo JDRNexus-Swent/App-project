@@ -1,5 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.jdrfile
 
 import androidx.lifecycle.ViewModel
@@ -10,6 +11,7 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
 import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
+import com.github.se.jdrnexus.model.filerepresentation.DEFAULT_CHARACTER_NAME
 import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
@@ -374,7 +376,14 @@ class EditFileViewModel(
           return reportError(e.message?.takeIf(String::isNotBlank) ?: SAVE_ERROR)
         }
 
-    val updatedFile = file.copy(content = content)
+    // The file name mirrors the sheet's name, so lists and search show what the sheet shows.
+    val name =
+        if (file.type == DocumentType.CHARACTER) {
+          state.character?.name?.trim()?.ifEmpty { null } ?: DEFAULT_CHARACTER_NAME
+        } else {
+          file.name
+        }
+    val updatedFile = file.copy(name = name, content = content)
     _uiState.update { it.copy(isSaving = true, isSaved = false, error = null) }
     viewModelScope.launch {
       try {

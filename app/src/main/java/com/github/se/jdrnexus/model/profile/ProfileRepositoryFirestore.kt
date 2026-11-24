@@ -9,16 +9,22 @@ import com.google.firebase.firestore.AggregateSource
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageMetadata
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.tasks.await
 
 /**
  * Stores profiles in [PROFILES_COLLECTION_PATH], one document per user with the user id as document
- * id (DATA_ARCHITECTURE.md, section 1.8). Stats are counted on the server from the existing groups
- * and documents, never stored.
+ * id, and their pictures in Storage under [PICTURES_PATH] (DATA_ARCHITECTURE.md, section 1.8).
+ * Stats are counted on the server from the existing groups and documents, never stored.
  */
-class ProfileRepositoryFirestore(private val firestore: FirebaseFirestore) : ProfileRepository {
+class ProfileRepositoryFirestore(
+    private val firestore: FirebaseFirestore,
+    private val storage: FirebaseStorage,
+    private val compressor: ProfilePictureCompressor,
+) : ProfileRepository {
 
   private val profiles = firestore.collection(PROFILES_COLLECTION_PATH)
 
@@ -45,9 +51,19 @@ class ProfileRepositoryFirestore(private val firestore: FirebaseFirestore) : Pro
         Unit
       }
 
-  // Needs Firebase Storage, which comes in a follow-up PR.
   override suspend fun uploadProfilePicture(userId: String, image: Uri): Result<String> =
-      Result.failure(UnsupportedOperationException(UPLOAD_NOT_AVAILABLE_MESSAGE))
+      safeFirestoreRequest {
+        requireUserId(userId)
+        val profile = profiles.document(userId)
+        // The rules require a username in every profile, so a picture needs a saved profile.
+        require(profile.get().await().exists()) { NO_PROFILE_MESSAGE }
+        // Fixed path: a new picture replaces the old one, so each user has at most one file.
+        val picture = storage.reference.child("$PICTURES_PATH/$userId.jpg")
+        picture.putBytes(compressor.compress(image), JPEG_METADATA).await()
+        val url = picture.downloadUrl.await().toString()
+        profile.update(PICTURE_URL_FIELD, url).await()
+        url
+      }
 
   override suspend fun getProfileStats(userId: String): Result<ProfileStats> =
       safeFirestoreRequest {
@@ -86,9 +102,18 @@ class ProfileRepositoryFirestore(private val firestore: FirebaseFirestore) : Pro
     const val BIO_FIELD = "bio"
     const val PICTURE_URL_FIELD = "pictureUrl"
 
+    const val PICTURES_PATH = "profilePictures"
+
     const val BLANK_USER_ID_MESSAGE = "User id must not be blank."
-    const val UPLOAD_NOT_AVAILABLE_MESSAGE = "Profile picture upload is not available yet."
+    const val NO_PROFILE_MESSAGE = "Save your profile before adding a picture."
 
     private const val GROUPS_COLLECTION_PATH = "campaign_groups"
+
+    // Each upload gets a new download URL, so phones may keep a downloaded picture for 30 days.
+    private val JPEG_METADATA =
+        StorageMetadata.Builder()
+            .setContentType("image/jpeg")
+            .setCacheControl("public, max-age=2592000")
+            .build()
   }
 }

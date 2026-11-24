@@ -6,6 +6,8 @@ import android.content.Context
 import android.os.Looper
 import android.util.Log
 import androidx.test.core.app.ApplicationProvider
+import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
@@ -13,6 +15,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.firestore.util.CustomClassMapper
+import com.google.firebase.storage.FirebaseStorage
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Instant
@@ -47,6 +50,7 @@ object FirebaseEmulatorTestUtils {
   private const val EMULATOR_HOST = "127.0.0.1"
   private const val EMULATOR_PORT = 8080
   private const val AUTH_EMULATOR_PORT = 9099
+  private const val STORAGE_EMULATOR_PORT = 9199
 
   /** Firestore refuses batches of more than 500 writes. */
   private const val MAX_BATCH_SIZE = 500
@@ -116,6 +120,19 @@ object FirebaseEmulatorTestUtils {
     return emulatorFirestore(app)
   }
 
+  /**
+   * Returns a Storage instance on the emulator for the user [uid], like [signInAs] for Firestore,
+   * so a repository under test never reaches the real bucket. Storage requests cannot run under
+   * Robolectric (TESTING.md, section 4.2): upload tests are instrumented.
+   */
+  fun storageAs(uid: String): FirebaseStorage {
+    signInAs(uid)
+    val app = FirebaseApp.getInstance("$EMULATOR_APP_NAME-$uid")
+    return FirebaseStorage.getInstance(app).apply {
+      useEmulator(EMULATOR_HOST, STORAGE_EMULATOR_PORT)
+    }
+  }
+
   // The Auth emulator accepts unsigned custom tokens, which lets a test choose the uid.
   private fun unsignedCustomToken(uid: String): String {
     val encoder = Base64.getUrlEncoder().withoutPadding()
@@ -158,6 +175,48 @@ object FirebaseEmulatorTestUtils {
   ) = writeBypassingRules(firestore, "users/$userId", mapOf("groupIds" to groupIds.toList()))
 
   /**
+   * The root document of the group [id], as GroupRepositoryFirestore writes it with the group: same
+   * id and name, owned by the game master, of type GROUP_ROOT and shared with the group itself.
+   */
+  fun groupRootOf(id: String, gameMasterId: String, name: String) =
+      JDRFile(
+          id = id,
+          name = name,
+          ownerId = gameMasterId,
+          sharedGroupsIds = listOf(id),
+          type = DocumentType.GROUP_ROOT,
+      )
+
+  /**
+   * Writes the group `campaign_groups/[id]`, bypassing the security rules. For test setup only.
+   * [inviteCode] is written when given (CampaignGroup has no such field, so the group is written as
+   * a map). With [withRoot], the group's root document ([groupRootOf]) is written too, in
+   * `documents`: the class must then clear that collection in its tear down.
+   */
+  suspend fun writeGroupBypassingRules(
+      firestore: FirebaseFirestore,
+      id: String,
+      gameMasterId: String,
+      participantIds: List<String>,
+      name: String = "The Sunken Crown",
+      inviteCode: String? = null,
+      withRoot: Boolean = false,
+  ) {
+    val group =
+        mapOf(
+            "id" to id,
+            "name" to name,
+            "description" to "",
+            "gameMasterId" to gameMasterId,
+            "participantIds" to participantIds,
+        ) + listOfNotNull(inviteCode?.let { "inviteCode" to it })
+    writeBypassingRules(firestore, "campaign_groups/$id", group)
+    if (withRoot) {
+      writeBypassingRules(firestore, "documents/$id", groupRootOf(id, gameMasterId, name))
+    }
+  }
+
+  /**
    * The `groupIds` field of `users/[userId]`, read as that user so the rules apply; null when the
    * document or the field is missing.
    */
@@ -172,7 +231,20 @@ object FirebaseEmulatorTestUtils {
    * reason never passes as a rules denial. [case] names the request in the failure message, for
    * tests that check several requests in a row.
    */
-  suspend fun assertPermissionDenied(case: String = "request", action: suspend () -> Unit) {
+  suspend fun assertPermissionDenied(case: String = "request", action: suspend () -> Unit) =
+      assertFirestoreError(FirebaseFirestoreException.Code.PERMISSION_DENIED, case, action)
+
+  /**
+   * Runs [action] (a Firestore request, as for [assertPermissionDenied]) and fails unless it throws
+   * a FirebaseFirestoreException with exactly [code]. Any other outcome fails: success, another
+   * code, or another exception. Coroutine cancellation is rethrown, not counted as the expected
+   * error. [case] names the request in the failure message.
+   */
+  suspend fun assertFirestoreError(
+      code: FirebaseFirestoreException.Code,
+      case: String = "request",
+      action: suspend () -> Unit,
+  ) {
     val failure =
         try {
           action()
@@ -182,14 +254,8 @@ object FirebaseEmulatorTestUtils {
         } catch (e: Exception) {
           e
         }
-    if (
-        failure !is FirebaseFirestoreException ||
-            failure.code != FirebaseFirestoreException.Code.PERMISSION_DENIED
-    ) {
-      throw AssertionError(
-          "$case: expected PERMISSION_DENIED from the security rules, got: ${failure ?: "success"}",
-          failure,
-      )
+    if (failure !is FirebaseFirestoreException || failure.code != code) {
+      throw AssertionError("$case: expected $code, got: ${failure ?: "success"}", failure)
     }
   }
 
