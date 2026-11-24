@@ -238,7 +238,6 @@ class CampaignGroupsRulesTest {
     }
     listOf(
             "another participant" to newGroup(participantIds = listOf(OUTSIDER_ID, PLAYER_ID)),
-            "another user as GM" to newGroup(gameMasterId = GM_ID),
             "an empty name" to newGroup(name = ""),
             // A new group has only its five fields: the GM sets the code later (isInviteCodeEdit).
             "an extra field" to newGroup() + ("inviteCode" to NEW_CODE),
@@ -249,6 +248,17 @@ class CampaignGroupsRulesTest {
     val signedOut = FirebaseEmulatorTestUtils.signedOutFirestore()
     FirebaseEmulatorTestUtils.assertPermissionDenied("signed out") {
       create(newGroup(), client = signedOut)
+    }
+    // With the root in the batch, validGroupRoot alone would deny another GM. A root can outlive
+    // its group (DATA_ARCHITECTURE.md §12), so a batch may leave it out: then only validNewGroup
+    // checks the GM. Last case, as the root it seeds would turn the creations above into updates.
+    FirebaseEmulatorTestUtils.writeBypassingRules(
+        gm,
+        "documents/$newGroupId",
+        rootOf(newGroupId, GM_ID, "The Drowned Keep"),
+    )
+    FirebaseEmulatorTestUtils.assertPermissionDenied("another user as GM") {
+      create(newGroup(gameMasterId = GM_ID), withRoot = false)
     }
 
     assertEquals(listOf(groupId), storedGroupIds())
