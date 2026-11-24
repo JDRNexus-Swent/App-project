@@ -543,6 +543,30 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun campaignsHelpOpensByItselfOnTheFirstVisitOnly() {
+    showApp(groupRepository = groupRepository("user-1"))
+    signInAndOpenCampaigns()
+
+    waitForTag(C.Tag.help_sheet)
+    composeTestRule.onNodeWithTag(C.Tag.help_next).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.help_next).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.help_done).performClick()
+    composeTestRule.waitUntil(5_000) {
+      composeTestRule.onAllNodesWithTag(C.Tag.help_sheet).fetchSemanticsNodes().isEmpty()
+    }
+
+    // Home removes Campaigns from the back stack, so coming back creates a new help ViewModel,
+    // which reads the record again.
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+    waitForTag(TestTags.GROUPMANAGEMENTBUTTON)
+    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+    waitForTag(C.Tag.help_button)
+    composeTestRule.waitForIdle()
+
+    composeTestRule.onAllNodesWithTag(C.Tag.help_sheet).assertCountEquals(0)
+  }
+
+  @Test
   fun systemBackFromWorkspaceReturnsToCampaigns() {
     val groupRepository = groupRepository("user-1")
     showApp(groupRepository = groupRepository)

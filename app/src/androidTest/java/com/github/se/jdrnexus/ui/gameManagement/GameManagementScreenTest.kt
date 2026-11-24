@@ -19,7 +19,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.model.help.HelpSeenRepositorySharedPreferences
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.repository.AuthError
@@ -36,7 +38,9 @@ import com.github.se.jdrnexus.viewmodel.GroupRole
 import com.github.se.jdrnexus.viewmodel.UserGroup
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -44,6 +48,13 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class GameManagementScreenTest {
   @get:Rule val composeTestRule = createComposeRule()
+
+  // GameManagementScreen opens its help by itself on the first visit; it would cover the screen.
+  @Before
+  fun markCampaignsHelpSeen() = runBlocking {
+    HelpSeenRepositorySharedPreferences(ApplicationProvider.getApplicationContext())
+        .markSeen(CAMPAIGNS_HELP_TOPIC)
+  }
 
   @Test
   fun gameMasterSeesManageAndInviteActions() {
