@@ -669,6 +669,8 @@ class GamePlayerViewModelTest {
               includeContent: Boolean,
           ) = error("Not used")
 
+          override suspend fun hasPendingWrites(): Boolean = false
+
           override suspend fun setItemHidden(itemId: String, groupId: String, isHidden: Boolean) =
               error("Not used")
 

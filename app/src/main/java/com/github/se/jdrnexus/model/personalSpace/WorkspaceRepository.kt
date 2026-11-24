@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Sonnet 5.5
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.personalSpace
 
 import kotlinx.coroutines.flow.Flow
@@ -7,6 +8,10 @@ import kotlinx.coroutines.flow.Flow
  * Interface defining the operations for managing the workspace repository in JDRNexus. It handles
  * both personal spaces and shared campaign groups, providing real-time synchronization and offline
  * capabilities via Cloud Firestore.
+ *
+ * Offline, [createFile], [updateFile] and [deleteFile] succeed as soon as the change is in the
+ * local cache, where the reads of this repository see it at once; it reaches the server when the
+ * device reconnects. See [hasPendingWrites].
  */
 interface WorkspaceRepository {
   // ==========================================
@@ -95,6 +100,20 @@ interface WorkspaceRepository {
    * that is not in the group, and refuses to hide more than 500 items at once.
    */
   suspend fun setItemHidden(itemId: String, groupId: String, isHidden: Boolean): Result<Unit>
+
+  // ==========================================
+  // OFFLINE SYNC
+  // ==========================================
+
+  /**
+   * Whether some writes of the signed-in user exist only on this device, not yet synced to the
+   * server (e.g. made offline). Signing out would lose them, so the UI can warn first.
+   *
+   * It never blocks: it waits a short moment for the writes to sync, and answers `true` if they
+   * have not by then (always the case offline) or if their state cannot be checked. `false` means
+   * every write made so far has reached the server.
+   */
+  suspend fun hasPendingWrites(): Boolean
 
   // ==========================================
   // REAL-TIME SYNCHRONIZATION (Flows)

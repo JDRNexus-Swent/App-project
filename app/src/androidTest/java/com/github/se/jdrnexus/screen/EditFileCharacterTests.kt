@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Codex <noreply@openai.com>
 package com.github.se.jdrnexus.screen
@@ -594,6 +595,8 @@ class EditFileCharacterTests {
         isHidden: Boolean,
         includeContent: Boolean,
     ): Result<Unit> = error("Not used")
+
+    override suspend fun hasPendingWrites(): Boolean = false
 
     override suspend fun setItemHidden(
         itemId: String,

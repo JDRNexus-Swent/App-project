@@ -1353,6 +1353,8 @@ class EditFileViewModelTest {
         includeContent: Boolean,
     ): Result<Unit> = error("Not used")
 
+    override suspend fun hasPendingWrites(): Boolean = false
+
     override suspend fun setItemHidden(
         itemId: String,
         groupId: String,

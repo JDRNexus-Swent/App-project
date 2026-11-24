@@ -1207,6 +1207,8 @@ class GroupWorkSpaceScreenInstrumentedTest {
               )
     }
 
+    override suspend fun hasPendingWrites(): Boolean = false
+
     override suspend fun setItemHidden(itemId: String, groupId: String, isHidden: Boolean) =
         runOperation {
           val item = state.value.getValue(itemId)

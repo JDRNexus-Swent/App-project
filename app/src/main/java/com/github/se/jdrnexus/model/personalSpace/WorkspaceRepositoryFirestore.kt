@@ -1,16 +1,23 @@
 // Co-authored-by: Claude Sonnet 5.5
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.personalSpace
 
 import android.util.Log
+import com.google.android.gms.tasks.Task
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.Source
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 
 class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : WorkspaceRepository {
   companion object {
@@ -19,6 +26,20 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     private const val FIELD_PLACEMENTS = "placements"
     private const val FIELD_SHARED_GROUPS_IDS = "sharedGroupsIds"
     private const val MAX_LATE_PASSES = 3
+    private const val TAG = "WorkspaceRepository"
+
+    /**
+     * How long a personal-space write waits for the server's answer before it returns. Online the
+     * answer comes well within this time, so errors such as NOT_FOUND are still returned. Offline
+     * it never comes: the write is already in the local cache, and the call returns success.
+     */
+    internal const val SERVER_ACK_GRACE_MS = 500L
+
+    /** How long a read waits for the server before it falls back to the local cache. */
+    internal const val SERVER_READ_TIMEOUT_MS = 2_000L
+
+    /** How long [hasPendingWrites] waits for the pending writes to sync before it answers. */
+    internal const val PENDING_WRITES_CHECK_MS = 500L
   }
 
   private val collection = firestore.collection(COLLECTION_PATH)
@@ -29,11 +50,13 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
   }
 
   override suspend fun createFile(file: JDRFile): Result<Unit> = safeFirestoreRequest {
-    collection.document(file.id).set(file).await()
+    awaitLocalWrite(collection.document(file.id).set(file), "createFile(${file.id})")
   }
 
   override suspend fun updateFile(edit: FileEdit): Result<Unit> = safeFirestoreRequest {
-    collection.document(edit.id).update(edit.toMap()).await()
+    // Offline, an update of a document missing from the cache is only rejected (NOT_FOUND) when it
+    // syncs; that rejection is logged by awaitLocalWrite.
+    awaitLocalWrite(collection.document(edit.id).update(edit.toMap()), "updateFile(${edit.id})")
   }
 
   override suspend fun deleteFile(fileId: String): Result<Unit> = safeFirestoreRequest {
@@ -42,11 +65,13 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
 
     // A file has no content below it: nothing to unshare or reattach.
     if (!file.isContainer()) {
-      collection.document(fileId).delete().await()
+      awaitLocalWrite(collection.document(fileId).delete(), "deleteFile($fileId)")
       return@safeFirestoreRequest
     }
 
     // The folder and its personal content are deleted, and leave every group they are in.
+    // TODO(offline): offline, the listings below come from the local cache only. Content that was
+    //  never loaded on this device is missing from them, so it is neither deleted nor reattached.
     val deleted = collectPersonalSubtree(file)
     val deletedIds = deleted.map { it.id }.toSet()
     val removals =
@@ -79,11 +104,11 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
         )
       }
     }
-    batch.commit().await()
+    awaitLocalWrite(batch.commit(), "deleteFile($fileId)")
   }
 
   override suspend fun getFile(fileId: String): Result<JDRFile?> = safeFirestoreRequest {
-    val documentSnapshot = collection.document(fileId).get().await()
+    val documentSnapshot = getWithCacheFallback(collection.document(fileId))
 
     if (!documentSnapshot.exists()) {
       throw Exception("Document not found in Firestore")
@@ -143,6 +168,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     val subtree =
         if (includeContent && item.isContainer()) collectPersonalSubtree(item) else emptyList()
 
+    // TODO(offline): transactions fail without the network. Out of the personal-space scope.
     firestore
         .runTransaction { transaction ->
           val currentItem =
@@ -201,6 +227,7 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     // Pre-calculate the group subtree if we're hiding, because it needs queries
     val subtree = if (isHidden) collectGroupSubtree(item, groupId) else emptyList()
 
+    // TODO(offline): transactions fail without the network. Out of the personal-space scope.
     firestore
         .runTransaction { transaction ->
           val currentItemSnapshot = transaction.get(collection.document(itemId))
@@ -258,6 +285,57 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       }
     }
   }
+
+  /**
+   * Waits for [write] until the server answers or [SERVER_ACK_GRACE_MS] has passed, whichever comes
+   * first. A Firestore write is applied to the local cache as soon as it is made, but its Task only
+   * completes when the server acknowledges it, which never happens offline.
+   * - The server answers in time (online): a rejection is thrown, as when the Task was awaited.
+   * - It does not (offline, or a slow network): the call returns, and Firestore syncs the write
+   *   when the device reconnects. A later rejection (e.g. by the security rules) is logged, since
+   *   the caller already has its result.
+   */
+  private suspend fun awaitLocalWrite(write: Task<Void>, operation: String) {
+    val answered =
+        withTimeoutOrNull(SERVER_ACK_GRACE_MS) {
+          write.await()
+          true
+        }
+    if (answered == null) {
+      write.addOnFailureListener { e -> Log.e(TAG, "$operation was rejected when syncing", e) }
+    }
+  }
+
+  /**
+   * Reads [document] from the default source, and from the local cache when the server cannot be
+   * reached: the read fails with UNAVAILABLE, or gives no answer within [SERVER_READ_TIMEOUT_MS]. A
+   * cache miss offline fails with UNAVAILABLE; a document known to be deleted gives a snapshot that
+   * does not exist. Other errors (e.g. PERMISSION_DENIED) are thrown as they are.
+   */
+  private suspend fun getWithCacheFallback(document: DocumentReference): DocumentSnapshot {
+    val fromDefaultSource =
+        try {
+          withTimeoutOrNull(SERVER_READ_TIMEOUT_MS) { document.get().await() }
+        } catch (e: FirebaseFirestoreException) {
+          if (e.code != FirebaseFirestoreException.Code.UNAVAILABLE) throw e
+          null
+        }
+    return fromDefaultSource ?: document.get(Source.CACHE).await()
+  }
+
+  override suspend fun hasPendingWrites(): Boolean =
+      try {
+        withTimeoutOrNull(PENDING_WRITES_CHECK_MS) {
+          firestore.waitForPendingWrites().await()
+          false
+        } ?: true
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        // The writes could not be confirmed as synced (e.g. the user changed): warn.
+        Log.w(TAG, "Could not check the pending writes", e)
+        true
+      }
 
   /**
    * Targeted write that unshares a file from [groupId]: it deletes that group's placement and
