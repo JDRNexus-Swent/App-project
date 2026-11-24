@@ -5,6 +5,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.notification.Notification
 import com.github.se.jdrnexus.resources.C
@@ -151,6 +153,15 @@ class NotificationScreenTest {
     assertEquals(emptyList<Notification>(), opened)
   }
 
+  @Test
+  fun markAsReadLinkHasAFullTouchTarget() {
+    setScreen(FakeNotificationViewModel(loadedNotifications(unread)))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.notificationMarkAsRead(UNREAD_ID), useUnmergedTree = true)
+        .assertHeightIsAtLeast(MIN_TOUCH_TARGET)
+  }
+
   // ---------- Mark all as read ----------
 
   @Test
@@ -159,39 +170,28 @@ class NotificationScreenTest {
     setScreen(viewModel)
 
     composeTestRule.onNodeWithTag(C.Tag.notification_mark_all).performClick()
-    waitForSnackbar()
 
+    composeTestRule.onNodeWithTag(C.Tag.notification_mark_all_dialog).assertIsDisplayed()
     composeTestRule.onNodeWithText("Mark all notifications as read?").assertIsDisplayed()
     assertEquals(0, viewModel.markAllCalls)
 
-    composeTestRule.onNodeWithTag(C.Tag.notification_snackbar_action).performClick()
-    composeTestRule.waitUntil(TIMEOUT_MS) { viewModel.markAllCalls == 1 }
+    composeTestRule.onNodeWithTag(C.Tag.notification_mark_all_confirm).performClick()
+
+    assertEquals(1, viewModel.markAllCalls)
+    composeTestRule.onAllNodesWithTag(C.Tag.notification_mark_all_dialog).assertCountEquals(0)
   }
 
   @Test
-  fun dismissingConfirmationDoesNotMarkAll() {
+  fun cancellingConfirmationDoesNotMarkAll() {
     val viewModel = FakeNotificationViewModel(loadedNotifications(unread, read))
     setScreen(viewModel)
 
     composeTestRule.onNodeWithTag(C.Tag.notification_mark_all).performClick()
-    waitForSnackbar()
-    composeTestRule.onNodeWithTag(C.Tag.notification_snackbar_dismiss).performClick()
-    composeTestRule.waitUntil(TIMEOUT_MS) {
-      composeTestRule.onAllNodesWithTag(C.Tag.notification_snackbar).fetchSemanticsNodes().isEmpty()
-    }
+    composeTestRule.onNodeWithTag(C.Tag.notification_mark_all_cancel).performClick()
 
     assertEquals(0, viewModel.markAllCalls)
+    composeTestRule.onAllNodesWithTag(C.Tag.notification_mark_all_dialog).assertCountEquals(0)
     composeTestRule.onNodeWithTag(C.Tag.notification_mark_all).assertIsEnabled()
-  }
-
-  @Test
-  fun markAllIsDisabledWhileConfirmationIsShown() {
-    setScreen(FakeNotificationViewModel(loadedNotifications(unread, read)))
-
-    composeTestRule.onNodeWithTag(C.Tag.notification_mark_all).performClick()
-    waitForSnackbar()
-
-    composeTestRule.onNodeWithTag(C.Tag.notification_mark_all).assertIsNotEnabled()
   }
 
   @Test
@@ -273,6 +273,9 @@ class NotificationScreenTest {
 
     /** Longest wait for the snackbar, which appears and resumes asynchronously. */
     const val TIMEOUT_MS = 5_000L
+
+    /** Smallest touch target Android recommends for anything tappable. */
+    val MIN_TOUCH_TARGET = 48.dp
 
     val unread = testNotification(UNREAD_ID)
     val read = testNotification(READ_ID, isRead = true)

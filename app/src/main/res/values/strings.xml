@@ -195,6 +195,7 @@
     <string name="notifications_mark_all">Mark all as read</string>
     <string name="notifications_mark_all_confirm">Mark all notifications as read?</string>
     <string name="notifications_mark_all_confirm_action">Mark all</string>
+    <string name="notifications_cancel">Cancel</string>
     <string name="notifications_dismiss">Dismiss</string>
     <string name="notifications_empty_title">No notifications yet</string>
     <string name="notifications_empty_body">Invitations, new members and campaign updates will show up here.</string>

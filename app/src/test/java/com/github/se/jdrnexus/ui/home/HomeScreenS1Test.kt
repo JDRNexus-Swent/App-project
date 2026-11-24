@@ -251,6 +251,25 @@ class HomeScreenS1Test {
     Assert.assertEquals(1, notificationClicks)
   }
 
+  @Test
+  fun notificationBellCannotOpenNotificationsWhileSignOutIsPending() {
+    val signOutResult = CompletableDeferred<AuthResult<Unit>>()
+    val repository = FakeAuthRepository { signOutResult.await() }
+    val viewModel = AuthViewModel(repository)
+    var notificationClicks = 0
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(viewModel, onNotificationsClick = { notificationClicks++ }) }
+    }
+
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) { repository.signOutCalls == 1 }
+    composeTestRule.onNodeWithTag(C.Tag.notification_bell).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.notification_bell).performClick()
+
+    Assert.assertEquals(0, notificationClicks)
+    signOutResult.complete(AuthResult.Success(Unit))
+  }
+
   private fun createViewModel() = AuthViewModel(FakeAuthRepository())
 
   private class FakeAuthRepository(
@@ -283,5 +302,8 @@ class HomeScreenS1Test {
   private companion object {
     /** Unread notifications passed to Home, shown on the bell's badge. */
     const val UNREAD_NOTIFICATIONS = 2
+
+    /** Longest wait for the sign-out request to reach the fake repository. */
+    const val SIGN_OUT_TIMEOUT_MS = 5_000L
   }
 }
