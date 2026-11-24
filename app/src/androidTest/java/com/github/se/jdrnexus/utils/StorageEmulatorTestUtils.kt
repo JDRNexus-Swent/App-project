@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.google.android.gms.tasks.Task
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageException
 import java.net.HttpURLConnection
@@ -21,8 +22,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Helpers for instrumented Storage tests on the emulators of ci.yml: Storage clients signed in as
- * any user, and Firestore writes that bypass the rules. A small mirror of
+ * Helpers for instrumented Storage tests on the emulators of ci.yml: Storage and Firestore clients
+ * signed in as any user, and Firestore writes that bypass the rules. A small mirror of
  * `FirebaseEmulatorTestUtils`, which androidTest cannot see (TESTING.md 4.2).
  */
 object StorageEmulatorTestUtils {
@@ -55,16 +56,28 @@ object StorageEmulatorTestUtils {
   private const val AUDIENCE =
       "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit"
 
+  private val apps = mutableMapOf<String, FirebaseApp>()
   private val storages = mutableMapOf<String, FirebaseStorage>()
+  private val firestores = mutableMapOf<String, FirebaseFirestore>()
 
   /** A Storage client signed in as [uid]; each user has their own FirebaseApp. */
   @Synchronized
   fun storageAs(uid: String): FirebaseStorage =
-      storages.getOrPut(uid) {
+      storages.getOrPut(uid) { emulatorStorage(signedInApp(uid)) }
+
+  /** A Firestore client signed in as [uid], on the same FirebaseApp as [storageAs]. */
+  @Synchronized
+  fun firestoreAs(uid: String): FirebaseFirestore =
+      firestores.getOrPut(uid) {
+        FirebaseFirestore.getInstance(signedInApp(uid)).apply { useEmulator(HOST, 8080) }
+      }
+
+  private fun signedInApp(uid: String): FirebaseApp =
+      apps.getOrPut(uid) {
         val app = emulatorApp("storage-$uid")
         val auth = FirebaseAuth.getInstance(app).apply { useEmulator(HOST, AUTH_PORT) }
         runBlocking { auth.signInWithCustomToken(unsignedToken(uid)).awaitWithTimeout() }
-        emulatorStorage(app)
+        app
       }
 
   /** A Storage client with nobody signed in. */
