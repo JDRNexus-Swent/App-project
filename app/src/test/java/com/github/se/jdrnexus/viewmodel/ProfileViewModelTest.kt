@@ -172,6 +172,58 @@ class ProfileViewModelTest {
   }
 
   @Test
+  fun loadRestartsWhenSignedInUserChanged() = runTest {
+    val firstLoad = CompletableDeferred<Unit>()
+    repository.gate = firstLoad
+    val auth = FakeAuthRepository(AuthUser(USER_ID, null, null))
+    val vm = viewModel(auth = auth) // starts the load of USER_ID, held at the gate
+    runCurrent()
+
+    auth.authState.value = AuthUser("other-user", null, null)
+    val otherProfile = UserProfile("other-user", "Brann", "", "")
+    repository.profileResult = Result.success(otherProfile)
+    repository.gate = null // the new user's load runs straight through
+    vm.loadProfile()
+    runCurrent()
+
+    // The cancelled load of the previous user must not overwrite the new profile.
+    repository.profileResult = Result.success(SAVED_PROFILE)
+    firstLoad.complete(Unit)
+    runCurrent()
+
+    assertEquals(listOf(USER_ID, "other-user"), repository.profileRequests)
+    assertEquals(otherProfile, vm.uiState.value.profile)
+    assertFalse(vm.uiState.value.isLoading)
+  }
+
+  @Test
+  fun loadReplacesProfileOfPreviousUser() = runTest {
+    val auth = FakeAuthRepository(AuthUser(USER_ID, null, null))
+    val vm = viewModel(auth = auth)
+    runCurrent()
+    vm.startEditing()
+
+    auth.authState.value = AuthUser("other-user", null, null)
+    val otherProfile = UserProfile("other-user", "Brann", "", "")
+    repository.profileResult = Result.success(otherProfile)
+    repository.gate = CompletableDeferred()
+    vm.loadProfile()
+    runCurrent()
+
+    // While the new user's profile loads, nothing of the previous user stays on screen.
+    assertEquals(UserProfile(), vm.uiState.value.profile)
+    assertFalse(vm.uiState.value.isEditing)
+    assertTrue(vm.uiState.value.isLoading)
+
+    repository.gate!!.complete(Unit)
+    runCurrent()
+
+    assertEquals(listOf(USER_ID, "other-user"), repository.profileRequests)
+    assertEquals(otherProfile, vm.uiState.value.profile)
+    assertFalse(vm.uiState.value.isLoading)
+  }
+
+  @Test
   fun exposesErrorWithoutRepositoryCallWhenSignedOut() = runTest {
     val vm = viewModel(user = null)
     runCurrent()

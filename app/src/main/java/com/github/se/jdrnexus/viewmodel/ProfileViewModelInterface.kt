@@ -47,8 +47,8 @@ interface ProfileViewModelInterface {
   val uiState: StateFlow<ProfileUiState>
 
   /**
-   * Loads the profile and stats of the signed-in user. Ignored while a load runs or once the
-   * profile is loaded.
+   * Loads the profile and stats of the signed-in user. Ignored while a load for that user runs or
+   * once that user's profile is loaded; for another user, replaces the previous user's state.
    */
   fun loadProfile()
 

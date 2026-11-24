@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 
 // ============ Validation rules ============
@@ -51,8 +52,12 @@ class ProfileViewModel(
   private val _uiState = MutableStateFlow(ProfileUiState())
   override val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
 
-  /** The running load, so a second [loadProfile] call does not restart it. */
+  /**
+   * The running load and its user, so a second [loadProfile] call for that user does not restart
+   * it.
+   */
   private var loadJob: Job? = null
+  private var loadingUid: String? = null
 
   // ============ Internal helpers ============
 
@@ -102,14 +107,20 @@ class ProfileViewModel(
   // ============ Loading ============
 
   override fun loadProfile() {
-    // The screen calls this again when recreated (e.g. rotation): keep the running load or the
-    // loaded profile. Retry is only offered while no profile is loaded.
-    if (loadJob?.isActive == true || _uiState.value.profileLoaded) return
-    clearError()
-    _uiState.update { it.copy(isLoading = true) }
-    loadJob = viewModelScope.launch {
+    viewModelScope.launch {
       try {
         val uid = requireUid()
+        // The screen calls this again when recreated (e.g. rotation): keep the running load or the
+        // loaded profile of the same user. For another user, drop the previous user's state.
+        val state = _uiState.value
+        val sameLoadInProgress = loadJob?.isActive == true && loadingUid == uid
+        val sameProfileLoaded = state.profileLoaded && state.profile.userId == uid
+        if (sameLoadInProgress || sameProfileLoaded) return@launch
+        loadJob?.cancel()
+        loadJob = coroutineContext.job
+        loadingUid = uid
+        _uiState.update { ProfileUiState(isLoading = true) }
+
         val profile = profileRepository.getProfile(uid).getOrThrow()
         val stats = profileRepository.getProfileStats(uid).getOrThrow()
         _uiState.update { it.copy(profile = profile, stats = stats, isLoading = false) }
