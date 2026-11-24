@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -38,10 +39,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarData
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -51,7 +50,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,7 +74,6 @@ import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.viewmodel.NotificationLoadState
 import com.github.se.jdrnexus.viewmodel.NotificationViewModelInterface
 import java.util.Date
-import kotlinx.coroutines.launch
 
 /** Bottom-bar tab highlighted on this screen: notifications are about campaigns. */
 private const val SELECTED_TAB = "Campaigns"
@@ -147,7 +144,7 @@ private val SNACKBAR_PADDING = 12.dp
  * Unread notifications are drawn on a raised background with a dark title, a dot and a "Mark as
  * read" action; read ones blend into the background with muted text. Selecting a notification marks
  * it as read and calls [onOpenNotification]. The top bar's "mark all as read" action asks for
- * confirmation in a snackbar before calling the ViewModel.
+ * confirmation in a dialog before calling the ViewModel.
  *
  * @param viewModel Source of the notifications and target of the user's actions.
  * @param onBack Called when the user leaves the screen with the top bar's back action.
@@ -166,12 +163,9 @@ fun NotificationScreen(
   val uiState by viewModel.notificationUiState.collectAsState()
   val colors = MaterialTheme.colorScheme
   val snackbarHostState = remember { SnackbarHostState() }
-  val scope = rememberCoroutineScope()
   var confirmingMarkAll by remember { mutableStateOf(false) }
   val hasUnread = uiState.notifications.any { !it.isRead }
 
-  val confirmMessage = stringResource(R.string.notifications_mark_all_confirm)
-  val confirmAction = stringResource(R.string.notifications_mark_all_confirm_action)
   val actionErrorMessage = stringResource(R.string.notifications_action_error)
 
   // The ViewModel's error is a raw exception message: show a readable one instead.
@@ -179,24 +173,6 @@ fun NotificationScreen(
     if (uiState.actionError != null) {
       snackbarHostState.showSnackbar(actionErrorMessage, withDismissAction = true)
       viewModel.clearActionError()
-    }
-  }
-
-  val requestMarkAll: () -> Unit = {
-    confirmingMarkAll = true
-    scope.launch {
-      try {
-        val result =
-            snackbarHostState.showSnackbar(
-                message = confirmMessage,
-                actionLabel = confirmAction,
-                withDismissAction = true,
-                duration = SnackbarDuration.Long,
-            )
-        if (result == SnackbarResult.ActionPerformed) viewModel.markAllAsRead()
-      } finally {
-        confirmingMarkAll = false
-      }
     }
   }
 
@@ -209,8 +185,8 @@ fun NotificationScreen(
             onBack = onBack,
             trailingContent = {
               IconButton(
-                  onClick = requestMarkAll,
-                  enabled = hasUnread && !confirmingMarkAll,
+                  onClick = { confirmingMarkAll = true },
+                  enabled = hasUnread,
                   modifier = Modifier.testTag(C.Tag.notification_mark_all),
               ) {
                 Icon(
@@ -222,7 +198,7 @@ fun NotificationScreen(
         )
       },
       bottomBar = { ScreenBottomBar(selectedTab = SELECTED_TAB, onTabSelected = onTabSelected) },
-      snackbarHost = { SnackbarHost(snackbarHostState) { data -> NotificationSnackbar(data) } },
+      snackbarHost = { SnackbarHost(snackbarHostState) { data -> ActionErrorSnackbar(data) } },
   ) { contentPadding ->
     val contentModifier = Modifier.fillMaxSize().padding(contentPadding)
     when (uiState.loadState) {
@@ -283,6 +259,16 @@ fun NotificationScreen(
             }
           }
     }
+  }
+
+  if (confirmingMarkAll) {
+    MarkAllAsReadDialog(
+        onConfirm = {
+          confirmingMarkAll = false
+          viewModel.markAllAsRead()
+        },
+        onDismiss = { confirmingMarkAll = false },
+    )
   }
 }
 
@@ -454,40 +440,50 @@ private fun RetryButton(onClick: () -> Unit) {
   }
 }
 
-/** Snackbar in the app's accent colors, with tagged buttons so tests can confirm or dismiss it. */
+/** Asks the user to confirm before every notification is marked as read. */
 @Composable
-private fun NotificationSnackbar(data: SnackbarData) {
+private fun MarkAllAsReadDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+  AlertDialog(
+      modifier = Modifier.testTag(C.Tag.notification_mark_all_dialog),
+      onDismissRequest = onDismiss,
+      title = { Text(stringResource(R.string.notifications_mark_all_confirm)) },
+      confirmButton = {
+        TextButton(
+            onClick = onConfirm,
+            modifier = Modifier.testTag(C.Tag.notification_mark_all_confirm),
+        ) {
+          Text(stringResource(R.string.notifications_mark_all_confirm_action))
+        }
+      },
+      dismissButton = {
+        TextButton(
+            onClick = onDismiss,
+            modifier = Modifier.testTag(C.Tag.notification_mark_all_cancel),
+        ) {
+          Text(stringResource(R.string.notifications_cancel))
+        }
+      },
+  )
+}
+
+/** Snackbar in the app's accent colors reporting a failed action, with a tagged dismiss button. */
+@Composable
+private fun ActionErrorSnackbar(data: SnackbarData) {
   val colors = MaterialTheme.colorScheme
   Snackbar(
       modifier = Modifier.padding(SNACKBAR_PADDING).testTag(C.Tag.notification_snackbar),
-      action =
-          data.visuals.actionLabel?.let { label ->
-            {
-              TextButton(
-                  onClick = data::performAction,
-                  modifier = Modifier.testTag(C.Tag.notification_snackbar_action),
-              ) {
-                Text(label, color = colors.onPrimary, fontWeight = FontWeight.Bold)
-              }
-            }
-          },
-      dismissAction =
-          if (data.visuals.withDismissAction) {
-            {
-              IconButton(
-                  onClick = data::dismiss,
-                  modifier = Modifier.testTag(C.Tag.notification_snackbar_dismiss),
-              ) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = stringResource(R.string.notifications_dismiss),
-                    tint = colors.onPrimary,
-                )
-              }
-            }
-          } else {
-            null
-          },
+      dismissAction = {
+        IconButton(
+            onClick = data::dismiss,
+            modifier = Modifier.testTag(C.Tag.notification_snackbar_dismiss),
+        ) {
+          Icon(
+              imageVector = Icons.Filled.Close,
+              contentDescription = stringResource(R.string.notifications_dismiss),
+              tint = colors.onPrimary,
+          )
+        }
+      },
       containerColor = colors.primary,
       contentColor = colors.onPrimary,
   ) {

@@ -170,39 +170,28 @@ class NotificationScreenTest {
     setScreen(viewModel)
 
     composeTestRule.onNodeWithTag(C.Tag.notification_mark_all).performClick()
-    waitForSnackbar()
 
+    composeTestRule.onNodeWithTag(C.Tag.notification_mark_all_dialog).assertIsDisplayed()
     composeTestRule.onNodeWithText("Mark all notifications as read?").assertIsDisplayed()
     assertEquals(0, viewModel.markAllCalls)
 
-    composeTestRule.onNodeWithTag(C.Tag.notification_snackbar_action).performClick()
-    composeTestRule.waitUntil(TIMEOUT_MS) { viewModel.markAllCalls == 1 }
+    composeTestRule.onNodeWithTag(C.Tag.notification_mark_all_confirm).performClick()
+
+    assertEquals(1, viewModel.markAllCalls)
+    composeTestRule.onAllNodesWithTag(C.Tag.notification_mark_all_dialog).assertCountEquals(0)
   }
 
   @Test
-  fun dismissingConfirmationDoesNotMarkAll() {
+  fun cancellingConfirmationDoesNotMarkAll() {
     val viewModel = FakeNotificationViewModel(loadedNotifications(unread, read))
     setScreen(viewModel)
 
     composeTestRule.onNodeWithTag(C.Tag.notification_mark_all).performClick()
-    waitForSnackbar()
-    composeTestRule.onNodeWithTag(C.Tag.notification_snackbar_dismiss).performClick()
-    composeTestRule.waitUntil(TIMEOUT_MS) {
-      composeTestRule.onAllNodesWithTag(C.Tag.notification_snackbar).fetchSemanticsNodes().isEmpty()
-    }
+    composeTestRule.onNodeWithTag(C.Tag.notification_mark_all_cancel).performClick()
 
     assertEquals(0, viewModel.markAllCalls)
+    composeTestRule.onAllNodesWithTag(C.Tag.notification_mark_all_dialog).assertCountEquals(0)
     composeTestRule.onNodeWithTag(C.Tag.notification_mark_all).assertIsEnabled()
-  }
-
-  @Test
-  fun markAllIsDisabledWhileConfirmationIsShown() {
-    setScreen(FakeNotificationViewModel(loadedNotifications(unread, read)))
-
-    composeTestRule.onNodeWithTag(C.Tag.notification_mark_all).performClick()
-    waitForSnackbar()
-
-    composeTestRule.onNodeWithTag(C.Tag.notification_mark_all).assertIsNotEnabled()
   }
 
   @Test

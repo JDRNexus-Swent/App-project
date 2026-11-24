@@ -207,6 +207,9 @@ object C {
     const val notification_bell = "notification_bell"
     const val notification_unread_badge = "notification_unread_badge"
     const val notification_mark_all = "notification_mark_all"
+    const val notification_mark_all_dialog = "notification_mark_all_dialog"
+    const val notification_mark_all_confirm = "notification_mark_all_confirm"
+    const val notification_mark_all_cancel = "notification_mark_all_cancel"
     const val notification_list = "notification_list"
     const val notification_loading = "notification_loading"
     const val notification_empty = "notification_empty"
@@ -214,7 +217,6 @@ object C {
     const val notification_error = "notification_error"
     const val notification_retry = "notification_retry"
     const val notification_snackbar = "notification_snackbar"
-    const val notification_snackbar_action = "notification_snackbar_action"
     const val notification_snackbar_dismiss = "notification_snackbar_dismiss"
 
     /** Tag of the notification row with [notificationId]. */
