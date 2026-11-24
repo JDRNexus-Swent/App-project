@@ -2,6 +2,7 @@
 package com.github.se.jdrnexus.storageRules
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.MAX_IMAGE_BYTES
 import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.awaitWithTimeout
 import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.signedOutStorage
 import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.storageAs
@@ -28,13 +29,18 @@ import org.junit.runner.RunWith
 class ImageStorageRulesTest {
 
   private val run = UUID.randomUUID().toString()
-  private val owner = "$run-owner"
-  private val member = "$run-member"
+  private val owner = "image-rules-owner"
+  private val member = "image-rules-member"
+  private val outsider = "image-rules-outsider"
   private val groupId = "$run-group"
   private val fileId = "$run-image"
   private val bytes = ByteArray(100) { it.toByte() }
 
-  @Before fun setUp() = runBlocking { writeUserGroupIdsBypassingRules(member, groupId) }
+  @Before
+  fun setUp() = runBlocking {
+    writeUserGroupIdsBypassingRules(member, groupId)
+    writeUserGroupIdsBypassingRules(outsider, "$run-other-group")
+  }
 
   private fun picture(storage: FirebaseStorage, id: String = fileId, ownerId: String = owner) =
       storage.reference.child("images/$ownerId/$id")
@@ -45,7 +51,7 @@ class ImageStorageRulesTest {
   ) = putBytes(data, StorageMetadata.Builder().setContentType(type).build()).awaitWithTimeout()
 
   private suspend fun StorageReference.read(): ByteArray =
-      getBytes(MAX_BYTES + 1L).awaitWithTimeout()
+      getBytes(MAX_IMAGE_BYTES + 1L).awaitWithTimeout()
 
   // The image file's record, as the Storage rules read it.
   private suspend fun writeRecord(
@@ -65,11 +71,12 @@ class ImageStorageRulesTest {
     val storage = storageAs(owner)
 
     listOf("image/jpeg", "image/png", "image/webp").forEach { type ->
-      picture(storage, "$run-$type").upload(type = type)
-      assertArrayEquals(type, bytes, picture(storage, "$run-$type").read())
+      val id = "$run-${type.substringAfter('/')}"
+      picture(storage, id).upload(type = type)
+      assertArrayEquals(type, bytes, picture(storage, id).read())
     }
-    picture(storage).upload(ByteArray(MAX_BYTES))
-    assertEquals(MAX_BYTES, picture(storage).read().size)
+    picture(storage).upload(ByteArray(MAX_IMAGE_BYTES))
+    assertEquals(MAX_IMAGE_BYTES, picture(storage).read().size)
   }
 
   @Test
@@ -80,8 +87,15 @@ class ImageStorageRulesTest {
     assertDenied("signed out") { picture(signedOutStorage(), "$run-1").upload() }
     assertDenied("another user's path") { picture(storageAs(member), "$run-2").upload() }
     assertDenied("GIF") { picture(storage, "$run-3").upload(type = "image/gif") }
-    assertDenied("10 MiB + 1 byte") { picture(storage, "$run-4").upload(ByteArray(MAX_BYTES + 1)) }
+    assertDenied("10 MiB + 1 byte") {
+      picture(storage, "$run-4").upload(ByteArray(MAX_IMAGE_BYTES + 1))
+    }
     assertDenied("overwrite") { picture(storage).upload(ByteArray(10)) }
+    assertDenied("metadata update") {
+      picture(storage)
+          .updateMetadata(StorageMetadata.Builder().setContentType("image/png").build())
+          .awaitWithTimeout()
+    }
     assertArrayEquals(bytes, picture(storage).read())
   }
 
@@ -100,7 +114,8 @@ class ImageStorageRulesTest {
 
     writeRecord()
     assertDenied("signed out") { picture(signedOutStorage()).read() }
-    assertDenied("user in no group") { picture(storageAs("$run-outsider")).read() }
+    assertDenied("member of another group") { picture(storageAs(outsider)).read() }
+    assertDenied("user without a users document") { picture(storageAs("$run-newcomer")).read() }
 
     writeRecord(sharedIn = emptyList())
     assertDenied("record not shared") { picture(storageAs(member)).read() }
@@ -122,9 +137,5 @@ class ImageStorageRulesTest {
         StorageException.ERROR_OBJECT_NOT_FOUND,
         storageErrorCode { picture(storageAs(owner)).read() },
     )
-  }
-
-  private companion object {
-    const val MAX_BYTES = 10 * 1024 * 1024
   }
 }

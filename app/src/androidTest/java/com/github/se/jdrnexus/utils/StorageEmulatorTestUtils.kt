@@ -30,6 +30,9 @@ object StorageEmulatorTestUtils {
   /** Longest wait for one Firebase call, so a test fails instead of hanging. */
   const val TIMEOUT_MS = 20_000L
 
+  /** Largest picture the Storage rules accept: 10 MiB. */
+  const val MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
   // The Storage rules read the Firestore data of the --project id, not of google-services.json.
   private const val RULES_PROJECT_ID = "demo-jdrnexus"
   // The Android emulator reaches the computer's localhost at 10.0.2.2.
