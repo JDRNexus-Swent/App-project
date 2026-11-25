@@ -79,6 +79,24 @@ class GameManagementScreenTest {
 
     composeTestRule.onNodeWithText("Manage group").assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.invite_button).assertIsDisplayed().assertIsEnabled()
+    composeTestRule.onAllNodesWithText("See group members").assertCountEquals(0)
+  }
+
+  @Test
+  fun playerSeesTheGroupMembersAction() {
+    setContent(
+        uiState =
+            stateFor(
+                CampaignGroup(
+                    id = "player-group",
+                    name = "Clockwork Dominion",
+                    gameMasterId = "another-user",
+                    participantIds = listOf("user-1", "another-user"),
+                )
+            )
+    )
+
+    composeTestRule.onNodeWithText("See group members").performScrollTo().assertIsDisplayed()
   }
 
   @Test

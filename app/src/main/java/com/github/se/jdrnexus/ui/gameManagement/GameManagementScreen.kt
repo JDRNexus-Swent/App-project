@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PlayArrow
@@ -626,6 +627,8 @@ internal fun JoinGroupButton(
 /**
  * Shows a campaign's details and actions appropriate to the user's role.
  *
+ * @param onManageGroup opens the group's members: "Manage group" for the Game Master, "See group
+ *   members" for a player.
  * @param highlighted the parts the Campaigns help points at: they are outlined and the rest of the
  *   card is faded. Empty on the Campaigns screen, where the card is drawn as is.
  */
@@ -713,25 +716,32 @@ internal fun CampaignGroupCard(
                     .testTag(C.Tag.enter_workspace_button),
         )
       }
-      if (isGameMaster) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+      Row(
+          modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          verticalAlignment = Alignment.CenterVertically,
+      ) {
+        TextButton(
+            onClick = onManageGroup,
+            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+            modifier = Modifier.campaignCardHighlight(null, highlighted, colors),
         ) {
-          TextButton(
-              onClick = onManageGroup,
-              contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
-              modifier = Modifier.campaignCardHighlight(null, highlighted, colors),
-          ) {
-            Icon(Icons.Filled.Settings, null, tint = colors.accent, modifier = Modifier.size(13.dp))
-            Text(
-                "Manage group",
-                color = colors.text,
-                fontSize = 10.sp,
-                modifier = Modifier.padding(start = 4.dp),
-            )
-          }
+          Icon(
+              if (isGameMaster) Icons.Filled.Settings else Icons.Filled.People,
+              null,
+              tint = colors.accent,
+              modifier = Modifier.size(13.dp),
+          )
+          Text(
+              stringResource(
+                  if (isGameMaster) R.string.group_management_title else R.string.see_group_members
+              ),
+              color = colors.text,
+              fontSize = 10.sp,
+              modifier = Modifier.padding(start = 4.dp),
+          )
+        }
+        if (isGameMaster) {
           Text(
               "·",
               color = colors.outline,
