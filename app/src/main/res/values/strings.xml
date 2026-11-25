@@ -191,6 +191,27 @@
     <string name="invitation_error_network">Something went wrong. Check your connection and try again.</string>
     <string name="join_error_network">Something went wrong. You may already have joined: check your groups list before trying again.</string>
 
+    <string name="notifications_title">Notifications</string>
+    <string name="notifications_open">Notifications</string>
+    <string name="notifications_open_unread">Notifications, unread notifications available</string>
+    <string name="notifications_badge_overflow">%1$d+</string>
+    <string name="notifications_mark_all">Mark all as read</string>
+    <string name="notifications_mark_all_confirm">Mark all notifications as read?</string>
+    <string name="notifications_mark_all_confirm_action">Mark all</string>
+    <string name="notifications_cancel">Cancel</string>
+    <string name="notifications_dismiss">Dismiss</string>
+    <string name="notifications_empty_title">No notifications yet</string>
+    <string name="notifications_empty_body">Invitations, new members and campaign updates will show up here.</string>
+    <string name="notifications_loading">Loading notifications…</string>
+    <string name="notifications_mark_as_read">Mark as read</string>
+    <string name="notifications_signed_out">Sign in to see your notifications.</string>
+    <string name="notifications_load_error">Couldn\'t load your notifications.</string>
+    <string name="notifications_load_error_body">Check your connection and try again.</string>
+    <string name="notifications_retry">Retry</string>
+    <string name="notifications_action_error">Couldn\'t update your notifications. Try again.</string>
+    <string name="notifications_state_unread">Unread</string>
+    <string name="notifications_state_read">Read</string>
+    <string name="notifications_just_now">Just now</string>
     <!-- Help sheet, shared by every screen with a help -->
     <string name="help_button_description">Help</string>
     <string name="help_next">Next</string>
