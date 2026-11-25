@@ -89,6 +89,9 @@ data class SoundboardEditUiState(
  * imported audio. A successful import copies the audio immediately. Draft changes are applied
  * together by [save], which also removes private copies no longer used by any of the user's boards.
  * Item renaming, reordering and effect icon selection support follow-up editor controls.
+ *
+ * Scope this ViewModel to one visit of the editor (its navigation entry), so each visit starts
+ * fresh and never sees the saved or discarded status of an earlier one.
  */
 interface SoundboardEditViewModelInterface {
   companion object {
@@ -154,7 +157,8 @@ interface SoundboardEditViewModelInterface {
 
   /**
    * Called when the Game Master leaves the editor. Shows the discard dialog when
-   * [SoundboardEditUiState.hasUnsavedChanges] is true; otherwise calls [discard].
+   * [SoundboardEditUiState.hasUnsavedChanges] is true; otherwise calls [discard]. Ignored while the
+   * draft is being saved, so the save can finish.
    */
   fun requestLeave()
 
@@ -164,7 +168,7 @@ interface SoundboardEditViewModelInterface {
   /**
    * Abandons the draft and attempts to remove unsaved imports. Sets the status to
    * [SoundboardEditStatus.DISCARDED] even if cleanup fails so the screen can close. Also hides the
-   * discard dialog.
+   * discard dialog. Safe to call twice, for example after a double tap on Discard.
    */
   fun discard()
 
@@ -173,10 +177,10 @@ interface SoundboardEditViewModelInterface {
    * [SoundboardRepository.getNewSoundboardId] when the ID is null. A missing saved board is
    * reported as [SoundboardError.SOUNDBOARD_NOT_FOUND].
    *
-   * Loading the draft that is already open keeps it and its unsaved changes, because the screen
-   * calls this again after a rotation. Otherwise, including once the draft has been saved or
-   * discarded, it starts from [SoundboardEditStatus.IDLE] with no error and the discard dialog
-   * hidden, so a reopened editor never closes at once.
+   * Calling it again with the same argument keeps the open draft and its unsaved changes, including
+   * null while a new draft is open, because the screen calls this again after a rotation.
+   * Otherwise, including once the draft has been saved or discarded, it starts from
+   * [SoundboardEditStatus.IDLE] with no error and the discard dialog hidden.
    */
   fun loadSoundboard(soundboardId: String?)
 }
