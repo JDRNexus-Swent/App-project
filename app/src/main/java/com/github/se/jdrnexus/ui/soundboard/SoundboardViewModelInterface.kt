@@ -96,6 +96,13 @@ interface SoundboardViewModelInterface {
   /** Starts the specified track or resumes it if paused. A track already playing continues. */
   fun playAmbience(playlistId: String, audioId: String)
 
+  /**
+   * Starts the playlist from its first track, then plays its tracks in order;
+   * [SoundboardUiState.isAmbienceLooping] decides whether it starts again after the last one. Does
+   * nothing for a playlist without tracks.
+   */
+  fun playPlaylist(playlistId: String)
+
   /** Pauses ambience and retains the position for resuming. */
   fun pauseAmbience()
 
@@ -109,18 +116,24 @@ interface SoundboardViewModelInterface {
   fun toggleSoundEffect(audioId: String)
 
   /**
-   * Applies [Soundboard.ambienceVolume] at once and persists it. Accepts values in
-   * [MIN_VOLUME]..[MAX_VOLUME]. The screen calls it on every slider move, so the ViewModel decides
-   * when to write it, for example once the value stops changing.
+   * Applies [Soundboard.ambienceVolume] to the players and the state at once, without saving it.
+   * Accepts values in [MIN_VOLUME]..[MAX_VOLUME]. The screen calls it on every slider move, then
+   * [saveVolumes] when the Game Master lifts their finger.
    */
   fun setAmbienceVolume(volume: Float)
 
   /**
-   * Applies [Soundboard.effectsVolume] at once and persists it. Accepts values in
-   * [MIN_VOLUME]..[MAX_VOLUME]. The screen calls it on every slider move, so the ViewModel decides
-   * when to write it, for example once the value stops changing.
+   * Applies [Soundboard.effectsVolume] to the players and the state at once, without saving it.
+   * Accepts values in [MIN_VOLUME]..[MAX_VOLUME]. The screen calls it on every slider move, then
+   * [saveVolumes] when the Game Master lifts their finger.
    */
   fun setSoundEffectVolume(volume: Float)
+
+  /**
+   * Saves the current ambience and effects volumes. A failure is reported as
+   * [SoundboardPlaybackError.SaveVolume] and leaves the applied volumes as they are.
+   */
+  fun saveVolumes()
 
   /** Mutes ambience or restores its last audible gain. */
   fun toggleAmbienceMute()
