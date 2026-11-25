@@ -262,6 +262,31 @@ object C {
     /** Tag of the button of the sound effect whose audio has [audioId]. */
     fun soundboardEffect(audioId: String) = "soundboard_effect_$audioId"
 
+    const val soundboard_edit_loading = "soundboard_edit_loading"
+    const val soundboard_edit_error = "soundboard_edit_error"
+    const val soundboard_edit_retry = "soundboard_edit_retry"
+    const val soundboard_edit_content = "soundboard_edit_content"
+    const val soundboard_edit_name = "soundboard_edit_name"
+    const val soundboard_edit_add_playlist = "soundboard_edit_add_playlist"
+    const val soundboard_edit_save = "soundboard_edit_save"
+    const val soundboard_edit_save_progress = "soundboard_edit_save_progress"
+    const val soundboard_edit_save_error = "soundboard_edit_save_error"
+    const val soundboard_edit_discard_dialog = "soundboard_edit_discard_dialog"
+    const val soundboard_edit_discard_confirm = "soundboard_edit_discard_confirm"
+    const val soundboard_edit_discard_cancel = "soundboard_edit_discard_cancel"
+
+    /** Tag of the editable name of the track whose audio has [audioId]. */
+    fun soundboardEditTrackName(audioId: String) = "soundboard_edit_track_name_$audioId"
+
+    /** Tag of the remove button of the track whose audio has [audioId]. */
+    fun soundboardEditTrackRemove(audioId: String) = "soundboard_edit_track_remove_$audioId"
+
+    /** Tag of the editable name of the effect whose audio has [audioId]. */
+    fun soundboardEditEffectName(audioId: String) = "soundboard_edit_effect_name_$audioId"
+
+    /** Tag of the remove button of the effect whose audio has [audioId]. */
+    fun soundboardEditEffectRemove(audioId: String) = "soundboard_edit_effect_remove_$audioId"
+
     /** Tag of the search result item with [fileId]. */
     fun searchResult(fileId: String) = "document_search_result_$fileId"
 

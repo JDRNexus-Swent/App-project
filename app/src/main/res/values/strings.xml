@@ -272,4 +272,32 @@
     <string name="soundboard_error_audio_not_found">A sound file is missing.</string>
     <string name="soundboard_error_soundboard_not_found">This soundboard no longer exists.</string>
     <string name="soundboard_error_unknown">Something went wrong. Try again.</string>
+
+    <!-- Soundboard editor -->
+    <string name="soundboard_edit_title">Edit Soundboard</string>
+    <string name="soundboard_edit_header_label">Campaign · Sound Library</string>
+    <string name="soundboard_edit_name_label">Soundboard name</string>
+    <string name="soundboard_edit_name_empty">Give the soundboard a name.</string>
+    <plurals name="soundboard_edit_name_too_long">
+        <item quantity="one">At most %d character.</item>
+        <item quantity="other">At most %d characters.</item>
+    </plurals>
+    <string name="soundboard_edit_add_playlist">Add playlist</string>
+    <string name="soundboard_edit_new_playlist">New playlist</string>
+    <plurals name="soundboard_edit_tracks_count">
+        <item quantity="one">%d track</item>
+        <item quantity="other">%d tracks</item>
+    </plurals>
+    <plurals name="soundboard_edit_sounds_count">
+        <item quantity="one">%d sound</item>
+        <item quantity="other">%d sounds</item>
+    </plurals>
+    <string name="soundboard_edit_track_subtitle">%1$s · Ambience track</string>
+    <string name="soundboard_edit_effect_subtitle">%1$s · One-shot effect</string>
+    <string name="soundboard_edit_remove_cd">Remove %1$s</string>
+    <string name="soundboard_edit_save">Save soundboard</string>
+    <string name="soundboard_edit_discard_title">Discard changes?</string>
+    <string name="soundboard_edit_discard_body">Your unsaved changes and the sounds imported since the last save will be lost.</string>
+    <string name="soundboard_edit_discard_confirm">Discard</string>
+    <string name="soundboard_edit_discard_cancel">Keep editing</string>
 </resources>
