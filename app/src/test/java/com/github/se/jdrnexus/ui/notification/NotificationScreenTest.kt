@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.notification
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -9,6 +10,7 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -195,6 +197,18 @@ class NotificationScreenTest {
   }
 
   @Test
+  fun markAllConfirmationSurvivesRotation() {
+    val viewModel = FakeNotificationViewModel(loadedNotifications(unread, read))
+    val restorationTester = StateRestorationTester(composeTestRule)
+    restorationTester.setContent { SampleAppTheme { Screen(viewModel) } }
+
+    composeTestRule.onNodeWithTag(C.Tag.notification_mark_all).performClick()
+    restorationTester.emulateSavedInstanceStateRestore()
+
+    composeTestRule.onNodeWithTag(C.Tag.notification_mark_all_dialog).assertIsDisplayed()
+  }
+
+  @Test
   fun markAllIsDisabledWhenEverythingIsRead() {
     setScreen(FakeNotificationViewModel(loadedNotifications(read)))
 
@@ -240,16 +254,17 @@ class NotificationScreenTest {
   }
 
   private fun setScreen(viewModel: FakeNotificationViewModel) {
-    composeTestRule.setContent {
-      SampleAppTheme {
-        NotificationScreen(
-            viewModel = viewModel,
-            onBack = { backClicks++ },
-            onOpenNotification = { opened += it },
-            onTabSelected = { selectedTabs += it },
-        )
-      }
-    }
+    composeTestRule.setContent { SampleAppTheme { Screen(viewModel) } }
+  }
+
+  @Composable
+  private fun Screen(viewModel: FakeNotificationViewModel) {
+    NotificationScreen(
+        viewModel = viewModel,
+        onBack = { backClicks++ },
+        onOpenNotification = { opened += it },
+        onTabSelected = { selectedTabs += it },
+    )
   }
 
   private fun waitForSnackbar() {
