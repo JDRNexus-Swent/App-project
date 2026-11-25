@@ -9,6 +9,7 @@ import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -154,8 +155,11 @@ class AuthRepositoryFirebaseEmulatorTest {
 
   @Test
   fun refreshSessionSignsOutADeletedAccount() {
-    val user = signUp(randomEmail())
-    runBlocking { FirebaseEmulatorTestUtils.deleteAuthAccountBypassingRules(user.uid) }
+    signUp(randomEmail())
+    val idToken = call { checkNotNull(firebaseAuth.currentUser).getIdToken(false).await().token }
+    runBlocking {
+      FirebaseEmulatorTestUtils.deleteAuthAccountKeepingLocalSession(checkNotNull(idToken))
+    }
 
     val result = call { repository.refreshSession() }
 

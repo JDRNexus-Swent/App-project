@@ -387,19 +387,20 @@ object FirebaseEmulatorTestUtils {
   private fun restBase(firestore: FirebaseFirestore) =
       "http://$EMULATOR_HOST:$EMULATOR_PORT/v1/${documentName(firestore, "").trimEnd('/')}"
 
-  // Sends one HTTP request as the emulator's "owner" and returns the response body; throws on
-  // error, except a 404 when [allowNotFound], which returns null.
+  // Sends one HTTP request as the emulator's "owner" (unless [asOwner] is false) and returns the
+  // response body; throws on error, except a 404 when [allowNotFound], which returns null.
   private suspend fun ownerRequest(
       method: String,
       url: String,
       body: String? = null,
       allowNotFound: Boolean = false,
+      asOwner: Boolean = true,
   ): String? =
       withContext(Dispatchers.IO) {
         val connection = URL(url).openConnection() as HttpURLConnection
         try {
           connection.requestMethod = method
-          connection.setRequestProperty("Authorization", "Bearer owner")
+          if (asOwner) connection.setRequestProperty("Authorization", "Bearer owner")
           if (body != null) {
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/json")
@@ -417,16 +418,21 @@ object FirebaseEmulatorTestUtils {
       }
 
   /**
-   * Deletes the Auth account [uid] on the Auth emulator as an admin, without signing it out on this
-   * device: the device keeps a session for an account that no longer exists.
+   * Deletes the Auth account that [idToken] belongs to on the Auth emulator, without telling the
+   * FirebaseAuth instance of this device: it keeps a session for an account that no longer exists.
+   *
+   * The account is named by its token, not by a project path: CI starts the emulator for the demo
+   * project, which differs from the project id of google-services.json.
    */
-  suspend fun deleteAuthAccountBypassingRules(uid: String) {
-    val projectId = checkNotNull(FirebaseApp.getInstance().options.projectId)
+  suspend fun deleteAuthAccountKeepingLocalSession(idToken: String) {
+    val apiKey = FirebaseApp.getInstance().options.apiKey
     ownerRequest(
         "POST",
-        "http://$EMULATOR_HOST:$AUTH_EMULATOR_PORT/identitytoolkit.googleapis.com/v1/projects/" +
-            "$projectId/accounts:delete",
-        JSONObject().put("localId", uid).toString(),
+        "http://$EMULATOR_HOST:$AUTH_EMULATOR_PORT/identitytoolkit.googleapis.com/v1/" +
+            "accounts:delete?key=$apiKey",
+        JSONObject().put("idToken", idToken).toString(),
+        // As the user: the emulator reads an owner request as an admin one, which needs a localId.
+        asOwner = false,
     )
   }
 
