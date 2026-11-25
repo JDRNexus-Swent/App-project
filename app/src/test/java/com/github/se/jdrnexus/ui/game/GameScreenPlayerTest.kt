@@ -104,7 +104,10 @@ class GameScreenPlayerTest {
     }
 
     composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertIsDisplayed()
-    composeTestRule.onNodeWithText("Ilyra Vane").assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(C.Tag.game_player_character_name)
+        .assertIsDisplayed()
+        .assertTextEquals("Ilyra Vane")
 
     composeTestRule.runOnIdle { isOnline = true }
     composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertDoesNotExist()

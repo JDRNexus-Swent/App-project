@@ -111,6 +111,6 @@ class ConnectivityRepositoryAndroidTest {
 
         job.cancel()
 
-        assertTrue(registeredCallbacks().isEmpty())
+        assertEquals(0, registeredCallbacks().size)
       }
 }

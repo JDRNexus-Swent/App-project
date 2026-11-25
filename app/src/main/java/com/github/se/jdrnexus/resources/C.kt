@@ -161,6 +161,8 @@ object C {
     const val workspace_remove_item_cancel = "remove_item_cancel"
     const val workspace_operation_progress = "workspace_operation_progress"
     const val workspace_loading = "workspace_loading"
+    const val workspace_header = "workspace_header"
+    const val workspace_empty = "workspace_empty"
 
     fun workspaceItem(fileId: String) = "workspace_item_$fileId"
 

@@ -10,8 +10,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -44,14 +43,8 @@ class OfflineBannerTest {
       }
     }
 
-    banner().assertIsDisplayed()
-    // The text is a child of the tagged row: look for it inside the banner.
-    composeTestRule
-        .onNode(
-            hasText("You're offline") and hasAnyAncestor(hasTestTag(C.Tag.offline_banner)),
-            useUnmergedTree = true,
-        )
-        .assertIsDisplayed()
+    // The text is a child of the tagged row, so it is checked as one of the banner's descendants.
+    banner().assertIsDisplayed().assert(hasAnyDescendant(hasText("You're offline")))
     composeTestRule.runOnIdle { darkTheme = true }
     banner().assertIsDisplayed()
 

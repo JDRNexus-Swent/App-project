@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -112,10 +113,22 @@ class GroupWorkSpaceScreenInstrumentedTest {
     val isOnline = mutableStateOf(false)
     showScreen(WorkspaceFakeRepository(), Role.PLAYER, isOnline = isOnline)
 
-    composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertIsDisplayed()
-    composeTestRule.onNodeWithText("No files yet").assertIsDisplayed()
+    val banner =
+        composeTestRule
+            .onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true)
+            .assertIsDisplayed()
+            .getUnclippedBoundsInRoot()
+    val header = composeTestRule.onNodeWithTag(C.Tag.workspace_header).getUnclippedBoundsInRoot()
+    val content =
+        composeTestRule
+            .onNodeWithTag(C.Tag.workspace_empty)
+            .assertIsDisplayed()
+            .getUnclippedBoundsInRoot()
+    assertTrue("the banner overlaps the header", banner.top >= header.bottom)
+    assertTrue("the banner overlaps the content", banner.bottom <= content.top)
 
     composeTestRule.runOnIdle { isOnline.value = true }
+
     composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertDoesNotExist()
   }
 

@@ -807,7 +807,7 @@ fun WorkspaceHeader(
     onSearchClicked: () -> Unit = {},
 ) {
 
-  Column(modifier = Modifier.fillMaxWidth()) {
+  Column(modifier = Modifier.fillMaxWidth().testTag(C.Tag.workspace_header)) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth(),
@@ -1015,7 +1015,7 @@ private fun OperationButtonContent(
 fun EmptyWorkspace() {
 
   Box(
-      modifier = Modifier.fillMaxSize(),
+      modifier = Modifier.fillMaxSize().testTag(C.Tag.workspace_empty),
       contentAlignment = Alignment.Center,
   ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {

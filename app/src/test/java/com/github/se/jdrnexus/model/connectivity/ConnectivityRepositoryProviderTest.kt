@@ -4,7 +4,7 @@ package com.github.se.jdrnexus.model.connectivity
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -14,6 +14,8 @@ class ConnectivityRepositoryProviderTest {
   fun buildsTheAndroidRepositoryFromAContext() {
     val context = ApplicationProvider.getApplicationContext<Context>()
 
-    assertTrue(ConnectivityRepositoryProvider.repository(context) is ConnectivityRepositoryAndroid)
+    val repository = ConnectivityRepositoryProvider.repository(context)
+
+    assertEquals(ConnectivityRepositoryAndroid::class, repository::class)
   }
 }
