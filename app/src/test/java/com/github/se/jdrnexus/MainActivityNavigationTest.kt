@@ -61,6 +61,7 @@ import com.github.se.jdrnexus.ui.search.DocumentSearchResult
 import com.github.se.jdrnexus.ui.search.DocumentSearchStatus
 import com.github.se.jdrnexus.ui.search.DocumentSearchUiState
 import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
+import com.github.se.jdrnexus.utils.FakeConnectivityRepository
 import com.github.se.jdrnexus.utils.NavigationGameSessionRepository
 import com.github.se.jdrnexus.utils.NavigationGroupRepository
 import com.github.se.jdrnexus.utils.NavigationWorkspaceRepository
@@ -94,6 +95,26 @@ class MainActivityNavigationTest {
     scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotDisplayed()
+  }
+
+  @Test
+  fun offlineBannerFollowsTheConnectionOnEveryScreenWithATopBar() {
+    val connectivity = FakeConnectivityRepository(isOnline = false)
+    showApp(groupRepository = groupRepository(), connectivityRepository = connectivity)
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    waitForTag(TestTags.GROUPMANAGEMENTBUTTON)
+
+    composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertIsDisplayed()
+
+    composeTestRule.runOnIdle { connectivity.online.value = true }
+    composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertDoesNotExist()
+
+    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.runOnIdle { connectivity.online.value = false }
+    composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertIsDisplayed()
   }
 
   @Test
@@ -284,6 +305,7 @@ class MainActivityNavigationTest {
             authRepository = repository,
             groupRepository = FakeGroupRepository(),
             workspaceRepository = NavigationWorkspaceRepository(),
+            connectivityRepository = FakeConnectivityRepository(),
         )
       }
     }
@@ -587,6 +609,7 @@ class MainActivityNavigationTest {
           authRepository = authRepository,
           groupRepository = groupRepository,
           workspaceRepository = workspaceRepository,
+          connectivityRepository = FakeConnectivityRepository(),
       )
     }
     signInAndOpenCampaigns()
@@ -689,6 +712,7 @@ class MainActivityNavigationTest {
           workspaceRepository = workspaceRepository,
           personalSearchViewModel = searchViewModel,
           groupSearchViewModel = searchViewModel,
+          connectivityRepository = FakeConnectivityRepository(),
       )
     }
 
@@ -1038,6 +1062,7 @@ class MainActivityNavigationTest {
       groupRepository: NavigationGroupRepository? = null,
       workspaceRepository: NavigationWorkspaceRepository = NavigationWorkspaceRepository(),
       gameSessionRepository: NavigationGameSessionRepository? = null,
+      connectivityRepository: FakeConnectivityRepository = FakeConnectivityRepository(),
   ) {
     val context = ApplicationProvider.getApplicationContext<Context>()
     if (FirebaseApp.getApps(context).isEmpty()) {
@@ -1060,6 +1085,7 @@ class MainActivityNavigationTest {
             workspaceRepository = workspaceRepository,
             editFileViewModel = editFileViewModel,
             gameSessionRepository = gameSessionRepository,
+            connectivityRepository = connectivityRepository,
         )
       }
     }
@@ -1117,6 +1143,7 @@ class MainActivityNavigationTest {
           workspaceRepository = workspaceRepository,
           personalSearchViewModel = documentSearchViewModel,
           groupSearchViewModel = documentSearchViewModel,
+          connectivityRepository = FakeConnectivityRepository(),
       )
     }
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")

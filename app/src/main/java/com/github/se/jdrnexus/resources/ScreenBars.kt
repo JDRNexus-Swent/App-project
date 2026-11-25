@@ -4,6 +4,7 @@ package com.github.se.jdrnexus.resources
 
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -40,6 +41,10 @@ private val screenTabs =
         ScreenTab("Map", Icons.Outlined.Map),
     )
 
+/**
+ * The app's top bar, with the [OfflineBanner] under it while the device is offline. [modifier]
+ * applies to the bar itself, not to the banner.
+ */
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun AppTopBar(
@@ -53,36 +58,39 @@ fun AppTopBar(
     trailingContent: @Composable () -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
-  CenterAlignedTopAppBar(
-      modifier = modifier.testTag(C.Tag.shared_top_bar),
-      title = {
-        if (titleContent == null) {
-          Text(title, modifier = titleModifier)
-        } else {
-          titleContent()
-        }
-      },
-      navigationIcon = {
-        if (onBack != null) {
-          IconButton(
-              onClick = onBack,
-              modifier = Modifier.testTag(backTestTag),
-          ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+  Column {
+    CenterAlignedTopAppBar(
+        modifier = modifier.testTag(C.Tag.shared_top_bar),
+        title = {
+          if (titleContent == null) {
+            Text(title, modifier = titleModifier)
+          } else {
+            titleContent()
           }
-        } else {
-          leadingContent()
-        }
-      },
-      actions = { trailingContent() },
-      colors =
-          TopAppBarDefaults.topAppBarColors(
-              containerColor = colors.surface,
-              titleContentColor = colors.onSurface,
-              navigationIconContentColor = colors.primary,
-              actionIconContentColor = colors.primary,
-          ),
-  )
+        },
+        navigationIcon = {
+          if (onBack != null) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.testTag(backTestTag),
+            ) {
+              Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            }
+          } else {
+            leadingContent()
+          }
+        },
+        actions = { trailingContent() },
+        colors =
+            TopAppBarDefaults.topAppBarColors(
+                containerColor = colors.surface,
+                titleContentColor = colors.onSurface,
+                navigationIconContentColor = colors.primary,
+                actionIconContentColor = colors.primary,
+            ),
+    )
+    OfflineBanner()
+  }
 }
 
 @Composable
