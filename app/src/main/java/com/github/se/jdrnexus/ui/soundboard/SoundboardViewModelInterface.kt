@@ -109,12 +109,16 @@ interface SoundboardViewModelInterface {
   fun toggleSoundEffect(audioId: String)
 
   /**
-   * Updates and persists [Soundboard.ambienceVolume]. Accepts values in [MIN_VOLUME]..[MAX_VOLUME].
+   * Applies [Soundboard.ambienceVolume] at once and persists it. Accepts values in
+   * [MIN_VOLUME]..[MAX_VOLUME]. The screen calls it on every slider move, so the ViewModel decides
+   * when to write it, for example once the value stops changing.
    */
   fun setAmbienceVolume(volume: Float)
 
   /**
-   * Updates and persists [Soundboard.effectsVolume]. Accepts values in [MIN_VOLUME]..[MAX_VOLUME].
+   * Applies [Soundboard.effectsVolume] at once and persists it. Accepts values in
+   * [MIN_VOLUME]..[MAX_VOLUME]. The screen calls it on every slider move, so the ViewModel decides
+   * when to write it, for example once the value stops changing.
    */
   fun setSoundEffectVolume(volume: Float)
 
@@ -137,6 +141,9 @@ interface SoundboardViewModelInterface {
    *
    * When [soundboardId] is null, observes the user's first saved board instead. If the user has
    * none, [SoundboardUiState.soundboard] stays null and the state is [SoundboardLoadState.Empty].
+   *
+   * Loading the board that is already loaded keeps its state and playback, because the screen calls
+   * this again after a rotation or when the Game Master comes back from the editor.
    */
   fun loadSoundboard(soundboardId: String?)
 }

@@ -171,8 +171,12 @@ interface SoundboardEditViewModelInterface {
   /**
    * Opens the saved board with [soundboardId], or creates an unsaved draft with an ID from
    * [SoundboardRepository.getNewSoundboardId] when the ID is null. A missing saved board is
-   * reported as [SoundboardError.SOUNDBOARD_NOT_FOUND]. Starts from [SoundboardEditStatus.IDLE]
-   * with no error and the discard dialog hidden, so a reopened editor never closes at once.
+   * reported as [SoundboardError.SOUNDBOARD_NOT_FOUND].
+   *
+   * Loading the draft that is already open keeps it and its unsaved changes, because the screen
+   * calls this again after a rotation. Otherwise, including once the draft has been saved or
+   * discarded, it starts from [SoundboardEditStatus.IDLE] with no error and the discard dialog
+   * hidden, so a reopened editor never closes at once.
    */
   fun loadSoundboard(soundboardId: String?)
 }
