@@ -12,7 +12,10 @@ import kotlinx.coroutines.flow.StateFlow
 sealed interface SoundboardLoadState {
   data object Loading : SoundboardLoadState
 
-  /** The board has no playable tracks or effects. It may still contain empty playlists. */
+  /**
+   * The user has no saved board yet, or the board has no playable tracks or effects. A board may
+   * still contain empty playlists.
+   */
   data object Empty : SoundboardLoadState
 
   data object Ready : SoundboardLoadState
@@ -62,8 +65,9 @@ sealed interface SoundboardPlaybackError {
  * @property playingEffectIds Effects currently playing, independently of ambience and each other.
  * @property pendingEffectIds Effects with a playback action in progress.
  * @property error The latest playback or volume failure, or null when there is none.
- * @property isAmbienceMuted Whether ambience is muted; its saved volume is kept for unmuting.
- * @property isSoundEffectsMuted Whether effects are muted; their saved volume is kept for unmuting.
+ * @property isAmbienceMuted Whether ambience is muted; unmuting restores its last audible gain.
+ * @property isSoundEffectsMuted Whether effects are muted; unmuting restores their last audible
+ *   gain.
  * @property isTrackMenuExpanded Whether the menu listing the selected playlist's tracks is open.
  */
 data class SoundboardUiState(
@@ -156,7 +160,8 @@ interface SoundboardViewModelInterface {
    * none, [SoundboardUiState.soundboard] stays null and the state is [SoundboardLoadState.Empty].
    *
    * Loading the board that is already loaded keeps its state and playback, because the screen calls
-   * this again after a rotation or when the Game Master comes back from the editor.
+   * this again after a rotation or when the Game Master comes back from the editor. After a failed
+   * load, the same call loads again, so the screen's Retry works.
    */
   fun loadSoundboard(soundboardId: String?)
 }

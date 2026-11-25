@@ -157,8 +157,9 @@ interface SoundboardEditViewModelInterface {
 
   /**
    * Called when the Game Master leaves the editor. Shows the discard dialog when
-   * [SoundboardEditUiState.hasUnsavedChanges] is true; otherwise calls [discard]. Ignored while the
-   * draft is being saved, so the save can finish.
+   * [SoundboardEditUiState.hasUnsavedChanges] is true; otherwise calls [discard]. Ignored while a
+   * file is being imported or the draft is being saved, so the operation can finish and its copy is
+   * kept in the draft or removed with it.
    */
   fun requestLeave()
 
@@ -180,7 +181,8 @@ interface SoundboardEditViewModelInterface {
    * Calling it again with the same argument keeps the open draft and its unsaved changes, including
    * null while a new draft is open, because the screen calls this again after a rotation.
    * Otherwise, including once the draft has been saved or discarded, it starts from
-   * [SoundboardEditStatus.IDLE] with no error and the discard dialog hidden.
+   * [SoundboardEditStatus.IDLE] with no error and the discard dialog hidden. After a failed load,
+   * the same call loads again, so the screen's Retry works.
    */
   fun loadSoundboard(soundboardId: String?)
 }
