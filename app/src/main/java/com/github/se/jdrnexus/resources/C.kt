@@ -230,6 +230,18 @@ object C {
     /** Tag of the button restoring the hidden GM dashboard section [key]. */
     fun gameGmRestore(key: String) = "game_gm_restore_$key"
 
+    const val group_management_loading = "group_management_loading"
+    const val group_management_error = "group_management_error"
+    const val group_management_delete = "group_management_delete"
+    const val group_management_confirm = "group_management_confirm"
+    const val group_management_cancel = "group_management_cancel"
+
+    /** Tag of the row of the group member [uid] on the group management screen. */
+    fun groupManagementMember(uid: String) = "group_management_member_$uid"
+
+    /** Tag of the button removing the player [uid] on the group management screen. */
+    fun groupManagementRemove(uid: String) = "group_management_remove_$uid"
+
     /** Tag of the search result item with [fileId]. */
     fun searchResult(fileId: String) = "document_search_result_$fileId"
   }
