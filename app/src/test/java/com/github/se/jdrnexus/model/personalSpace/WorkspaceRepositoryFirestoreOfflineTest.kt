@@ -5,11 +5,15 @@ import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils.pumpMainLooperUntil
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils.runAndPumpMainLooper
 import com.github.se.jdrnexus.utils.waitFor
+import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.TaskCompletionSource
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.Source
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
@@ -338,6 +342,79 @@ class WorkspaceRepositoryFirestoreOfflineTest {
     assertLateRefusalIsReturned(refuse) {
       slowRepository.updateFile(FileEdit("file", "Edited", ""), waitForServer = true)
     }
+  }
+
+  /**
+   * A server that does not answer the read of [id] until [SlowRead.server] is completed, and a
+   * local cache that answers with [cacheAnswer]. The emulator always answers in time, so this path
+   * needs mocks.
+   */
+  private class SlowRead(id: String, cacheAnswer: Task<DocumentSnapshot>) {
+    val server = TaskCompletionSource<DocumentSnapshot>()
+    val repository: WorkspaceRepository
+
+    init {
+      val firestoreMock = mockk<FirebaseFirestore>()
+      val collectionMock = mockk<CollectionReference>()
+      val documentMock = mockk<DocumentReference>()
+      every { firestoreMock.collection("documents") } returns collectionMock
+      every { collectionMock.document(id) } returns documentMock
+      every { documentMock.get() } returns server.task
+      every { documentMock.get(Source.CACHE) } returns cacheAnswer
+      repository = WorkspaceRepositoryFirestore(firestoreMock)
+    }
+  }
+
+  /** A snapshot of an existing document holding [file]. */
+  private fun snapshotOf(file: JDRFile): DocumentSnapshot {
+    val snapshot = mockk<DocumentSnapshot>()
+    every { snapshot.exists() } returns true
+    every { snapshot.toObject(JDRFile::class.java) } returns file
+    return snapshot
+  }
+
+  /** How long to wait to be sure the read has gone past its time limit. */
+  private val pastTheReadLimitMs = WorkspaceRepositoryFirestore.SERVER_READ_TIMEOUT_MS + 1_000
+
+  @Test
+  fun getFileAnswersFromTheCacheWhenTheServerIsSlow() = runBlocking {
+    val cachedFile = text("file", content = "cached")
+    val read = SlowRead("file", Tasks.forResult(snapshotOf(cachedFile)))
+
+    val result = withTimeoutOrNull(pastTheReadLimitMs) { read.repository.getFile("file") }
+
+    assertEquals(Result.success(cachedFile), result)
+    assertFalse(read.server.task.isComplete)
+  }
+
+  @Test
+  fun getFileKeepsWaitingForTheServerWhenTheCacheDoesNotHaveTheDocument() = runBlocking {
+    val cacheMiss =
+        FirebaseFirestoreException(
+            "Failed to get document from cache.",
+            FirebaseFirestoreException.Code.UNAVAILABLE,
+        )
+    val read = SlowRead("file", Tasks.forException(cacheMiss))
+    val operation = CoroutineScope(Dispatchers.Default).async { read.repository.getFile("file") }
+
+    val beforeTheServerAnswers = withTimeoutOrNull(pastTheReadLimitMs) { operation.await() }
+    val serverFile = text("file", content = "from the server")
+    read.server.setResult(snapshotOf(serverFile))
+
+    assertNull(beforeTheServerAnswers)
+    assertEquals(Result.success(serverFile), operation.await())
+  }
+
+  @Test
+  fun getFileReturnsACacheErrorOtherThanAMiss() = runBlocking {
+    val cacheError =
+        FirebaseFirestoreException("Cache corrupted.", FirebaseFirestoreException.Code.INTERNAL)
+    val read = SlowRead("file", Tasks.forException(cacheError))
+
+    val result = withTimeoutOrNull(pastTheReadLimitMs) { read.repository.getFile("file") }
+
+    assertEquals(Result.failure<JDRFile?>(cacheError), result)
+    assertFalse(read.server.task.isComplete)
   }
 
   private companion object {
