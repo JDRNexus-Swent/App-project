@@ -1,9 +1,13 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.game
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -30,6 +34,7 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.resources.LocalIsOnline
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,6 +82,35 @@ class GameScreenPlayerTest {
     assertEquals("Files", selectedTab)
     assertEquals(listOf("group-1"), viewModel.loadedGroups)
     assertEquals(0, viewModel.saveCalls)
+  }
+
+  @Test
+  fun offlineBannerShowsAboveTheSessionOnlyWhileOffline() {
+    var isOnline by mutableStateOf(false)
+    val viewModel = FakeGamePlayerViewModel()
+    composeTestRule.setContent {
+      SampleAppTheme {
+        CompositionLocalProvider(LocalIsOnline provides isOnline) {
+          GameScreenPlayer(
+              groupId = "group-1",
+              viewModel = viewModel,
+              onBack = {},
+              onOpenDice = {},
+              onOpenGroupWorkspace = {},
+              onTabSelected = {},
+          )
+        }
+      }
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(C.Tag.game_player_character_name)
+        .assertIsDisplayed()
+        .assertTextEquals("Ilyra Vane")
+
+    composeTestRule.runOnIdle { isOnline = true }
+    composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertDoesNotExist()
   }
 
   @Test

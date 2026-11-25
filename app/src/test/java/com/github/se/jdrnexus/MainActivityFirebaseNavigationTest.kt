@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -18,6 +19,7 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
+import com.github.se.jdrnexus.utils.FakeConnectivityRepository
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import java.util.UUID
@@ -40,7 +42,9 @@ class MainActivityFirebaseNavigationTest {
   fun returningFromSignUpToSignInKeepsSignInAvailable() {
     val firebaseAuth = FirebaseEmulatorTestUtils.getAuth()
 
-    composeTestRule.setContent { JDRNexusApp() }
+    composeTestRule.setContent {
+      JDRNexusApp(connectivityRepository = FakeConnectivityRepository())
+    }
 
     scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed().performClick()
@@ -58,7 +62,9 @@ class MainActivityFirebaseNavigationTest {
     val firebaseAuth = FirebaseEmulatorTestUtils.getAuth()
 
     val email = "player-${UUID.randomUUID()}@example.com"
-    composeTestRule.setContent { JDRNexusApp() }
+    composeTestRule.setContent {
+      JDRNexusApp(connectivityRepository = FakeConnectivityRepository())
+    }
 
     scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performClick()
@@ -106,6 +112,7 @@ class MainActivityFirebaseNavigationTest {
       JDRNexusApp(
           authViewModel = authViewModel,
           gameManagementViewModel = gameManagementViewModel,
+          connectivityRepository = FakeConnectivityRepository(),
       )
     }
 

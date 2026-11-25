@@ -45,6 +45,7 @@ object C {
     const val shared_top_bar = "shared_top_bar"
     const val shared_back_button = "shared_back_button"
     const val shared_bottom_bar = "shared_bottom_bar"
+    const val offline_banner = "offline_banner"
     const val search_open = "document_search_open"
     const val search_query = "document_search_query"
     const val search_clear = "document_search_clear"
@@ -170,6 +171,8 @@ object C {
     const val workspace_remove_item_cancel = "remove_item_cancel"
     const val workspace_operation_progress = "workspace_operation_progress"
     const val workspace_loading = "workspace_loading"
+    const val workspace_header = "workspace_header"
+    const val workspace_empty = "workspace_empty"
 
     fun workspaceItem(fileId: String) = "workspace_item_$fileId"
 

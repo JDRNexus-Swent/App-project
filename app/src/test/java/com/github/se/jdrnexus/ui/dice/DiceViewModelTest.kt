@@ -1,11 +1,10 @@
 // Co-authored-by: Gemini
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.dice
 
 import androidx.lifecycle.ViewModel
 import com.github.se.jdrnexus.model.repository.DiceLogic
-import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
-import io.mockk.coEvery
-import io.mockk.coVerify
+import com.github.se.jdrnexus.utils.FakeDiceRepository
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -30,15 +29,14 @@ import org.junit.Test
 class DiceViewModelTest {
 
   private lateinit var diceLogic: DiceLogic
-  private lateinit var diceRepository: DiceRepositoryFirestore
+  private lateinit var diceRepository: FakeDiceRepository
   private val testDispatcher = StandardTestDispatcher()
 
   @Before
   fun setup() {
     Dispatchers.setMain(testDispatcher)
-    // Note: These interfaces don't exist yet, but mockk() will work once they are created.
     diceLogic = mockk()
-    diceRepository = mockk()
+    diceRepository = FakeDiceRepository()
   }
 
   @After
@@ -139,12 +137,12 @@ class DiceViewModelTest {
     val viewModel = DiceViewModel(diceLogic, diceRepository, groupId = "group_1")
     val result = DiceRollResult(DiceType.D20, 15, 0, 15)
     every { diceLogic.roll(any(), any()) } returns result
-    coEvery { diceRepository.saveRollResult(any(), any()) } returns Result.success(Unit)
+    diceRepository.saveResult = Result.success(Unit)
 
     viewModel.rollDice()
     advanceUntilIdle() // Process coroutines
 
-    coVerify { diceRepository.saveRollResult("group_1", result) }
+    assertEquals(listOf("group_1" to result), diceRepository.savedRolls)
     assertNull(viewModel.uiState.value.errorMessage)
   }
 
@@ -155,8 +153,7 @@ class DiceViewModelTest {
     val errorMsg = "Permission error"
 
     every { diceLogic.roll(any(), any()) } returns result
-    coEvery { diceRepository.saveRollResult(any(), any()) } returns
-        Result.failure(Exception(errorMsg))
+    diceRepository.saveResult = Result.failure(Exception(errorMsg))
 
     viewModel.rollDice()
     advanceUntilIdle()
@@ -193,8 +190,7 @@ class DiceViewModelTest {
   fun `dismissError clears errorMessage`() = runTest {
     val viewModel = DiceViewModel(diceLogic, diceRepository, groupId = "group_1")
     every { diceLogic.roll(any(), any()) } returns DiceRollResult(DiceType.D20, 10, 0, 10)
-    coEvery { diceRepository.saveRollResult(any(), any()) } returns
-        Result.failure(Exception("Error"))
+    diceRepository.saveResult = Result.failure(Exception("Error"))
 
     viewModel.rollDice()
     advanceUntilIdle() // Ensure error state is reached
@@ -211,8 +207,7 @@ class DiceViewModelTest {
 
     every { diceLogic.roll(any(), any()) } returns result
     // Simulate an error
-    coEvery { diceRepository.saveRollResult(any(), any()) } returns
-        Result.failure(Exception(simulatedError))
+    diceRepository.saveResult = Result.failure(Exception(simulatedError))
 
     viewModel.rollDice()
     advanceUntilIdle()

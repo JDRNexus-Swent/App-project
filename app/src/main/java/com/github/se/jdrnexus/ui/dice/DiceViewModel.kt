@@ -1,10 +1,11 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.dice
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.model.repository.DiceLogic
-import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
+import com.github.se.jdrnexus.model.repository.DiceRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,7 +18,7 @@ import kotlinx.coroutines.launch
  */
 class DiceViewModelFactory(
     private val diceLogic: DiceLogic,
-    private val diceRepository: DiceRepositoryFirestore?,
+    private val diceRepository: DiceRepository?,
     private val groupId: String? = null,
 ) : ViewModelProvider.Factory {
 
@@ -36,13 +37,14 @@ class DiceViewModelFactory(
  * ViewModel managing the state and logic of the Dice Screen.
  *
  * @property diceLogic The logic component responsible for math generation.
- * @property diceRepository The repository handling Cloud Firestore persistence.
+ * @property diceRepository Where the rolls of the group [groupId] are saved; may be null when
+ *   [groupId] is null.
  * @property groupId The ID of the current campaign group. If null, the app operates in
  *   offline/local mode and skips database synchronization.
  */
 class DiceViewModel(
     private val diceLogic: DiceLogic,
-    private val diceRepository: DiceRepositoryFirestore?,
+    private val diceRepository: DiceRepository?,
     private val groupId: String? = null,
 ) : ViewModel(), DiceInterfaceVM {
 
