@@ -50,6 +50,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -163,7 +164,8 @@ fun NotificationScreen(
   val uiState by viewModel.notificationUiState.collectAsState()
   val colors = MaterialTheme.colorScheme
   val snackbarHostState = remember { SnackbarHostState() }
-  var confirmingMarkAll by remember { mutableStateOf(false) }
+  // Saveable so the confirmation dialog survives a rotation instead of silently closing.
+  var confirmingMarkAll by rememberSaveable { mutableStateOf(false) }
   val hasUnread = uiState.notifications.any { !it.isRead }
 
   val actionErrorMessage = stringResource(R.string.notifications_action_error)
