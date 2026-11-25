@@ -68,7 +68,13 @@ class NavigationGroupRepository(private val group: CampaignGroup) : GroupReposit
 
   override suspend fun updateGroup(group: CampaignGroup): Result<Unit> = error("Not used")
 
-  override suspend fun deleteGroup(groupId: String): Result<Unit> = error("Not used")
+  /** The id of the last group deleted through [deleteGroup]. */
+  var deletedGroupId: String? = null
+
+  override suspend fun deleteGroup(groupId: String): Result<Unit> {
+    deletedGroupId = groupId
+    return Result.success(Unit)
+  }
 
   override suspend fun getGroup(groupId: String): Result<CampaignGroup> = error("Not used")
 

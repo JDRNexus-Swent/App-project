@@ -894,6 +894,35 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun manageGroupOpensTheGroupManagementScreenAndBackReturnsToCampaigns() {
+    openGroupManagement(groupRepository("user-1"))
+
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    assertBackOnCampaigns(C.Tag.group_management_delete)
+  }
+
+  @Test
+  fun deletingTheGroupReturnsToCampaigns() {
+    val groupRepository = groupRepository("user-1")
+    openGroupManagement(groupRepository)
+
+    composeTestRule.onNodeWithTag(C.Tag.group_management_delete).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.group_management_confirm).performClick()
+
+    assertBackOnCampaigns(C.Tag.group_management_delete)
+    assertEquals("group-1", groupRepository.deletedGroupId)
+  }
+
+  private fun openGroupManagement(groupRepository: NavigationGroupRepository) {
+    showApp(groupRepository = groupRepository)
+    signInAndOpenCampaigns()
+    waitForText("Manage group")
+    composeTestRule.onNodeWithText("Manage group").performClick()
+    waitForTag(C.Tag.group_management_delete)
+  }
+
+  @Test
   fun campaignsTabInAWorkspaceOpenedFromThePlayerScreenReturnsToCampaigns() {
     openGameFromPlay(gameMasterId = "gm-1")
     waitForTag(C.Tag.game_player_workspace)
