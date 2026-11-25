@@ -1,18 +1,20 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.edition
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -22,15 +24,17 @@ import androidx.compose.ui.unit.dp
 import com.github.se.jdrnexus.resources.AppTopBar
 
 /**
- * Provides the shared loading, empty/error, and content states for an edit screen.
+ * Provides the shared header and the loading, empty/error, and content states for an edit screen.
  *
- * Loading takes precedence over the other states. When content is unavailable, the scaffold shows
- * the header and either [error] or [emptyMessage]; otherwise it invokes [content].
+ * The header ([EditFileHeader], which shows the offline banner) sits in the `Scaffold`'s top bar,
+ * so it stays on screen in every state and while [content] scrolls. Below it, loading takes
+ * precedence over the other states; when content is unavailable, the scaffold shows [error] or
+ * [emptyMessage]; otherwise it invokes [content].
  *
  * @param isLoading whether the file is currently loading.
  * @param loadingMessage text shown while loading.
  * @param hasContent whether the editor has content to display.
- * @param screenTitle title shown in the header when content is unavailable.
+ * @param screenTitle title shown in the header.
  * @param backTestTag test tag applied to the header's back button.
  * @param error optional error shown instead of [emptyMessage].
  * @param emptyMessage message shown when there is no content and no error.
@@ -49,20 +53,24 @@ internal fun EditFileScaffold(
     onBack: () -> Unit,
     content: @Composable () -> Unit,
 ) {
-  Surface(
-      modifier = Modifier.fillMaxSize().navigationBarsPadding(),
-      color = MaterialTheme.colorScheme.background,
+  Scaffold(
+      modifier = Modifier.fillMaxSize(),
+      containerColor = MaterialTheme.colorScheme.background,
       contentColor = MaterialTheme.colorScheme.onSurface,
-  ) {
-    when {
-      isLoading -> {
-        Column(modifier = Modifier.fillMaxSize()) {
-          EditFileHeader(
-              title = screenTitle,
-              backTestTag = backTestTag,
-              onBack = onBack,
-              modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-          )
+      topBar = {
+        EditFileHeader(
+            title = screenTitle,
+            backTestTag = backTestTag,
+            onBack = onBack,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        )
+      },
+  ) { innerPadding ->
+    // The padding already covers the system bars: consuming it keeps the editors' imePadding from
+    // adding the navigation bar a second time.
+    Box(modifier = Modifier.fillMaxSize().padding(innerPadding).consumeWindowInsets(innerPadding)) {
+      when {
+        isLoading -> {
           Column(
               modifier = Modifier.fillMaxSize(),
               horizontalAlignment = Alignment.CenterHorizontally,
@@ -72,23 +80,15 @@ internal fun EditFileScaffold(
             Text(loadingMessage, modifier = Modifier.padding(top = 12.dp))
           }
         }
-      }
-      !hasContent -> {
-        Column(modifier = Modifier.fillMaxSize()) {
-          EditFileHeader(
-              title = screenTitle,
-              backTestTag = backTestTag,
-              onBack = onBack,
-              modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-          )
+        !hasContent -> {
           Text(
               text = error ?: emptyMessage,
               modifier = Modifier.padding(24.dp),
               color = MaterialTheme.colorScheme.error,
           )
         }
+        else -> content()
       }
-      else -> content()
     }
   }
 }
