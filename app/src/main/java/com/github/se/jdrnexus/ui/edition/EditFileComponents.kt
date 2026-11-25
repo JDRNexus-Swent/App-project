@@ -26,10 +26,10 @@ import com.github.se.jdrnexus.resources.AppTopBar
 /**
  * Provides the shared header and the loading, empty/error, and content states for an edit screen.
  *
- * The header ([EditFileHeader], which shows the offline banner) sits in the `Scaffold`'s top bar,
- * so it stays on screen in every state and while [content] scrolls. Below it, loading takes
- * precedence over the other states; when content is unavailable, the scaffold shows [error] or
- * [emptyMessage]; otherwise it invokes [content].
+ * The header ([AppTopBar], which shows the offline banner) sits in the `Scaffold`'s top bar, so it
+ * stays on screen in every state and while [content] scrolls. Below it, loading takes precedence
+ * over the other states; when content is unavailable, the scaffold shows [error] or [emptyMessage];
+ * otherwise it invokes [content].
  *
  * @param isLoading whether the file is currently loading.
  * @param loadingMessage text shown while loading.
@@ -58,10 +58,10 @@ internal fun EditFileScaffold(
       containerColor = MaterialTheme.colorScheme.background,
       contentColor = MaterialTheme.colorScheme.onSurface,
       topBar = {
-        EditFileHeader(
+        AppTopBar(
             title = screenTitle,
-            backTestTag = backTestTag,
             onBack = onBack,
+            backTestTag = backTestTag,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
         )
       },
@@ -91,24 +91,6 @@ internal fun EditFileScaffold(
       }
     }
   }
-}
-
-/**
- * Displays a screen title beside a back button.
- *
- * @param title text displayed as the header title.
- * @param backTestTag test tag applied to the back button.
- * @param onBack called when the back button is pressed.
- * @param modifier modifier applied to the header row.
- */
-@Composable
-internal fun EditFileHeader(
-    title: String,
-    backTestTag: String,
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-  AppTopBar(title = title, onBack = onBack, backTestTag = backTestTag, modifier = modifier)
 }
 
 /**
