@@ -104,7 +104,7 @@ class MainActivityNavigationTest {
 
   @Test
   fun signedOutLaunchOpensSignIn() {
-    showApp(FakeAuthRepository(initialUser = null))
+    showApp(FakeAuthRepository(initialUser = null), groupRepository = groupRepository())
 
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).assertIsDisplayed()
     composeTestRule.onAllNodesWithTag(TestTags.TITLE).assertCountEquals(0)
@@ -113,7 +113,10 @@ class MainActivityNavigationTest {
 
   @Test
   fun signedInLaunchOpensHomeWithoutSignIn() {
-    showApp(FakeAuthRepository(initialUser = FakeAuthRepository.TEST_USER))
+    showApp(
+        FakeAuthRepository(initialUser = FakeAuthRepository.TEST_USER),
+        groupRepository = groupRepository(),
+    )
 
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
     composeTestRule.onAllNodesWithTag(C.Tag.sign_in_submit).assertCountEquals(0)
@@ -127,6 +130,8 @@ class MainActivityNavigationTest {
       JDRNexusApp(
           authViewModel = viewModel,
           authRepository = repository,
+          // A fake: the Firestore repository would start the default Firestore off the emulator.
+          groupRepository = FakeGroupRepository(),
           workspaceRepository = NavigationWorkspaceRepository(),
           connectivityRepository = FakeConnectivityRepository(),
       )
@@ -145,7 +150,7 @@ class MainActivityNavigationTest {
   @Test
   fun sessionEndingOnAnotherScreenReturnsToSignIn() {
     val repository = FakeAuthRepository(initialUser = FakeAuthRepository.TEST_USER)
-    showApp(repository)
+    showApp(repository, groupRepository = groupRepository())
     composeTestRule.onNodeWithTag(TestTags.DICEBUTTON).performClick()
     waitForTag(C.Tag.dice_offline_screen)
 
@@ -157,8 +162,32 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun sessionEndedBeforeTheAppIsShownStillLeadsToSignIn() {
+    // A session restored at launch and ended before the app composes, as when a test signs out in
+    // @Before after the activity started: the app must still leave Home.
+    val repository = FakeAuthRepository(initialUser = FakeAuthRepository.TEST_USER)
+    val viewModel = AuthViewModel(repository)
+    composeTestRule.runOnIdle { repository.endSession() }
+
+    composeTestRule.setContent {
+      JDRNexusApp(
+          authViewModel = viewModel,
+          authRepository = repository,
+          // A fake: the Firestore repository would start the default Firestore off the emulator.
+          groupRepository = FakeGroupRepository(),
+          workspaceRepository = NavigationWorkspaceRepository(),
+          connectivityRepository = FakeConnectivityRepository(),
+      )
+    }
+    waitForTag(C.Tag.sign_in_submit)
+
+    composeTestRule.onAllNodesWithTag(TestTags.TITLE).assertCountEquals(0)
+    assertEquals(false, viewModel.sessionEnded.value)
+  }
+
+  @Test
   fun logoutLeavesNoCredentialsInTheSignInForm() {
-    showApp()
+    showApp(groupRepository = groupRepository())
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()

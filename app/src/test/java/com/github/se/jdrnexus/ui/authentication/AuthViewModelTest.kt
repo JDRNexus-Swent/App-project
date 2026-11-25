@@ -623,6 +623,45 @@ class AuthViewModelTest {
   }
 
   @Test
+  fun sessionEndStaysReportedUntilHandled() = runTest {
+    val authState = MutableStateFlow<AuthUser?>(USER)
+    val viewModel = AuthViewModel(FakeAuthRepository(authState))
+    runCurrent()
+    assertEquals(false, viewModel.sessionEnded.value)
+
+    authState.value = null
+    runCurrent()
+
+    assertEquals(true, viewModel.sessionEnded.value)
+
+    viewModel.onSessionEndHandled()
+
+    assertEquals(false, viewModel.sessionEnded.value)
+  }
+
+  @Test
+  fun signedOutLaunchIsNotReportedAsAnEndedSession() = runTest {
+    val viewModel = AuthViewModel(FakeAuthRepository(MutableStateFlow(null)))
+    runCurrent()
+
+    assertEquals(false, viewModel.sessionEnded.value)
+  }
+
+  @Test
+  fun signingInAgainClearsAnUnhandledSessionEnd() = runTest {
+    val authState = MutableStateFlow<AuthUser?>(USER)
+    val viewModel = AuthViewModel(FakeAuthRepository(authState))
+    runCurrent()
+    authState.value = null
+    runCurrent()
+
+    authState.value = USER
+    runCurrent()
+
+    assertEquals(false, viewModel.sessionEnded.value)
+  }
+
+  @Test
   fun successfulSignOutClearsTheForm() = runTest {
     val viewModel = AuthViewModel(FakeAuthRepository())
     fillForm(viewModel)

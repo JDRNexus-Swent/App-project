@@ -79,6 +79,20 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
    */
   val launchSession: StateFlow<SessionState> = _launchSession.asStateFlow()
 
+  private val _sessionEnded = MutableStateFlow(false)
+
+  /**
+   * True from the moment a signed-in session ends (sign-out, expired token, deleted account) until
+   * [onSessionEndHandled] is called. Kept as state, not as a transition to observe, so a screen
+   * that starts collecting after the session ended still sees it.
+   */
+  val sessionEnded: StateFlow<Boolean> = _sessionEnded.asStateFlow()
+
+  /** Marks the end of the session as handled, once the app has left the signed-in screens. */
+  fun onSessionEndHandled() {
+    _sessionEnded.value = false
+  }
+
   init {
     viewModelScope.launch { observeSession() }
   }
@@ -100,13 +114,12 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
             // Checked in the background: the user is not kept waiting, even offline.
             if (session == SessionState.SignedIn) viewModelScope.launch { refreshSession() }
           }
+          val ended = previous == SessionState.SignedIn && session == SessionState.SignedOut
+          if (session == SessionState.SignedIn) _sessionEnded.value = false
+          if (ended) _sessionEnded.value = true
           // The session ended outside a request of this ViewModel (expired, deleted account):
           // forget the previous user's form. A running request handles its own state.
-          if (
-              previous == SessionState.SignedIn &&
-                  session == SessionState.SignedOut &&
-                  _uiState.value.status !is AuthStatus.Loading
-          ) {
+          if (ended && _uiState.value.status !is AuthStatus.Loading) {
             _uiState.value = AuthUiState()
           }
         }

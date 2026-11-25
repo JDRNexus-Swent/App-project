@@ -37,6 +37,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.github.se.jdrnexus.model.connectivity.ConnectivityRepository
@@ -235,14 +236,14 @@ fun JDRNexusApp(
   val launchRoute = startDestination ?: launchRouteFor(launchSession)
 
   // A session that ends while the user is in the app (sign-out, expired token, deleted account)
-  // leads back to SignIn, with nothing left to return to.
-  LaunchedEffect(activeAuthViewModel, navController) {
-    var previous: SessionState = SessionState.Checking
-    activeAuthViewModel.sessionState.collect { session ->
-      if (previous == SessionState.SignedIn && session == SessionState.SignedOut) {
-        navController.showSignInAfterSessionEnded()
-      }
-      previous = session
+  // leads back to SignIn, with nothing left to return to. Keyed on the route too, so the end is
+  // handled once the NavHost has a destination, however late this effect starts.
+  val sessionEnded by activeAuthViewModel.sessionEnded.collectAsStateWithLifecycle()
+  val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+  LaunchedEffect(sessionEnded, currentRoute) {
+    if (sessionEnded && currentRoute != null) {
+      navController.showSignInAfterSessionEnded(currentRoute)
+      activeAuthViewModel.onSessionEndHandled()
     }
   }
 
@@ -588,9 +589,8 @@ fun JDRNexusApp(
   }
 }
 
-/** Opens SignIn and clears the back stack, unless an auth screen is already shown. */
-private fun NavHostController.showSignInAfterSessionEnded() {
-  val route = currentDestination?.route ?: return
+/** Opens SignIn and clears the back stack, unless [route], the current one, is an auth screen. */
+private fun NavHostController.showSignInAfterSessionEnded(route: String) {
   if (route == AllRoutes.SignIn.name || route == AllRoutes.SignUp.name) return
   navigate(AllRoutes.SignIn.name) {
     popUpTo(graph.id) { inclusive = true }
