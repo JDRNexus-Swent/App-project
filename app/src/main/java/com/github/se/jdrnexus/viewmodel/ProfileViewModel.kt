@@ -1,0 +1,235 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+package com.github.se.jdrnexus.viewmodel
+
+import android.net.Uri
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.github.se.jdrnexus.model.profile.ProfileRepository
+import com.github.se.jdrnexus.model.profile.ProfileRepositoryProvider
+import com.github.se.jdrnexus.model.repository.AuthRepository
+import com.github.se.jdrnexus.model.repository.AuthRepositoryProvider
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
+
+// ============ Validation rules ============
+
+private const val USERNAME_MIN_LENGTH = 3
+private const val USERNAME_MAX_LENGTH = 30
+private const val BIO_MAX_LENGTH = 300
+
+private fun usernameError(username: String): String? =
+    when {
+      username.isBlank() -> "Enter a username."
+      username.trim().length < USERNAME_MIN_LENGTH ->
+          "The username needs at least $USERNAME_MIN_LENGTH characters."
+      username.trim().length > USERNAME_MAX_LENGTH ->
+          "The username holds at most $USERNAME_MAX_LENGTH characters."
+      else -> null
+    }
+
+private fun bioError(bio: String): String? =
+    if (bio.trim().length > BIO_MAX_LENGTH) "The bio holds at most $BIO_MAX_LENGTH characters."
+    else null
+
+// ============ Definition of the ViewModel ============
+
+/**
+ * Loads and edits the profile of the signed-in user through [profileRepository]. The signed-in user
+ * is read from [authRepository] at the start of every operation.
+ */
+class ProfileViewModel(
+    private val profileRepository: ProfileRepository = ProfileRepositoryProvider.repository,
+    private val authRepository: AuthRepository = AuthRepositoryProvider.repository,
+) : ViewModel(), ProfileViewModelInterface {
+
+  private val _uiState = MutableStateFlow(ProfileUiState())
+  override val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
+
+  /**
+   * The running load and its user, so a second [loadProfile] call for that user does not restart
+   * it.
+   */
+  private var loadJob: Job? = null
+  private var loadingUid: String? = null
+
+  // ============ Internal helpers ============
+
+  /** UID of the signed-in user, read from the auth repository. */
+  private suspend fun requireUid(): String =
+      authRepository.authState.first()?.uid ?: throw IllegalStateException("You must be signed in.")
+
+  /** True once a profile is loaded: the repository always returns it with its user ID. */
+  private val ProfileUiState.profileLoaded: Boolean
+    get() = profile.userId.isNotBlank()
+
+  /**
+   * UID of the loaded profile, checked against the signed-in user, so a write never sends one
+   * user's drafts to another user's profile. On a mismatch, drops the loaded profile and throws.
+   */
+  private suspend fun requireLoadedUid(): String {
+    val uid = requireUid()
+    if (uid != _uiState.value.profile.userId) {
+      // Drop the other account's profile: the screen then offers Retry, which loads this one's.
+      _uiState.update { ProfileUiState(isLoading = false) }
+      throw IllegalStateException("The signed-in account changed. Reload the profile.")
+    }
+    return uid
+  }
+
+  /**
+   * Clears [ProfileUiState.errorMessage]. Called when a new repository operation starts, so the
+   * error shown is always the one of the latest operation, and the same error raised twice is
+   * emitted again (null in between).
+   */
+  private fun clearError() {
+    _uiState.update { it.copy(errorMessage = null) }
+  }
+
+  /** Recomputes [ProfileUiState.canSave] from the loaded profile, drafts and save status. */
+  private fun ProfileUiState.withCanSave(): ProfileUiState {
+    val username = usernameDraft.trim()
+    val changed = username != profile.username || bioDraft.trim() != profile.bio
+    val valid = usernameError(usernameDraft) == null && bioError(bioDraft) == null
+    return copy(canSave = isEditing && profileLoaded && changed && valid && !isSaving)
+  }
+
+  /** Message of [e], or [fallback] when it has none. */
+  private fun messageOf(e: Throwable, fallback: String): String =
+      e.message?.takeIf(String::isNotBlank) ?: fallback
+
+  // ============ Loading ============
+
+  override fun loadProfile() {
+    viewModelScope.launch {
+      try {
+        val uid = requireUid()
+        // The screen calls this again when recreated (e.g. rotation): keep the running load or the
+        // loaded profile of the same user. For another user, drop the previous user's state.
+        val state = _uiState.value
+        val sameLoadInProgress = loadJob?.isActive == true && loadingUid == uid
+        val sameProfileLoaded = state.profileLoaded && state.profile.userId == uid
+        if (sameLoadInProgress || sameProfileLoaded) return@launch
+        loadJob?.cancel()
+        loadJob = coroutineContext.job
+        loadingUid = uid
+        _uiState.update { ProfileUiState(isLoading = true) }
+
+        val profile = profileRepository.getProfile(uid).getOrThrow()
+        val stats = profileRepository.getProfileStats(uid).getOrThrow()
+        _uiState.update { it.copy(profile = profile, stats = stats, isLoading = false) }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        _uiState.update {
+          it.copy(isLoading = false, errorMessage = messageOf(e, "Unable to load the profile."))
+        }
+      }
+    }
+  }
+
+  // ============ Edit form ============
+
+  override fun startEditing() {
+    // Editing an unloaded profile would save empty drafts over the real username and bio.
+    if (!_uiState.value.profileLoaded) return
+    _uiState.update {
+      it.copy(
+              isEditing = true,
+              usernameDraft = it.profile.username,
+              bioDraft = it.profile.bio,
+              usernameError = null,
+              bioError = null,
+          )
+          .withCanSave()
+    }
+  }
+
+  override fun onUsernameChange(username: String) {
+    _uiState.update {
+      it.copy(usernameDraft = username, usernameError = usernameError(username)).withCanSave()
+    }
+  }
+
+  override fun onBioChange(bio: String) {
+    _uiState.update { it.copy(bioDraft = bio, bioError = bioError(bio)).withCanSave() }
+  }
+
+  override fun cancelEditing() {
+    _uiState.update {
+      it.copy(
+          isEditing = false,
+          usernameDraft = "",
+          bioDraft = "",
+          usernameError = null,
+          bioError = null,
+          canSave = false,
+      )
+    }
+  }
+
+  // ============ Saving ============
+
+  override fun saveProfile() {
+    val state = _uiState.value
+    if (!state.canSave) return
+    val username = state.usernameDraft.trim()
+    val bio = state.bioDraft.trim()
+    clearError()
+    _uiState.update { it.copy(isSaving = true, canSave = false) }
+
+    viewModelScope.launch {
+      try {
+        profileRepository.updateProfile(requireLoadedUid(), username, bio).getOrThrow()
+        _uiState.update {
+          it.copy(
+              profile = it.profile.copy(username = username, bio = bio),
+              isEditing = false,
+              usernameDraft = "",
+              bioDraft = "",
+              isSaving = false,
+              canSave = false,
+          )
+        }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        _uiState.update {
+          it.copy(isSaving = false, errorMessage = messageOf(e, "Unable to save the profile."))
+              .withCanSave()
+        }
+      }
+    }
+  }
+
+  override fun updateProfilePicture(image: Uri) {
+    if (_uiState.value.isSaving || !_uiState.value.profileLoaded) return
+    clearError()
+    _uiState.update { it.copy(isSaving = true, canSave = false) }
+
+    viewModelScope.launch {
+      try {
+        val url = profileRepository.uploadProfilePicture(requireLoadedUid(), image).getOrThrow()
+        _uiState.update {
+          it.copy(profile = it.profile.copy(pictureUrl = url), isSaving = false).withCanSave()
+        }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        _uiState.update {
+          it.copy(
+                  isSaving = false,
+                  errorMessage = messageOf(e, "Unable to update the profile picture."),
+              )
+              .withCanSave()
+        }
+      }
+    }
+  }
+}
