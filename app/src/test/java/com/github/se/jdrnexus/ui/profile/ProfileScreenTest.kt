@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.profile
 
 // Co-authored-by: Codex <codex@openai.com>
@@ -6,9 +7,6 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.LocalActivityResultRegistryOwner
-import androidx.activity.result.ActivityResultRegistry
-import androidx.activity.result.ActivityResultRegistryOwner
-import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties.EditableText
@@ -33,13 +31,13 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.text.AnnotatedString
-import androidx.core.app.ActivityOptionsCompat
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.profile.ProfileStats
 import com.github.se.jdrnexus.model.profile.UserProfile
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import com.github.se.jdrnexus.utils.RecordingPickerOwner
 import com.github.se.jdrnexus.viewmodel.ProfileUiState
 import com.github.se.jdrnexus.viewmodel.ProfileViewModelInterface
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -367,21 +365,6 @@ class ProfileScreenTest {
         ProfileScreen(viewModel = viewModel, onBack = onBack, onTabSelected = onTabSelected)
       }
     }
-  }
-
-  private class RecordingPickerOwner : ActivityResultRegistryOwner {
-    val requestCodes = mutableListOf<Int>()
-    override val activityResultRegistry =
-        object : ActivityResultRegistry() {
-          override fun <I, O> onLaunch(
-              requestCode: Int,
-              contract: ActivityResultContract<I, O>,
-              input: I,
-              options: ActivityOptionsCompat?,
-          ) {
-            requestCodes.add(requestCode)
-          }
-        }
   }
 
   private class RecordingProfileViewModel(initialState: ProfileUiState) :

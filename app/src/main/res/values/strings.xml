@@ -284,6 +284,8 @@
     </plurals>
     <string name="soundboard_edit_add_playlist">Add playlist</string>
     <string name="soundboard_edit_new_playlist">New playlist</string>
+    <string name="soundboard_edit_no_playlist">Add a playlist to add ambience tracks.</string>
+    <string name="soundboard_edit_playlist_name">Playlist name</string>
     <plurals name="soundboard_edit_tracks_count">
         <item quantity="one">%d track</item>
         <item quantity="other">%d tracks</item>
@@ -294,7 +296,10 @@
     </plurals>
     <string name="soundboard_edit_track_subtitle">%1$s · Ambience track</string>
     <string name="soundboard_edit_effect_subtitle">%1$s · One-shot effect</string>
+    <string name="soundboard_edit_name_required">Name required</string>
     <string name="soundboard_edit_remove_cd">Remove %1$s</string>
+    <string name="soundboard_edit_add_track">Add track</string>
+    <string name="soundboard_edit_add_sound">Add sound</string>
     <string name="soundboard_edit_save">Save soundboard</string>
     <string name="soundboard_edit_discard_title">Discard changes?</string>
     <string name="soundboard_edit_discard_body">Your unsaved changes and the sounds imported since the last save will be lost.</string>

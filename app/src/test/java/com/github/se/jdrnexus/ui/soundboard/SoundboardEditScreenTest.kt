@@ -1,7 +1,11 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.soundboard
 
+import android.app.Activity
+import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -23,6 +27,7 @@ import com.github.se.jdrnexus.model.soundboard.Soundboard
 import com.github.se.jdrnexus.model.soundboard.SoundboardError
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import com.github.se.jdrnexus.utils.RecordingPickerOwner
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -60,6 +65,8 @@ class SoundboardEditScreenTest {
           canSave = true,
       )
 
+  private val picked = Uri.parse("content://picker/audio/1")
+  private val picker = RecordingPickerOwner()
   private var dones = 0
   private val tabs = mutableListOf<String>()
 
@@ -235,6 +242,23 @@ class SoundboardEditScreenTest {
   }
 
   @Test
+  fun typingThePlaylistNameRenamesTheSelectedPlaylist() {
+    val vm = setContent(ready)
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_playlist_name).performTextReplacement("Inn")
+
+    assertEquals(listOf("renamePlaylist(tavern, Inn)"), vm.callsAfterLoad())
+  }
+
+  @Test
+  fun withoutPlaylistsAddTrackIsDisabled() {
+    setContent(ready.copy(draft = draft.copy(playlists = emptyList()), selectedPlaylistId = null))
+
+    composeTestRule.onNodeWithText("Add a playlist to add ambience tracks.").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_track).assertIsNotEnabled()
+  }
+
+  @Test
   fun tracksAreRenamedInPlaceAndRemoved() {
     val vm = setContent(ready)
 
@@ -248,6 +272,52 @@ class SoundboardEditScreenTest {
         listOf("renameTrack(tavern, fire, Hearth)", "removeTrack(tavern, fire)"),
         vm.callsAfterLoad(),
     )
+  }
+
+  @Test
+  fun pickedFileIsImportedIntoTheSelectedPlaylist() {
+    val vm = setContent(ready)
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_track).performClick()
+    answerPicker(picked)
+
+    assertEquals(listOf("importTrack(tavern, $picked)"), vm.callsAfterLoad())
+  }
+
+  @Test
+  fun cancelledPickerImportsNothing() {
+    val vm = setContent(ready)
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_track).performClick()
+    answerPicker(null)
+
+    assertEquals(emptyList<String>(), vm.callsAfterLoad())
+  }
+
+  @Test
+  fun trackImportShowsItsSpinnerAndBlocksOtherImportsAndSave() {
+    composeTestRule.mainClock.autoAdvance = false
+    setContent(ready.copy(status = SoundboardEditStatus.IMPORTING_TRACK))
+    composeTestRule.mainClock.advanceTimeBy(100)
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_track_progress).assertExists()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_sound_progress).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_track).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_sound).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_save).assertIsNotEnabled()
+    assertDraftControls(enabled = true)
+  }
+
+  @Test
+  fun trackImportErrorIsShownUnderAddTrack() {
+    setContent(
+        ready.copy(error = SoundboardEditError.ImportTrack(SoundboardError.UNSUPPORTED_FORMAT))
+    )
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.soundboard_edit_track_error)
+        .assertTextContains("Only mp3 files are supported.")
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_effect_error).assertDoesNotExist()
   }
 
   // ============ Sound effects ============
@@ -266,6 +336,43 @@ class SoundboardEditScreenTest {
         listOf("renameSoundEffect(sword, Clash)", "removeSoundEffect(sword)"),
         vm.callsAfterLoad(),
     )
+  }
+
+  @Test
+  fun blankNameIsShownAsRequired() {
+    setContent(ready.copy(draft = draft.copy(effects = listOf(sword.copy(name = "")))))
+
+    composeTestRule.onNodeWithText("Name required").assertIsDisplayed()
+  }
+
+  @Test
+  fun pickedFileIsImportedAsAnEffect() {
+    val vm = setContent(ready)
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_sound).performClick()
+    answerPicker(picked)
+
+    assertEquals(listOf("importSoundEffect($picked)"), vm.callsAfterLoad())
+  }
+
+  @Test
+  fun effectImportShowsItsOwnSpinner() {
+    composeTestRule.mainClock.autoAdvance = false
+    setContent(ready.copy(status = SoundboardEditStatus.IMPORTING_EFFECT))
+    composeTestRule.mainClock.advanceTimeBy(100)
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_sound_progress).assertExists()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_track_progress).assertDoesNotExist()
+  }
+
+  @Test
+  fun effectImportErrorIsShownUnderAddSound() {
+    setContent(ready.copy(error = SoundboardEditError.ImportEffect(SoundboardError.STORAGE_FULL)))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.soundboard_edit_effect_error)
+        .assertTextContains("Not enough free space on the device.")
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_track_error).assertDoesNotExist()
   }
 
   // ============ Save ============
@@ -294,6 +401,8 @@ class SoundboardEditScreenTest {
 
     composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_save_progress).assertExists()
     composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_save).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_track).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_sound).assertIsNotEnabled()
     assertDraftControls(enabled = false)
   }
 
@@ -302,6 +411,8 @@ class SoundboardEditScreenTest {
     setContent(ready.copy(status = SoundboardEditStatus.DISCARDING))
 
     composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_save).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_track).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_sound).assertIsNotEnabled()
     assertDraftControls(enabled = false)
   }
 
@@ -322,13 +433,15 @@ class SoundboardEditScreenTest {
   ): FakeSoundboardEditViewModel {
     val vm = FakeSoundboardEditViewModel(uiState)
     composeTestRule.setContent {
-      SampleAppTheme(darkTheme = false) {
-        SoundboardEditScreen(
-            viewModel = vm,
-            soundboardId = soundboardId,
-            onDone = { dones++ },
-            onTabSelected = { tabs += it },
-        )
+      CompositionLocalProvider(LocalActivityResultRegistryOwner provides picker) {
+        SampleAppTheme(darkTheme = false) {
+          SoundboardEditScreen(
+              viewModel = vm,
+              soundboardId = soundboardId,
+              onDone = { dones++ },
+              onTabSelected = { tabs += it },
+          )
+        }
       }
     }
     composeTestRule.waitForIdle()
@@ -336,13 +449,14 @@ class SoundboardEditScreenTest {
   }
 
   /**
-   * Checks that every control editing the draft (the soundboard, track and effect names, tabs, Add
-   * playlist, remove buttons) is [enabled], or that all of them are disabled.
+   * Checks that every control editing the draft (the soundboard, playlist, track and effect names,
+   * tabs, Add playlist, remove buttons) is [enabled], or that all of them are disabled.
    */
   private fun assertDraftControls(enabled: Boolean) {
     listOf(
             C.Tag.soundboard_edit_name,
             C.Tag.soundboard_edit_add_playlist,
+            C.Tag.soundboard_edit_playlist_name,
             C.Tag.soundboardPlaylist("tavern"),
             C.Tag.soundboardPlaylist("dungeon"),
             C.Tag.soundboardEditTrackName("fire"),
@@ -354,6 +468,16 @@ class SoundboardEditScreenTest {
           val node = composeTestRule.onNodeWithTag(tag)
           if (enabled) node.assertIsEnabled() else node.assertIsNotEnabled()
         }
+  }
+
+  /** Answers the last picker launch with [uri], or as cancelled when it is null. */
+  private fun answerPicker(uri: Uri?) {
+    composeTestRule.runOnIdle {
+      val data = uri?.let { Intent().setData(it) }
+      val resultCode = if (uri == null) Activity.RESULT_CANCELED else Activity.RESULT_OK
+      picker.activityResultRegistry.dispatchResult(picker.requestCodes.last(), resultCode, data)
+    }
+    composeTestRule.waitForIdle()
   }
 }
 
