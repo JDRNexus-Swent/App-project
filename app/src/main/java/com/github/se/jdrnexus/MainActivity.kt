@@ -7,19 +7,24 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
@@ -28,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -50,6 +56,7 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.LocalIsOnline
 import com.github.se.jdrnexus.resources.showComingSoon
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
+import com.github.se.jdrnexus.ui.authentication.SessionState
 import com.github.se.jdrnexus.ui.authentication.SignInScreen
 import com.github.se.jdrnexus.ui.authentication.SignUpScreen
 import com.github.se.jdrnexus.ui.dice.DiceOfflineScreen
@@ -143,11 +150,24 @@ object GamePlayerRoute {
   fun createRoute(groupId: String): String = "game_player/${Uri.encode(groupId)}"
 }
 
-/** Optional dependencies let navigation tests use production screens with deterministic fakes. */
+/** The first screen for the session found at launch, or null while it is still being checked. */
+internal fun launchRouteFor(session: SessionState): AllRoutes? =
+    when (session) {
+      SessionState.Checking -> null
+      SessionState.SignedIn -> AllRoutes.Home
+      SessionState.SignedOut -> AllRoutes.SignIn
+    }
+
+/**
+ * Optional dependencies let navigation tests use production screens with deterministic fakes.
+ *
+ * Without a [startDestination], the app opens Home for a user still signed in from a previous
+ * launch and SignIn otherwise, showing a loading indicator until the session is known.
+ */
 @Composable
 fun JDRNexusApp(
     authViewModel: AuthViewModel? = null,
-    startDestination: AllRoutes = AllRoutes.SignIn,
+    startDestination: AllRoutes? = null,
     gameManagementViewModel: GameManagementViewModel? = null,
     personalSpaceViewModel: PersonalSpaceViewModel? = null,
     editFileViewModel: EditFileViewModel? = null,
@@ -211,16 +231,41 @@ fun JDRNexusApp(
   val isOnline by
       activeConnectivityRepository.isOnline.collectAsStateWithLifecycle(initialValue = true)
 
+  val launchSession by activeAuthViewModel.launchSession.collectAsStateWithLifecycle()
+  val launchRoute = startDestination ?: launchRouteFor(launchSession)
+
+  // A session that ends while the user is in the app (sign-out, expired token, deleted account)
+  // leads back to SignIn, with nothing left to return to.
+  LaunchedEffect(activeAuthViewModel, navController) {
+    var previous: SessionState = SessionState.Checking
+    activeAuthViewModel.sessionState.collect { session ->
+      if (previous == SessionState.SignedIn && session == SessionState.SignedOut) {
+        navController.showSignInAfterSessionEnded()
+      }
+      previous = session
+    }
+  }
+
   CompositionLocalProvider(LocalIsOnline provides isOnline) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         // Let each destination handle its own system-bar insets.
         contentWindowInsets = WindowInsets(0),
     ) { innerPadding ->
+      if (launchRoute == null) {
+        // Shown instead of SignIn so a signed-in user never sees it flash before Home.
+        Box(
+            modifier = Modifier.fillMaxSize().padding(innerPadding).testTag(C.Tag.session_loading),
+            contentAlignment = Alignment.Center,
+        ) {
+          CircularProgressIndicator()
+        }
+        return@Scaffold
+      }
       NavHost(
           navController = navController,
-          // Use instead of deriving it from the current destination.
-          startDestination = startDestination.name,
+          // Fixed for the app's lifetime: later sign-ins and sign-outs navigate instead.
+          startDestination = launchRoute.name,
           modifier = Modifier.fillMaxSize().padding(innerPadding),
       ) {
         composable(route = AllRoutes.SignIn.name) {
@@ -540,6 +585,16 @@ fun JDRNexusApp(
         }
       }
     }
+  }
+}
+
+/** Opens SignIn and clears the back stack, unless an auth screen is already shown. */
+private fun NavHostController.showSignInAfterSessionEnded() {
+  val route = currentDestination?.route ?: return
+  if (route == AllRoutes.SignIn.name || route == AllRoutes.SignUp.name) return
+  navigate(AllRoutes.SignIn.name) {
+    popUpTo(graph.id) { inclusive = true }
+    launchSingleTop = true
   }
 }
 

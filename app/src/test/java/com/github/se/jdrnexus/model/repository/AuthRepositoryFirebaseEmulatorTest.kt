@@ -143,6 +143,34 @@ class AuthRepositoryFirebaseEmulatorTest {
   }
 
   @Test
+  fun refreshSessionKeepsAValidAccountSignedIn() {
+    val user = signUp(randomEmail())
+
+    val result = call { repository.refreshSession() }
+
+    assertEquals(AuthResult.Success(Unit), result)
+    assertEquals(user.uid, firebaseAuth.currentUser?.uid)
+  }
+
+  @Test
+  fun refreshSessionSignsOutADeletedAccount() {
+    val user = signUp(randomEmail())
+    runBlocking { FirebaseEmulatorTestUtils.deleteAuthAccountBypassingRules(user.uid) }
+
+    val result = call { repository.refreshSession() }
+
+    assertEquals(AuthResult.Failure(AuthError.SESSION_NOT_FOUND), result)
+    assertEquals(null, firebaseAuth.currentUser)
+  }
+
+  @Test
+  fun refreshSessionWithoutSessionReturnsSessionNotFound() {
+    val result = call { repository.refreshSession() }
+
+    assertEquals(AuthResult.Failure(AuthError.SESSION_NOT_FOUND), result)
+  }
+
+  @Test
   fun signInWithGoogleCreatesSession() {
     val email = randomEmail()
     // The Auth emulator accepts an unsigned JSON payload as Google id token.

@@ -417,6 +417,20 @@ object FirebaseEmulatorTestUtils {
       }
 
   /**
+   * Deletes the Auth account [uid] on the Auth emulator as an admin, without signing it out on this
+   * device: the device keeps a session for an account that no longer exists.
+   */
+  suspend fun deleteAuthAccountBypassingRules(uid: String) {
+    val projectId = checkNotNull(FirebaseApp.getInstance().options.projectId)
+    ownerRequest(
+        "POST",
+        "http://$EMULATOR_HOST:$AUTH_EMULATOR_PORT/identitytoolkit.googleapis.com/v1/projects/" +
+            "$projectId/accounts:delete",
+        JSONObject().put("localId", uid).toString(),
+    )
+  }
+
+  /**
    * Returns the default app's Firestore on the emulator with no user signed in, for tests of what
    * the rules refuse to signed-out clients. FirebaseAuth tells Firestore about the sign-out through
    * the main looper, which a runBlocking test does not run: the looper is run here, otherwise the

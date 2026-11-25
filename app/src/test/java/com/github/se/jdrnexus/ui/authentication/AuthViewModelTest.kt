@@ -13,7 +13,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -506,6 +508,147 @@ class AuthViewModelTest {
     assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
   }
 
+  @Test
+  fun sessionIsCheckingUntilTheRepositoryReportsIt() = runTest {
+    val authState = MutableSharedFlow<AuthUser?>()
+    val viewModel = AuthViewModel(FakeAuthRepository(authState))
+    runCurrent()
+
+    assertEquals(SessionState.Checking, viewModel.sessionState.value)
+    assertEquals(SessionState.Checking, viewModel.launchSession.value)
+
+    authState.emit(USER)
+    runCurrent()
+
+    assertEquals(SessionState.SignedIn, viewModel.sessionState.value)
+    assertEquals(SessionState.SignedIn, viewModel.launchSession.value)
+  }
+
+  @Test
+  fun signedOutLaunchIsReportedWithoutCheckingTheSession() = runTest {
+    val repository = FakeAuthRepository(MutableStateFlow(null))
+    val viewModel = AuthViewModel(repository)
+    runCurrent()
+
+    assertEquals(SessionState.SignedOut, viewModel.sessionState.value)
+    assertEquals(SessionState.SignedOut, viewModel.launchSession.value)
+    assertEquals(0, repository.refreshCalls)
+  }
+
+  @Test
+  fun launchSessionKeepsTheSessionFoundAtLaunch() = runTest {
+    val authState = MutableStateFlow<AuthUser?>(USER)
+    val viewModel = AuthViewModel(FakeAuthRepository(authState))
+    runCurrent()
+
+    authState.value = null
+    runCurrent()
+
+    assertEquals(SessionState.SignedOut, viewModel.sessionState.value)
+    assertEquals(SessionState.SignedIn, viewModel.launchSession.value)
+  }
+
+  @Test
+  fun persistedSessionIsCheckedOnceAtLaunch() = runTest {
+    val authState = MutableStateFlow<AuthUser?>(USER)
+    val repository = FakeAuthRepository(authState)
+    AuthViewModel(repository)
+    runCurrent()
+
+    assertEquals(1, repository.refreshCalls)
+
+    authState.value = null
+    runCurrent()
+    authState.value = USER
+    runCurrent()
+
+    assertEquals(1, repository.refreshCalls)
+  }
+
+  @Test
+  fun failedSessionCheckKeepsTheUserSignedIn() = runTest {
+    val repository =
+        FakeAuthRepository(MutableStateFlow(USER)).apply {
+          refreshFailure = IllegalStateException("No network")
+        }
+    val viewModel = AuthViewModel(repository)
+    runCurrent()
+
+    assertEquals(1, repository.refreshCalls)
+    assertEquals(SessionState.SignedIn, viewModel.sessionState.value)
+    assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun failingAuthStateIsReportedAsSignedOut() = runTest {
+    val authState = flow<AuthUser?> { throw IllegalStateException("Auth unavailable") }
+    val viewModel = AuthViewModel(FakeAuthRepository(authState))
+    runCurrent()
+
+    assertEquals(SessionState.SignedOut, viewModel.sessionState.value)
+    assertEquals(SessionState.SignedOut, viewModel.launchSession.value)
+  }
+
+  @Test
+  fun sessionEndingOutsideARequestClearsTheSignedInForm() = runTest {
+    val authState = MutableStateFlow<AuthUser?>(null)
+    val viewModel = AuthViewModel(FakeAuthRepository(authState))
+    fillForm(viewModel)
+    viewModel.signIn()
+    authState.value = USER
+    runCurrent()
+    assertEquals(AuthStatus.Success(USER), viewModel.uiState.value.status)
+
+    authState.value = null
+    runCurrent()
+
+    assertEquals(AuthUiState(), viewModel.uiState.value)
+  }
+
+  @Test
+  fun sessionEndingDuringARequestLeavesItsStateToTheRequest() = runTest {
+    val authState = MutableStateFlow<AuthUser?>(USER)
+    val repository = FakeAuthRepository(authState).apply { signUpResponse = CompletableDeferred() }
+    val viewModel = AuthViewModel(repository)
+    runCurrent()
+    fillForm(viewModel)
+    viewModel.signUp()
+    runCurrent()
+
+    authState.value = null
+    runCurrent()
+
+    assertEquals(AuthStatus.Loading, viewModel.uiState.value.status)
+    assertEquals("player@example.com", viewModel.uiState.value.email)
+  }
+
+  @Test
+  fun successfulSignOutClearsTheForm() = runTest {
+    val viewModel = AuthViewModel(FakeAuthRepository())
+    fillForm(viewModel)
+
+    viewModel.signOut()
+    runCurrent()
+
+    assertEquals(AuthUiState(), viewModel.uiState.value)
+  }
+
+  @Test
+  fun failedSignOutKeepsTheForm() = runTest {
+    val repository =
+        FakeAuthRepository().apply {
+          signOutResponse = CompletableDeferred(AuthResult.Failure(AuthError.UNKNOWN))
+        }
+    val viewModel = AuthViewModel(repository)
+    fillForm(viewModel)
+
+    viewModel.signOut()
+    runCurrent()
+
+    assertEquals("player@example.com", viewModel.uiState.value.email)
+    assertEquals(AuthStatus.Error(AuthError.UNKNOWN.message), viewModel.uiState.value.status)
+  }
+
   private fun fillForm(
       viewModel: AuthViewModel,
       email: String = "player@example.com",
@@ -517,8 +660,11 @@ class AuthViewModelTest {
     viewModel.onUsernameChange(username)
   }
 
-  private class FakeAuthRepository : AuthRepository {
-    override val authState: Flow<AuthUser?> = MutableStateFlow(null)
+  private class FakeAuthRepository(
+      override val authState: Flow<AuthUser?> = MutableStateFlow(null)
+  ) : AuthRepository {
+    var refreshCalls = 0
+    var refreshFailure: Exception? = null
     var signUpCalls = 0
     var signInCalls = 0
     var googleSignInCalls = 0
@@ -566,6 +712,12 @@ class AuthViewModelTest {
       signOutCalls++
       signOutFailure?.let { throw it }
       return signOutResponse.await()
+    }
+
+    override suspend fun refreshSession(): AuthResult<Unit> {
+      refreshCalls++
+      refreshFailure?.let { throw it }
+      return AuthResult.Success(Unit)
     }
   }
 

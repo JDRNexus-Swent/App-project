@@ -1,9 +1,11 @@
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.repository
 
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
+import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.CancellationException
@@ -87,6 +89,8 @@ class AuthRepositoryFirebase internal constructor(private val client: FirebaseAu
 
   override suspend fun signOut(): AuthResult<Unit> = resultOf { client.signOut() }
 
+  override suspend fun refreshSession(): AuthResult<Unit> = resultOf { client.reloadCurrentUser() }
+
   private suspend fun <T> resultOf(operation: suspend () -> T): AuthResult<T> =
       try {
         AuthResult.Success(operation())
@@ -149,6 +153,12 @@ internal interface FirebaseAuthClient {
   suspend fun signInWithGoogle(idToken: String): AuthUser
 
   fun signOut()
+
+  /**
+   * Reloads the signed-in account from the server. Signs out and throws
+   * [AuthError.SESSION_NOT_FOUND] when the account or its session is no longer valid.
+   */
+  suspend fun reloadCurrentUser()
 }
 
 internal class AuthOperationException(val error: AuthError, cause: Throwable? = null) :
@@ -212,6 +222,20 @@ private class FirebaseAuthClientFirebase(private val firebaseAuth: FirebaseAuth)
 
   override fun signOut() {
     firebaseAuth.signOut()
+  }
+
+  override suspend fun reloadCurrentUser() {
+    withFirebaseErrors {
+      val user =
+          firebaseAuth.currentUser ?: throw AuthOperationException(AuthError.SESSION_NOT_FOUND)
+      try {
+        user.reload().await()
+      } catch (invalidUser: FirebaseAuthInvalidUserException) {
+        // Deleted or disabled account, or revoked session: the persisted session is unusable.
+        firebaseAuth.signOut()
+        throw AuthOperationException(AuthError.SESSION_NOT_FOUND, invalidUser)
+      }
+    }
   }
 
   private suspend fun <T> withFirebaseErrors(operation: suspend () -> T): T =

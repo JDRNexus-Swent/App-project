@@ -4,6 +4,9 @@ package com.github.se.jdrnexus
 
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -24,6 +27,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.text.AnnotatedString
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -70,6 +74,7 @@ import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 import com.google.firebase.FirebaseApp
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -95,6 +100,75 @@ class MainActivityNavigationTest {
     scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotDisplayed()
+  }
+
+  @Test
+  fun signedOutLaunchOpensSignIn() {
+    showApp(FakeAuthRepository(initialUser = null))
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(TestTags.TITLE).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(C.Tag.session_loading).assertCountEquals(0)
+  }
+
+  @Test
+  fun signedInLaunchOpensHomeWithoutSignIn() {
+    showApp(FakeAuthRepository(initialUser = FakeAuthRepository.TEST_USER))
+
+    composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(C.Tag.sign_in_submit).assertCountEquals(0)
+  }
+
+  @Test
+  fun launchShowsLoadingUntilTheSessionIsKnownAndNeverShowsSignIn() {
+    val repository = PendingSessionAuthRepository()
+    val viewModel = AuthViewModel(repository)
+    composeTestRule.setContent {
+      JDRNexusApp(
+          authViewModel = viewModel,
+          authRepository = repository,
+          workspaceRepository = NavigationWorkspaceRepository(),
+          connectivityRepository = FakeConnectivityRepository(),
+      )
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.session_loading).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(C.Tag.sign_in_submit).assertCountEquals(0)
+
+    composeTestRule.runOnIdle { repository.authState.tryEmit(FakeAuthRepository.TEST_USER) }
+    waitForTag(TestTags.TITLE)
+
+    composeTestRule.onAllNodesWithTag(C.Tag.session_loading).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(C.Tag.sign_in_submit).assertCountEquals(0)
+  }
+
+  @Test
+  fun sessionEndingOnAnotherScreenReturnsToSignIn() {
+    val repository = FakeAuthRepository(initialUser = FakeAuthRepository.TEST_USER)
+    showApp(repository)
+    composeTestRule.onNodeWithTag(TestTags.DICEBUTTON).performClick()
+    waitForTag(C.Tag.dice_offline_screen)
+
+    composeTestRule.runOnIdle { repository.endSession() }
+    waitForTag(C.Tag.sign_in_submit)
+
+    composeTestRule.onAllNodesWithTag(C.Tag.dice_offline_screen).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(TestTags.TITLE).assertCountEquals(0)
+  }
+
+  @Test
+  fun logoutLeavesNoCredentialsInTheSignInForm() {
+    showApp()
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    waitForTag(TestTags.LOGOUT)
+
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    waitForTag(C.Tag.sign_in_email)
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).assert(hasEditableText(""))
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).assert(hasEditableText(""))
   }
 
   @Test
@@ -1183,8 +1257,26 @@ class MainActivityNavigationTest {
           )
       )
 
-  private class FakeAuthRepository : AuthRepository {
-    private val mutableAuthState = MutableStateFlow<AuthUser?>(null)
+  private fun hasEditableText(text: String) =
+      SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(text))
+
+  /** Never reports the session until the test emits it, like a slow start-up check. */
+  private class PendingSessionAuthRepository : AuthRepository {
+    override val authState = MutableSharedFlow<AuthUser?>(replay = 1)
+
+    override suspend fun signUpWithEmail(email: String, password: String, username: String) =
+        AuthResult.Failure(AuthError.UNKNOWN)
+
+    override suspend fun signInWithEmail(email: String, password: String) =
+        AuthResult.Failure(AuthError.UNKNOWN)
+
+    override suspend fun signInWithGoogle(idToken: String) = AuthResult.Failure(AuthError.UNKNOWN)
+
+    override suspend fun signOut() = AuthResult.Failure(AuthError.UNKNOWN)
+  }
+
+  private class FakeAuthRepository(initialUser: AuthUser? = null) : AuthRepository {
+    private val mutableAuthState = MutableStateFlow(initialUser)
     override val authState: StateFlow<AuthUser?> = mutableAuthState
     var signInCalls = 0
     var signUpCalls = 0
@@ -1227,6 +1319,11 @@ class MainActivityNavigationTest {
       }
       mutableAuthState.value = null
       return AuthResult.Success(Unit)
+    }
+
+    /** Ends the session without a sign-out request, as an expired or revoked session does. */
+    fun endSession() {
+      mutableAuthState.value = null
     }
 
     companion object {
