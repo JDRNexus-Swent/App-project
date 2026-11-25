@@ -105,15 +105,23 @@ class WorkspaceRepositoryFirestoreOfflineTest {
   private fun errorCode(result: Result<JDRFile?>) =
       (result.exceptionOrNull() as? FirebaseFirestoreException)?.code
 
-  private suspend fun reconnectAndSync() {
-    firestore.enableNetwork().await()
-    firestore.waitForPendingWrites().await()
-  }
+  private suspend fun goOffline() =
+      runAndPumpMainLooper("disableNetwork", SYNC_TIMEOUT_MS) { firestore.disableNetwork().await() }
+
+  private suspend fun reconnect() =
+      runAndPumpMainLooper("enableNetwork", SYNC_TIMEOUT_MS) { firestore.enableNetwork().await() }
+
+  /** Reconnects and waits until the writes made offline reach the server. */
+  private suspend fun reconnectAndSync() =
+      runAndPumpMainLooper("reconnectAndSync", SYNC_TIMEOUT_MS) {
+        firestore.enableNetwork().await()
+        firestore.waitForPendingWrites().await()
+      }
 
   @Test
   fun createFileCompletesOfflineAndReachesTheServerOnReconnection() = runBlocking {
     val created = folder(repository.getNewUid(), name = "Made offline")
-    firestore.disableNetwork().await()
+    goOffline()
 
     val result = promptly("createFile") { repository.createFile(created) }
 
@@ -131,7 +139,7 @@ class WorkspaceRepositoryFirestoreOfflineTest {
   fun updateFileCompletesOfflineAndReachesTheServerOnReconnection() = runBlocking {
     val stored = text("file", content = "old")
     storeAndCache(stored)
-    firestore.disableNetwork().await()
+    goOffline()
 
     val result = promptly("updateFile") { repository.updateFile(FileEdit("file", "Edited", "new")) }
 
@@ -151,7 +159,7 @@ class WorkspaceRepositoryFirestoreOfflineTest {
     val stored = folder("folder", name = "Old name")
     val child = text("child", parent = "folder")
     storeAndCache(stored, child)
-    firestore.disableNetwork().await()
+    goOffline()
 
     val result =
         promptly("rename") {
@@ -175,7 +183,7 @@ class WorkspaceRepositoryFirestoreOfflineTest {
   fun deletingAFileCompletesOfflineAndReachesTheServerOnReconnection() = runBlocking {
     val stored = text("file")
     storeAndCache(stored)
-    firestore.disableNetwork().await()
+    goOffline()
 
     val result = promptly("deleteFile") { repository.deleteFile("file") }
 
@@ -201,7 +209,7 @@ class WorkspaceRepositoryFirestoreOfflineTest {
             text("deep", parent = "sub"),
             kept,
         )
-        firestore.disableNetwork().await()
+        goOffline()
 
         val result = promptly("deleteFile") { repository.deleteFile("folder") }
 
@@ -223,7 +231,7 @@ class WorkspaceRepositoryFirestoreOfflineTest {
 
   @Test
   fun hasPendingWritesIsTrueAfterAnOfflineWriteAndFalseOnceSynced() = runBlocking {
-    firestore.disableNetwork().await()
+    goOffline()
     promptly("createFile") { repository.createFile(text(repository.getNewUid())) }.getOrThrow()
 
     assertTrue(promptly("hasPendingWrites") { repository.hasPendingWrites() })
@@ -238,10 +246,25 @@ class WorkspaceRepositoryFirestoreOfflineTest {
     assertFalse(promptly("hasPendingWrites") { repository.hasPendingWrites() })
   }
 
+  /**
+   * The pending writes cannot be checked, e.g. because the user changed: the sign-out warning must
+   * still be shown, since queued writes may be lost.
+   */
+  @Test
+  fun hasPendingWritesIsTrueWhenThePendingWritesCannotBeChecked() = runBlocking {
+    val mocked = MockedDocument("file")
+    every { mocked.firestore.waitForPendingWrites() } returns
+        Tasks.forException(
+            FirebaseFirestoreException("User changed.", FirebaseFirestoreException.Code.CANCELLED)
+        )
+
+    assertTrue(mocked.repository.hasPendingWrites())
+  }
+
   @Test
   fun getFileOfAnUncachedDocumentFailsPromptlyOffline() = runBlocking {
     FirebaseEmulatorTestUtils.writeBypassingRules(firestore, "documents/uncached", text("uncached"))
-    firestore.disableNetwork().await()
+    goOffline()
 
     val result = promptly("getFile") { repository.getFile("uncached") }
 
@@ -269,11 +292,11 @@ class WorkspaceRepositoryFirestoreOfflineTest {
   @Test
   fun anOfflineWriteRejectedOnSyncIsLogged() = runBlocking {
     val forbidden = text(repository.getNewUid()).copy(ownerId = OTHER_USER_ID)
-    firestore.disableNetwork().await()
+    goOffline()
     val result = promptly("createFile") { repository.createFile(forbidden) }
     assertEquals(Result.success(Unit), result)
 
-    firestore.enableNetwork().await()
+    reconnect()
 
     val expected = "createFile(${forbidden.id}) was rejected when syncing"
     pumpMainLooperUntil(timeoutMessage = { "No log for the rejected write" }) {
@@ -283,24 +306,37 @@ class WorkspaceRepositoryFirestoreOfflineTest {
   }
 
   /**
+   * A mocked Firestore where the repository's document [id] is [document], for the paths the
+   * emulator cannot reach. Tests stub only the calls they need on [firestore] and [document].
+   */
+  private class MockedDocument(id: String) {
+    val firestore = mockk<FirebaseFirestore>()
+    val document = mockk<DocumentReference>()
+    val repository: WorkspaceRepository
+
+    init {
+      val collection = mockk<CollectionReference>()
+      every { firestore.collection("documents") } returns collection
+      every { collection.document(id) } returns document
+      repository = WorkspaceRepositoryFirestore(firestore)
+    }
+  }
+
+  /**
    * A slow server, which the emulator cannot simulate: the write of [id] is only answered, with a
    * refusal, when the returned function is called.
    */
   private fun slowServerRefusing(id: String): Pair<WorkspaceRepository, () -> Unit> {
     val answer = TaskCompletionSource<Void>()
-    val firestoreMock = mockk<FirebaseFirestore>()
-    val collectionMock = mockk<CollectionReference>()
-    val documentMock = mockk<DocumentReference>()
-    every { firestoreMock.collection("documents") } returns collectionMock
-    every { collectionMock.document(id) } returns documentMock
-    every { documentMock.set(any()) } returns answer.task
-    every { documentMock.update(any<Map<String, Any>>()) } returns answer.task
+    val mocked = MockedDocument(id)
+    every { mocked.document.set(any()) } returns answer.task
+    every { mocked.document.update(any<Map<String, Any>>()) } returns answer.task
     val refuse = {
       answer.setException(
           FirebaseFirestoreException("refused", FirebaseFirestoreException.Code.PERMISSION_DENIED)
       )
     }
-    return WorkspaceRepositoryFirestore(firestoreMock) to refuse
+    return mocked.repository to refuse
   }
 
   /**
@@ -351,17 +387,12 @@ class WorkspaceRepositoryFirestoreOfflineTest {
    */
   private class SlowRead(id: String, cacheAnswer: Task<DocumentSnapshot>) {
     val server = TaskCompletionSource<DocumentSnapshot>()
-    val repository: WorkspaceRepository
+    private val mocked = MockedDocument(id)
+    val repository = mocked.repository
 
     init {
-      val firestoreMock = mockk<FirebaseFirestore>()
-      val collectionMock = mockk<CollectionReference>()
-      val documentMock = mockk<DocumentReference>()
-      every { firestoreMock.collection("documents") } returns collectionMock
-      every { collectionMock.document(id) } returns documentMock
-      every { documentMock.get() } returns server.task
-      every { documentMock.get(Source.CACHE) } returns cacheAnswer
-      repository = WorkspaceRepositoryFirestore(firestoreMock)
+      every { mocked.document.get() } returns server.task
+      every { mocked.document.get(Source.CACHE) } returns cacheAnswer
     }
   }
 
@@ -424,5 +455,11 @@ class WorkspaceRepositoryFirestoreOfflineTest {
 
     /** Offline, every call must return within this time instead of waiting for the server. */
     const val OFFLINE_TIMEOUT_MS = 2_000L
+
+    /**
+     * Limit for switching the network and syncing with the emulator, so a stalled sync fails the
+     * test instead of blocking the whole run.
+     */
+    const val SYNC_TIMEOUT_MS = 10_000L
   }
 }
