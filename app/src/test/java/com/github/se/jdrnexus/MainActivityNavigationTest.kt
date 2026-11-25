@@ -1279,9 +1279,10 @@ class MainActivityNavigationTest {
         object : WorkspaceRepository {
           override fun getNewUid() = error("Not used")
 
-          override suspend fun createFile(file: JDRFile) = error("Not used")
+          override suspend fun createFile(file: JDRFile, waitForServer: Boolean) = error("Not used")
 
-          override suspend fun updateFile(edit: FileEdit) = error("Not used")
+          override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean) =
+              error("Not used")
 
           override suspend fun deleteFile(fileId: String) = error("Not used")
 

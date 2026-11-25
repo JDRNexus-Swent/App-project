@@ -121,7 +121,7 @@ class PersonalSpaceViewModelTest {
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = flowOf(null)
 
     /** Captures the exact file submitted and can simulate a create failure. */
-    override suspend fun createFile(file: JDRFile): Result<Unit> {
+    override suspend fun createFile(file: JDRFile, waitForServer: Boolean): Result<Unit> {
       createdFiles.add(file)
       try {
         createGate?.await()
@@ -151,7 +151,7 @@ class PersonalSpaceViewModelTest {
     ): Result<Unit> = error("Not used")
 
     /** Records the edit and applies it to the root items, so the root flow shows it. */
-    override suspend fun updateFile(edit: FileEdit): Result<Unit> {
+    override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean): Result<Unit> {
       updates.add(edit)
       updateGate?.await()
       updateFailure?.let {

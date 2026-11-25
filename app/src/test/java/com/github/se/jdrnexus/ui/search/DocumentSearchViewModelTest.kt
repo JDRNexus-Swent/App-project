@@ -372,9 +372,11 @@ class DocumentSearchViewModelTest {
 
     override fun getNewUid(): String = "new-id"
 
-    override suspend fun createFile(file: JDRFile): Result<Unit> = Result.success(Unit)
+    override suspend fun createFile(file: JDRFile, waitForServer: Boolean): Result<Unit> =
+        Result.success(Unit)
 
-    override suspend fun updateFile(edit: FileEdit): Result<Unit> = Result.success(Unit)
+    override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean): Result<Unit> =
+        Result.success(Unit)
 
     override suspend fun deleteFile(fileId: String): Result<Unit> = Result.success(Unit)
 

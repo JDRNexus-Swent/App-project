@@ -29,9 +29,13 @@ interface WorkspaceRepository {
    * Creates a new document (e.g., character sheet, lore) in the database.
    *
    * @param file The [JDRFile] object to be created.
+   * @param waitForServer whether to wait for the server's answer, so that a refusal (e.g. by the
+   *   security rules) is always returned. The Group Workspace sets it: it only works online. When
+   *   it is false (the personal space), the call returns once the change is in the local cache, see
+   *   [WorkspaceRepository].
    * @return A [Result] indicating success or failure.
    */
-  suspend fun createFile(file: JDRFile): Result<Unit>
+  suspend fun createFile(file: JDRFile, waitForServer: Boolean = false): Result<Unit>
 
   /**
    * Updates the editable fields of an existing document (see [FileEdit]). This is used when a user
@@ -40,9 +44,10 @@ interface WorkspaceRepository {
    * Group sharing is not part of [FileEdit], so saving an edit made from an older snapshot cannot
    * undo a share made in the meantime.
    *
+   * @param waitForServer whether to wait for the server's answer, as for [createFile].
    * @return A [Result] indicating success or failure.
    */
-  suspend fun updateFile(edit: FileEdit): Result<Unit>
+  suspend fun updateFile(edit: FileEdit, waitForServer: Boolean = false): Result<Unit>
 
   /**
    * Permanently deletes a document from the database.
@@ -109,9 +114,9 @@ interface WorkspaceRepository {
    * Whether some writes of the signed-in user exist only on this device, not yet synced to the
    * server (e.g. made offline). Signing out would lose them, so the UI can warn first.
    *
-   * It never blocks: it waits a short moment for the writes to sync, and answers `true` if they
-   * have not by then (always the case offline) or if their state cannot be checked. `false` means
-   * every write made so far has reached the server.
+   * Returns within about half a second: `true` if the writes have not synced by then (always the
+   * case offline) or if their state cannot be checked, `false` if every write made so far has
+   * reached the server.
    */
   suspend fun hasPendingWrites(): Boolean
 

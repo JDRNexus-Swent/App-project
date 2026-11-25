@@ -105,13 +105,14 @@ class NavigationWorkspaceRepository(
 
   override fun getNewUid(): String = "created-${createdFiles.size + 1}"
 
-  override suspend fun createFile(file: JDRFile): Result<Unit> {
+  override suspend fun createFile(file: JDRFile, waitForServer: Boolean): Result<Unit> {
     createdFiles += file
     files = files + file
     return Result.success(Unit)
   }
 
-  override suspend fun updateFile(edit: FileEdit): Result<Unit> = error("Not used")
+  override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean): Result<Unit> =
+      error("Not used")
 
   override suspend fun deleteFile(fileId: String): Result<Unit> = error("Not used")
 

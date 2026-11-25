@@ -49,15 +49,19 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     return collection.document().id
   }
 
-  override suspend fun createFile(file: JDRFile): Result<Unit> = safeFirestoreRequest {
-    awaitLocalWrite(collection.document(file.id).set(file), "createFile(${file.id})")
-  }
+  override suspend fun createFile(file: JDRFile, waitForServer: Boolean): Result<Unit> =
+      safeFirestoreRequest {
+        val write = collection.document(file.id).set(file)
+        if (waitForServer) write.await() else awaitLocalWrite(write, "createFile(${file.id})")
+      }
 
-  override suspend fun updateFile(edit: FileEdit): Result<Unit> = safeFirestoreRequest {
-    // Offline, an update of a document missing from the cache is only rejected (NOT_FOUND) when it
-    // syncs; that rejection is logged by awaitLocalWrite.
-    awaitLocalWrite(collection.document(edit.id).update(edit.toMap()), "updateFile(${edit.id})")
-  }
+  override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean): Result<Unit> =
+      safeFirestoreRequest {
+        // Offline, an update of a document missing from the cache is only rejected (NOT_FOUND)
+        // when it syncs; that rejection is logged by awaitLocalWrite.
+        val write = collection.document(edit.id).update(edit.toMap())
+        if (waitForServer) write.await() else awaitLocalWrite(write, "updateFile(${edit.id})")
+      }
 
   override suspend fun deleteFile(fileId: String): Result<Unit> = safeFirestoreRequest {
     val file = getFile(fileId).getOrThrow() ?: throw IllegalArgumentException("Item not found.")
@@ -292,6 +296,12 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
    * - It does not (offline, or a slow network): the call returns, and Firestore syncs the write
    *   when the device reconnects. A later rejection (e.g. by the security rules) is logged, since
    *   the caller already has its result.
+   *
+   * Trade-off: on a slow but working connection, an answer that takes longer than the limit is
+   * treated like offline, so a refusal only reaches the log and the change disappears from the
+   * cache. This is accepted for the personal space, where the user writes their own documents and
+   * the rules rarely refuse. The Group Workspace, which only works online and where membership can
+   * change, does not use this: it passes `waitForServer = true` and always gets the answer.
    */
   private suspend fun awaitLocalWrite(write: Task<Void>, operation: String) {
     val answered =
@@ -305,20 +315,28 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
   }
 
   /**
-   * Reads [document] from the default source, and from the local cache when the server cannot be
-   * reached: the read fails with UNAVAILABLE, or gives no answer within [SERVER_READ_TIMEOUT_MS]. A
-   * cache miss offline fails with UNAVAILABLE; a document known to be deleted gives a snapshot that
-   * does not exist. Other errors (e.g. PERMISSION_DENIED) are thrown as they are.
+   * Reads [document] from the default source, which already serves the local cache once the server
+   * is known to be unreachable. If the server has not answered within [SERVER_READ_TIMEOUT_MS] (a
+   * slow connection, or one lost but not yet detected), the local cache answers when it has the
+   * document; otherwise the read keeps waiting for the default source, so a slow network never
+   * turns into a failure. Offline, a document that is not in the cache, or was deleted on this
+   * device, fails with UNAVAILABLE: only the server can say it does not exist.
    */
   private suspend fun getWithCacheFallback(document: DocumentReference): DocumentSnapshot {
-    val fromDefaultSource =
+    val fromDefaultSource = document.get()
+    withTimeoutOrNull(SERVER_READ_TIMEOUT_MS) { fromDefaultSource.await() }
+        ?.let {
+          return it
+        }
+    val cached =
         try {
-          withTimeoutOrNull(SERVER_READ_TIMEOUT_MS) { document.get().await() }
+          document.get(Source.CACHE).await()
         } catch (e: FirebaseFirestoreException) {
+          // Not in the cache: only the default source can answer.
           if (e.code != FirebaseFirestoreException.Code.UNAVAILABLE) throw e
           null
         }
-    return fromDefaultSource ?: document.get(Source.CACHE).await()
+    return cached ?: fromDefaultSource.await()
   }
 
   override suspend fun hasPendingWrites(): Boolean =

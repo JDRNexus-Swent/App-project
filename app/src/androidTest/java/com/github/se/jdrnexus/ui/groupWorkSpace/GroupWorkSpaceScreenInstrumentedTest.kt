@@ -1160,14 +1160,16 @@ class GroupWorkSpaceScreenInstrumentedTest {
 
     override fun getNewUid() = "created-${++nextId}"
 
-    override suspend fun createFile(file: JDRFile): Result<Unit> = runOperation {
-      state.value += file.id to file
-    }
+    override suspend fun createFile(file: JDRFile, waitForServer: Boolean): Result<Unit> =
+        runOperation {
+          state.value += file.id to file
+        }
 
-    override suspend fun updateFile(edit: FileEdit): Result<Unit> = runOperation {
-      val file = state.value.getValue(edit.id)
-      state.value += edit.id to file.copy(name = edit.name, content = edit.content)
-    }
+    override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean): Result<Unit> =
+        runOperation {
+          val file = state.value.getValue(edit.id)
+          state.value += edit.id to file.copy(name = edit.name, content = edit.content)
+        }
 
     override suspend fun deleteFile(fileId: String): Result<Unit> = runOperation {
       state.value -= fileId

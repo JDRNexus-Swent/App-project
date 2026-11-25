@@ -5,10 +5,19 @@ import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils.pumpMainLooperUntil
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils.runAndPumpMainLooper
 import com.github.se.jdrnexus.utils.waitFor
+import com.google.android.gms.tasks.TaskCompletionSource
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -30,7 +39,7 @@ import org.robolectric.shadows.ShadowLog
  * ([FirebaseEmulatorTestUtils.readBypassingRules]), so it never comes from the local cache.
  */
 @RunWith(RobolectricTestRunner::class)
-class WorkspaceRepositoryOfflineTest {
+class WorkspaceRepositoryFirestoreOfflineTest {
 
   private lateinit var repository: WorkspaceRepository
   private lateinit var firestore: FirebaseFirestore
@@ -83,6 +92,14 @@ class WorkspaceRepositoryOfflineTest {
 
   private suspend fun personalFolder(folderId: String, condition: (List<JDRFile>) -> Boolean) =
       repository.getPersonalFolderFiles(folderId, USER_ID).waitFor(condition = condition)
+
+  /**
+   * The Firestore error code of [result]. Offline, a read of a document deleted on the device fails
+   * with UNAVAILABLE ("client is offline"), like a document that was never cached: only the server
+   * can say it is gone.
+   */
+  private fun errorCode(result: Result<JDRFile?>) =
+      (result.exceptionOrNull() as? FirebaseFirestoreException)?.code
 
   private suspend fun reconnectAndSync() {
     firestore.enableNetwork().await()
@@ -159,8 +176,10 @@ class WorkspaceRepositoryOfflineTest {
     val result = promptly("deleteFile") { repository.deleteFile("file") }
 
     assertEquals(Result.success(Unit), result)
-    val read = promptly("getFile") { repository.getFile("file") }
-    assertEquals("Document not found in Firestore", read.exceptionOrNull()?.message)
+    assertEquals(
+        FirebaseFirestoreException.Code.UNAVAILABLE,
+        promptly("getFile") { errorCode(repository.getFile("file")) },
+    )
     assertEquals(stored, onServer("file"))
 
     reconnectAndSync()
@@ -185,8 +204,11 @@ class WorkspaceRepositoryOfflineTest {
         assertEquals(Result.success(Unit), result)
         assertEquals(listOf(kept), personalFolder(PERSONAL_ROOT_ID) { it == listOf(kept) })
         listOf("folder", "sub", "deep").forEach {
-          val read = promptly("getFile") { repository.getFile(it) }
-          assertEquals(it, "Document not found in Firestore", read.exceptionOrNull()?.message)
+          assertEquals(
+              it,
+              FirebaseFirestoreException.Code.UNAVAILABLE,
+              promptly("getFile") { errorCode(repository.getFile(it)) },
+          )
         }
 
         reconnectAndSync()
@@ -254,6 +276,68 @@ class WorkspaceRepositoryOfflineTest {
       ShadowLog.getLogsForTag(LOG_TAG).any { it.msg == expected }
     }
     assertNull(onServer(forbidden.id))
+  }
+
+  /**
+   * A slow server, which the emulator cannot simulate: the write of [id] is only answered, with a
+   * refusal, when the returned function is called.
+   */
+  private fun slowServerRefusing(id: String): Pair<WorkspaceRepository, () -> Unit> {
+    val answer = TaskCompletionSource<Void>()
+    val firestoreMock = mockk<FirebaseFirestore>()
+    val collectionMock = mockk<CollectionReference>()
+    val documentMock = mockk<DocumentReference>()
+    every { firestoreMock.collection("documents") } returns collectionMock
+    every { collectionMock.document(id) } returns documentMock
+    every { documentMock.set(any()) } returns answer.task
+    every { documentMock.update(any<Map<String, Any>>()) } returns answer.task
+    val refuse = {
+      answer.setException(
+          FirebaseFirestoreException("refused", FirebaseFirestoreException.Code.PERMISSION_DENIED)
+      )
+    }
+    return WorkspaceRepositoryFirestore(firestoreMock) to refuse
+  }
+
+  /**
+   * Runs [write], checks that it is still waiting well past the personal-space time limit, then
+   * refuses it: [write] must return that refusal.
+   */
+  private suspend fun assertLateRefusalIsReturned(
+      refuse: () -> Unit,
+      write: suspend () -> Result<Unit>,
+  ) {
+    val operation = CoroutineScope(Dispatchers.Default).async { write() }
+
+    val early =
+        withTimeoutOrNull(WorkspaceRepositoryFirestore.SERVER_ACK_GRACE_MS * 2) {
+          operation.await()
+        }
+    refuse()
+
+    assertNull(early)
+    assertEquals(
+        FirebaseFirestoreException.Code.PERMISSION_DENIED,
+        (operation.await().exceptionOrNull() as? FirebaseFirestoreException)?.code,
+    )
+  }
+
+  @Test
+  fun createFileWaitingForTheServerReturnsARefusalThatComesLate() = runBlocking {
+    val (slowRepository, refuse) = slowServerRefusing("file")
+
+    assertLateRefusalIsReturned(refuse) {
+      slowRepository.createFile(text("file"), waitForServer = true)
+    }
+  }
+
+  @Test
+  fun updateFileWaitingForTheServerReturnsARefusalThatComesLate() = runBlocking {
+    val (slowRepository, refuse) = slowServerRefusing("file")
+
+    assertLateRefusalIsReturned(refuse) {
+      slowRepository.updateFile(FileEdit("file", "Edited", ""), waitForServer = true)
+    }
   }
 
   private companion object {

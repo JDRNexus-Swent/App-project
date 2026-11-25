@@ -229,9 +229,10 @@ class EditFileLoreTests {
 
     override fun getNewUid(): String = "generated-id"
 
-    override suspend fun createFile(file: JDRFile): Result<Unit> = Result.success(Unit)
+    override suspend fun createFile(file: JDRFile, waitForServer: Boolean): Result<Unit> =
+        Result.success(Unit)
 
-    override suspend fun updateFile(edit: FileEdit): Result<Unit> {
+    override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean): Result<Unit> {
       updatedFiles += file.copy(name = edit.name, content = edit.content)
       updateError?.let { throw IllegalStateException(it) }
       return Result.success(Unit)

@@ -609,7 +609,7 @@ class GamePlayerViewModelTest {
       return folders[folderId] ?: MutableStateFlow(emptyList())
     }
 
-    override suspend fun updateFile(edit: FileEdit): Result<Unit> {
+    override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean): Result<Unit> {
       updatedFiles +=
           JDRFile(
               id = edit.id,
@@ -648,9 +648,10 @@ class GamePlayerViewModelTest {
         object : WorkspaceRepository {
           override fun getNewUid() = error("Not used")
 
-          override suspend fun createFile(file: JDRFile) = error("Not used")
+          override suspend fun createFile(file: JDRFile, waitForServer: Boolean) = error("Not used")
 
-          override suspend fun updateFile(edit: FileEdit) = error("Not used")
+          override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean) =
+              error("Not used")
 
           override suspend fun deleteFile(fileId: String) = error("Not used")
 
