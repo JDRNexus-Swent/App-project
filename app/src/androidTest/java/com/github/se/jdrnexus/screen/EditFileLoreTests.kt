@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.screen
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -102,7 +103,6 @@ class EditFileLoreTests {
         },
     )
 
-    composeTestRule.onNodeWithTag(EditFileLoreTestTags.LIST).performScrollToKey("top-bar")
     composeTestRule.onNodeWithTag(EditFileLoreTestTags.BACK).performClick()
     assertEquals(true, backClicked)
   }
