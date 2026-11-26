@@ -227,4 +227,15 @@
     <string name="campaign_help_workspace_body">\"Enter workspace\" opens the group\'s shared files: your personal files (Files tab) stay private until you share them, and a hidden file is seen only by its owner and the GameMaster. \"Play\" opens the game: the session screen for the GameMaster, their character for players.</string>
     <string name="campaign_help_example_name">The Sunken Crown</string>
     <string name="campaign_help_example_system">Fantasy campaign</string>
+    <string name="image_type">IMAGE</string>
+    <string name="image_default_name">Image</string>
+    <string name="image_action">Image</string>
+    <string name="image_new">New image</string>
+    <string name="image_uploading">Uploading image… %1$d%%</string>
+    <string name="image_error_too_large">This image is over 10 MB.</string>
+    <string name="image_error_format">Only JPEG, PNG and WebP images can be added.</string>
+    <string name="image_error_network">The upload failed: check your connection and try again.</string>
+    <string name="image_error_not_signed_in">You must be signed in to add an image.</string>
+    <string name="image_error_permission">You are not allowed to add an image here.</string>
+    <string name="image_error_unknown">The image could not be added.</string>
 </resources>

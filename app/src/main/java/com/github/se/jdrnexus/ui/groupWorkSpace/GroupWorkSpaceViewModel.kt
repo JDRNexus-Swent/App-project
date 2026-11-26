@@ -2,12 +2,16 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.codec.JDRFileCodecException
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
 import com.github.se.jdrnexus.model.filerepresentation.DEFAULT_CHARACTER_NAME
 import com.github.se.jdrnexus.model.filerepresentation.renameCharacterSheet
+import com.github.se.jdrnexus.model.image.ImageError
+import com.github.se.jdrnexus.model.image.ImageRepository
+import com.github.se.jdrnexus.model.image.ImageRepositoryProvider
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
@@ -19,6 +23,8 @@ import com.github.se.jdrnexus.model.personalSpace.isContainer
 import com.github.se.jdrnexus.model.personalSpace.toEdit
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryProvider
+import com.github.se.jdrnexus.ui.image.ImageUploadState
+import com.github.se.jdrnexus.ui.image.toImageError
 import com.github.se.jdrnexus.viewmodel.ItemErrors
 import com.github.se.jdrnexus.viewmodel.LoadState
 import java.util.concurrent.atomic.AtomicInteger
@@ -64,14 +70,27 @@ data class GroupWorkspaceUiState(
     val groupName: String = "",
     val personalFiles: List<JDRFile> = emptyList(),
     val personalFilesError: String = "",
+    /** The image being added by [GroupWorkspaceViewModel.uploadImage]. */
+    val imageUpload: ImageUploadState = ImageUploadState(),
 )
 
+/**
+ * ViewModel of the Group Workspace screen.
+ *
+ * @param imageRepository Stores added images; null uses [ImageRepositoryProvider.repository],
+ *   resolved at the first upload so that a ViewModel built without Firebase never touches it.
+ */
 class GroupWorkspaceViewModel(
     private val groupId: String,
     private val groupRepository: GroupRepository,
     private val repository: WorkspaceRepository = WorkspaceRepositoryProvider.repository,
     private val authRepository: AuthRepository = AuthRepositoryProvider.repository,
+    imageRepository: ImageRepository? = null,
 ) : ViewModel() {
+
+  private val images: ImageRepository by lazy {
+    imageRepository ?: ImageRepositoryProvider.repository
+  }
 
   private var role: GroupWorkspaceRole? = null
   private val _uiState = MutableStateFlow(GroupWorkspaceUiState())
@@ -601,6 +620,23 @@ class GroupWorkspaceViewModel(
       type: DocumentType,
       content: String = "",
   ): String {
+    val item = newItemInFolder(parentId, name, type, content)
+    // The Group Workspace only works online: wait for the server so a refusal is shown.
+    repository.createFile(item, waitForServer = true).getOrThrow()
+    return item.id
+  }
+
+  /**
+   * Builds, without saving it, an item owned by the current user placed directly in this group's
+   * folder [parentId] ("" for the group root). The parent folder must be accessible to the user,
+   * and its hidden state is inherited.
+   */
+  private suspend fun newItemInFolder(
+      parentId: String,
+      name: String,
+      type: DocumentType,
+      content: String = "",
+  ): JDRFile {
     requireMember()
     val uid = requireUid()
     val parent =
@@ -610,23 +646,58 @@ class GroupWorkspaceViewModel(
           null
         }
 
-    val itemId = repository.getNewUid()
     val isHidden = parent?.placements?.get(groupId)?.isHidden == true
-    val item =
-        JDRFile(
-                id = itemId,
-                name = name,
-                ownerId = uid,
-                sharedGroupsIds = listOf(groupId),
-                personalParentId = PERSONAL_ROOT_ID,
-                type = type,
-                content = content,
-            )
-            .withPlacement(groupId, Placement(parentId.ifEmpty { groupId }, isHidden))
+    return JDRFile(
+            id = repository.getNewUid(),
+            name = name,
+            ownerId = uid,
+            sharedGroupsIds = listOf(groupId),
+            personalParentId = PERSONAL_ROOT_ID,
+            type = type,
+            content = content,
+        )
+        .withPlacement(groupId, Placement(parentId.ifEmpty { groupId }, isHidden))
+  }
 
-    // The Group Workspace only works online: wait for the server so a refusal is shown.
-    repository.createFile(item, waitForServer = true).getOrThrow()
-    return itemId
+  /**
+   * Call when the user picked the picture [image] from the "Image" option. Adds it as an image file
+   * named [name] to the currently displayed folder through [ImageRepository.uploadImage], with the
+   * same placement rules as [createFolder]. Does nothing while another upload runs, so a double tap
+   * uploads once.
+   *
+   * [GroupWorkspaceUiState.imageUpload] holds the progress while it runs; an upload failure is kept
+   * there as an [ImageError] until [clearImageUploadError], while a membership or folder failure is
+   * shown through [GroupWorkspaceUiState.errorMessage] like the other operations. Leaving the Group
+   * Workspace screen for an earlier screen (back, or the Home or Campaigns tab: this clears the
+   * ViewModel) cancels the upload, and the repository then deletes the partial picture. Opening a
+   * file or another tab keeps it running.
+   */
+  fun uploadImage(image: Uri, name: String): Job? {
+    if (_uiState.value.imageUpload.isUploading) return null
+    val parentId = _uiState.value.currentFolderId
+    _uiState.update { it.copy(imageUpload = ImageUploadState(progress = 0f)) }
+    return viewModelScope.launch {
+      var error: ImageError? = null
+      try {
+        performOperation {
+          val item = newItemInFolder(parentId, name, DocumentType.IMAGE)
+          error =
+              images
+                  .uploadImage(item, image) { progress ->
+                    _uiState.update { it.copy(imageUpload = ImageUploadState(progress = progress)) }
+                  }
+                  .exceptionOrNull()
+                  ?.toImageError()
+        }
+      } finally {
+        _uiState.update { it.copy(imageUpload = ImageUploadState(error = error)) }
+      }
+    }
+  }
+
+  /** Call once the screen has shown [GroupWorkspaceUiState.imageUpload]'s error. */
+  fun clearImageUploadError() {
+    _uiState.update { it.copy(imageUpload = it.imageUpload.copy(error = null)) }
   }
 
   /**

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
@@ -77,6 +78,9 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.JdrNexusLogo
 import com.github.se.jdrnexus.resources.OfflineBanner
 import com.github.se.jdrnexus.resources.ScreenBottomBar
+import com.github.se.jdrnexus.ui.image.ImageUploadErrorEffect
+import com.github.se.jdrnexus.ui.image.ImageUploadProgress
+import com.github.se.jdrnexus.ui.image.rememberImageFilePicker
 import com.github.se.jdrnexus.viewmodel.LoadState
 import kotlin.collections.emptyList
 import kotlinx.coroutines.launch
@@ -137,6 +141,13 @@ fun GroupWorkSpaceScreen(
       }
     }
   }
+  ImageUploadErrorEffect(
+      error = uiState.imageUpload.error,
+      snackbarHostState = snackbarHostState,
+      enabled = !isDialogOpen,
+      onShown = gwViewModel::clearImageUploadError,
+  )
+  val pickImage = rememberImageFilePicker { image, name -> gwViewModel.uploadImage(image, name) }
 
   // Close a dialog after a successful operation.
   // An error leaves the dialog open so the user can correct or retry.
@@ -253,6 +264,10 @@ fun GroupWorkSpaceScreen(
         onCharacterSelected = {
           showCreateItemDialog = false
           gwViewModel.createCharacter(onCharacterCreated)
+        },
+        onImageSelected = {
+          showCreateItemDialog = false
+          pickImage()
         },
         onDismiss = { showCreateItemDialog = false },
     )
@@ -396,8 +411,8 @@ fun GroupWorkSpaceScreen(
                         imageVector =
                             when (item.type) {
                               DocumentType.FOLDER -> Icons.Default.Folder
-                              DocumentType.TEXT,
-                              DocumentType.IMAGE -> Icons.Default.Description
+                              DocumentType.TEXT -> Icons.Default.Description
+                              DocumentType.IMAGE -> Icons.Filled.Image
                               DocumentType.CHARACTER -> Icons.Default.People
                               DocumentType.GROUP_ROOT -> Icons.Default.Folder
                             },
@@ -614,15 +629,19 @@ fun WorkspaceCard(
   WorkspaceItemCard(
       file = file,
       icon =
-          if (file.type == DocumentType.TEXT || file.type == DocumentType.IMAGE)
-              Icons.Default.Description
-          else Icons.Default.People,
+          when (file.type) {
+            DocumentType.IMAGE -> Icons.Filled.Image
+            DocumentType.TEXT -> Icons.Default.Description
+            else -> Icons.Default.People
+          },
       typeLabel = stringResource(file.type.labelResource),
       title =
           if (character == null) file.name
           else character.name ?: stringResource(R.string.workspace_new_character),
       description =
-          if (character == null) file.content
+          // An image's content is its Storage path: never show it.
+          if (file.type == DocumentType.IMAGE) ""
+          else if (character == null) file.content
           else
               character.hp?.let {
                 stringResource(R.string.workspace_character_hp, it.current, it.max)
@@ -780,7 +799,13 @@ private fun WorkspaceContent(
 
     LoadState.Success -> {
       Column(modifier = Modifier.fillMaxSize()) {
-        if (uiState.isOperationInProgress) {
+        val imageUploadProgress = uiState.imageUpload.progress
+        if (imageUploadProgress != null) {
+          ImageUploadProgress(
+              progress = imageUploadProgress,
+              modifier = Modifier.padding(bottom = 10.dp),
+          )
+        } else if (uiState.isOperationInProgress) {
           Row(
               modifier =
                   Modifier.fillMaxWidth()
@@ -877,6 +902,7 @@ fun EmptyWorkspace() {
  * @param isOperationInProgress Whether a workspace operation is running, disabling the options.
  * @param onFolderSelected Called when the folder option is selected.
  * @param onCharacterSelected Called when the character option is selected.
+ * @param onImageSelected Called when the image option is selected.
  * @param onDismiss Called when the dialog is closed without a selection.
  */
 @Composable
@@ -884,6 +910,7 @@ private fun CreateItemDialog(
     isOperationInProgress: Boolean,
     onFolderSelected: () -> Unit,
     onCharacterSelected: () -> Unit,
+    onImageSelected: () -> Unit,
     onDismiss: () -> Unit,
 ) {
   AlertDialog(
@@ -915,6 +942,13 @@ private fun CreateItemDialog(
               enabled = !isOperationInProgress,
               onClick = onCharacterSelected,
               modifier = Modifier.testTag(C.Tag.workspace_create_item_character),
+          )
+          CreateItemOption(
+              label = stringResource(R.string.image_action),
+              icon = Icons.Filled.Image,
+              enabled = !isOperationInProgress,
+              onClick = onImageSelected,
+              modifier = Modifier.testTag(C.Tag.workspace_create_item_image),
           )
           CreateItemOption(
               label = stringResource(R.string.workspace_text_action),
@@ -1085,8 +1119,8 @@ private val DocumentType.labelResource: Int
   get() =
       when (this) {
         DocumentType.FOLDER -> R.string.workspace_folder_type
-        DocumentType.TEXT,
-        DocumentType.IMAGE -> R.string.workspace_text_type
+        DocumentType.TEXT -> R.string.workspace_text_type
+        DocumentType.IMAGE -> R.string.image_type
         DocumentType.CHARACTER -> R.string.workspace_character_type
         DocumentType.GROUP_ROOT -> R.string.workspace_group_root_type
       }

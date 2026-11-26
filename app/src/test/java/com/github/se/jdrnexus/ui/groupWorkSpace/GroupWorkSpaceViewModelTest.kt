@@ -2,11 +2,14 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
+import android.net.Uri
+import androidx.lifecycle.ViewModelStore
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
 import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
 import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
+import com.github.se.jdrnexus.model.image.ImageError
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.FileEdit
@@ -18,7 +21,10 @@ import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
+import com.github.se.jdrnexus.ui.image.ImageUploadState
+import com.github.se.jdrnexus.utils.FakeImageRepository
 import com.github.se.jdrnexus.viewmodel.LoadState
+import io.mockk.mockk
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +57,9 @@ import org.junit.runner.Description
 @OptIn(ExperimentalCoroutinesApi::class)
 class GroupWorkSpaceViewModelTest {
   @get:Rule val mainDispatcherRule = GroupWorkspaceMainDispatcherRule()
+
+  // A picked picture: the ViewModel only passes it on to the image repository.
+  private val picture: Uri = mockk()
 
   private fun groupFolder(
       id: String,
@@ -1520,6 +1529,166 @@ class GroupWorkSpaceViewModelTest {
     assertEquals(emptyMap<String, JDRFile>(), repository.files.toMap())
   }
 
+  // ============ Image upload ============
+
+  // A player's image at the group root is placed like their other items and listed.
+  @Test
+  fun playerUploadsImageToGroupRootWithExpectedFields() = runTest {
+    val repository = FakeWorkspaceRepository()
+    val images = FakeImageRepository(workspaceRepository = repository)
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER, images = images)
+    runCurrent()
+
+    player.uploadImage(picture, "Harbour map")
+    runCurrent()
+
+    val requested =
+        JDRFile(
+            id = "new-folder-1",
+            name = "Harbour map",
+            ownerId = OWNER_ID,
+            sharedGroupsIds = listOf(GROUP_ID),
+            placements = mapOf(GROUP_ID to Placement(GROUP_ID, false)),
+            personalParentId = PERSONAL_ROOT_ID,
+            type = DocumentType.IMAGE,
+        )
+    assertEquals(listOf(requested to picture), images.uploads)
+    val stored = requested.copy(content = "images/$OWNER_ID/new-folder-1")
+    assertEquals(listOf(stored), player.uiState.value.items)
+    assertEquals(ImageUploadState(), player.uiState.value.imageUpload)
+    assertFalse(player.uiState.value.isOperationInProgress)
+    assertEquals("", player.uiState.value.errorMessage)
+  }
+
+  // An image added in a hidden folder is hidden too.
+  @Test
+  fun uploadedImageInheritsCurrentHiddenFolder() = runTest {
+    val hiddenParent = groupFolder("hidden-parent", hidden = true)
+    val repository = FakeWorkspaceRepository(listOf(hiddenParent))
+    val images = FakeImageRepository()
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER, images = images)
+    runCurrent()
+    gm.loadWorkspace(hiddenParent.id)
+    runCurrent()
+
+    gm.uploadImage(picture, "Secret map")
+    runCurrent()
+
+    assertEquals(
+        Placement(hiddenParent.id, true),
+        images.uploads.single().first.placements[GROUP_ID],
+    )
+  }
+
+  // While an upload runs, its progress is shown, other actions are disabled and a second pick is
+  // ignored.
+  @Test
+  fun uploadShowsProgressAndIgnoresASecondPickWhileUploading() = runTest {
+    val gate = CompletableDeferred<Unit>()
+    val images = FakeImageRepository(progressSteps = listOf(0.4f), gate = gate)
+    val gm = viewModel(FakeWorkspaceRepository(), GroupWorkspaceRole.GAME_MASTER, images = images)
+    runCurrent()
+
+    gm.uploadImage(picture, "First")
+    assertEquals(null, gm.uploadImage(picture, "Second"))
+    runCurrent()
+
+    assertEquals(0.4f, gm.uiState.value.imageUpload.progress)
+    assertTrue(gm.uiState.value.isOperationInProgress)
+    assertEquals(listOf("First"), images.uploads.map { it.first.name })
+
+    gate.complete(Unit)
+    runCurrent()
+    assertFalse(gm.uiState.value.imageUpload.isUploading)
+    assertFalse(gm.uiState.value.isOperationInProgress)
+  }
+
+  // An upload failure is kept as its error until the screen has shown it.
+  @Test
+  fun uploadFailureIsExposedUntilCleared() = runTest {
+    val images = FakeImageRepository(failure = ImageError.TOO_LARGE)
+    val gm = viewModel(FakeWorkspaceRepository(), GroupWorkspaceRole.GAME_MASTER, images = images)
+    runCurrent()
+
+    gm.uploadImage(picture, "Huge map")
+    runCurrent()
+
+    assertEquals(
+        ImageUploadState(error = ImageError.TOO_LARGE),
+        gm.uiState.value.imageUpload,
+    )
+    assertEquals("", gm.uiState.value.errorMessage)
+    gm.clearImageUploadError()
+    assertEquals(ImageUploadState(), gm.uiState.value.imageUpload)
+  }
+
+  // Someone outside the group cannot upload, and the reason is shown like other operations.
+  @Test
+  fun nonMemberCannotUploadImage() = runTest {
+    val group =
+        CampaignGroup(
+            id = GROUP_ID,
+            gameMasterId = OTHER_USER_ID,
+            participantIds = listOf(OTHER_USER_ID),
+        )
+    val images = FakeImageRepository()
+    val outsider =
+        viewModel(
+            FakeWorkspaceRepository(),
+            GroupWorkspaceRole.PLAYER,
+            groupRepository = FakeGroupRepository(group),
+            images = images,
+        )
+    runCurrent()
+
+    outsider.uploadImage(picture, "Map")
+    runCurrent()
+
+    assertEquals("You are not a member of this group.", outsider.uiState.value.errorMessage)
+    assertEquals(ImageUploadState(), outsider.uiState.value.imageUpload)
+    assertEquals(emptyList<Pair<JDRFile, Uri>>(), images.uploads)
+  }
+
+  // A player cannot add an image inside a hidden folder they may not access.
+  @Test
+  fun playerCannotUploadInsideForeignHiddenFolder() = runTest {
+    val hidden = groupFolder("foreign-hidden", hidden = true)
+    val images = FakeImageRepository()
+    val player =
+        viewModel(
+            FakeWorkspaceRepository(listOf(hidden)),
+            GroupWorkspaceRole.PLAYER,
+            images = images,
+        )
+    runCurrent()
+    player.loadWorkspace(hidden.id)
+    runCurrent()
+    player.clearError()
+
+    player.uploadImage(picture, "Map")
+    runCurrent()
+
+    assertEquals("You cannot access this folder.", player.uiState.value.errorMessage)
+    assertEquals(emptyList<Pair<JDRFile, Uri>>(), images.uploads)
+  }
+
+  // Leaving the screen clears the ViewModel, which cancels the running upload.
+  @Test
+  fun clearingTheViewModelCancelsTheUpload() = runTest {
+    val images = FakeImageRepository(gate = CompletableDeferred())
+    val store = ViewModelStore()
+    val gm = viewModel(FakeWorkspaceRepository(), GroupWorkspaceRole.GAME_MASTER, images = images)
+    store.put("workspace", gm)
+    runCurrent()
+    gm.uploadImage(picture, "Map")
+    runCurrent()
+
+    store.clear()
+    runCurrent()
+
+    assertTrue(images.uploadCancelled)
+  }
+
   // Group roots and missing items cannot be shared to the workspace.
   @Test
   fun shareItemRejectsGroupRootsAndMissingItems() = runTest {
@@ -1948,7 +2117,8 @@ class GroupWorkSpaceViewModelTest {
       role: GroupWorkspaceRole,
       authRepository: FakeAuthRepository = FakeAuthRepository(),
       groupRepository: FakeGroupRepository = FakeGroupRepository(groupForRole(role)),
-  ) = GroupWorkspaceViewModel(GROUP_ID, groupRepository, repository, authRepository)
+      images: FakeImageRepository? = null,
+  ) = GroupWorkspaceViewModel(GROUP_ID, groupRepository, repository, authRepository, images)
 
   private fun groupForRole(role: GroupWorkspaceRole) =
       CampaignGroup(

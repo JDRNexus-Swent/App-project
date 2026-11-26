@@ -3,18 +3,20 @@ package com.github.se.jdrnexus.ui.groupWorkSpace
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -171,15 +173,18 @@ class GroupWorkSpaceScreenTest {
     )
   }
 
-  // Same name and content, so the two cards can differ only by their icon and type label.
+  // Same name, so the two cards can differ only by their icon, type label and description.
   @Test
   @GraphicsMode(GraphicsMode.Mode.NATIVE)
-  fun imageCardShowsTheTextIconAndLabel() {
-    val text = JDRFile(id = "text", name = "Map", type = DocumentType.TEXT, content = "North")
-    val image = text.copy(id = "image", type = DocumentType.IMAGE)
+  fun imageCardHasItsOwnIconAndLabelAndHidesItsStoragePath() {
+    val text = JDRFile(id = "text", name = "Map", type = DocumentType.TEXT)
+    val image =
+        JDRFile(id = "image", name = "Map", type = DocumentType.IMAGE, content = "images/u/image")
     setCards(text, image)
 
-    assertArrayEquals(cardPixels(text.id), cardPixels(image.id))
+    composeTestRule.onNodeWithText("IMAGE", useUnmergedTree = true).assertIsDisplayed()
+    assertTagText(C.Tag.workspaceItemDescription(image.id), "No description available")
+    assertFalse(cardPixels(text.id).contentEquals(cardPixels(image.id)))
   }
 
   private fun cardPixels(id: String): IntArray =
