@@ -58,7 +58,7 @@ class ImageRepositoryFirebaseTest {
   // Removes the picked pictures and what the test stored. A failed delete (already gone) is
   // ignored.
   @After
-  fun tearDown() = runBlocking {
+  fun tearDown(): Unit = runBlocking {
     picked.forEach { resolver.delete(it, null, null) }
     runCatching { storedPicture().delete().awaitWithTimeout() }
     runCatching { storedRecordReference().delete().awaitWithTimeout() }
