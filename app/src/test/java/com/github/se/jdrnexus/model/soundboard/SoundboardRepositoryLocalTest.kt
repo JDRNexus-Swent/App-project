@@ -336,11 +336,29 @@ class SoundboardRepositoryLocalTest {
 
   @Test
   fun saveAcceptsTheVolumeBounds() = runTest {
-    val board = Soundboard(id = BOARD_ID, name = "Tides", ambienceVolume = MIN_VOLUME)
+    // MAX_VOLUME is also DEFAULT_VOLUME: a volume the repository forgot to store reads back as the
+    // default, so checking it at MAX_VOLUME alone would still pass. Each volume is therefore set
+    // to MIN_VOLUME on one of the two soundboards, where a forgotten volume shows.
+    val bounds =
+        listOf(
+            Soundboard(
+                id = "board-quiet-ambience",
+                name = "Quiet ambience",
+                ambienceVolume = MIN_VOLUME,
+                effectsVolume = MAX_VOLUME,
+            ),
+            Soundboard(
+                id = "board-quiet-effects",
+                name = "Quiet effects",
+                ambienceVolume = MAX_VOLUME,
+                effectsVolume = MIN_VOLUME,
+            ),
+        )
 
-    repository.saveSoundboard(USER, board.copy(effectsVolume = MAX_VOLUME)).getOrThrow()
+    bounds.forEach { repository.saveSoundboard(USER, it).getOrThrow() }
 
-    assertEquals(MIN_VOLUME, repository.observeSoundboard(USER, BOARD_ID).first()!!.ambienceVolume)
+    // Comparing the whole soundboards checks both volumes of each.
+    assertEquals(bounds, repository.observeSoundboards(USER).first())
   }
 
   @Test
