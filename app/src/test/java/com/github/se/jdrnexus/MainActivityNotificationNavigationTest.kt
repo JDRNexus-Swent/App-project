@@ -15,6 +15,7 @@ import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.model.help.HelpSeenRepositorySharedPreferences
 import com.github.se.jdrnexus.model.notification.NotificationType
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.repository.AuthError
@@ -23,6 +24,7 @@ import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
+import com.github.se.jdrnexus.ui.gameManagement.CAMPAIGNS_HELP_TOPIC
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.github.se.jdrnexus.utils.FakeNotificationViewModel
@@ -34,6 +36,7 @@ import com.google.firebase.FirebaseApp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -153,6 +156,12 @@ class MainActivityNotificationNavigationTest {
         FakeNotificationViewModel(
             loadedNotifications(testNotification(ID, type = NotificationType.GROUP_INVITATION))
         )
+    // Campaigns opens its help by itself on the first visit, and Back would close that help
+    // instead of returning to the notifications.
+    runBlocking {
+      HelpSeenRepositorySharedPreferences(ApplicationProvider.getApplicationContext())
+          .markSeen(CAMPAIGNS_HELP_TOPIC)
+    }
     openNotifications(viewModel)
 
     composeTestRule.onNodeWithTag(C.Tag.notificationItem(ID)).performClick()
