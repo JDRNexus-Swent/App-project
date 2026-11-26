@@ -256,6 +256,25 @@ class SoundboardScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.soundboard_play_pause).assertIsNotEnabled()
   }
 
+  @Test
+  fun playingTrackPausesFromAnotherPlaylistTab() {
+    val vm = setContent(playing.copy(selectedPlaylistId = "combat"))
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_play_pause).performClick()
+
+    assertEquals(listOf("pauseAmbience"), vm.callsAfterLoad())
+  }
+
+  @Test
+  fun preparingTrackShowsASpinnerFromAnotherPlaylistTab() {
+    composeTestRule.mainClock.autoAdvance = false
+    setContent(preparing.copy(selectedPlaylistId = "combat"))
+    composeTestRule.mainClock.advanceTimeBy(100)
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_preparing).assertExists()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_play_pause).assertIsNotEnabled()
+  }
+
   // ============ Sound effects ============
 
   @Test
