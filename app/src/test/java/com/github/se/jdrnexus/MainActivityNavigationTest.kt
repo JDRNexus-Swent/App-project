@@ -46,6 +46,7 @@ import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import com.github.se.jdrnexus.model.profile.ProfileRepositoryProvider
 import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
@@ -67,9 +68,12 @@ import com.github.se.jdrnexus.ui.search.DocumentSearchUiState
 import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
 import com.github.se.jdrnexus.utils.FakeConnectivityRepository
 import com.github.se.jdrnexus.utils.FakeNotificationViewModel
+import com.github.se.jdrnexus.utils.FakeProfileRepository
+import com.github.se.jdrnexus.utils.LOADED_PROFILE_STATE
 import com.github.se.jdrnexus.utils.NavigationGameSessionRepository
 import com.github.se.jdrnexus.utils.NavigationGroupRepository
 import com.github.se.jdrnexus.utils.NavigationWorkspaceRepository
+import com.github.se.jdrnexus.utils.RecordingProfileViewModel
 import com.github.se.jdrnexus.utils.tapInOneFrame
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
@@ -332,6 +336,142 @@ class MainActivityNavigationTest {
 
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.dice_offline_screen).assertIsNotDisplayed()
+  }
+
+  @Test
+  fun homeProfileButtonOpensProfileAndBackButtonReturnsHome() {
+    val profileViewModel = RecordingProfileViewModel(LOADED_PROFILE_STATE)
+    openProfileFromHome(profileViewModel)
+
+    composeTestRule.onNodeWithTag(C.Tag.profile_username).assertTextContains("Rowan")
+    assertEquals(1, profileViewModel.loadCalls)
+
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
+  fun systemBackFromProfileReturnsHome() {
+    openProfileFromHome(RecordingProfileViewModel(LOADED_PROFILE_STATE))
+
+    Espresso.pressBack()
+
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
+  fun homeTabFromProfileReturnsHome() {
+    openProfileFromHome(RecordingProfileViewModel(LOADED_PROFILE_STATE))
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
+  fun campaignsTabFromProfileOpensCampaigns() {
+    showApp(
+        groupRepository = groupRepository(),
+        profileViewModel = RecordingProfileViewModel(LOADED_PROFILE_STATE),
+    )
+    signIn()
+    composeTestRule.onNodeWithTag(C.Tag.open_profile).performClick()
+    waitForTag(C.Tag.profile_username)
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+
+    waitForTag(C.Tag.play_button)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
+  fun filesTabFromProfileOpensPersonalSpace() {
+    openProfileFromHome(RecordingProfileViewModel(LOADED_PROFILE_STATE))
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+
+    waitForText(PERSONAL_SPACE_TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
+  fun mapTabFromProfileOpensTheMap() {
+    val defaultMapRepository = MapRepositoryProvider.mapRepository
+    MapRepositoryProvider.mapRepository = NoGamesMapRepository()
+    try {
+      openProfileFromHome(RecordingProfileViewModel(LOADED_PROFILE_STATE))
+
+      composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
+
+      waitForTag(C.Tag.map_screen)
+      composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+    } finally {
+      MapRepositoryProvider.mapRepository = defaultMapRepository
+    }
+  }
+
+  @Test
+  fun eachProfileVisitLoadsTheProfileWithAFreshViewModel() {
+    // No injected ViewModel: JDRNexusApp creates the real one for the Profile entry.
+    showApp(profileViewModel = null)
+    signIn()
+    // Read only after showApp: the provider's default repository needs the FirebaseApp it starts.
+    val defaultProfileRepository = ProfileRepositoryProvider.repository
+    val profileRepository = FakeProfileRepository()
+    ProfileRepositoryProvider.repository = profileRepository
+    try {
+      repeat(2) {
+        composeTestRule.onNodeWithTag(C.Tag.open_profile).performClick()
+        waitForTag(C.Tag.profile_username)
+        composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+        waitForTag(TestTags.TITLE)
+        composeTestRule.waitForIdle()
+      }
+
+      // ProfileViewModel.loadProfile keeps an already loaded profile of the same user, so only a
+      // new ViewModel on the second visit fetches it again.
+      assertEquals(2, profileRepository.profileRequests.size)
+    } finally {
+      ProfileRepositoryProvider.repository = defaultProfileRepository
+    }
+  }
+
+  @Test
+  fun doubleTapOnProfileButtonOpensASingleProfile() {
+    showApp(profileViewModel = RecordingProfileViewModel(LOADED_PROFILE_STATE))
+    signIn()
+
+    composeTestRule.onNodeWithTag(C.Tag.open_profile).performTouchInput {
+      click()
+      click()
+    }
+    waitForTag(C.Tag.profile_username)
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    // One back leaves the profile: a second profile entry would still be on screen.
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
+  fun campaignsProfileButtonOpensProfileAndBackReturnsToCampaigns() {
+    showApp(
+        groupRepository = groupRepository(),
+        profileViewModel = RecordingProfileViewModel(LOADED_PROFILE_STATE),
+    )
+    signInAndOpenCampaigns()
+    waitForTag(C.Tag.play_button)
+
+    composeTestRule.onNodeWithTag(C.Tag.open_profile).performClick()
+    waitForTag(C.Tag.profile_username)
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    waitForTag(C.Tag.play_button)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
   }
 
   @Test
@@ -1196,6 +1336,7 @@ class MainActivityNavigationTest {
       workspaceRepository: NavigationWorkspaceRepository = NavigationWorkspaceRepository(),
       gameSessionRepository: NavigationGameSessionRepository? = null,
       connectivityRepository: FakeConnectivityRepository = FakeConnectivityRepository(),
+      profileViewModel: RecordingProfileViewModel? = RecordingProfileViewModel(),
       authViewModel: AuthViewModel = AuthViewModel(repository),
   ) {
     val context = ApplicationProvider.getApplicationContext<Context>()
@@ -1220,17 +1361,31 @@ class MainActivityNavigationTest {
             gameSessionRepository = gameSessionRepository,
             notificationViewModel = FakeNotificationViewModel(),
             connectivityRepository = connectivityRepository,
+            profileViewModel = profileViewModel,
         )
       }
     }
   }
 
-  private fun signInAndOpenCampaigns() {
+  /** Signs in with the fake account and waits for Home. */
+  private fun signIn() {
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
     waitForTag(TestTags.GROUPMANAGEMENTBUTTON)
+  }
+
+  private fun signInAndOpenCampaigns() {
+    signIn()
     composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+  }
+
+  /** Shows the app with [profileViewModel], signs in and opens the profile from Home. */
+  private fun openProfileFromHome(profileViewModel: RecordingProfileViewModel) {
+    showApp(profileViewModel = profileViewModel)
+    signIn()
+    composeTestRule.onNodeWithTag(C.Tag.open_profile).performClick()
+    waitForTag(C.Tag.profile_username)
   }
 
   private fun waitForTag(tag: String) {

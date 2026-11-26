@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -78,6 +77,7 @@ import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.resources.showComingSoon
 import com.github.se.jdrnexus.ui.help.HelpSheet
 import com.github.se.jdrnexus.ui.help.HelpViewModel
+import com.github.se.jdrnexus.ui.profile.ProfileButton
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementUiState
@@ -135,7 +135,8 @@ internal object GameManagementTestTags {
  * can load its shared files. Selecting "Play" invokes [onPlay] with that group's ID and the user's
  * role in it, so the destination can open the matching game screen. [gameManagementViewModel]
  * provides the loading and creation state. [helpViewModel] decides when the help sheet is shown: by
- * itself on the first visit on this device, then when the top bar's help button is tapped.
+ * itself on the first visit on this device, then when the top bar's help button is tapped. The top
+ * bar's profile button, shown only when [onProfileClick] is given, invokes it.
  */
 @Composable
 fun GameManagementScreen(
@@ -152,6 +153,7 @@ fun GameManagementScreen(
                     repository = HelpSeenRepositorySharedPreferences(LocalContext.current),
                 )
         ),
+    onProfileClick: (() -> Unit)? = null,
 ) {
   val uiState by gameManagementViewModel.uiState.collectAsState()
   val helpState by helpViewModel.uiState.collectAsState()
@@ -173,6 +175,7 @@ fun GameManagementScreen(
       showHelp = helpState.showHelp,
       onHelpClick = helpViewModel::onHelpClicked,
       onHelpDismiss = helpViewModel::onHelpDismissed,
+      onProfileClick = onProfileClick,
   )
 }
 
@@ -185,6 +188,7 @@ fun GameManagementScreen(
  * @param showHelp whether the help sheet with [campaignHelpPages] is shown.
  * @param onHelpClick called by the top bar's help button.
  * @param onHelpDismiss called once the help sheet has been closed.
+ * @param onProfileClick called by the top bar's profile button, which is hidden when null.
  * @param renderDialogsAsWindow whether dialogs open in their own window; tests render them inline.
  */
 @Composable
@@ -204,6 +208,7 @@ internal fun GameManagementScreenContent(
     showHelp: Boolean = false,
     onHelpClick: () -> Unit = {},
     onHelpDismiss: () -> Unit = {},
+    onProfileClick: (() -> Unit)? = null,
     renderDialogsAsWindow: Boolean = true,
 ) {
   val colors = gameManagementColors()
@@ -215,7 +220,13 @@ internal fun GameManagementScreenContent(
 
   Scaffold(
       containerColor = colors.background,
-      topBar = { GameManagementHeader(colors = colors, onHelpClick = onHelpClick) },
+      topBar = {
+        GameManagementHeader(
+            colors = colors,
+            onHelpClick = onHelpClick,
+            onProfileClick = onProfileClick,
+        )
+      },
       bottomBar = {
         ScreenBottomBar(
             selectedTab = "Campaigns",
@@ -369,10 +380,15 @@ internal fun GameManagementScreenContent(
 
 /**
  * Shows the profile, app identity, help button and notification affordance at the top of the
- * screen. The help button calls [onHelpClick].
+ * screen. The help button calls [onHelpClick] and the profile button, shown when [onProfileClick]
+ * is not null, calls it.
  */
 @Composable
-private fun GameManagementHeader(colors: GameManagementColors, onHelpClick: () -> Unit) {
+private fun GameManagementHeader(
+    colors: GameManagementColors,
+    onHelpClick: () -> Unit,
+    onProfileClick: (() -> Unit)?,
+) {
   val context = LocalContext.current
   AppTopBar(
       title = "JDRNexus",
@@ -388,18 +404,7 @@ private fun GameManagementHeader(colors: GameManagementColors, onHelpClick: () -
           )
         }
       },
-      leadingContent = {
-        Box(
-            modifier =
-                Modifier.size(38.dp)
-                    .clip(CircleShape)
-                    .background(colors.raised)
-                    .border(1.dp, colors.outline, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-          Icon(Icons.Filled.Person, contentDescription = "Profile", tint = colors.secondaryText)
-        }
-      },
+      leadingContent = { if (onProfileClick != null) ProfileButton(onClick = onProfileClick) },
       trailingContent = {
         IconButton(
             onClick = onHelpClick,
