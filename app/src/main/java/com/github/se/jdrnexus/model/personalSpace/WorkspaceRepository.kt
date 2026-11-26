@@ -3,6 +3,7 @@
 package com.github.se.jdrnexus.model.personalSpace
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 
 /**
  * Interface defining the operations for managing the workspace repository in JDRNexus. It handles
@@ -151,4 +152,27 @@ interface WorkspaceRepository {
    * @return A [Flow] emitting the list of child [JDRFile]s.
    */
   fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>>
+
+  // ==========================================
+  // ONE-SHOT READS
+  // ==========================================
+
+  /**
+   * Reads the documents of a personal folder once, without observing changes. Use it instead of the
+   * first value of [getPersonalFolderFiles], which can come from the local cache alone and miss the
+   * documents this device has not cached yet. This read waits for the server while it is reachable,
+   * and reads the local cache once the device is known to be offline.
+   *
+   * The default implementation takes the first value of [getPersonalFolderFiles], which is exact
+   * for repositories without a cache.
+   */
+  suspend fun fetchPersonalFolderFiles(folderId: String, ownerId: String): List<JDRFile> =
+      getPersonalFolderFiles(folderId, ownerId).first()
+
+  /**
+   * Reads the documents of a group folder once, without observing changes, with the same source
+   * rules as [fetchPersonalFolderFiles].
+   */
+  suspend fun fetchGroupFolderFiles(folderId: String, groupId: String): List<JDRFile> =
+      getGroupFolderFiles(folderId, groupId).first()
 }

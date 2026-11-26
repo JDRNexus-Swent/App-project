@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.credentials.CredentialManager
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -193,6 +194,19 @@ fun JDRNexusApp(
       DocumentType.GROUP_ROOT -> Unit
     }
   }
+  // Shared by the group workspace and its search, which reuses the workspace's ViewModel.
+  val groupWorkspaceViewModelFactory: (String) -> ViewModelProvider.Factory = { groupId ->
+    viewModelFactory {
+      initializer {
+        GroupWorkspaceViewModel(
+            groupId = groupId,
+            groupRepository = activeGroupRepository,
+            repository = activeWorkspaceRepository,
+            authRepository = activeAuthRepository,
+        )
+      }
+    }
+  }
   val onGameTabSelected: (String) -> Unit = { tab ->
     when (tab) {
       "Home" -> navigation.popBackStack(AllRoutes.Home.name, inclusive = false)
@@ -307,10 +321,21 @@ fun JDRNexusApp(
           )
         }
 
-        composable(route = AllRoutes.Search.name) {
+        composable(route = AllRoutes.Search.name) { backStackEntry ->
+          // The search is opened from the Personal Space, whose ViewModel opens folder results.
+          val personalSpaceEntry =
+              remember(backStackEntry) {
+                navController.getBackStackEntry(AllRoutes.PersoSpace.name)
+              }
+          val workspaceViewModel =
+              personalSpaceViewModel ?: viewModel<PersonalSpaceViewModel>(personalSpaceEntry)
           DocumentSearchScreen(
               onBack = { navigation.popBackStack() },
               onDocumentClicked = { file -> openDocument(file, null) },
+              onFolderClicked = { result ->
+                workspaceViewModel.openFolderAt(result.file, result.folderIds, result.folderPath)
+                navigation.popBackStack()
+              },
               searchViewModel = personalSearchViewModel ?: viewModel<DocumentSearchViewModel>(),
           )
         }
@@ -433,19 +458,7 @@ fun JDRNexusApp(
                   backStackEntry.arguments?.getString(GroupWorkspaceRoute.groupIdArgument)
               )
           val groupWorkspaceViewModel: GroupWorkspaceViewModel =
-              viewModel(
-                  factory =
-                      viewModelFactory {
-                        initializer {
-                          GroupWorkspaceViewModel(
-                              groupId = groupId,
-                              groupRepository = activeGroupRepository,
-                              repository = activeWorkspaceRepository,
-                              authRepository = activeAuthRepository,
-                          )
-                        }
-                      }
-              )
+              viewModel(factory = groupWorkspaceViewModelFactory(groupId))
           val uiState by groupWorkspaceViewModel.uiState.collectAsState()
           GroupWorkSpaceScreen(
               gwViewModel = groupWorkspaceViewModel,
@@ -500,9 +513,20 @@ fun JDRNexusApp(
                             }
                           }
                   )
+          // The search is opened from the group workspace, whose ViewModel opens folder results.
+          val workspaceEntry =
+              remember(backStackEntry) {
+                navController.getBackStackEntry(GroupWorkspaceRoute.route)
+              }
+          val groupWorkspaceViewModel: GroupWorkspaceViewModel =
+              viewModel(workspaceEntry, factory = groupWorkspaceViewModelFactory(groupId))
           DocumentSearchScreen(
               onBack = { navigation.popBackStack() },
               onDocumentClicked = { file -> openDocument(file, groupId) },
+              onFolderClicked = { result ->
+                groupWorkspaceViewModel.openFolderAt(result.file.id, result.folderIds)
+                navigation.popBackStack()
+              },
               searchViewModel = activeGroupSearchViewModel,
           )
         }

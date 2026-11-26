@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.screen
 
 import androidx.compose.ui.test.assertCountEquals
@@ -84,6 +85,48 @@ class DocumentSearchScreenTest {
   }
 
   @Test
+  fun tappingFolderResultOpensTheFolderInsteadOfTheEditor() {
+    val viewModel =
+        FakeDocumentSearchViewModel(
+            DocumentSearchUiState(
+                query = "Maps",
+                results = listOf(folderResult),
+                status = DocumentSearchStatus.Results,
+            )
+        )
+    var openedFolder: DocumentSearchResult? = null
+    var openedFile: JDRFile? = null
+    setScreen(
+        viewModel,
+        onDocumentClicked = { openedFile = it },
+        onFolderClicked = { openedFolder = it },
+    )
+
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(folderResult.file.id)).performClick()
+
+    assertEquals(folderResult, openedFolder)
+    assertEquals(null, openedFile)
+  }
+
+  @Test
+  fun tappingDocumentResultDoesNotOpenAFolder() {
+    val viewModel =
+        FakeDocumentSearchViewModel(
+            DocumentSearchUiState(
+                query = "Dragon",
+                results = listOf(result),
+                status = DocumentSearchStatus.Results,
+            )
+        )
+    var openedFolder: DocumentSearchResult? = null
+    setScreen(viewModel, onFolderClicked = { openedFolder = it })
+
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(result.file.id)).performClick()
+
+    assertEquals(null, openedFolder)
+  }
+
+  @Test
   fun blankLoadingAndNoResultsStatesAreRendered() {
     val viewModel = FakeDocumentSearchViewModel()
     setScreen(viewModel)
@@ -144,12 +187,14 @@ class DocumentSearchScreenTest {
   private fun setScreen(
       viewModel: FakeDocumentSearchViewModel,
       onDocumentClicked: (JDRFile) -> Unit = {},
+      onFolderClicked: (DocumentSearchResult) -> Unit = {},
   ) {
     composeTestRule.setContent {
       SampleAppTheme {
         DocumentSearchScreen(
             onBack = {},
             onDocumentClicked = onDocumentClicked,
+            onFolderClicked = onFolderClicked,
             searchViewModel = viewModel,
         )
       }
@@ -192,6 +237,12 @@ class DocumentSearchScreenTest {
                     type = DocumentType.TEXT,
                 ),
             folderPath = listOf("Campaign"),
+        )
+    val folderResult =
+        DocumentSearchResult(
+            file = JDRFile(id = "maps", name = "Maps", type = DocumentType.FOLDER),
+            folderPath = listOf("Campaign"),
+            folderIds = listOf("campaign"),
         )
   }
 }

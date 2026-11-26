@@ -1,9 +1,15 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
@@ -15,7 +21,10 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Tests of the item-sharing picker filter and of the [WorkspaceCard] of [GroupWorkSpaceScreen]. */
+/**
+ * Tests of the item-sharing picker filter, of the [WorkspaceFab] actions menu and of the
+ * [WorkspaceCard] of [GroupWorkSpaceScreen].
+ */
 @RunWith(AndroidJUnit4::class)
 class GroupWorkSpaceScreenTest {
   @get:Rule val composeTestRule = createComposeRule()
@@ -164,6 +173,28 @@ class GroupWorkSpaceScreenTest {
         C.Tag.workspaceItemDescription(CARD_ID),
         "Open folder to view its contents",
     )
+  }
+
+  @Test
+  fun actionsMenuLabelsTheSharingActionShareAndOpensTheSharingDialog() {
+    var shareRequests = 0
+    composeTestRule.setContent {
+      SampleAppTheme { WorkspaceFab(onCreateItem = {}, onAddFile = { shareRequests++ }) }
+    }
+    composeTestRule.onNodeWithTag(C.Tag.workspace_actions_fab).performClick()
+    composeTestRule.waitForIdle()
+
+    // The extended FAB clears its label's semantics, so the text sits in the unmerged tree.
+    composeTestRule
+        .onNode(
+            hasAnyAncestor(hasTestTag(C.Tag.workspace_add_file)) and hasText("Share"),
+            useUnmergedTree = true,
+        )
+        .assertExists()
+    composeTestRule.onAllNodesWithText("Item", useUnmergedTree = true).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(C.Tag.workspace_add_file).performClick()
+
+    assertEquals(1, shareRequests)
   }
 
   private fun assertTagText(tag: String, value: String, useUnmergedTree: Boolean = true) {

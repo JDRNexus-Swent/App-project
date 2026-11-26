@@ -421,6 +421,18 @@ class GroupWorkspaceViewModel(
     loadWorkspace(folderId, preserveFolderHistory = true)
   }
 
+  /**
+   * Opens [folderId] directly, for example from a search result, as if the user had opened each of
+   * the folders above it from the group root: Back then goes up through them.
+   *
+   * @param ancestorIds ids of the folders from the group root (excluded) down to the one holding
+   *   [folderId].
+   */
+  fun openFolderAt(folderId: String, ancestorIds: List<String>) {
+    _uiState.update { it.copy(folderHistory = listOf("") + ancestorIds) }
+    loadWorkspace(folderId, preserveFolderHistory = true)
+  }
+
   /** Navigates to the previous folder, returning whether navigation occurred. */
   fun navigateBack(): Boolean {
     val history = _uiState.value.folderHistory

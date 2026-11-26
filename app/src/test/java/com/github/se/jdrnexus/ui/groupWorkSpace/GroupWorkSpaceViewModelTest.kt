@@ -253,6 +253,55 @@ class GroupWorkSpaceViewModelTest {
   }
 
   @Test
+  fun openFolderAtShowsTheFolderAndBackGoesUpThroughItsAncestors() = runTest {
+    val parent = groupFolder("parent")
+    val childFolder = groupFolder("child-folder", parentId = parent.id)
+    val child = groupFile("child", parentId = childFolder.id)
+    val viewModel =
+        viewModel(
+            FakeWorkspaceRepository(listOf(parent, childFolder, child)),
+            GroupWorkspaceRole.GAME_MASTER,
+        )
+    runCurrent()
+
+    viewModel.openFolderAt(childFolder.id, listOf(parent.id))
+    runCurrent()
+
+    assertEquals(childFolder.id, viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf("", parent.id), viewModel.uiState.value.folderHistory)
+    assertEquals(listOf(child), viewModel.uiState.value.items)
+
+    assertTrue(viewModel.navigateBack())
+    runCurrent()
+
+    assertEquals(parent.id, viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(childFolder), viewModel.uiState.value.items)
+
+    assertTrue(viewModel.navigateBack())
+    runCurrent()
+
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertEquals(emptyList<String>(), viewModel.uiState.value.folderHistory)
+  }
+
+  @Test
+  fun openFolderAtReplacesTheHistoryOfTheFolderTheUserWasIn() = runTest {
+    val other = groupFolder("other")
+    val target = groupFolder("target")
+    val viewModel =
+        viewModel(FakeWorkspaceRepository(listOf(other, target)), GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+    viewModel.openFolder(other.id)
+    runCurrent()
+
+    viewModel.openFolderAt(target.id, emptyList())
+    runCurrent()
+
+    assertEquals(target.id, viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(""), viewModel.uiState.value.folderHistory)
+  }
+
+  @Test
   fun navigateBackReturnsToPreviousFolder() = runTest {
     val parent = groupFolder("parent")
     val childFolder = groupFolder("child-folder", parentId = parent.id)

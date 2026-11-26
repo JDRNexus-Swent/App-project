@@ -22,6 +22,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -266,6 +267,80 @@ class PersonalSpaceViewModelTest {
     assertEquals(emptyList<JDRFile>(), viewModel.uiState.value.items)
     assertEquals("", viewModel.uiState.value.currentFolderId)
     assertFalse(viewModel.uiState.value.canNavigateUp)
+  }
+
+  @Test
+  fun openFolderAtShowsTheFolderAndBackGoesUpThroughItsAncestors() {
+    val repository =
+        FakePersonalSpaceRepository(
+            rootItems = listOf(rootFolder),
+            itemsByFolder =
+                mapOf(rootFolder.id to listOf(nestedFolder), nestedFolder.id to listOf(nestedFile)),
+        )
+    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
+    idleMainLooper()
+
+    viewModel.openFolderAt(nestedFolder, listOf(rootFolder.id), listOf(rootFolder.name))
+    idleMainLooper()
+
+    assertEquals(nestedFolder.id, viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(nestedFile), viewModel.uiState.value.items)
+    assertEquals(listOf("Folder", "Nested folder"), viewModel.uiState.value.folderPath)
+    assertTrue(viewModel.uiState.value.canNavigateUp)
+
+    viewModel.onNavigateUp()
+    idleMainLooper()
+
+    assertEquals(rootFolder.id, viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(nestedFolder), viewModel.uiState.value.items)
+    assertEquals(listOf("Folder"), viewModel.uiState.value.folderPath)
+
+    viewModel.onNavigateUp()
+    idleMainLooper()
+
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(rootFolder), viewModel.uiState.value.items)
+    assertFalse(viewModel.uiState.value.canNavigateUp)
+  }
+
+  @Test
+  fun openFolderAtReplacesThePreviousNavigation() {
+    val repository =
+        FakePersonalSpaceRepository(
+            rootItems = listOf(rootFolder, ownedFolder),
+            itemsByFolder = mapOf(rootFolder.id to listOf(nestedFolder)),
+        )
+    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
+    idleMainLooper()
+    viewModel.onItemClicked(ownedFolder) {}
+    idleMainLooper()
+
+    viewModel.openFolderAt(rootFolder, emptyList(), emptyList())
+    idleMainLooper()
+    viewModel.onNavigateUp()
+    idleMainLooper()
+
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertEquals(emptyList<String>(), viewModel.uiState.value.folderPath)
+    assertFalse(viewModel.uiState.value.canNavigateUp)
+  }
+
+  @Test
+  fun openFolderAtRejectsAFileAndAncestorsWithoutNames() {
+    val viewModel = PersonalSpaceViewModel(FakePersonalSpaceRepository(), FakeAuthRepository())
+    idleMainLooper()
+
+    val fileError =
+        assertThrows(IllegalArgumentException::class.java) {
+          viewModel.openFolderAt(rootFile, emptyList(), emptyList())
+        }
+    val namesError =
+        assertThrows(IllegalArgumentException::class.java) {
+          viewModel.openFolderAt(nestedFolder, listOf(rootFolder.id), emptyList())
+        }
+
+    assertEquals("Only a folder can be opened.", fileError.message)
+    assertEquals("Each ancestor folder needs its name.", namesError.message)
   }
 
   @Test

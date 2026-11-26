@@ -125,7 +125,7 @@
     <string name="workspace_empty_title">No files yet</string>
     <string name="workspace_empty_message">Add files to share them with the group.</string>
     <string name="workspace_folder_action">Folder</string>
-    <string name="workspace_share_item_action">Item</string>
+    <string name="workspace_share_item_action">Share</string>
     <string name="workspace_character_action">Character</string>
     <string name="workspace_text_action">Text</string>
     <string name="workspace_coming_soon">Coming soon</string>
