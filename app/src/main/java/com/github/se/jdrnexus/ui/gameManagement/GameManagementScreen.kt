@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.R
+import com.github.se.jdrnexus.model.help.HelpSeenRepositorySharedPreferences
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
@@ -133,9 +134,9 @@ internal object GameManagementTestTags {
  * Selecting "Enter workspace" invokes [onEnterWorkspace] with that group's ID so the destination
  * can load its shared files. Selecting "Play" invokes [onPlay] with that group's ID and the user's
  * role in it, so the destination can open the matching game screen. [gameManagementViewModel]
- * provides the loading and creation state. [helpViewModel] decides when the help sheet, opened by
- * the top bar's help button, is shown. The top bar's profile button, shown only when
- * [onProfileClick] is given, invokes it.
+ * provides the loading and creation state. [helpViewModel] decides when the help sheet is shown: by
+ * itself on the first visit on this device, then when the top bar's help button is tapped. The top
+ * bar's profile button, shown only when [onProfileClick] is given, invokes it.
  */
 @Composable
 fun GameManagementScreen(
@@ -144,7 +145,14 @@ fun GameManagementScreen(
     onManageGroup: (String) -> Unit,
     onTabSelected: (String) -> Unit,
     gameManagementViewModel: GameManagementViewModel,
-    helpViewModel: HelpViewModel = viewModel(),
+    helpViewModel: HelpViewModel =
+        viewModel(
+            factory =
+                HelpViewModel.factory(
+                    topic = CAMPAIGNS_HELP_TOPIC,
+                    repository = HelpSeenRepositorySharedPreferences(LocalContext.current),
+                )
+        ),
     onProfileClick: (() -> Unit)? = null,
 ) {
   val uiState by gameManagementViewModel.uiState.collectAsState()

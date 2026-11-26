@@ -1,4 +1,5 @@
 rules_version = '2';
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 // JDRNexus security rules. Source of truth for the model: DATA_ARCHITECTURE.md.
 //
@@ -89,6 +90,13 @@ service cloud.firestore {
       return folder.type == 'FOLDER' && folder.ownerId == uid();
     }
 
+    // An image document keeps the path of its picture in Firebase Storage in `content`. The path is
+    // fixed: images/<ownerId>/<docId>, so the Storage rules and the app can trust it
+    // (DATA_ARCHITECTURE.md, section 1.9).
+    function validImageContent(d, docId) {
+      return d.type != 'IMAGE' || d.content == 'images/' + uid() + '/' + docId;
+    }
+
     // ------------------------------------------------------------------ documents: create
 
     function validNewDocument(docId) {
@@ -101,7 +109,8 @@ service cloud.firestore {
         && d.name is string
         && d.content is string
         && d.ownerId == uid()
-        && d.type in ['FOLDER', 'TEXT', 'CHARACTER']
+        && d.type in ['FOLDER', 'TEXT', 'CHARACTER', 'IMAGE']
+        && validImageContent(d, docId)
         && d.personalParentId is string
         && (d.personalParentId == ''
             || (d.personalParentId != docId
@@ -143,13 +152,15 @@ service cloud.firestore {
     // ------------------------------------------------------------------ documents: update
 
     // The owner edits the text of a file. Nothing else: group sharing changes only through the
-    // placement cases below, and moving a document in the personal tree is not supported.
+    // placement cases below, and moving a document in the personal tree is not supported. An image
+    // can be renamed, but the path of its picture never changes.
     function isOwnEdit() {
       return resource.data.type != 'GROUP_ROOT'
         && resource.data.ownerId == uid()
         && changedKeys().hasOnly(['name', 'content'])
         && request.resource.data.name is string
-        && request.resource.data.content is string;
+        && request.resource.data.content is string
+        && (resource.data.type != 'IMAGE' || !changedKeys().hasAny(['content']));
     }
 
     // The GM renames the root together with the group (same batch).

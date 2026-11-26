@@ -41,6 +41,7 @@ object C {
     fun gamePlayerNavigationTab(name: String) = "game_player_navigation_$name"
 
     const val main_screen_container = "main_screen_container"
+    const val session_loading = "session_loading"
 
     const val shared_top_bar = "shared_top_bar"
     const val shared_back_button = "shared_back_button"
