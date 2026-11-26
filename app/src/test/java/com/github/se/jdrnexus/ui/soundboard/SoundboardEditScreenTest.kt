@@ -8,7 +8,9 @@ import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -320,6 +322,15 @@ class SoundboardEditScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_effect_error).assertDoesNotExist()
   }
 
+  @Test
+  fun emptyPlaylistSaysItHasNoTracks() {
+    setContent(
+        ready.copy(draft = draft.copy(playlists = listOf(tavern.copy(tracks = emptyList()))))
+    )
+
+    composeTestRule.onNodeWithText("No tracks in this playlist").assertIsDisplayed()
+  }
+
   // ============ Sound effects ============
 
   @Test
@@ -373,6 +384,49 @@ class SoundboardEditScreenTest {
         .onNodeWithTag(C.Tag.soundboard_edit_effect_error)
         .assertTextContains("Not enough free space on the device.")
     composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_track_error).assertDoesNotExist()
+  }
+
+  @Test
+  fun noEffectsSaysThereAreNoSounds() {
+    setContent(ready.copy(draft = draft.copy(effects = emptyList())))
+
+    composeTestRule.onNodeWithText("No sound effects yet").assertIsDisplayed()
+  }
+
+  @Test
+  fun removingAFocusedRowLeavesTheNextRowUnfocused() {
+    val sea = AmbienceTrack("Sea", AudioFile("sea", "/a/sea.mp3", 1_000))
+    val skull = SoundEffect("Skull", AudioFile("skull", "/a/k.mp3", 1_000), SoundEffectIcon.SKULL)
+    val vm =
+        setContent(
+            ready.copy(
+                draft =
+                    draft.copy(
+                        playlists = listOf(tavern.copy(tracks = listOf(byTheFire, sea))),
+                        effects = listOf(sword, skull),
+                    )
+            )
+        )
+
+    // The remove button doesn't take the focus, so the removed row's field still has it.
+    composeTestRule
+        .onNodeWithTag(C.Tag.soundboardEditTrackName("fire"))
+        .performClick()
+        .assertIsFocused()
+    vm.state.value =
+        vm.state.value.copy(
+            draft =
+                vm.state.value.draft!!.copy(playlists = listOf(tavern.copy(tracks = listOf(sea))))
+        )
+    composeTestRule.onNodeWithTag(C.Tag.soundboardEditTrackName("sea")).assertIsNotFocused()
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.soundboardEditEffectName("sword"))
+        .performClick()
+        .assertIsFocused()
+    vm.state.value =
+        vm.state.value.copy(draft = vm.state.value.draft!!.copy(effects = listOf(skull)))
+    composeTestRule.onNodeWithTag(C.Tag.soundboardEditEffectName("skull")).assertIsNotFocused()
   }
 
   // ============ Save ============
