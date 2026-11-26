@@ -42,6 +42,8 @@ class SoundboardScreenTest {
   private val murmurs = AmbienceTrack("Tavern murmurs", AudioFile("murmurs", "/a/m.mp3", 400_000))
   private val tavern = AmbiencePlaylist("tavern", "Tavern", listOf(byTheFire, murmurs))
   private val dungeon = AmbiencePlaylist("dungeon", "Dungeon")
+  private val battle = AmbienceTrack("Battle drums", AudioFile("drums", "/a/drums.mp3", 300_000))
+  private val combat = AmbiencePlaylist("combat", "Combat", listOf(battle))
 
   /** One effect per icon, so every icon is drawn once. */
   private val effects =
@@ -54,7 +56,7 @@ class SoundboardScreenTest {
       Soundboard(
           id = "board",
           name = "Tides",
-          playlists = listOf(tavern, dungeon),
+          playlists = listOf(tavern, dungeon, combat),
           effects = effects,
           ambienceVolume = 0.7f,
           effectsVolume = 0.4f,
@@ -226,6 +228,22 @@ class SoundboardScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.soundboard_play_pause).performClick()
 
     assertEquals(listOf("playAmbience(tavern, fire)"), vm.callsAfterLoad())
+  }
+
+  @Test
+  fun pausedTrackOfAnotherPlaylistStartsTheSelectedOne() {
+    val vm = setContent(paused.copy(selectedPlaylistId = "combat"))
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_play_pause).performClick()
+
+    assertEquals(listOf("playPlaylist(combat)"), vm.callsAfterLoad())
+  }
+
+  @Test
+  fun pausedTrackCannotStartAnEmptyPlaylist() {
+    setContent(paused.copy(selectedPlaylistId = "dungeon"))
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_play_pause).assertIsNotEnabled()
   }
 
   @Test
