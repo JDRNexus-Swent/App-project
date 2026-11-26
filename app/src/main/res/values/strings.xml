@@ -316,6 +316,7 @@
         <item quantity="one">%d sound</item>
         <item quantity="other">%d sounds</item>
     </plurals>
+    <string name="soundboard_edit_no_effects">No sound effects yet</string>
     <string name="soundboard_edit_track_subtitle">%1$s · Ambience track</string>
     <string name="soundboard_edit_effect_subtitle">%1$s · One-shot effect</string>
     <string name="soundboard_edit_remove_cd">Remove %1$s</string>
