@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -39,11 +40,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,6 +68,9 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.groupWorkSpace.EditItemDialog
 import com.github.se.jdrnexus.ui.groupWorkSpace.FolderCard
+import com.github.se.jdrnexus.ui.image.ImageUploadErrorEffect
+import com.github.se.jdrnexus.ui.image.ImageUploadProgress
+import com.github.se.jdrnexus.ui.image.rememberImageFilePicker
 import com.github.se.jdrnexus.viewmodel.LoadState
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 
@@ -96,8 +103,18 @@ fun PersonalSpaceScreen(
   }
   BackHandler(onBack = handleBack)
 
+  val pickImage = rememberImageFilePicker(personalSpaceViewModel::uploadImage)
+  val snackbarHostState = remember { SnackbarHostState() }
+  ImageUploadErrorEffect(
+      error = uiState.imageUpload.error,
+      snackbarHostState = snackbarHostState,
+      enabled = !uiState.isNewFolderDialogOpen && uiState.renamingItemId == null,
+      onShown = personalSpaceViewModel::onImageUploadErrorShown,
+  )
+
   Scaffold(
       containerColor = themeColors.background,
+      snackbarHost = { SnackbarHost(snackbarHostState) },
       topBar = {
         AppTopBar(
             title = uiState.folderPath.lastOrNull() ?: "Personal Space",
@@ -143,6 +160,15 @@ fun PersonalSpaceScreen(
                   text = { Text("New file") },
                   onClick = { personalSpaceViewModel.onNewFileSelected(onCreateFile) },
               )
+              DropdownMenuItem(
+                  text = { Text(stringResource(R.string.image_new)) },
+                  onClick = {
+                    personalSpaceViewModel.onAddMenuDismissed()
+                    pickImage()
+                  },
+                  enabled = !uiState.imageUpload.isUploading,
+                  modifier = Modifier.testTag(C.Tag.personal_new_image),
+              )
             }
           }
         }
@@ -186,6 +212,9 @@ fun PersonalSpaceScreen(
               fontSize = 8.sp,
               modifier = Modifier.padding(start = 8.dp),
           )
+        }
+        uiState.imageUpload.progress?.let {
+          ImageUploadProgress(progress = it, modifier = Modifier.padding(bottom = 12.dp))
         }
       }
 
@@ -332,8 +361,10 @@ fun FolderItem(
     borderColor: Color = MaterialTheme.colorScheme.outline,
     accentColor: Color = MaterialTheme.colorScheme.primary,
 ) {
-  // A character's content is its saved JSON: never show it.
-  val description = if (folder.type == DocumentType.CHARACTER) "" else folder.content
+  // A character's content is its saved JSON and an image's its Storage path: never show them.
+  val description =
+      if (folder.type == DocumentType.CHARACTER || folder.type == DocumentType.IMAGE) ""
+      else folder.content
   Card(
       onClick = onFolderClicked,
       modifier = modifier.fillMaxWidth().height(96.dp),
@@ -356,16 +387,16 @@ fun FolderItem(
                   DocumentType.FOLDER,
                   DocumentType.GROUP_ROOT -> Icons.Filled.Folder
                   DocumentType.CHARACTER -> Icons.Filled.Person
-                  DocumentType.TEXT,
-                  DocumentType.IMAGE -> Icons.AutoMirrored.Filled.MenuBook
+                  DocumentType.TEXT -> Icons.AutoMirrored.Filled.MenuBook
+                  DocumentType.IMAGE -> Icons.Filled.Image
                 },
             contentDescription =
                 when (folder.type) {
                   DocumentType.FOLDER,
                   DocumentType.GROUP_ROOT -> "Folder"
                   DocumentType.CHARACTER -> "Character"
-                  DocumentType.TEXT,
-                  DocumentType.IMAGE -> "Text document"
+                  DocumentType.TEXT -> "Text document"
+                  DocumentType.IMAGE -> stringResource(R.string.image_default_name)
                 },
             tint = accentColor,
             modifier = Modifier.size(24.dp),
@@ -378,8 +409,8 @@ fun FolderItem(
                   DocumentType.FOLDER,
                   DocumentType.GROUP_ROOT -> "FOLDER"
                   DocumentType.CHARACTER -> "CHARACTER SHEET"
-                  DocumentType.TEXT,
-                  DocumentType.IMAGE -> "TEXT DOCUMENT"
+                  DocumentType.TEXT -> "TEXT DOCUMENT"
+                  DocumentType.IMAGE -> stringResource(R.string.image_type)
                 },
             color = secondaryText,
             fontSize = 9.sp,

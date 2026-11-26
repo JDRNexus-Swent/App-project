@@ -2,7 +2,9 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.viewmodel
 
+import android.net.Uri
 import android.os.Looper
+import com.github.se.jdrnexus.model.image.ImageError
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.FileEdit
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
@@ -11,6 +13,8 @@ import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
+import com.github.se.jdrnexus.ui.image.ImageUploadState
+import com.github.se.jdrnexus.utils.FakeImageRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
@@ -808,5 +812,146 @@ class PersonalSpaceViewModelTest {
     assertEquals("", viewModel.uiState.value.renameName)
     assertEquals(emptyList<FileEdit>(), repository.updates)
     assertEquals(listOf(ownedFolder), viewModel.uiState.value.items)
+  }
+
+  // ============ Image upload tests ============
+
+  private val picture = Uri.parse("content://media/picker/0/42")
+
+  @Test
+  fun uploadImageAddsAnOwnedImageToTheRootAndClosesTheMenu() {
+    val repository = FakePersonalSpaceRepository()
+    val images = FakeImageRepository(workspaceRepository = repository)
+    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository(), images)
+    idleMainLooper()
+    viewModel.onAddClicked()
+
+    viewModel.uploadImage(picture, "Harbour map")
+    idleMainLooper()
+
+    val expected =
+        JDRFile(
+            id = "created-folder-id",
+            name = "Harbour map",
+            ownerId = ownerId,
+            personalParentId = "",
+            type = DocumentType.IMAGE,
+        )
+    assertEquals(listOf(expected to picture), images.uploads)
+    assertEquals(
+        listOf(expected.copy(content = "images/$ownerId/created-folder-id")),
+        repository.createdFiles,
+    )
+    assertEquals(ImageUploadState(), viewModel.uiState.value.imageUpload)
+    assertFalse(viewModel.uiState.value.isAddMenuExpanded)
+  }
+
+  @Test
+  fun uploadImageAddsTheImageToTheOpenFolder() {
+    val repository = FakePersonalSpaceRepository(rootItems = listOf(rootFolder))
+    val images = FakeImageRepository()
+    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository(), images)
+    idleMainLooper()
+    viewModel.onItemClicked(rootFolder) {}
+    idleMainLooper()
+
+    viewModel.uploadImage(picture, "Portrait")
+    idleMainLooper()
+
+    assertEquals(rootFolder.id, images.uploads.single().first.personalParentId)
+  }
+
+  @Test
+  fun uploadImageShowsProgressAndIgnoresASecondPickWhileUploading() {
+    val gate = CompletableDeferred<Unit>()
+    val images = FakeImageRepository(progressSteps = listOf(0.25f, 0.5f), gate = gate)
+    val viewModel =
+        PersonalSpaceViewModel(FakePersonalSpaceRepository(), FakeAuthRepository(), images)
+    idleMainLooper()
+
+    viewModel.uploadImage(picture, "First")
+    viewModel.uploadImage(picture, "Second")
+    idleMainLooper()
+
+    assertEquals(0.5f, viewModel.uiState.value.imageUpload.progress)
+    assertTrue(viewModel.uiState.value.imageUpload.isUploading)
+    assertEquals(listOf("First"), images.uploads.map { it.first.name })
+
+    gate.complete(Unit)
+    idleMainLooper()
+    assertFalse(viewModel.uiState.value.imageUpload.isUploading)
+
+    viewModel.uploadImage(picture, "Third")
+    idleMainLooper()
+    assertEquals(listOf("First", "Third"), images.uploads.map { it.first.name })
+  }
+
+  @Test
+  fun eachUploadFailureIsExposedUntilShown() {
+    val images = FakeImageRepository()
+    val viewModel =
+        PersonalSpaceViewModel(FakePersonalSpaceRepository(), FakeAuthRepository(), images)
+    idleMainLooper()
+
+    for (error in listOf(ImageError.TOO_LARGE, ImageError.UNSUPPORTED_FORMAT, ImageError.NETWORK)) {
+      images.failure = error
+      viewModel.uploadImage(picture, "Map")
+      idleMainLooper()
+
+      assertEquals(ImageUploadState(error = error), viewModel.uiState.value.imageUpload)
+      viewModel.onImageUploadErrorShown()
+      assertEquals(ImageUploadState(), viewModel.uiState.value.imageUpload)
+    }
+  }
+
+  @Test
+  fun uploadImageWhileSignedOutFailsWithNotSignedIn() {
+    val images = FakeImageRepository()
+    val viewModel =
+        PersonalSpaceViewModel(
+            FakePersonalSpaceRepository(),
+            FakeAuthRepository(initialUser = null),
+            images,
+        )
+    idleMainLooper()
+
+    viewModel.uploadImage(picture, "Map")
+    idleMainLooper()
+
+    assertEquals(
+        ImageUploadState(error = ImageError.NOT_SIGNED_IN),
+        viewModel.uiState.value.imageUpload,
+    )
+  }
+
+  @Test
+  fun signingOutCancelsTheRunningUpload() {
+    val images = FakeImageRepository(progressSteps = listOf(0.3f), gate = CompletableDeferred())
+    val auth = FakeAuthRepository()
+    val viewModel = PersonalSpaceViewModel(FakePersonalSpaceRepository(), auth, images)
+    idleMainLooper()
+    viewModel.uploadImage(picture, "Map")
+    idleMainLooper()
+    assertTrue(viewModel.uiState.value.imageUpload.isUploading)
+
+    auth.currentUser.value = null
+    idleMainLooper()
+
+    assertTrue(images.uploadCancelled)
+    assertEquals(ImageUploadState(), viewModel.uiState.value.imageUpload)
+  }
+
+  @Test
+  fun unexpectedFailureBeforeTheUploadIsReportedAsUnknown() {
+    val images = FakeImageRepository()
+    val auth = FakeAuthRepository(authStateFlow = flow { throw IllegalStateException("boom") })
+    val viewModel = PersonalSpaceViewModel(FakePersonalSpaceRepository(), auth, images)
+    idleMainLooper()
+
+    viewModel.uploadImage(picture, "Map")
+    idleMainLooper()
+
+    assertEquals(ImageUploadState(error = ImageError.UNKNOWN), viewModel.uiState.value.imageUpload)
+    assertEquals(emptyList<Pair<JDRFile, Uri>>(), images.uploads)
   }
 }

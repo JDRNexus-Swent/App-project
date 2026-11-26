@@ -2,10 +2,14 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.viewmodel
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
 import com.github.se.jdrnexus.model.filerepresentation.DEFAULT_CHARACTER_NAME
+import com.github.se.jdrnexus.model.image.ImageError
+import com.github.se.jdrnexus.model.image.ImageRepository
+import com.github.se.jdrnexus.model.image.ImageRepositoryProvider
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.PERSONAL_ROOT_ID
@@ -15,6 +19,8 @@ import com.github.se.jdrnexus.model.personalSpace.isContainer
 import com.github.se.jdrnexus.model.personalSpace.toEdit
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
+import com.github.se.jdrnexus.ui.image.ImageUploadState
+import com.github.se.jdrnexus.ui.image.toImageError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -49,6 +55,7 @@ sealed interface LoadState {
  * - canNavigateUp is true when there is a previous folder to go back to (Back goes up a folder);
  *   false means Back should leave the screen.
  * - renamingItemId is the folder whose rename dialog is open, or null when it is closed.
+ * - imageUpload is the image being added by [PersonalSpaceViewModel.uploadImage].
  */
 data class PersonalSpaceUiState(
     val items: List<JDRFile> = emptyList(),
@@ -65,13 +72,25 @@ data class PersonalSpaceUiState(
     val renameName: String = "",
     val renameError: String = "",
     val isRenaming: Boolean = false,
+    val imageUpload: ImageUploadState = ImageUploadState(),
 )
 
 // ============ Definition of the ViewModel ============
+/**
+ * ViewModel of the Personal Space screen.
+ *
+ * @param imageRepository Stores added images; null uses [ImageRepositoryProvider.repository],
+ *   resolved at the first upload so that a ViewModel built without Firebase never touches it.
+ */
 class PersonalSpaceViewModel(
     private val repository: WorkspaceRepository = WorkspaceRepositoryProvider.repository,
     private val authRepository: AuthRepository = AuthRepositoryFirebase(),
+    imageRepository: ImageRepository? = null,
 ) : ViewModel() {
+
+  private val images: ImageRepository by lazy {
+    imageRepository ?: ImageRepositoryProvider.repository
+  }
 
   // ============ Internal variables/functions ============
   private val _uiState = MutableStateFlow(PersonalSpaceUiState())
@@ -395,6 +414,60 @@ class PersonalSpaceViewModel(
       currentCoroutineContext().ensureActive()
       navigateToEditFile(file.id)
     }
+  }
+
+  // ============ Image functions ============
+
+  /**
+   * Call when the user picked the picture [image] from "New image". Closes the add menu and adds
+   * the picture as an image file named [name] to the current folder, through
+   * [ImageRepository.uploadImage]. Does nothing while another upload runs, so a double tap uploads
+   * once.
+   *
+   * [PersonalSpaceUiState.imageUpload] holds the progress while it runs; on failure it holds the
+   * [ImageError] until [onImageUploadErrorShown]. On success the item-list flow loaded by
+   * [fetchItems] shows the new file. Signing out, or leaving the Personal Space screen for an
+   * earlier screen (back, or the Home tab: this clears the ViewModel), cancels the upload, and the
+   * repository then deletes the partial picture. Opening a file or another tab keeps it running.
+   */
+  fun uploadImage(image: Uri, name: String) {
+    if (_uiState.value.imageUpload.isUploading) return
+    val parentFolderId = _uiState.value.currentFolderId
+    _uiState.update {
+      it.copy(isAddMenuExpanded = false, imageUpload = ImageUploadState(progress = 0f))
+    }
+    launchAction {
+      var error: ImageError? = null
+      try {
+        // A blank owner makes uploadImage fail with NOT_SIGNED_IN.
+        val file =
+            JDRFile(
+                id = repository.getNewUid(),
+                name = name,
+                ownerId = authRepository.authState.first()?.uid.orEmpty(),
+                personalParentId = parentFolderId,
+                type = DocumentType.IMAGE,
+            )
+        error =
+            images
+                .uploadImage(file, image) { progress ->
+                  _uiState.update { it.copy(imageUpload = ImageUploadState(progress = progress)) }
+                }
+                .exceptionOrNull()
+                ?.toImageError()
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        error = e.toImageError()
+      } finally {
+        _uiState.update { it.copy(imageUpload = ImageUploadState(error = error)) }
+      }
+    }
+  }
+
+  /** Call once the screen has shown [PersonalSpaceUiState.imageUpload]'s error. */
+  fun onImageUploadErrorShown() {
+    _uiState.update { it.copy(imageUpload = it.imageUpload.copy(error = null)) }
   }
 
   internal companion object {
