@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.github.se.jdrnexus.ui.soundboard
 
+import android.content.Context
 import android.net.Uri
 import android.os.Looper
 import androidx.media3.common.MediaItem
@@ -8,6 +9,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.test.utils.FakePlayer
+import androidx.test.core.app.ApplicationProvider
 import com.github.se.jdrnexus.model.soundboard.AudioFile
 import com.github.se.jdrnexus.ui.soundboard.SoundboardPlayer.Event
 import java.io.File
@@ -20,11 +22,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
-import org.robolectric.annotation.Config
 
 @UnstableApi
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
 class Media3SoundboardPlayerTest {
   private val player = FakePlayer(playbackState = Player.STATE_IDLE, bufferingDelayMs = 1000L)
   private val events = mutableListOf<Event>()
@@ -41,6 +41,72 @@ class Media3SoundboardPlayerTest {
   private val mainLooper = shadowOf(Looper.getMainLooper())
 
   @After fun closePlayback() = playback.close()
+
+  @Test
+  fun contextConstructorOpensIdlePlayback() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val adapter = Media3SoundboardPlayer(context)
+
+    val handle = adapter.create(audio, events::add)
+
+    try {
+      assertEquals(0L, handle.pause())
+      assertEquals(emptyList<Event>(), events)
+    } finally {
+      handle.close()
+    }
+
+    mainLooper.idle()
+    assertEquals(emptyList<Event>(), events)
+  }
+
+  @Test
+  fun closeDoesNotRetryAFailedRelease() {
+    var releaseAttempts = 0
+    val failingPlayer =
+        object : Player by FakePlayer(playbackState = Player.STATE_IDLE) {
+          override fun release() {
+            releaseAttempts++
+            throw IllegalStateException("Unable to release player")
+          }
+        }
+    val handle = Media3SoundboardPlayer { failingPlayer }.create(audio) {}
+
+    handle.close()
+    handle.close()
+
+    assertEquals(1, releaseAttempts)
+  }
+
+  @Test
+  fun playbackControlsAreIgnoredAfterClose() {
+    val calls = mutableListOf<String>()
+    val recordingPlayer =
+        object : Player by FakePlayer(playbackState = Player.STATE_IDLE) {
+          override fun play() {
+            calls.add("play")
+          }
+
+          override fun pause() {
+            calls.add("pause")
+          }
+
+          override fun setVolume(volume: Float) {
+            calls.add("setVolume")
+          }
+        }
+    val handle = Media3SoundboardPlayer { recordingPlayer }.create(audio, events::add)
+    handle.close()
+
+    handle.play()
+    handle.setVolume(0.2f)
+    val position = handle.pause()
+    mainLooper.idle()
+
+    assertEquals(0L, position)
+    assertEquals(emptyList<String>(), calls)
+    assertEquals(emptyList<Event>(), events)
+  }
 
   @Test
   fun setupFailureReleasesAllocatedPlayerAndPropagatesOriginalException() {
