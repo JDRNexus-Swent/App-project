@@ -80,7 +80,7 @@ class GroupManagementViewModelTest {
 
     assertFalse(viewModel.state.canManage)
     assertEquals("gm", viewModel.state.members.first().label)
-    assertTrue(groups.removed.isEmpty())
+    assertEquals(emptyList<String>(), groups.removed)
     assertEquals(0, groups.deleteCalls)
   }
 
@@ -118,7 +118,7 @@ class GroupManagementViewModelTest {
     viewModel.removeMember("stranger")
     advanceUntilIdle()
 
-    assertTrue(groups.removed.isEmpty())
+    assertEquals(emptyList<String>(), groups.removed)
   }
 
   @Test
@@ -208,6 +208,35 @@ class GroupManagementViewModelTest {
     assertFalse(viewModel.state.isLoading)
   }
 
+  @Test
+  fun retryAfterALoadFailureFollowsTheGroupAgain() = runTest {
+    groups.loadError = Exception("permission denied")
+    val viewModel = viewModel()
+    advanceUntilIdle()
+    groups.loadError = null
+
+    viewModel.retry()
+    assertTrue(viewModel.state.isLoading)
+    advanceUntilIdle()
+
+    assertNull(viewModel.state.error)
+    assertEquals(listOf("gm", "p1", "p2"), viewModel.state.members.map { it.uid })
+    groups.group.value = group.copy(participantIds = listOf("gm", "p3"))
+    advanceUntilIdle()
+    assertEquals(listOf("gm", "p3"), viewModel.state.members.map { it.uid })
+  }
+
+  @Test
+  fun retryIsIgnoredWhileTheGroupIsFollowed() = runTest {
+    val viewModel = viewModel()
+    advanceUntilIdle()
+
+    viewModel.retry()
+    advanceUntilIdle()
+
+    assertEquals(1, groups.flowCalls)
+  }
+
   /**
    * Holds one group in memory and changes it like Firestore does: a removal or a deletion that
    * succeeds updates [group]. Methods the screen does not use are delegated to the shared fake.
@@ -222,8 +251,13 @@ class GroupManagementViewModelTest {
     /** When set, each removal or deletion waits for it before returning. */
     var gate: CompletableDeferred<Unit>? = null
 
-    override fun getGroupFlow(groupId: String): Flow<CampaignGroup?> =
-        loadError?.let { error -> flow { throw error } } ?: group
+    /** How many times the group was subscribed to, each like a new Firestore listener. */
+    var flowCalls = 0
+
+    override fun getGroupFlow(groupId: String): Flow<CampaignGroup?> {
+      flowCalls++
+      return loadError?.let { error -> flow { throw error } } ?: group
+    }
 
     override suspend fun removeUserFromGroup(groupId: String, userId: String): Result<Unit> {
       removed += userId

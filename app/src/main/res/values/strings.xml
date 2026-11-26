@@ -216,6 +216,7 @@
     <string name="group_management_remove">Remove</string>
     <string name="group_management_delete">Delete group</string>
     <string name="group_management_cancel">Cancel</string>
+    <string name="group_management_retry">Retry</string>
     <string name="group_management_remove_title">Remove this player?</string>
     <string name="group_management_remove_message">%1$s will lose access to the group and its workspace.</string>
     <string name="group_management_delete_title">Delete \"%1$s\"?</string>

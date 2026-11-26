@@ -17,7 +17,6 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -66,7 +65,7 @@ class GroupManagementScreenTest {
     composeTestRule
         .onNodeWithText("p1 will lose access to the group and its workspace.")
         .assertIsDisplayed()
-    assertTrue(viewModel.removed.isEmpty())
+    assertEquals(emptyList<String>(), viewModel.removed)
     composeTestRule.onNodeWithTag(C.Tag.group_management_confirm).performClick()
 
     assertEquals(listOf("p1"), viewModel.removed)
@@ -80,7 +79,7 @@ class GroupManagementScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.groupManagementRemove("p1")).performClick()
     composeTestRule.onNodeWithTag(C.Tag.group_management_cancel).performClick()
 
-    assertTrue(viewModel.removed.isEmpty())
+    assertEquals(emptyList<String>(), viewModel.removed)
     composeTestRule.onAllNodesWithTag(C.Tag.group_management_confirm).assertCountEquals(0)
   }
 
@@ -144,6 +143,26 @@ class GroupManagementScreenTest {
   }
 
   @Test
+  fun aFailedFirstLoadShowsNoMemberCountAndOffersRetry() {
+    viewModel.uiState.value =
+        GroupManagementUiState(isLoading = false, error = GroupManagementError.LOAD_FAILED)
+    setContent()
+
+    composeTestRule.onAllNodesWithText("0 members").assertCountEquals(0)
+    composeTestRule.onNodeWithTag(C.Tag.group_management_retry).performClick()
+
+    assertEquals(1, viewModel.retries)
+  }
+
+  @Test
+  fun onlyALoadErrorOffersRetry() {
+    viewModel.uiState.value = managed.copy(error = GroupManagementError.REMOVE_FAILED)
+    setContent()
+
+    composeTestRule.onAllNodesWithTag(C.Tag.group_management_retry).assertCountEquals(0)
+  }
+
+  @Test
   fun leavesWhenTheGroupIsDeletedAndForwardsNavigation() {
     setContent()
     composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
@@ -183,6 +202,12 @@ class GroupManagementScreenTest {
 
     override fun deleteGroup() {
       deleteCalls++
+    }
+
+    var retries = 0
+
+    override fun retry() {
+      retries++
     }
   }
 }

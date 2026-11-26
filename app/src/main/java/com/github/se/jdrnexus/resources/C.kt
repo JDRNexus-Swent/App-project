@@ -238,6 +238,7 @@ object C {
     const val group_management_delete = "group_management_delete"
     const val group_management_confirm = "group_management_confirm"
     const val group_management_cancel = "group_management_cancel"
+    const val group_management_retry = "group_management_retry"
 
     /** Tag of the row of the group member [uid] on the group management screen. */
     fun groupManagementMember(uid: String) = "group_management_member_$uid"

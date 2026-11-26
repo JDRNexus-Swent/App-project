@@ -7,6 +7,7 @@ import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthUser
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,24 +25,41 @@ import kotlinx.coroutines.launch
  * screen is open. The signed-in user ([AuthRepository.authState]) decides whether they may manage
  * the group, and names the Game Master when it is them; every other member is named by their user
  * id. When the group stops existing, deleted here or elsewhere,
- * [GroupManagementUiState.isGroupDeleted] becomes true.
+ * [GroupManagementUiState.isGroupDeleted] becomes true. If the group cannot be read, the error is
+ * [GroupManagementError.LOAD_FAILED] and [retry] follows it again.
  */
 class GroupManagementViewModel(
     private val groupId: String,
     private val groupRepository: GroupRepository,
-    authRepository: AuthRepository,
+    private val authRepository: AuthRepository,
 ) : ViewModel(), GroupManagementInterfaceVM {
   private val _uiState = MutableStateFlow(GroupManagementUiState())
   override val uiState: StateFlow<GroupManagementUiState> = _uiState.asStateFlow()
 
+  /** The collection of the group; it ends at the first error, and only [retry] starts another. */
+  private var groupJob: Job? = null
+
   init {
-    combine(authRepository.authState, groupRepository.getGroupFlow(groupId)) { user, group ->
-          showGroup(user, group)
-        }
-        .catch {
-          _uiState.update { it.copy(isLoading = false, error = GroupManagementError.LOAD_FAILED) }
-        }
-        .launchIn(viewModelScope)
+    followGroup()
+  }
+
+  override fun retry() {
+    if (groupJob?.isActive == true) return
+    _uiState.update { it.copy(isLoading = it.members.isEmpty(), error = null) }
+    followGroup()
+  }
+
+  private fun followGroup() {
+    groupJob =
+        combine(authRepository.authState, groupRepository.getGroupFlow(groupId)) { user, group ->
+              showGroup(user, group)
+            }
+            .catch {
+              _uiState.update {
+                it.copy(isLoading = false, error = GroupManagementError.LOAD_FAILED)
+              }
+            }
+            .launchIn(viewModelScope)
   }
 
   override fun removeMember(uid: String) {

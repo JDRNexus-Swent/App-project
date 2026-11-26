@@ -43,7 +43,8 @@ import com.github.se.jdrnexus.resources.ScreenBottomBar
  * Shows the members of a campaign group and, for its Game Master, the buttons that remove a player
  * or delete the group, each behind a confirmation dialog.
  *
- * @param viewModel Provides the members and runs the removal and the deletion.
+ * @param viewModel Provides the members, runs the removal and the deletion, and retries a failed
+ *   load.
  * @param onBack Called by the top bar's back button.
  * @param onGroupDeleted Called once the group no longer exists, to leave the screen.
  * @param onTabSelected Called with the label of the bottom bar tab the user selects.
@@ -73,7 +74,8 @@ fun GroupManagementScreen(
       Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
           Text(state.groupName, style = MaterialTheme.typography.titleLarge)
-          if (!state.isLoading) {
+          // A group always has its Game Master: no members means they are not known yet.
+          if (state.members.isNotEmpty()) {
             val count = state.members.size
             Text(pluralStringResource(R.plurals.group_management_member_count, count, count))
           }
@@ -93,11 +95,21 @@ fun GroupManagementScreen(
         }
       }
       state.error?.let { error ->
-        Text(
-            stringResource(error.messageId()),
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.testTag(C.Tag.group_management_error),
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Text(
+              stringResource(error.messageId()),
+              color = MaterialTheme.colorScheme.error,
+              modifier = Modifier.weight(1f).testTag(C.Tag.group_management_error),
+          )
+          if (error == GroupManagementError.LOAD_FAILED) {
+            TextButton(
+                onClick = viewModel::retry,
+                modifier = Modifier.testTag(C.Tag.group_management_retry),
+            ) {
+              Text(stringResource(R.string.group_management_retry))
+            }
+          }
+        }
       }
       if (state.isLoading) {
         CircularProgressIndicator(Modifier.testTag(C.Tag.group_management_loading))

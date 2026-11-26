@@ -58,4 +58,10 @@ interface GroupManagementInterfaceVM {
 
   /** Deletes the whole group. Ignored while another action runs or when the user is not the GM. */
   fun deleteGroup()
+
+  /**
+   * Follows the group again after it could not be read ([GroupManagementError.LOAD_FAILED]).
+   * Ignored while the group is still followed.
+   */
+  fun retry()
 }
