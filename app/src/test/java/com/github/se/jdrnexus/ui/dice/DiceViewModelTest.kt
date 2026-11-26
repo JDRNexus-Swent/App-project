@@ -3,16 +3,20 @@
 package com.github.se.jdrnexus.ui.dice
 
 import androidx.lifecycle.ViewModel
+import com.github.se.jdrnexus.model.connectivity.NEEDS_CONNECTION
 import com.github.se.jdrnexus.model.repository.DiceLogic
+import com.github.se.jdrnexus.utils.FakeConnectivityRepository
 import com.github.se.jdrnexus.utils.FakeDiceRepository
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -159,6 +163,49 @@ class DiceViewModelTest {
     advanceUntilIdle()
 
     assertTrue(viewModel.uiState.value.errorMessage?.contains(errorMsg) == true)
+  }
+
+  @Test
+  fun groupRollSyncFailsWithNeedsConnectionWithoutSavingWhileOffline() = runTest {
+    val connectivity = FakeConnectivityRepository(isOnline = false)
+    val viewModel = DiceViewModel(diceLogic, diceRepository, "group_1", connectivity)
+    every { diceLogic.roll(any(), any()) } returns DiceRollResult(DiceType.D20, 12, 0, 12)
+
+    viewModel.rollDice()
+    runCurrent()
+
+    assertEquals("Failed to sync roll: $NEEDS_CONNECTION", viewModel.uiState.value.errorMessage)
+    assertEquals(emptyList<Pair<String, DiceRollResult>>(), diceRepository.savedRolls)
+  }
+
+  @Test
+  fun groupRollSyncStopsWithNeedsConnectionWhenTheConnectionDrops() = runTest {
+    val connectivity = FakeConnectivityRepository(isOnline = true)
+    val viewModel = DiceViewModel(diceLogic, diceRepository, "group_1", connectivity)
+    every { diceLogic.roll(any(), any()) } returns DiceRollResult(DiceType.D20, 12, 0, 12)
+    diceRepository.saveGate = CompletableDeferred()
+    viewModel.rollDice()
+    runCurrent()
+    assertNull(viewModel.uiState.value.errorMessage)
+
+    connectivity.online.value = false
+    runCurrent()
+
+    assertEquals("Failed to sync roll: $NEEDS_CONNECTION", viewModel.uiState.value.errorMessage)
+  }
+
+  @Test
+  fun groupRollIsSavedWhileOnline() = runTest {
+    val connectivity = FakeConnectivityRepository(isOnline = true)
+    val viewModel = DiceViewModel(diceLogic, diceRepository, "group_1", connectivity)
+    val result = DiceRollResult(DiceType.D20, 12, 0, 12)
+    every { diceLogic.roll(any(), any()) } returns result
+
+    viewModel.rollDice()
+    runCurrent()
+
+    assertEquals(listOf("group_1" to result), diceRepository.savedRolls)
+    assertNull(viewModel.uiState.value.errorMessage)
   }
 
   @Test

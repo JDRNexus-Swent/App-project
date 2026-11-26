@@ -3,6 +3,7 @@
 package com.github.se.jdrnexus.viewmodel
 
 import androidx.lifecycle.ViewModelStore
+import com.github.se.jdrnexus.model.connectivity.NEEDS_CONNECTION
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.InvitationError
@@ -10,6 +11,7 @@ import com.github.se.jdrnexus.model.personalSpace.InvitationException
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
+import com.github.se.jdrnexus.utils.FakeConnectivityRepository
 import com.github.se.jdrnexus.utils.MainDispatcherRule
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -21,6 +23,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -37,7 +40,147 @@ class GameManagementViewModelTest {
   private fun createViewModel(
       groupRepository: GroupRepository,
       authRepository: AuthRepository,
-  ) = GameManagementViewModel(groupRepository, authRepository)
+      connectivity: FakeConnectivityRepository = FakeConnectivityRepository(),
+  ) = GameManagementViewModel(groupRepository, authRepository, connectivity)
+
+  // ==========================================
+  // OFFLINE
+  // ==========================================
+
+  @Test
+  fun createGroupFailsWithNeedsConnectionWhileOffline() = runTest {
+    val repository = FakeGroupRepository { flowOf(emptyList()) }
+    val connectivity = FakeConnectivityRepository(isOnline = false)
+    val viewModel = createViewModel(repository, FakeAuthRepository(GM), connectivity)
+    runCurrent()
+
+    viewModel.createGroup("The Adventure")
+    runCurrent()
+
+    assertEquals(
+        GroupActionState.Error(NEEDS_CONNECTION),
+        viewModel.uiState.value.createState,
+    )
+    assertEquals(0, repository.newGroupIdRequests)
+    assertEquals(emptyList<CampaignGroup>(), repository.createdGroups)
+  }
+
+  @Test
+  fun createGroupInFlightEndsWithNeedsConnectionWhenTheConnectionDrops() = runTest {
+    val repository = FakeGroupRepository(createGate = CompletableDeferred()) { flowOf(emptyList()) }
+    val connectivity = FakeConnectivityRepository(isOnline = true)
+    val viewModel = createViewModel(repository, FakeAuthRepository(GM), connectivity)
+    runCurrent()
+    viewModel.createGroup("The Adventure")
+    runCurrent()
+    assertEquals(GroupActionState.Loading, viewModel.uiState.value.createState)
+
+    connectivity.online.value = false
+    runCurrent()
+
+    assertEquals(
+        GroupActionState.Error(NEEDS_CONNECTION),
+        viewModel.uiState.value.createState,
+    )
+  }
+
+  @Test
+  fun joinFailsWithOfflineErrorWithoutARequestWhileOffline() = runTest {
+    val repository =
+        InvitationGroupRepository(listOf(JOINABLE_GROUP)).apply {
+          addInvitation(FIRST_CODE, JOINABLE_GROUP.id)
+        }
+    val connectivity = FakeConnectivityRepository(isOnline = false)
+    val viewModel = createViewModel(repository, FakeAuthRepository(PLAYER), connectivity)
+    runCurrent()
+
+    viewModel.joinGroup(FIRST_CODE)
+    runCurrent()
+
+    assertEquals(JoinState.Error(InvitationError.OFFLINE), viewModel.uiState.value.joinState)
+    assertEquals(emptyList<Pair<String, String>>(), repository.joinCalls)
+  }
+
+  @Test
+  fun joinInFlightEndsWithOfflineErrorWhenTheConnectionDrops() = runTest {
+    val repository =
+        InvitationGroupRepository(listOf(JOINABLE_GROUP)).apply {
+          addInvitation(FIRST_CODE, JOINABLE_GROUP.id)
+          joinGate = CompletableDeferred()
+        }
+    val connectivity = FakeConnectivityRepository(isOnline = true)
+    val viewModel = createViewModel(repository, FakeAuthRepository(PLAYER), connectivity)
+    runCurrent()
+    viewModel.joinGroup(FIRST_CODE)
+    runCurrent()
+    assertEquals(JoinState.Joining, viewModel.uiState.value.joinState)
+
+    connectivity.online.value = false
+    runCurrent()
+
+    assertEquals(JoinState.Error(InvitationError.OFFLINE), viewModel.uiState.value.joinState)
+  }
+
+  @Test
+  fun inviteCodeRequestsFailWithOfflineErrorWhileOffline() = runTest {
+    val repository = InvitationGroupRepository(listOf(GM_GROUP))
+    val connectivity = FakeConnectivityRepository(isOnline = true)
+    val viewModel = createViewModel(repository, FakeAuthRepository(GM), connectivity)
+    runCurrent()
+    viewModel.loadInvitation(GM_GROUP.id)
+    runCurrent()
+    connectivity.online.value = false
+
+    viewModel.regenerateInvitation(GM_GROUP.id)
+    runCurrent()
+
+    assertEquals(
+        InvitationState.Error(InvitationError.OFFLINE),
+        viewModel.uiState.value.invitationState,
+    )
+    // The code loaded online stays, as the regeneration never reached the server.
+    assertEquals(FIRST_CODE, viewModel.uiState.value.inviteCode)
+    assertEquals(emptyList<Pair<String, String>>(), repository.regenerateCalls)
+  }
+
+  @Test
+  fun inviteCodeLoadInFlightEndsWithOfflineErrorWhenTheConnectionDrops() = runTest {
+    val repository =
+        InvitationGroupRepository(listOf(GM_GROUP)).apply { inviteGate = CompletableDeferred() }
+    val connectivity = FakeConnectivityRepository(isOnline = true)
+    val viewModel = createViewModel(repository, FakeAuthRepository(GM), connectivity)
+    runCurrent()
+    viewModel.loadInvitation(GM_GROUP.id)
+    runCurrent()
+    assertEquals(InvitationState.Loading, viewModel.uiState.value.invitationState)
+
+    connectivity.online.value = false
+    runCurrent()
+
+    assertEquals(
+        InvitationState.Error(InvitationError.OFFLINE),
+        viewModel.uiState.value.invitationState,
+    )
+  }
+
+  @Test
+  fun groupsStayVisibleAndIsOnlineFollowsTheConnection() = runTest {
+    val repository = FakeGroupRepository { flowOf(listOf(GM_GROUP)) }
+    val connectivity = FakeConnectivityRepository(isOnline = true)
+    val viewModel = createViewModel(repository, FakeAuthRepository(GM), connectivity)
+    backgroundScope.launch { viewModel.isOnline.collect {} }
+    runCurrent()
+
+    connectivity.online.value = false
+    runCurrent()
+    val offline = viewModel.isOnline.value
+    val groupsOffline = viewModel.uiState.value.groups
+    connectivity.online.value = true
+    runCurrent()
+
+    assertEquals(listOf(false, true), listOf(offline, viewModel.isOnline.value))
+    assertEquals(listOf(UserGroup(GM_GROUP, GroupRole.GAME_MASTER)), groupsOffline)
+  }
 
   @Test
   fun loadsGroupsAndExposesEachUsersRole() = runTest {

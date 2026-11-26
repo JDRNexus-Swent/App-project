@@ -7,6 +7,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
@@ -25,6 +26,7 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import com.github.se.jdrnexus.utils.PendingWritesWorkspaceRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -194,6 +196,96 @@ class HomeScreenS1Test {
     Assert.assertEquals(1, repository.signOutCalls)
 
     signOutResult.complete(AuthResult.Success(Unit))
+  }
+
+  @Test
+  fun logoutWithUnsyncedChangesShowsTheWarningInsteadOfSigningOut() {
+    val repository = FakeAuthRepository()
+    // Held, so the screen sees the check running, then ending without a sign-out.
+    val check = CompletableDeferred<Unit>()
+    val workspace = PendingWritesWorkspaceRepository(true).apply { checkGate = check }
+    val viewModel = AuthViewModel(repository, workspace)
+    var loggedOut = false
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(viewModel, onLogout = { loggedOut = true }) }
+    }
+
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.waitForIdle()
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).assertIsNotEnabled()
+    check.complete(Unit)
+
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) {
+      composeTestRule
+          .onAllNodesWithTag(C.Tag.sign_out_unsynced_dialog)
+          .fetchSemanticsNodes()
+          .size == 1
+    }
+    composeTestRule
+        .onNodeWithText("Changes made offline will be lost", substring = true)
+        .assertIsDisplayed()
+    Assert.assertEquals(0, repository.signOutCalls)
+    Assert.assertFalse(loggedOut)
+  }
+
+  @Test
+  fun cancellingTheUnsyncedWarningStaysSignedInAndEnablesLogoutAgain() {
+    val repository = FakeAuthRepository()
+    val viewModel = AuthViewModel(repository, PendingWritesWorkspaceRepository(true))
+    var loggedOut = false
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(viewModel, onLogout = { loggedOut = true }) }
+    }
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) { viewModel.uiState.value.isSignOutWarningShown }
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_out_unsynced_cancel).performClick()
+
+    composeTestRule.onAllNodesWithTag(C.Tag.sign_out_unsynced_dialog).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).assertIsEnabled()
+    Assert.assertEquals(0, repository.signOutCalls)
+    Assert.assertFalse(loggedOut)
+  }
+
+  @Test
+  fun confirmingTheUnsyncedWarningSignsOutAnyway() {
+    // Held, so the screen sees the sign-out running before it ends, as with a real server.
+    val signOutResult = CompletableDeferred<AuthResult<Unit>>()
+    val repository = FakeAuthRepository { signOutResult.await() }
+    val viewModel = AuthViewModel(repository, PendingWritesWorkspaceRepository(true))
+    var loggedOut = false
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(viewModel, onLogout = { loggedOut = true }) }
+    }
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) { viewModel.uiState.value.isSignOutWarningShown }
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_out_unsynced_confirm).performClick()
+    composeTestRule.waitForIdle()
+    Assert.assertEquals(1, repository.signOutCalls)
+    signOutResult.complete(AuthResult.Success(Unit))
+
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) { loggedOut }
+    composeTestRule.onAllNodesWithTag(C.Tag.sign_out_unsynced_dialog).assertCountEquals(0)
+  }
+
+  @Test
+  fun logoutWithoutUnsyncedChangesSignsOutWithoutWarning() {
+    val signOutResult = CompletableDeferred<AuthResult<Unit>>()
+    val repository = FakeAuthRepository { signOutResult.await() }
+    val viewModel = AuthViewModel(repository, PendingWritesWorkspaceRepository(false))
+    var loggedOut = false
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(viewModel, onLogout = { loggedOut = true }) }
+    }
+
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.waitForIdle()
+    Assert.assertEquals(1, repository.signOutCalls)
+    composeTestRule.onAllNodesWithTag(C.Tag.sign_out_unsynced_dialog).assertCountEquals(0)
+    signOutResult.complete(AuthResult.Success(Unit))
+
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) { loggedOut }
   }
 
   @Test

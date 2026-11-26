@@ -4,6 +4,10 @@ package com.github.se.jdrnexus.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.se.jdrnexus.model.connectivity.ConnectivityRepository
+import com.github.se.jdrnexus.model.connectivity.OfflineException
+import com.github.se.jdrnexus.model.connectivity.failWhenOffline
+import com.github.se.jdrnexus.model.connectivity.isOnlineIn
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.InvitationCodes
@@ -133,17 +137,26 @@ data class GameManagementUiState(
  * access remains in the repository implementation; this ViewModel depends only on repository
  * interfaces.
  *
+ * Creating and joining a group and managing invite codes need the server. Offline, or when the
+ * connection drops while one of them runs, it ends with an offline error instead of loading
+ * forever; the group list already loaded stays visible.
+ *
  * @param groupRepository Provides the real-time group list for a user UID, and creates groups
  *   together with their root folder.
  * @param authRepository Provides the current signed-in user and account changes.
+ * @param connectivityRepository Tells whether the device is online.
  */
 class GameManagementViewModel(
     private val groupRepository: GroupRepository,
     private val authRepository: AuthRepository,
+    private val connectivityRepository: ConnectivityRepository,
 ) : ViewModel(), GroupInvitationVM {
 
   private val _uiState = MutableStateFlow(GameManagementUiState())
   val uiState: StateFlow<GameManagementUiState> = _uiState.asStateFlow()
+
+  /** Whether the device is online; the screen disables the actions that need the server offline. */
+  val isOnline: StateFlow<Boolean> = connectivityRepository.isOnlineIn(viewModelScope)
 
   /** UID used for the active subscription and retry, or null while signed out. */
   private var currentUserId: String? = null
@@ -306,15 +319,19 @@ class GameManagementViewModel(
     _uiState.update { it.copy(groupName = name, createState = GroupActionState.Loading) }
     createJob = viewModelScope.launch {
       try {
-        val newGroupId = groupRepository.getNewGroupId()
         val group =
-            CampaignGroup(
-                id = newGroupId,
-                name = cleanName,
-                gameMasterId = requireNotNull(userId),
-                participantIds = listOf(userId),
-            )
-        groupRepository.createGroup(group).getOrThrow()
+            connectivityRepository.isOnline.failWhenOffline {
+              val newGroupId = groupRepository.getNewGroupId()
+              val group =
+                  CampaignGroup(
+                      id = newGroupId,
+                      name = cleanName,
+                      gameMasterId = requireNotNull(userId),
+                      participantIds = listOf(userId),
+                  )
+              groupRepository.createGroup(group).getOrThrow()
+              group
+            }
         currentCoroutineContext().ensureActive()
         _uiState.update {
           it.copy(
@@ -389,7 +406,9 @@ class GameManagementViewModel(
 
     _uiState.update { it.copy(joinState = JoinState.Joining) }
     joinJob = viewModelScope.launch {
-      val result = groupRepository.joinGroupWithCode(normalizedCode, requireNotNull(userId))
+      val result = whenOnline {
+        groupRepository.joinGroupWithCode(normalizedCode, requireNotNull(userId))
+      }
       val joinState =
           result.fold(
               onSuccess = { group -> JoinState.Joined(group.id) },
@@ -442,7 +461,7 @@ class GameManagementViewModel(
 
     _uiState.update { it.copy(inviteCode = code, invitationState = InvitationState.Loading) }
     invitationJob = viewModelScope.launch {
-      val result = request(requireNotNull(userId))
+      val result = whenOnline { request(requireNotNull(userId)) }
       _uiState.update { current ->
         result.fold(
             onSuccess = { newCode ->
@@ -456,7 +475,25 @@ class GameManagementViewModel(
     }
   }
 
-  /** Every repository failure carries an [InvitationError]; anything else counts as NETWORK. */
+  /**
+   * Runs an invitation [request] while the device is online. Offline, or when the connection drops
+   * during the request, it returns a failure with [OfflineException] instead.
+   */
+  private suspend fun <T> whenOnline(request: suspend () -> Result<T>): Result<T> =
+      try {
+        connectivityRepository.isOnline.failWhenOffline(request)
+      } catch (offline: OfflineException) {
+        Result.failure(offline)
+      }
+
+  /**
+   * Every repository failure carries an [InvitationError]; an [OfflineException] is OFFLINE and
+   * anything else counts as NETWORK.
+   */
   private fun Throwable.toInvitationError(): InvitationError =
-      (this as? InvitationException)?.error ?: InvitationError.NETWORK
+      when (this) {
+        is InvitationException -> error
+        is OfflineException -> InvitationError.OFFLINE
+        else -> InvitationError.NETWORK
+      }
 }

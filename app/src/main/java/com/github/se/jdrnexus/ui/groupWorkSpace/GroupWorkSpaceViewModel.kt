@@ -6,6 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.codec.JDRFileCodecException
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
+import com.github.se.jdrnexus.model.connectivity.ConnectivityRepository
+import com.github.se.jdrnexus.model.connectivity.failWhenOffline
+import com.github.se.jdrnexus.model.connectivity.isOnlineIn
 import com.github.se.jdrnexus.model.filerepresentation.DEFAULT_CHARACTER_NAME
 import com.github.se.jdrnexus.model.filerepresentation.renameCharacterSheet
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
@@ -66,17 +69,29 @@ data class GroupWorkspaceUiState(
     val personalFilesError: String = "",
 )
 
+/**
+ * State and actions of one group's workspace.
+ *
+ * The group workspace only works online: every operation that writes to it fails with
+ * [com.github.se.jdrnexus.model.connectivity.NEEDS_CONNECTION] when [connectivityRepository]
+ * reports the device offline, or when the connection drops while it runs. Content already loaded
+ * stays visible offline.
+ */
 class GroupWorkspaceViewModel(
     private val groupId: String,
     private val groupRepository: GroupRepository,
     private val repository: WorkspaceRepository = WorkspaceRepositoryProvider.repository,
     private val authRepository: AuthRepository = AuthRepositoryProvider.repository,
+    private val connectivityRepository: ConnectivityRepository,
 ) : ViewModel() {
 
   private var role: GroupWorkspaceRole? = null
   private val _uiState = MutableStateFlow(GroupWorkspaceUiState())
 
   val uiState: StateFlow<GroupWorkspaceUiState> = _uiState.asStateFlow()
+
+  /** Whether the device is online; the screen disables the workspace's actions while it is not. */
+  val isOnline: StateFlow<Boolean> = connectivityRepository.isOnlineIn(viewModelScope)
 
   // Keeps track of the coroutine currently loading the workspace.
   private var fetchJob: Job? = null
@@ -751,6 +766,9 @@ class GroupWorkspaceViewModel(
    * using a Mutex, propagates coroutine cancellation, displays failures, and resets the loading
    * state when all pending operations finish. Workspace updates are observed through the
    * repository's Flow.
+   *
+   * Every operation needs the server: offline, or when the connection drops while it runs, it stops
+   * with the "Needs a connection." error instead of loading forever.
    */
   private suspend fun performOperation(
       operation: suspend () -> Unit,
@@ -759,7 +777,7 @@ class GroupWorkspaceViewModel(
     _uiState.update { it.copy(isOperationInProgress = true) }
 
     try {
-      operationMutex.withLock { operation() }
+      operationMutex.withLock { connectivityRepository.isOnline.failWhenOffline(operation) }
       // The repository's Flow is responsible for refreshing the UI.
     } catch (e: CancellationException) {
       throw e

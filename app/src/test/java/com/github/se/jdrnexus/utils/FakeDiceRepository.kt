@@ -4,6 +4,7 @@ package com.github.se.jdrnexus.utils
 import com.github.se.jdrnexus.model.repository.DiceRepository
 import com.github.se.jdrnexus.model.repository.DiceRollEntity
 import com.github.se.jdrnexus.ui.dice.DiceRollResult
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -29,8 +30,12 @@ class FakeDiceRepository : DiceRepository {
   /** When not null, [getDiceRollsHistory] fails with it. */
   var historyFailure: Throwable? = null
 
+  /** When not null, [saveRollResult] waits for it, like a save waiting for the server. */
+  var saveGate: CompletableDeferred<Unit>? = null
+
   override suspend fun saveRollResult(groupId: String, rollResult: DiceRollResult): Result<Unit> {
     savedRolls += groupId to rollResult
+    saveGate?.await()
     return saveResult
   }
 

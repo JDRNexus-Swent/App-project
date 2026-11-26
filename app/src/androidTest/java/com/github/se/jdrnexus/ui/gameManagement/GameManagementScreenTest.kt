@@ -20,6 +20,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.model.connectivity.ConnectivityRepository
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.repository.AuthError
@@ -367,6 +368,9 @@ class GameManagementScreenTest {
         GameManagementViewModel(
             groupRepository,
             ScreenAuthRepository(),
+            object : ConnectivityRepository {
+              override val isOnline = flowOf(true)
+            },
         )
     var enteredGroupId = ""
     var managedGroupId = ""

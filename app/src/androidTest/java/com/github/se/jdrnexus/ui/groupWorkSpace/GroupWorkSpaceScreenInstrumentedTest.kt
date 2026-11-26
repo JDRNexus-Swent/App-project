@@ -5,6 +5,7 @@ package com.github.se.jdrnexus.ui.groupWorkSpace
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -27,6 +28,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.ViewModelStore
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.model.connectivity.ConnectivityRepository
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.FileEdit
@@ -1112,6 +1114,7 @@ class GroupWorkSpaceScreenInstrumentedTest {
       isOnline: MutableState<Boolean> = mutableStateOf(true),
   ): GroupWorkspaceViewModel {
     viewModelStore?.clear()
+    val onlineState = isOnline
     val group =
         CampaignGroup(
             id = GROUP,
@@ -1125,6 +1128,10 @@ class GroupWorkSpaceScreenInstrumentedTest {
             FakeGroupRepository(group),
             repository,
             authRepository,
+            // The ViewModel follows the same connection as the banner.
+            object : ConnectivityRepository {
+              override val isOnline = snapshotFlow { onlineState.value }
+            },
         )
     viewModelStore = ViewModelStore().also { it.put("workspace", viewModel) }
     if (setContent) {
