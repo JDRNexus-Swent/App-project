@@ -4,7 +4,9 @@ package com.github.se.jdrnexus.ui.soundboard
 import android.net.Uri
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -250,6 +252,15 @@ class SoundboardEditScreenTest {
     )
   }
 
+  @Test
+  fun emptyPlaylistSaysItHasNoTracks() {
+    setContent(
+        ready.copy(draft = draft.copy(playlists = listOf(tavern.copy(tracks = emptyList()))))
+    )
+
+    composeTestRule.onNodeWithText("No tracks in this playlist").assertIsDisplayed()
+  }
+
   // ============ Sound effects ============
 
   @Test
@@ -266,6 +277,49 @@ class SoundboardEditScreenTest {
         listOf("renameSoundEffect(sword, Clash)", "removeSoundEffect(sword)"),
         vm.callsAfterLoad(),
     )
+  }
+
+  @Test
+  fun noEffectsSaysThereAreNoSounds() {
+    setContent(ready.copy(draft = draft.copy(effects = emptyList())))
+
+    composeTestRule.onNodeWithText("No sound effects yet").assertIsDisplayed()
+  }
+
+  @Test
+  fun removingAFocusedRowLeavesTheNextRowUnfocused() {
+    val sea = AmbienceTrack("Sea", AudioFile("sea", "/a/sea.mp3", 1_000))
+    val skull = SoundEffect("Skull", AudioFile("skull", "/a/k.mp3", 1_000), SoundEffectIcon.SKULL)
+    val vm =
+        setContent(
+            ready.copy(
+                draft =
+                    draft.copy(
+                        playlists = listOf(tavern.copy(tracks = listOf(byTheFire, sea))),
+                        effects = listOf(sword, skull),
+                    )
+            )
+        )
+
+    // The remove button doesn't take the focus, so the removed row's field still has it.
+    composeTestRule
+        .onNodeWithTag(C.Tag.soundboardEditTrackName("fire"))
+        .performClick()
+        .assertIsFocused()
+    vm.state.value =
+        vm.state.value.copy(
+            draft =
+                vm.state.value.draft!!.copy(playlists = listOf(tavern.copy(tracks = listOf(sea))))
+        )
+    composeTestRule.onNodeWithTag(C.Tag.soundboardEditTrackName("sea")).assertIsNotFocused()
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.soundboardEditEffectName("sword"))
+        .performClick()
+        .assertIsFocused()
+    vm.state.value =
+        vm.state.value.copy(draft = vm.state.value.draft!!.copy(effects = listOf(skull)))
+    composeTestRule.onNodeWithTag(C.Tag.soundboardEditEffectName("skull")).assertIsNotFocused()
   }
 
   // ============ Save ============

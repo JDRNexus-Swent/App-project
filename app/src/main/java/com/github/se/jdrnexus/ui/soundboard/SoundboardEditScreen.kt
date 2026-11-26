@@ -2,14 +2,17 @@
 package com.github.se.jdrnexus.ui.soundboard
 
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -38,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
@@ -106,7 +110,10 @@ fun SoundboardEditScreen(
       contentColor = MaterialTheme.colorScheme.onSurface,
   ) { padding ->
     val draft = uiState.draft
-    val contentModifier = Modifier.fillMaxSize().padding(padding)
+    // enableEdgeToEdge() keeps the window from resizing for the keyboard: imePadding lifts the
+    // content above it, and consuming the bars' padding first keeps them from counting twice.
+    val contentModifier =
+        Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()
     when (val loadState = uiState.loadState) {
       SoundboardEditLoadState.Loading ->
           Box(contentModifier, contentAlignment = Alignment.Center) {
@@ -224,7 +231,10 @@ private fun nameErrorText(error: SoundboardNameError): String =
 
 // ============ Ambience ============
 
-/** The ambience card: the playlist tabs, Add playlist and the selected playlist's tracks. */
+/**
+ * The ambience card: the playlist tabs, Add playlist and the selected playlist's tracks, or a hint
+ * when it has none.
+ */
 @Composable
 private fun AmbienceEditor(
     draft: Soundboard,
@@ -265,21 +275,25 @@ private fun AmbienceEditor(
       Text(stringResource(R.string.soundboard_edit_add_playlist))
     }
     if (selected != null) {
+      if (selected.tracks.isEmpty()) EmptyHint(R.string.soundboard_no_tracks)
       selected.tracks.forEach { track ->
-        SoundRow(
-            icon = Icons.Outlined.MusicNote,
-            name = track.name,
-            subtitle =
-                stringResource(
-                    R.string.soundboard_edit_track_subtitle,
-                    formatDuration(track.audio.durationMs),
-                ),
-            enabled = canEdit,
-            onRename = { viewModel.renameTrack(selected.id, track.audio.id, it) },
-            onRemove = { viewModel.removeTrack(selected.id, track.audio.id) },
-            nameTag = C.Tag.soundboardEditTrackName(track.audio.id),
-            removeTag = C.Tag.soundboardEditTrackRemove(track.audio.id),
-        )
+        // Keyed by sound, so a field keeps its focus on its own sound when a row above is removed.
+        key(track.audio.id) {
+          SoundRow(
+              icon = Icons.Outlined.MusicNote,
+              name = track.name,
+              subtitle =
+                  stringResource(
+                      R.string.soundboard_edit_track_subtitle,
+                      formatDuration(track.audio.durationMs),
+                  ),
+              enabled = canEdit,
+              onRename = { viewModel.renameTrack(selected.id, track.audio.id, it) },
+              onRemove = { viewModel.removeTrack(selected.id, track.audio.id) },
+              nameTag = C.Tag.soundboardEditTrackName(track.audio.id),
+              removeTag = C.Tag.soundboardEditTrackRemove(track.audio.id),
+          )
+        }
       }
     }
   }
@@ -287,7 +301,7 @@ private fun AmbienceEditor(
 
 // ============ Sound effects ============
 
-/** The sound effects card: one row per effect. */
+/** The sound effects card: one row per effect, or a hint when there are none. */
 @Composable
 private fun EffectsEditor(
     draft: Soundboard,
@@ -303,26 +317,39 @@ private fun EffectsEditor(
               draft.effects.size,
           ),
   ) {
+    if (draft.effects.isEmpty()) EmptyHint(R.string.soundboard_edit_no_effects)
     draft.effects.forEach { effect ->
-      SoundRow(
-          icon = effect.icon.imageVector(),
-          name = effect.name,
-          subtitle =
-              stringResource(
-                  R.string.soundboard_edit_effect_subtitle,
-                  formatDuration(effect.audio.durationMs),
-              ),
-          enabled = canEdit,
-          onRename = { viewModel.renameSoundEffect(effect.audio.id, it) },
-          onRemove = { viewModel.removeSoundEffect(effect.audio.id) },
-          nameTag = C.Tag.soundboardEditEffectName(effect.audio.id),
-          removeTag = C.Tag.soundboardEditEffectRemove(effect.audio.id),
-      )
+      key(effect.audio.id) {
+        SoundRow(
+            icon = effect.icon.imageVector(),
+            name = effect.name,
+            subtitle =
+                stringResource(
+                    R.string.soundboard_edit_effect_subtitle,
+                    formatDuration(effect.audio.durationMs),
+                ),
+            enabled = canEdit,
+            onRename = { viewModel.renameSoundEffect(effect.audio.id, it) },
+            onRemove = { viewModel.removeSoundEffect(effect.audio.id) },
+            nameTag = C.Tag.soundboardEditEffectName(effect.audio.id),
+            removeTag = C.Tag.soundboardEditEffectRemove(effect.audio.id),
+        )
+      }
     }
   }
 }
 
 // ============ Rows shared by both cards ============
+
+/** A one-line hint, in the muted text colour, that stands in for an empty list in a card. */
+@Composable
+private fun EmptyHint(@StringRes message: Int) {
+  Text(
+      stringResource(message),
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      style = MaterialTheme.typography.bodySmall,
+  )
+}
 
 /**
  * One track or effect: its [icon], its [name] edited in place, its [subtitle] and a remove button.
