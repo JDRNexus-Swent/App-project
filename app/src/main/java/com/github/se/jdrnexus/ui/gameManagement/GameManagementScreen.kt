@@ -653,27 +653,12 @@ internal fun CampaignGroupCard(
     }
     Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
       Row(verticalAlignment = Alignment.CenterVertically) {
-        Row(
+        RoleBadge(
+            isGameMaster = isGameMaster,
+            colors = colors,
             modifier =
-                Modifier.campaignCardHighlight(CampaignCardElement.ROLE, highlighted, colors)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(colors.raised)
-                    .padding(horizontal = 7.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-          Icon(
-              if (isGameMaster) Icons.Filled.Settings else Icons.Filled.Person,
-              contentDescription = null,
-              modifier = Modifier.size(11.dp),
-              tint = colors.accent,
-          )
-          Text(
-              text = if (isGameMaster) "GameMaster" else "Player",
-              color = colors.accent,
-              fontSize = 9.sp,
-              modifier = Modifier.padding(start = 4.dp),
-          )
-        }
+                Modifier.campaignCardHighlight(CampaignCardElement.ROLE, highlighted, colors),
+        )
         Spacer(Modifier.weight(1f))
         Text(
             "Your group",
@@ -776,6 +761,40 @@ internal fun CampaignGroupCard(
         }
       }
     }
+  }
+}
+
+/**
+ * The badge naming a member's role in a group: a gear and "GameMaster", or a person and "Player".
+ * Shared by [CampaignGroupCard] and the member cards of [GroupManagementScreen], so both show the
+ * same role badge.
+ */
+@Composable
+internal fun RoleBadge(
+    isGameMaster: Boolean,
+    colors: GameManagementColors,
+    modifier: Modifier = Modifier,
+) {
+  Row(
+      modifier =
+          modifier
+              .clip(RoundedCornerShape(5.dp))
+              .background(colors.raised)
+              .padding(horizontal = 7.dp, vertical = 4.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Icon(
+        if (isGameMaster) Icons.Filled.Settings else Icons.Filled.Person,
+        contentDescription = null,
+        modifier = Modifier.size(11.dp),
+        tint = colors.accent,
+    )
+    Text(
+        stringResource(if (isGameMaster) R.string.role_game_master else R.string.role_player),
+        color = colors.accent,
+        fontSize = 9.sp,
+        modifier = Modifier.padding(start = 4.dp),
+    )
   }
 }
 
