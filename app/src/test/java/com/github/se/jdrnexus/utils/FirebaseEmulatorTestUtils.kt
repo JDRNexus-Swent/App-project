@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -504,6 +505,32 @@ object FirebaseEmulatorTestUtils {
       delay(50)
     }
     throw AssertionError(timeoutMessage())
+  }
+
+  /**
+   * Runs [block] (a repository call) in the background while pumping the main looper, where
+   * Firebase delivers its callbacks, and returns its result. Fails with an AssertionError if it
+   * does not complete within [timeoutMs], e.g. a write left waiting for the server while offline.
+   */
+  suspend fun <T> runAndPumpMainLooper(
+      operationName: String,
+      timeoutMs: Long = DEFAULT_TIMEOUT_MS,
+      block: suspend () -> T,
+  ): T {
+    val operation = CoroutineScope(Dispatchers.Default).async { block() }
+    try {
+      pumpMainLooperUntil(
+          timeoutMs = timeoutMs,
+          timeoutMessage = { "$operationName did not complete within $timeoutMs ms" },
+      ) {
+        operation.isCompleted
+      }
+    } catch (e: AssertionError) {
+      operation.cancel()
+      throw e
+    }
+    shadowOf(Looper.getMainLooper()).idle()
+    return operation.await()
   }
 }
 

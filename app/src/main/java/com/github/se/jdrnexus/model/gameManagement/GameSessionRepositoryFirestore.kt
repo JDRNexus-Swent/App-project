@@ -5,7 +5,7 @@ package com.github.se.jdrnexus.model.gameManagement
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.safeFirestoreRequest
-import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
+import com.github.se.jdrnexus.model.repository.DiceRepository
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
@@ -19,7 +19,7 @@ import kotlinx.coroutines.tasks.await
 /** Firestore-backed session store; security rules authorize campaign reads and GM-only writes. */
 class GameSessionRepositoryFirestore(
     private val firestore: FirebaseFirestore,
-    private val diceRepository: DiceRepositoryFirestore,
+    private val diceRepository: DiceRepository,
 ) : GameSessionRepository {
 
   override suspend fun loadActivities(groupId: String): Result<List<GameActivityEntry>> =

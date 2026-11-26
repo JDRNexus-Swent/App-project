@@ -624,7 +624,8 @@ class GroupWorkspaceViewModel(
             )
             .withPlacement(groupId, Placement(parentId.ifEmpty { groupId }, isHidden))
 
-    repository.createFile(item).getOrThrow()
+    // The Group Workspace only works online: wait for the server so a refusal is shown.
+    repository.createFile(item, waitForServer = true).getOrThrow()
     return itemId
   }
 
@@ -721,7 +722,12 @@ class GroupWorkspaceViewModel(
               updatedItem.content
             }
 
-        repository.updateFile(existing.copy(name = name, content = content).toEdit()).getOrThrow()
+        repository
+            .updateFile(
+                existing.copy(name = name, content = content).toEdit(),
+                waitForServer = true,
+            )
+            .getOrThrow()
       }
     }
   }

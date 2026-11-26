@@ -2,6 +2,9 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -9,6 +12,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -35,6 +39,7 @@ import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.resources.LocalIsOnline
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.LoadState
 import java.util.concurrent.atomic.AtomicBoolean
@@ -102,6 +107,30 @@ class GroupWorkSpaceScreenInstrumentedTest {
     composeTestRule.onNodeWithText("Sign in to view this workspace.").assertIsDisplayed()
     composeTestRule.onAllNodesWithTag(C.Tag.workspaceItem("notes"), true).assertCountEquals(0)
     composeTestRule.onAllNodesWithTag(C.Tag.workspace_actions_fab, true).assertCountEquals(0)
+  }
+
+  @Test
+  fun offlineBannerShowsUnderTheHeaderOnlyWhileOffline() {
+    val isOnline = mutableStateOf(false)
+    showScreen(WorkspaceFakeRepository(), Role.PLAYER, isOnline = isOnline)
+
+    val banner =
+        composeTestRule
+            .onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true)
+            .assertIsDisplayed()
+            .getUnclippedBoundsInRoot()
+    val header = composeTestRule.onNodeWithTag(C.Tag.workspace_header).getUnclippedBoundsInRoot()
+    val content =
+        composeTestRule
+            .onNodeWithTag(C.Tag.workspace_empty)
+            .assertIsDisplayed()
+            .getUnclippedBoundsInRoot()
+    assertTrue("the banner overlaps the header", banner.top >= header.bottom)
+    assertTrue("the banner overlaps the content", banner.bottom <= content.top)
+
+    composeTestRule.runOnIdle { isOnline.value = true }
+
+    composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertDoesNotExist()
   }
 
   // Verifies the shared bottom navigation destinations and selection behavior.
@@ -1080,6 +1109,7 @@ class GroupWorkSpaceScreenInstrumentedTest {
       onCharacterCreated: (String) -> Unit = {},
       setContent: Boolean = true,
       authRepository: FakeAuthRepository = FakeAuthRepository(),
+      isOnline: MutableState<Boolean> = mutableStateOf(true),
   ): GroupWorkspaceViewModel {
     viewModelStore?.clear()
     val group =
@@ -1100,16 +1130,18 @@ class GroupWorkSpaceScreenInstrumentedTest {
     if (setContent) {
       composeTestRule.setContent {
         SampleAppTheme {
-          GroupWorkSpaceScreen(
-              gwViewModel = viewModel,
-              groupId = GROUP,
-              groupName = "Ashen Realms",
-              onBack = onBack,
-              onTabSelected = onTabSelected,
-              onItemClicked = onItemClicked,
-              personalItems = personalItems,
-              onCharacterCreated = onCharacterCreated,
-          )
+          CompositionLocalProvider(LocalIsOnline provides isOnline.value) {
+            GroupWorkSpaceScreen(
+                gwViewModel = viewModel,
+                groupId = GROUP,
+                groupName = "Ashen Realms",
+                onBack = onBack,
+                onTabSelected = onTabSelected,
+                onItemClicked = onItemClicked,
+                personalItems = personalItems,
+                onCharacterCreated = onCharacterCreated,
+            )
+          }
         }
       }
     }
@@ -1187,14 +1219,16 @@ class GroupWorkSpaceScreenInstrumentedTest {
 
     override fun getNewUid() = "created-${++nextId}"
 
-    override suspend fun createFile(file: JDRFile): Result<Unit> = runOperation {
-      state.value += file.id to file
-    }
+    override suspend fun createFile(file: JDRFile, waitForServer: Boolean): Result<Unit> =
+        runOperation {
+          state.value += file.id to file
+        }
 
-    override suspend fun updateFile(edit: FileEdit): Result<Unit> = runOperation {
-      val file = state.value.getValue(edit.id)
-      state.value += edit.id to file.copy(name = edit.name, content = edit.content)
-    }
+    override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean): Result<Unit> =
+        runOperation {
+          val file = state.value.getValue(edit.id)
+          state.value += edit.id to file.copy(name = edit.name, content = edit.content)
+        }
 
     override suspend fun deleteFile(fileId: String): Result<Unit> = runOperation {
       state.value -= fileId
@@ -1233,6 +1267,8 @@ class GroupWorkSpaceScreenInstrumentedTest {
                   placements = item.placements + (groupId to Placement(folderId, isHidden)),
               )
     }
+
+    override suspend fun hasPendingWrites(): Boolean = false
 
     override suspend fun setItemHidden(itemId: String, groupId: String, isHidden: Boolean) =
         runOperation {
