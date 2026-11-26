@@ -55,4 +55,14 @@ interface AuthRepository {
   suspend fun signInWithGoogle(idToken: String): AuthResult<AuthUser>
 
   suspend fun signOut(): AuthResult<Unit>
+
+  /**
+   * Checks with the server that the session kept from a previous launch is still valid.
+   *
+   * If the account was deleted or disabled, or its session revoked, the user is signed out (so
+   * [authState] emits null) and [AuthError.SESSION_NOT_FOUND] is returned. Any other failure, such
+   * as [AuthError.NETWORK_ERROR] while offline, keeps the session. The default implementation, for
+   * repositories with no server to ask, accepts the session as it is.
+   */
+  suspend fun refreshSession(): AuthResult<Unit> = AuthResult.Success(Unit)
 }
