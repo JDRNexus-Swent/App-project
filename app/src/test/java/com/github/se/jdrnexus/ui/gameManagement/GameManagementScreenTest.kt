@@ -291,6 +291,13 @@ class GameManagementScreenTest {
   }
 
   @Test
+  fun profileButtonIsHiddenWithoutProfileCallback() {
+    setContent(uiState = stateFor())
+
+    composeTestRule.onAllNodesWithTag(C.Tag.open_profile).assertCountEquals(0)
+  }
+
+  @Test
   fun helpSheetIsHiddenWhileShowHelpIsFalse() {
     setContent(uiState = stateFor(), showHelp = false)
 
@@ -338,7 +345,7 @@ class GameManagementScreenTest {
       onDismissSuccess: () -> Unit = {},
       showHelp: Boolean = false,
       onHelpClick: () -> Unit = {},
-      onProfileClick: () -> Unit = {},
+      onProfileClick: (() -> Unit)? = null,
   ) {
     if (uiState.isCreateDialogOpen) {
       composeTestRule.mainClock.autoAdvance = false

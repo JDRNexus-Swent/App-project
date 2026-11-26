@@ -134,7 +134,8 @@ internal object GameManagementTestTags {
  * can load its shared files. Selecting "Play" invokes [onPlay] with that group's ID and the user's
  * role in it, so the destination can open the matching game screen. [gameManagementViewModel]
  * provides the loading and creation state. [helpViewModel] decides when the help sheet, opened by
- * the top bar's help button, is shown. The top bar's profile button invokes [onProfileClick].
+ * the top bar's help button, is shown. The top bar's profile button, shown only when
+ * [onProfileClick] is given, invokes it.
  */
 @Composable
 fun GameManagementScreen(
@@ -144,7 +145,7 @@ fun GameManagementScreen(
     onTabSelected: (String) -> Unit,
     gameManagementViewModel: GameManagementViewModel,
     helpViewModel: HelpViewModel = viewModel(),
-    onProfileClick: () -> Unit = {},
+    onProfileClick: (() -> Unit)? = null,
 ) {
   val uiState by gameManagementViewModel.uiState.collectAsState()
   val helpState by helpViewModel.uiState.collectAsState()
@@ -179,7 +180,7 @@ fun GameManagementScreen(
  * @param showHelp whether the help sheet with [campaignHelpPages] is shown.
  * @param onHelpClick called by the top bar's help button.
  * @param onHelpDismiss called once the help sheet has been closed.
- * @param onProfileClick called by the top bar's profile button.
+ * @param onProfileClick called by the top bar's profile button, which is hidden when null.
  * @param renderDialogsAsWindow whether dialogs open in their own window; tests render them inline.
  */
 @Composable
@@ -199,7 +200,7 @@ internal fun GameManagementScreenContent(
     showHelp: Boolean = false,
     onHelpClick: () -> Unit = {},
     onHelpDismiss: () -> Unit = {},
-    onProfileClick: () -> Unit = {},
+    onProfileClick: (() -> Unit)? = null,
     renderDialogsAsWindow: Boolean = true,
 ) {
   val colors = gameManagementColors()
@@ -371,13 +372,14 @@ internal fun GameManagementScreenContent(
 
 /**
  * Shows the profile, app identity, help button and notification affordance at the top of the
- * screen. The help button calls [onHelpClick] and the profile button calls [onProfileClick].
+ * screen. The help button calls [onHelpClick] and the profile button, shown when [onProfileClick]
+ * is not null, calls it.
  */
 @Composable
 private fun GameManagementHeader(
     colors: GameManagementColors,
     onHelpClick: () -> Unit,
-    onProfileClick: () -> Unit,
+    onProfileClick: (() -> Unit)?,
 ) {
   val context = LocalContext.current
   AppTopBar(
@@ -394,7 +396,7 @@ private fun GameManagementHeader(
           )
         }
       },
-      leadingContent = { ProfileButton(onClick = onProfileClick) },
+      leadingContent = { if (onProfileClick != null) ProfileButton(onClick = onProfileClick) },
       trailingContent = {
         IconButton(
             onClick = onHelpClick,
