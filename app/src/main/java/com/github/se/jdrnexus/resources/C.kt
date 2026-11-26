@@ -41,6 +41,7 @@ object C {
     fun gamePlayerNavigationTab(name: String) = "game_player_navigation_$name"
 
     const val main_screen_container = "main_screen_container"
+    const val session_loading = "session_loading"
 
     const val shared_top_bar = "shared_top_bar"
     const val shared_back_button = "shared_back_button"
@@ -63,6 +64,12 @@ object C {
     const val profile_loading = "profile_loading"
     const val profile_saving = "profile_saving"
     const val profile_error = "profile_error"
+    /** Dialog asking to confirm leaving the profile while a save or picture upload runs. */
+    const val profile_leave_dialog = "profile_leave_dialog"
+    const val profile_leave_confirm = "profile_leave_confirm"
+    const val profile_leave_stay = "profile_leave_stay"
+    /** Button opening the profile screen, in the top bar of Home and of Campaigns. */
+    const val open_profile = "open_profile"
 
     const val sign_in_email = "auth_sign_in_email"
     const val sign_in_password = "auth_sign_in_password"
@@ -248,5 +255,29 @@ object C {
 
     /** Tag of the search result item with [fileId]. */
     fun searchResult(fileId: String) = "document_search_result_$fileId"
+
+    const val notification_bell = "notification_bell"
+    const val notification_unread_badge = "notification_unread_badge"
+    const val notification_mark_all = "notification_mark_all"
+    const val notification_mark_all_dialog = "notification_mark_all_dialog"
+    const val notification_mark_all_confirm = "notification_mark_all_confirm"
+    const val notification_mark_all_cancel = "notification_mark_all_cancel"
+    const val notification_list = "notification_list"
+    const val notification_loading = "notification_loading"
+    const val notification_empty = "notification_empty"
+    const val notification_signed_out = "notification_signed_out"
+    const val notification_error = "notification_error"
+    const val notification_retry = "notification_retry"
+    const val notification_snackbar = "notification_snackbar"
+    const val notification_snackbar_dismiss = "notification_snackbar_dismiss"
+
+    /** Tag of the notification row with [notificationId]. */
+    fun notificationItem(notificationId: String) = "notification_item_$notificationId"
+
+    /** Tag of the "Mark as read" action of the unread notification row with [notificationId]. */
+    fun notificationMarkAsRead(notificationId: String) = "notification_mark_as_read_$notificationId"
+
+    /** Tag of the unread dot shown on the notification row with [notificationId]. */
+    fun notificationUnreadDot(notificationId: String) = "notification_unread_dot_$notificationId"
   }
 }

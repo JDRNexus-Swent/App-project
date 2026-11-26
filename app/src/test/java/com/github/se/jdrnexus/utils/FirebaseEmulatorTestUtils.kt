@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -387,19 +388,20 @@ object FirebaseEmulatorTestUtils {
   private fun restBase(firestore: FirebaseFirestore) =
       "http://$EMULATOR_HOST:$EMULATOR_PORT/v1/${documentName(firestore, "").trimEnd('/')}"
 
-  // Sends one HTTP request as the emulator's "owner" and returns the response body; throws on
-  // error, except a 404 when [allowNotFound], which returns null.
+  // Sends one HTTP request as the emulator's "owner" (unless [asOwner] is false) and returns the
+  // response body; throws on error, except a 404 when [allowNotFound], which returns null.
   private suspend fun ownerRequest(
       method: String,
       url: String,
       body: String? = null,
       allowNotFound: Boolean = false,
+      asOwner: Boolean = true,
   ): String? =
       withContext(Dispatchers.IO) {
         val connection = URL(url).openConnection() as HttpURLConnection
         try {
           connection.requestMethod = method
-          connection.setRequestProperty("Authorization", "Bearer owner")
+          if (asOwner) connection.setRequestProperty("Authorization", "Bearer owner")
           if (body != null) {
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/json")
@@ -415,6 +417,25 @@ object FirebaseEmulatorTestUtils {
           connection.disconnect()
         }
       }
+
+  /**
+   * Deletes the Auth account that [idToken] belongs to on the Auth emulator, without telling the
+   * FirebaseAuth instance of this device: it keeps a session for an account that no longer exists.
+   *
+   * The account is named by its token, not by a project path: CI starts the emulator for the demo
+   * project, which differs from the project id of google-services.json.
+   */
+  suspend fun deleteAuthAccountKeepingLocalSession(idToken: String) {
+    val apiKey = FirebaseApp.getInstance().options.apiKey
+    ownerRequest(
+        "POST",
+        "http://$EMULATOR_HOST:$AUTH_EMULATOR_PORT/identitytoolkit.googleapis.com/v1/" +
+            "accounts:delete?key=$apiKey",
+        JSONObject().put("idToken", idToken).toString(),
+        // As the user: the emulator reads an owner request as an admin one, which needs a localId.
+        asOwner = false,
+    )
+  }
 
   /**
    * Returns the default app's Firestore on the emulator with no user signed in, for tests of what
@@ -504,6 +525,32 @@ object FirebaseEmulatorTestUtils {
       delay(50)
     }
     throw AssertionError(timeoutMessage())
+  }
+
+  /**
+   * Runs [block] (a repository call) in the background while pumping the main looper, where
+   * Firebase delivers its callbacks, and returns its result. Fails with an AssertionError if it
+   * does not complete within [timeoutMs], e.g. a write left waiting for the server while offline.
+   */
+  suspend fun <T> runAndPumpMainLooper(
+      operationName: String,
+      timeoutMs: Long = DEFAULT_TIMEOUT_MS,
+      block: suspend () -> T,
+  ): T {
+    val operation = CoroutineScope(Dispatchers.Default).async { block() }
+    try {
+      pumpMainLooperUntil(
+          timeoutMs = timeoutMs,
+          timeoutMessage = { "$operationName did not complete within $timeoutMs ms" },
+      ) {
+        operation.isCompleted
+      }
+    } catch (e: AssertionError) {
+      operation.cancel()
+      throw e
+    }
+    shadowOf(Looper.getMainLooper()).idle()
+    return operation.await()
   }
 }
 

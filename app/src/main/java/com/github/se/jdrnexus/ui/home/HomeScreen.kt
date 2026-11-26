@@ -40,6 +40,8 @@ import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
+import com.github.se.jdrnexus.ui.notification.NotificationBell
+import com.github.se.jdrnexus.ui.profile.ProfileButton
 
 object TestTags {
   const val TITLE = "home_title"
@@ -64,6 +66,10 @@ fun HomeScreen(
     onGroupManagementClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
     onMapClick: () -> Unit = {},
+    unreadNotificationCount: Int = 0,
+    onNotificationsClick: (() -> Unit)? = null,
+    // Opens the profile screen; the top bar shows the profile button only when it is given.
+    onProfileClick: (() -> Unit)? = null,
 ) {
 
   val uiState by viewModel.uiState.collectAsState()
@@ -92,7 +98,23 @@ fun HomeScreen(
         AppTopBar(
             title = "JDRNexus",
             titleModifier = Modifier.testTag(TestTags.TITLE),
+            leadingContent = {
+              if (onProfileClick != null) {
+                ProfileButton(
+                    onClick = { if (canNavigate()) onProfileClick() },
+                    enabled = canNavigate(),
+                )
+              }
+            },
             trailingContent = {
+              // Shown only when the caller can open the notifications, so the bell is never dead.
+              if (onNotificationsClick != null) {
+                NotificationBell(
+                    unreadCount = unreadNotificationCount,
+                    onClick = { if (canNavigate()) onNotificationsClick() },
+                    enabled = canNavigate(),
+                )
+              }
               TextButton(
                   onClick = {
                     if (!logoutRequested.value) {

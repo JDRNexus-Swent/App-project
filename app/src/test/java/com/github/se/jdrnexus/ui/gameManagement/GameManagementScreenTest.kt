@@ -281,6 +281,23 @@ class GameManagementScreenTest {
   }
 
   @Test
+  fun profileButtonIsShownAndReportsTaps() {
+    var profileClicks = 0
+    setContent(uiState = stateFor(), onProfileClick = { profileClicks++ })
+
+    composeTestRule.onNodeWithTag(C.Tag.open_profile).assertIsDisplayed().performClick()
+
+    assertEquals(1, profileClicks)
+  }
+
+  @Test
+  fun profileButtonIsHiddenWithoutProfileCallback() {
+    setContent(uiState = stateFor())
+
+    composeTestRule.onAllNodesWithTag(C.Tag.open_profile).assertCountEquals(0)
+  }
+
+  @Test
   fun helpSheetIsHiddenWhileShowHelpIsFalse() {
     setContent(uiState = stateFor(), showHelp = false)
 
@@ -328,6 +345,7 @@ class GameManagementScreenTest {
       onDismissSuccess: () -> Unit = {},
       showHelp: Boolean = false,
       onHelpClick: () -> Unit = {},
+      onProfileClick: (() -> Unit)? = null,
   ) {
     if (uiState.isCreateDialogOpen) {
       composeTestRule.mainClock.autoAdvance = false
@@ -352,6 +370,7 @@ class GameManagementScreenTest {
             onTabSelected = {},
             showHelp = showHelp,
             onHelpClick = onHelpClick,
+            onProfileClick = onProfileClick,
             renderDialogsAsWindow = false,
         )
       }

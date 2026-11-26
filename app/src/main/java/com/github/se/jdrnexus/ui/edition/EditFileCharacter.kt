@@ -1,5 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.edition
 
 import androidx.compose.foundation.layout.Arrangement
@@ -101,13 +102,6 @@ fun EditFileCharacter(
                 .testTag(EditFileCharacterTestTags.LIST),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-      item(key = "top-bar") {
-        EditFileHeader(
-            title = stringResource(R.string.edit_character_title),
-            backTestTag = EditFileCharacterTestTags.BACK,
-            onBack = onBack,
-        )
-      }
       item(key = "character-name") {
         OutlinedTextField(
             value = character.name,
