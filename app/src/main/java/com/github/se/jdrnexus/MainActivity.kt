@@ -146,8 +146,9 @@ object GamePlayerRoute {
 }
 
 /**
- * Route of the screen where a Game Master manages one group (members, removal, deletion). The list
- * of the user's groups (Campaigns) is [AllRoutes.GroupManagement].
+ * Route of the screen listing the members of one group, where its Game Master can also remove a
+ * player or delete the group. The list of the user's groups (Campaigns) is
+ * [AllRoutes.GroupManagement].
  */
 object ManageGroupRoute {
   const val route = "manage_group/{groupId}"

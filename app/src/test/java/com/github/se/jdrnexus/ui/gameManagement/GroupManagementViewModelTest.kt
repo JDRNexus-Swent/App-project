@@ -70,6 +70,14 @@ class GroupManagementViewModelTest {
   }
 
   @Test
+  fun aPlayerSeesTheirOwnUsernameAndTheOthersById() = runTest {
+    val viewModel = viewModel(AuthUser("p1", null, "Bob"))
+    advanceUntilIdle()
+
+    assertEquals(listOf("gm", "Bob", "p2"), viewModel.state.members.map { it.label })
+  }
+
+  @Test
   fun aPlayerCannotManageTheGroup() = runTest {
     val viewModel = viewModel(AuthUser("p1", null, "Bob"))
     advanceUntilIdle()

@@ -62,7 +62,11 @@ fun GroupManagementScreen(
   LaunchedEffect(state.isGroupDeleted) { if (state.isGroupDeleted) onGroupDeleted() }
 
   Scaffold(
-      topBar = { AppTopBar(stringResource(R.string.group_management_title), onBack = onBack) },
+      topBar = {
+        val title =
+            if (state.canManage) R.string.group_management_title else R.string.group_members_title
+        AppTopBar(stringResource(title), onBack = onBack)
+      },
       bottomBar = { ScreenBottomBar(selectedTab = "Campaigns", onTabSelected = onTabSelected) },
   ) { padding ->
     // The header stays in place; only the member list scrolls.

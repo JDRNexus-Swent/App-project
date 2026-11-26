@@ -108,10 +108,19 @@ class GroupManagementScreenTest {
   }
 
   @Test
-  fun aPlayerSeesNoManagementButtons() {
+  fun theGameMasterSeesAManagementTitle() {
+    setContent()
+
+    composeTestRule.onNodeWithText("Manage group").assertIsDisplayed()
+    composeTestRule.onAllNodesWithText("Group members").assertCountEquals(0)
+  }
+
+  @Test
+  fun aPlayerSeesTheMembersTitleAndNoManagementButtons() {
     viewModel.uiState.value = managed.copy(canManage = false)
     setContent()
 
+    composeTestRule.onNodeWithText("Group members").assertIsDisplayed()
     composeTestRule.onAllNodesWithTag(C.Tag.groupManagementRemove("p1")).assertCountEquals(0)
     composeTestRule.onAllNodesWithTag(C.Tag.group_management_delete).assertCountEquals(0)
   }

@@ -17,13 +17,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * Lets the Game Master of the group [groupId] see its members, remove a player and delete the
- * group.
+ * Lets any member of the group [groupId] see its members, and its Game Master remove a player or
+ * delete the group.
  *
  * The members come from [GroupRepository.getGroupFlow], so the list follows every change while the
- * screen is open. The signed-in user ([AuthRepository.authState]) decides whether they may manage
- * the group, and names the Game Master when it is them; every other member is named by their user
- * id. When the group stops existing, deleted here or elsewhere,
+ * screen is open. The signed-in user ([AuthRepository.authState]) may manage the group only as its
+ * Game Master, and is named by their username (their user id if it is blank); every other member is
+ * named by their user id. When the group stops existing, deleted here or elsewhere,
  * [GroupManagementUiState.isGroupDeleted] becomes true.
  */
 class GroupManagementViewModel(
@@ -64,15 +64,15 @@ class GroupManagementViewModel(
       return
     }
     val gameMaster = group.gameMasterId
-    val gameMasterLabel =
-        user?.username?.takeIf { user.uid == gameMaster && it.isNotBlank() } ?: gameMaster
+    // The signed-in user is named by their username; the others by their id until #329.
+    fun label(uid: String) = user?.username?.takeIf { user.uid == uid && it.isNotBlank() } ?: uid
     val players = group.participantIds.filter { it != gameMaster }
     _uiState.update {
       it.copy(
           groupName = group.name,
           members =
-              listOf(GroupMember(gameMaster, gameMasterLabel, isGameMaster = true)) +
-                  players.map { uid -> GroupMember(uid, uid, isGameMaster = false) },
+              listOf(GroupMember(gameMaster, label(gameMaster), isGameMaster = true)) +
+                  players.map { uid -> GroupMember(uid, label(uid), isGameMaster = false) },
           isLoading = false,
           canManage = user?.uid == gameMaster,
       )

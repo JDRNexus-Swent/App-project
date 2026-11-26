@@ -938,12 +938,36 @@ class MainActivityNavigationTest {
     assertEquals("group-1", groupRepository.deletedGroupId)
   }
 
-  private fun openGroupManagement(groupRepository: NavigationGroupRepository) {
+  @Test
+  fun aPlayerOpensTheGroupMembersAndBackReturnsToCampaigns() {
+    openGroupManagement(groupRepository("gm-1"), action = "See group members")
+
+    composeTestRule.onNodeWithText("Group members").assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(C.Tag.group_management_delete).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    assertBackOnCampaigns(C.Tag.groupManagementMember("user-1"))
+  }
+
+  @Test
+  fun campaignsTabOnTheGroupMembersScreenReturnsToCampaigns() {
+    openGroupManagement(groupRepository("gm-1"), action = "See group members")
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+
+    assertBackOnCampaigns(C.Tag.groupManagementMember("user-1"))
+  }
+
+  /** Signs in as `user-1`, opens Campaigns and taps [action] on the only group's card. */
+  private fun openGroupManagement(
+      groupRepository: NavigationGroupRepository,
+      action: String = "Manage group",
+  ) {
     showApp(groupRepository = groupRepository)
     signInAndOpenCampaigns()
-    waitForText("Manage group")
-    composeTestRule.onNodeWithText("Manage group").performClick()
-    waitForTag(C.Tag.group_management_delete)
+    waitForText(action)
+    composeTestRule.onNodeWithText(action).performClick()
+    waitForTag(C.Tag.groupManagementMember("user-1"))
   }
 
   @Test
