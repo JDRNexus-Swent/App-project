@@ -34,13 +34,16 @@ data class AmbiencePlayback(
     val status: AmbiencePlaybackStatus,
 )
 
-/** An action failure that can be displayed while the soundboard stays usable. */
+/** A playback failure that can be displayed while the soundboard stays usable. */
 sealed interface SoundboardPlaybackError {
   /** The player failed to start or continue the identified track or effect. */
   data class Playback(val audioId: String) : SoundboardPlaybackError
+}
 
-  /** The effective volume settings could not be saved. */
-  data class SaveVolume(val reason: SoundboardError) : SoundboardPlaybackError
+/** Identifies the volume control that received a value outside [MIN_VOLUME]..[MAX_VOLUME]. */
+enum class SoundboardVolumeError {
+  AMBIENCE_OUT_OF_RANGE,
+  EFFECTS_OUT_OF_RANGE,
 }
 
 /**
@@ -55,7 +58,8 @@ sealed interface SoundboardPlaybackError {
  * @property isAmbienceLooping Whether playback returns to the start after the last playlist track.
  * @property playingEffectIds Effects currently playing, independently of ambience and each other.
  * @property pendingEffectIds Effects with a playback action in progress.
- * @property error The latest playback or volume failure, or null when there is none.
+ * @property error The latest playback failure, cleared when a sound starts successfully.
+ * @property volumeError The latest invalid volume input, cleared by a valid value for that control.
  */
 data class SoundboardUiState(
     val soundboard: Soundboard? = null,
@@ -66,6 +70,7 @@ data class SoundboardUiState(
     val playingEffectIds: Set<String> = emptySet(),
     val pendingEffectIds: Set<String> = emptySet(),
     val error: SoundboardPlaybackError? = null,
+    val volumeError: SoundboardVolumeError? = null,
 )
 
 /**
@@ -96,14 +101,10 @@ interface SoundboardViewModelInterface {
   /** Starts the one-shot effect or stops it if already playing. Other sounds can continue. */
   fun toggleSoundEffect(audioId: String)
 
-  /**
-   * Updates and persists [Soundboard.ambienceVolume]. Accepts values in [MIN_VOLUME]..[MAX_VOLUME].
-   */
+  /** Updates the session's [Soundboard.ambienceVolume]. Accepts [MIN_VOLUME]..[MAX_VOLUME]. */
   fun setAmbienceVolume(volume: Float)
 
-  /**
-   * Updates and persists [Soundboard.effectsVolume]. Accepts values in [MIN_VOLUME]..[MAX_VOLUME].
-   */
+  /** Updates the session's [Soundboard.effectsVolume]. Accepts [MIN_VOLUME]..[MAX_VOLUME]. */
   fun setSoundEffectVolume(volume: Float)
 
   /** Mutes ambience or restores its last audible gain. */
