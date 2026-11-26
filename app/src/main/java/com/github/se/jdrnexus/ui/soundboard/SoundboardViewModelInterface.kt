@@ -49,6 +49,7 @@ sealed interface SoundboardPlaybackError {
  * @property soundboard The loaded board, including its current volumes, or null while loading or
  *   after a load failure. An empty saved board still has an ID and uses
  *   [SoundboardLoadState.Empty].
+ * @property loadState Whether the board is loading, empty, ready, or failed to load.
  * @property selectedPlaylistId The playlist being browsed, which can differ from the playing one.
  * @property ambience The current track, or null when ambience is stopped.
  * @property isAmbienceLooping Whether playback returns to the start after the last playlist track.
@@ -74,6 +75,7 @@ data class SoundboardUiState(
  * When the saved board changes, stop playback and cancel pending starts for any removed sounds.
  */
 interface SoundboardViewModelInterface {
+  /** State for the screen to render. The ViewModel sets and clears errors. */
   val uiState: StateFlow<SoundboardUiState>
 
   /** Selects a playlist for browsing its tracks. */
@@ -119,7 +121,4 @@ interface SoundboardViewModelInterface {
    * [SoundboardError.SOUNDBOARD_NOT_FOUND].
    */
   fun loadSoundboard(soundboardId: String)
-
-  /** Clears [SoundboardUiState.error] after the screen has displayed it. */
-  fun clearError()
 }

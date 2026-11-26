@@ -3,6 +3,7 @@ package com.github.se.jdrnexus.ui.dice
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -28,6 +29,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.repository.DiceLogic
 import com.github.se.jdrnexus.model.sensor.ShakeDetector
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.resources.LocalIsOnline
 import com.github.se.jdrnexus.resources.MAX_LANDSCAPE_CONTENT_WIDTH
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import kotlin.math.abs
@@ -59,11 +61,14 @@ class DiceOfflineScreenLandscapeTest {
   private fun setScreen(
       vm: DiceViewModel = DiceViewModel(DiceLogic(), diceRepository = null),
       onClose: () -> Unit = {},
+      isOnline: Boolean = true,
   ) = vm.also {
     composeTestRule.setContent {
       SampleAppTheme(darkTheme = true) {
-        Box(Modifier.size(screenSize)) {
-          DiceOfflineScreen(diceViewModel = it, onClose = onClose, dieView = FlatDieView)
+        CompositionLocalProvider(LocalIsOnline provides isOnline) {
+          Box(Modifier.size(screenSize)) {
+            DiceOfflineScreen(diceViewModel = it, onClose = onClose, dieView = FlatDieView)
+          }
         }
       }
     }
@@ -155,6 +160,30 @@ class DiceOfflineScreenLandscapeTest {
     assertTrue("the die is not centered with the content: $die", die.left >= contentLeft - 1.dp)
     CONTROLS.forEach { tag ->
       assertTrue("$tag stretches past the capped content", bounds(tag).right <= contentRight + 1.dp)
+    }
+  }
+
+  /**
+   * The dice work offline: landscape shows the offline banner above the card's content and keeps
+   * every control on screen.
+   */
+  @Test
+  fun offlineLandscapeShowsTheBannerAboveTheDieAndKeepsEveryControlOnScreen() {
+    setScreen(isOnline = false)
+
+    LANDSCAPE_SIZES.forEach { size ->
+      screenSize = size
+      composeTestRule.waitForIdle()
+
+      val banner = bounds(C.Tag.offline_banner)
+      val screen = bounds(C.Tag.dice_offline_screen)
+      assertInside(C.Tag.offline_banner, banner, screen)
+      assertTrue(
+          "the banner is not above the die at $size",
+          banner.bottom <= bounds(C.Tag.dice_offline_die).top,
+      )
+      node(C.Tag.dice_offline_roll).performScrollTo().assertIsDisplayed()
+      assertLandscapeLayout(size)
     }
   }
 

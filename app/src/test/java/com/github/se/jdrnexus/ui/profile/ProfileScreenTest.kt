@@ -435,9 +435,5 @@ class ProfileScreenTest {
     override fun updateProfilePicture(image: Uri) {
       pickedImages.add(image)
     }
-
-    override fun clearError() {
-      uiState.value = uiState.value.copy(errorMessage = null)
-    }
   }
 }

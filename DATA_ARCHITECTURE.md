@@ -278,7 +278,7 @@ Normally only the owner can write a document. The cascades above write documents
 1. **Unshare (owner or GM):** a document leaves group `G` when `G` is removed from `placements` and `sharedGroupsIds` in the same write. Allowed for the owner, and for the GM of `G` on any document of the group.
 2. **Placement entry change (any member of `G`):** exactly one entry of `placements` changes, in a group the caller belongs to, and the set of groups does not change. This is what lets a cascade reattach other users' documents (new `folderId`) and hide their descendants (`isHidden`).
 
-**Known and accepted limit of exception 2.** The group id is a map key, and the rules cannot extract it from a diff, so they cannot check who changes what, nor what the entry becomes. Any member of `G` can therefore change the placement of any document of `G`: reveal a hidden one, hide a visible one, or point it to another parent. On this path the rules do not check the new parent, nor the "visible child, visible parent" invariant. They still guarantee that nothing else of the document changes: content, name, owner and the list of groups stay out of reach. This is accepted because `isHidden` is not a security boundary (section 5) and every member can already read the document. The effect is limited to display and tree structure.
+**Known and accepted limit of exception 2.** The group id is a map key, and the rules cannot extract it from a diff, so they cannot check who changes what, nor what the entry becomes. Any member of `G` can therefore change the placement of any document of `G`: reveal a hidden one, hide a visible one, or point it to another parent. On this path the rules do not check the new parent, nor the "visible child, visible parent" invariant. They still guarantee that nothing else of the document changes: content, name, owner and the list of groups stay out of reach. This is accepted because `isHidden` is not a security boundary (section 5) and every member can already read the document. The effect is limited to display and tree structure, except for malformed entries (section 12).
 
 **Why it is this broad.** The narrow version (reattach only if the previous parent has left the group, new parent a container of `G`, `isHidden` only from `false` to `true`) needs the rules to name the group whose entry changed, which they cannot do.
 
@@ -352,27 +352,28 @@ A user who left a group can join it again with the same code as long as the GM h
 | Invariant | Rules | Repository | UI | Test |
 |---|---|---|---|---|
 | One placement per group | structure | yes | | yes |
-| `placements.keys == sharedGroupsIds` | yes | targeted updates write both | | yes (after each operation) |
+| `placements.keys == sharedGroupsIds` | yes | targeted updates write both | | yes (after each operation), rules tests |
 | `updateFile` never writes placements | | yes | | yes |
-| Parent is a container | yes | yes | yes | yes |
-| Parent is in the same group | yes (via `getAfter`) | yes | | yes |
-| Visible child has a visible parent | yes | yes | | yes |
-| Only owner deletes | yes | | yes | emulator |
-| GM can unshare others' docs | exception 7.5.1 | yes | | emulator |
-| Reattach after unshare / delete | yes, broad (7.5, exception 2) | yes | | emulator |
+| Parent is a container | yes (creation and sharing; not entry changes, 7.5) | yes | yes | yes, rules tests |
+| Parent is in the same group | yes (via `getAfter`; creation and sharing; not entry changes, 7.5) | yes | | yes, rules tests |
+| Visible child has a visible parent | yes (creation and sharing; not entry changes, 7.5) | yes | | yes, rules tests |
+| Only owner deletes | yes | | yes | emulator, rules tests |
+| GM can unshare others' docs | exception 7.5.1 | yes | | emulator, rules tests |
+| Reattach after unshare / delete | yes, broad (7.5, exception 2) | yes | | emulator, rules tests |
 | `users/{uid}.groupIds` agrees with `participantIds` | yes | same batch | | emulator, rules tests |
 | Unshare and delete follow the same reattachment rules | | pure functions in `CascadeRules.kt` | | yes |
-| `GROUP_ROOT` immutable | yes | yes | yes | emulator |
-| Group and root names stay equal | | batch | | yes |
+| `GROUP_ROOT` immutable | yes | yes | yes | emulator, rules tests |
+| Group and root names stay equal | yes (`getAfter`, same batch) | batch | | yes, rules tests |
 | Personal queries exclude `GROUP_ROOT` | | single filter | | yes |
 | `isHidden` filtering | no (not a boundary) | none (view model) | single function | yes |
 | Batch size limit | | yes | | yes |
-| Invitation and `inviteCode` point to each other (no ghost code) | yes (`getAfter` both ways, 1.7) | transaction / same batch | | emulator (repository), rules tests (invitation side) |
+| Invitation and `inviteCode` point to each other (no ghost code) | yes (`getAfter` both ways, 1.7) | transaction / same batch | | emulator (repository), rules tests |
 | One valid code per group | yes | transaction (`createInvitation`) | | emulator (repository, no rules) |
 | Old code stops working after regeneration | yes (redemption needs the current code) | delete + create in one batch | | emulator (repository), rules tests (redemption) |
-| Join writes redemption, `participantIds` and `groupIds` together | yes (`existsAfter`, `getAfter`) | same batch | | emulator (repository, no rules) |
-| Join adds only the current user | yes (`isSelfJoin`) | `arrayUnion(userId)` | | emulator (repository, no rules) |
-| Only the GM writes `inviteCode` and invitations | yes | checked before writing | | emulator (repository), rules tests (invitations) |
+| Join writes redemption, `participantIds` and `groupIds` together | yes (`existsAfter`, `getAfter`) | same batch | | emulator (repository), rules tests |
+| Join adds only the current user | yes (`isSelfJoin`) | `arrayUnion(userId)` | | emulator (repository), rules tests |
+| Only the GM writes `inviteCode` and invitations | yes | checked before writing | | emulator (repository), rules tests |
+| Groups: created with their root and the creator's membership; only the GM edits, adds or removes others and deletes; a participant may leave; the GM cannot be removed | yes | same batch | | rules tests |
 | Invitations cannot be listed | yes | | | rules tests |
 | Already member refused before any write | | yes (`users/{uid}.groupIds`) | | emulator |
 | Code generation: alphabet, length, normalization | | pure functions (`InvitationCodes`) | | yes |
@@ -399,11 +400,11 @@ Rules and batch behavior must be tested with the **Firebase emulator** (member /
 - The client does not check who calls an operation: this is the job of the security rules.
 - Moving documents between folders is not supported yet.
 - Placement entry changes are open to any member of the group (7.5, exception 2).
+- A placement entry change does not check the entry's shape (`isPlacement`), unlike creation and sharing. A member can write an entry such as `{ folderId: "x", isHidden: "yes" }`: the app then cannot read the document, which disappears from every list, its owner's included, and can no longer be opened. The rules cannot tell which entry changed (`affectedKeys()` is a set, and the language has no loops), so the fix checks each entry by position, up to a maximum number of groups per document to choose.
 - `users/{userId}` does not check who writes it: any signed-in user may write any users document, as long as `groupIds` follows `participantIds` (one group added if the user is a participant after the write, one removed if they no longer are). This is needed by the GM's operations on other members, which write those members' users documents: adding a player (`addUserToGroup`), banning one (`removeUserFromGroup`) and deleting the group (`deleteGroup`). These operations are planned but not wired to a screen yet. Meanwhile, a modified client could let a GM add a user to their group without an invitation code. Accepted, since it can only make `groupIds` consistent with the groups; `uid() == userId` would close it, but would also block these GM operations.
-- The invitation rules (1.7) are covered by rules tests for `invitations`, `redemptions` and `users`. The `campaign_groups` side of the join and of the invite code (`isSelfJoin`, `isInviteCodeEdit`) has no rules test yet.
 - The join makes about 6 to 8 document-access calls in the rules (limit: 20 per batched write). The emulator does not apply the limit: to check once on a real Firestore project.
 - Deleting or regenerating an invitation does not delete its `redemptions` subcollection (Firestore never cascades): the documents stay as harmless orphans. To handle with the group lifecycle (9).
-- `deleteGroup` does not delete the group's invitation: the code stays known but points to nothing. Under the security rules, a join with that code is refused (`PERMISSION_DENIED`) and reported as `NETWORK`, not `GROUP_NOT_FOUND`. `deleteGroup` could delete the invitation in its own batch (the delete rule allows it, since the group still exists before the batch), so the code really stops existing.
+- The rules let the GM delete a group alone: the `campaign_groups` delete rule only checks the GM. The root can then no longer be deleted (its delete rule reads the group), and the members' `groupIds` keep the group until each member removes it. `deleteGroup` writes all of it in one batch, so the app is not affected. To enforce in the rules with the group lifecycle (9).
 - `regenerateInvitation` checks that the new code is free with a plain read, not atomically (the collision probability is negligible). Two simultaneous regenerations can leave one valid invitation that the group no longer knows.
 - A refused write (`PERMISSION_DENIED`) during an invitation operation is mapped to a generic error (`NETWORK` for a join, `NOT_GAME_MASTER` for create and regenerate), because the real cause is not known to the client.
 - Deleting an image document, or a folder holding images, with `WorkspaceRepository.deleteFile` removes only the documents: the pictures stay in Storage, readable by their owner only (1.9).

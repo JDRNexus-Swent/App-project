@@ -40,6 +40,7 @@ import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
+import com.github.se.jdrnexus.ui.notification.NotificationBell
 
 object TestTags {
   const val TITLE = "home_title"
@@ -64,6 +65,8 @@ fun HomeScreen(
     onGroupManagementClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
     onMapClick: () -> Unit = {},
+    unreadNotificationCount: Int = 0,
+    onNotificationsClick: (() -> Unit)? = null,
 ) {
 
   val uiState by viewModel.uiState.collectAsState()
@@ -93,6 +96,14 @@ fun HomeScreen(
             title = "JDRNexus",
             titleModifier = Modifier.testTag(TestTags.TITLE),
             trailingContent = {
+              // Shown only when the caller can open the notifications, so the bell is never dead.
+              if (onNotificationsClick != null) {
+                NotificationBell(
+                    unreadCount = unreadNotificationCount,
+                    onClick = { if (canNavigate()) onNotificationsClick() },
+                    enabled = canNavigate(),
+                )
+              }
               TextButton(
                   onClick = {
                     if (!logoutRequested.value) {

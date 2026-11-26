@@ -45,6 +45,7 @@ object C {
     const val shared_top_bar = "shared_top_bar"
     const val shared_back_button = "shared_back_button"
     const val shared_bottom_bar = "shared_bottom_bar"
+    const val offline_banner = "offline_banner"
     const val search_open = "document_search_open"
     const val search_query = "document_search_query"
     const val search_clear = "document_search_clear"
@@ -170,6 +171,8 @@ object C {
     const val workspace_remove_item_cancel = "remove_item_cancel"
     const val workspace_operation_progress = "workspace_operation_progress"
     const val workspace_loading = "workspace_loading"
+    const val workspace_header = "workspace_header"
+    const val workspace_empty = "workspace_empty"
 
     fun workspaceItem(fileId: String) = "workspace_item_$fileId"
 
@@ -232,5 +235,29 @@ object C {
 
     /** Tag of the search result item with [fileId]. */
     fun searchResult(fileId: String) = "document_search_result_$fileId"
+
+    const val notification_bell = "notification_bell"
+    const val notification_unread_badge = "notification_unread_badge"
+    const val notification_mark_all = "notification_mark_all"
+    const val notification_mark_all_dialog = "notification_mark_all_dialog"
+    const val notification_mark_all_confirm = "notification_mark_all_confirm"
+    const val notification_mark_all_cancel = "notification_mark_all_cancel"
+    const val notification_list = "notification_list"
+    const val notification_loading = "notification_loading"
+    const val notification_empty = "notification_empty"
+    const val notification_signed_out = "notification_signed_out"
+    const val notification_error = "notification_error"
+    const val notification_retry = "notification_retry"
+    const val notification_snackbar = "notification_snackbar"
+    const val notification_snackbar_dismiss = "notification_snackbar_dismiss"
+
+    /** Tag of the notification row with [notificationId]. */
+    fun notificationItem(notificationId: String) = "notification_item_$notificationId"
+
+    /** Tag of the "Mark as read" action of the unread notification row with [notificationId]. */
+    fun notificationMarkAsRead(notificationId: String) = "notification_mark_as_read_$notificationId"
+
+    /** Tag of the unread dot shown on the notification row with [notificationId]. */
+    fun notificationUnreadDot(notificationId: String) = "notification_unread_dot_$notificationId"
   }
 }

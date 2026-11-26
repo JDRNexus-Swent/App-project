@@ -1,7 +1,9 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.resources
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -48,6 +50,22 @@ class ScreenBarsTest {
     composeTestRule.runOnIdle { darkTheme = true }
     composeTestRule.onNodeWithTag(C.Tag.shared_top_bar).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.shared_bottom_bar).assertIsDisplayed()
+  }
+
+  @Test
+  fun topBarShowsTheOfflineBannerOnlyWhileOffline() {
+    var isOnline by mutableStateOf(true)
+    composeTestRule.setContent {
+      SampleAppTheme {
+        CompositionLocalProvider(LocalIsOnline provides isOnline) { AppTopBar(title = "Screen") }
+      }
+    }
+    composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertDoesNotExist()
+
+    composeTestRule.runOnIdle { isOnline = false }
+
+    composeTestRule.onNodeWithTag(C.Tag.shared_top_bar).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertIsDisplayed()
   }
 
   @Test
