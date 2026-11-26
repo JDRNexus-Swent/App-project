@@ -33,10 +33,24 @@ object StorageEmulatorTestUtils {
   /** Largest picture the Storage rules accept: 10 MiB. */
   const val MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
+  /**
+   * Address of the computer's localhost, where the Firebase emulators run, from the Android
+   * emulator.
+   */
+  const val HOST = "10.0.2.2"
+
+  /** Port of the Auth emulator, as set in firebase.json. */
+  const val AUTH_PORT = 9099
+
+  /** Port of the Storage emulator, as set in firebase.json. */
+  const val STORAGE_PORT = 9199
+
+  /** Port of the Firestore emulator, as set in firebase.json. */
+  const val FIRESTORE_PORT = 8080
+
   // The Storage rules read the Firestore data of the --project id, not of google-services.json.
   private const val RULES_PROJECT_ID = "demo-jdrnexus"
-  // The Android emulator reaches the computer's localhost at 10.0.2.2.
-  private const val HOST = "10.0.2.2"
+  private const val DOCUMENTS = "projects/$RULES_PROJECT_ID/databases/(default)/documents"
   private const val ISSUER = "test@emulator.iam.gserviceaccount.com"
   private const val AUDIENCE =
       "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit"
@@ -48,7 +62,7 @@ object StorageEmulatorTestUtils {
   fun storageAs(uid: String): FirebaseStorage =
       storages.getOrPut(uid) {
         val app = emulatorApp("storage-$uid")
-        val auth = FirebaseAuth.getInstance(app).apply { useEmulator(HOST, 9099) }
+        val auth = FirebaseAuth.getInstance(app).apply { useEmulator(HOST, AUTH_PORT) }
         runBlocking { auth.signInWithCustomToken(unsignedToken(uid)).awaitWithTimeout() }
         emulatorStorage(app)
       }
@@ -66,7 +80,7 @@ object StorageEmulatorTestUtils {
   }
 
   private fun emulatorStorage(app: FirebaseApp) =
-      FirebaseStorage.getInstance(app).apply { useEmulator(HOST, 9199) }
+      FirebaseStorage.getInstance(app).apply { useEmulator(HOST, STORAGE_PORT) }
 
   // The Auth emulator accepts unsigned custom tokens, so a test can choose the uid.
   private fun unsignedToken(uid: String): String {
@@ -107,16 +121,29 @@ object StorageEmulatorTestUtils {
    * project the Storage rules read. For test setup only.
    */
   suspend fun writeBypassingRules(path: String, fields: Map<String, Any>) {
-    val project = "projects/$RULES_PROJECT_ID/databases/(default)/documents"
     val values = JSONObject()
     fields.forEach { (key, value) -> values.put(key, restValue(value)) }
-    val write =
-        JSONObject().put("update", JSONObject().put("name", "$project/$path").put("fields", values))
-    ownerPost(
-        "http://$HOST:8080/v1/$project:commit",
-        JSONObject().put("writes", JSONArray(listOf(write))),
+    commitBypassingRules(
+        JSONObject()
+            .put("update", JSONObject().put("name", documentName(path)).put("fields", values))
     )
   }
+
+  /**
+   * Deletes the document [path], bypassing the rules, in the project the Storage rules read. For
+   * test clean-up only; deleting a missing document succeeds.
+   */
+  suspend fun deleteBypassingRules(path: String) =
+      commitBypassingRules(JSONObject().put("delete", documentName(path)))
+
+  private fun documentName(path: String) = "$DOCUMENTS/$path"
+
+  // One write of the Firestore REST API, sent to the emulator's commit endpoint.
+  private suspend fun commitBypassingRules(write: JSONObject) =
+      ownerPost(
+          "http://$HOST:$FIRESTORE_PORT/v1/$DOCUMENTS:commit",
+          JSONObject().put("writes", JSONArray(listOf(write))),
+      )
 
   /** Makes [userId] a member of [groupIds] for the Storage rules (`users/{uid}.groupIds`). */
   suspend fun writeUserGroupIdsBypassingRules(userId: String, vararg groupIds: String) =

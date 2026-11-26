@@ -4,6 +4,7 @@ package com.github.se.jdrnexus.storageRules
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.MAX_IMAGE_BYTES
 import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.awaitWithTimeout
+import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.deleteBypassingRules
 import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.signedOutStorage
 import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.storageAs
 import com.github.se.jdrnexus.utils.StorageEmulatorTestUtils.storageErrorCode
@@ -15,6 +16,7 @@ import com.google.firebase.storage.StorageMetadata
 import com.google.firebase.storage.StorageReference
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -36,10 +38,21 @@ class ImageStorageRulesTest {
   private val fileId = "$run-image"
   private val bytes = ByteArray(100) { it.toByte() }
 
+  // Every picture stored by this test, deleted by its uploader in tearDown.
+  private val uploaded = mutableListOf<StorageReference>()
+
   @Before
   fun setUp() = runBlocking {
     writeUserGroupIdsBypassingRules(member, groupId)
     writeUserGroupIdsBypassingRules(outsider, "$run-other-group")
+  }
+
+  // Removes what the test wrote. A failed picture delete (one the test already deleted) is ignored.
+  @After
+  fun tearDown() = runBlocking {
+    uploaded.forEach { runCatching { it.delete().awaitWithTimeout() } }
+    deleteBypassingRules("documents/$fileId")
+    listOf(member, outsider).forEach { deleteBypassingRules("users/$it") }
   }
 
   private fun picture(storage: FirebaseStorage, id: String = fileId, ownerId: String = owner) =
@@ -48,7 +61,10 @@ class ImageStorageRulesTest {
   private suspend fun StorageReference.upload(
       data: ByteArray = bytes,
       type: String = "image/jpeg",
-  ) = putBytes(data, StorageMetadata.Builder().setContentType(type).build()).awaitWithTimeout()
+  ) {
+    putBytes(data, StorageMetadata.Builder().setContentType(type).build()).awaitWithTimeout()
+    uploaded += this
+  }
 
   private suspend fun StorageReference.read(): ByteArray =
       getBytes(MAX_IMAGE_BYTES + 1L).awaitWithTimeout()
@@ -57,10 +73,11 @@ class ImageStorageRulesTest {
   private suspend fun writeRecord(
       ownerId: String = owner,
       sharedIn: List<String> = listOf(groupId),
+      type: String = "IMAGE",
   ) =
       writeBypassingRules(
           "documents/$fileId",
-          mapOf("ownerId" to ownerId, "sharedGroupsIds" to sharedIn),
+          mapOf("ownerId" to ownerId, "sharedGroupsIds" to sharedIn, "type" to type),
       )
 
   private suspend fun assertDenied(case: String, request: suspend () -> Any?) =
@@ -119,6 +136,9 @@ class ImageStorageRulesTest {
 
     writeRecord(sharedIn = emptyList())
     assertDenied("record not shared") { picture(storageAs(member)).read() }
+
+    writeRecord(type = "TEXT")
+    assertDenied("record of another type") { picture(storageAs(member)).read() }
 
     // A record with the picture's id but another owner must not open the picture.
     writeRecord(ownerId = member)
