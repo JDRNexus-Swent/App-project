@@ -15,9 +15,10 @@ import com.github.se.jdrnexus.model.soundboard.AudioFile
 import com.github.se.jdrnexus.model.soundboard.ImportedAudio
 import com.github.se.jdrnexus.model.soundboard.SoundEffect
 import com.github.se.jdrnexus.model.soundboard.Soundboard
+import com.github.se.jdrnexus.model.soundboard.SoundboardException
+import com.github.se.jdrnexus.model.soundboard.SoundboardPlayer
+import com.github.se.jdrnexus.model.soundboard.SoundboardPlayer.Event
 import com.github.se.jdrnexus.model.soundboard.SoundboardRepository
-import com.github.se.jdrnexus.ui.soundboard.SoundboardPlayer
-import com.github.se.jdrnexus.ui.soundboard.SoundboardPlayer.Event
 import com.github.se.jdrnexus.ui.soundboard.SoundboardViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -64,6 +65,17 @@ internal abstract class SoundboardViewModelTestFixture {
     runCurrent()
   }
 
+  protected fun TestScope.publishBoard(snapshot: Soundboard?) {
+    repository.board(BOARD_ID).value = snapshot
+    runCurrent()
+  }
+
+  protected fun TestScope.prepareEffect(audioId: String): FakePlayback {
+    vm.toggleSoundEffect(audioId)
+    runCurrent()
+    return player.latest(audioId)
+  }
+
   protected fun TestScope.playFire(): FakePlayback {
     vm.playAmbience(TAVERN, FIRE)
     return startLatest(FIRE)
@@ -84,9 +96,14 @@ internal abstract class SoundboardViewModelTestFixture {
 
   protected class FakePlayer : SoundboardPlayer {
     val created = mutableListOf<FakePlayback>()
+    var failNextCreate = false
     var failNextStart = false
 
     override fun create(audio: AudioFile, onEvent: (Event) -> Unit): SoundboardPlayer.Playback {
+      if (failNextCreate) {
+        failNextCreate = false
+        error("Unable to open player")
+      }
       val playback = FakePlayback(audio, onEvent, failNextStart)
       failNextStart = false
       created.add(playback)
@@ -149,9 +166,11 @@ internal abstract class SoundboardViewModelTestFixture {
 
   protected class FakeRepository : SoundboardRepository {
     private val boards = mutableMapOf<Pair<String, String>, MutableStateFlow<Soundboard?>>()
+    val savedBoards = MutableStateFlow<List<Soundboard>>(emptyList())
     val observations = mutableListOf<Pair<String, String>>()
     val saves = mutableListOf<Pair<String, Soundboard>>()
     var observationFailure: Exception? = null
+    var saveFailure: SoundboardException? = null
 
     fun board(id: String, userId: String = USER_ID): MutableStateFlow<Soundboard?> =
         boards.getOrPut(userId to id) { MutableStateFlow(null) }
@@ -166,13 +185,16 @@ internal abstract class SoundboardViewModelTestFixture {
 
     override suspend fun saveSoundboard(userId: String, soundboard: Soundboard): Result<Unit> {
       saves.add(userId to soundboard)
+      saveFailure?.let {
+        return Result.failure(it)
+      }
+      board(soundboard.id, userId).value = soundboard
       return Result.success(Unit)
     }
 
     override fun getNewSoundboardId(): String = error("Playback cannot create boards")
 
-    override fun observeSoundboards(userId: String): Flow<List<Soundboard>> =
-        error("Playback observes one board")
+    override fun observeSoundboards(userId: String): Flow<List<Soundboard>> = savedBoards
 
     override suspend fun importAudio(userId: String, source: Uri): Result<ImportedAudio> =
         error("Playback cannot import sounds")

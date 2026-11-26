@@ -4,7 +4,7 @@ package com.github.se.jdrnexus.ui.soundboard
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.model.soundboard.SoundboardError
 import com.github.se.jdrnexus.model.soundboard.SoundboardException
-import com.github.se.jdrnexus.ui.soundboard.SoundboardPlayer.Event
+import com.github.se.jdrnexus.model.soundboard.SoundboardPlayer.Event
 import com.github.se.jdrnexus.utils.BOARD_ID
 import com.github.se.jdrnexus.utils.DUNGEON
 import com.github.se.jdrnexus.utils.FIRE
@@ -24,6 +24,26 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class SoundboardViewModelSessionTest : SoundboardViewModelTestFixture() {
+  @Test
+  fun missingRouteIdFollowsTheFirstSavedBoard() = runTest {
+    val second = board.copy(id = "second", ambienceVolume = 0.2f)
+    vm.loadSoundboard(null)
+    runCurrent()
+    assertEquals(SoundboardLoadState.Empty, state.loadState)
+    assertNull(state.soundboard)
+    repository.savedBoards.value = listOf(board, second)
+    runCurrent()
+    assertEquals(board, state.soundboard)
+    val fire = playFire()
+
+    repository.savedBoards.value = listOf(second)
+    runCurrent()
+
+    assertEquals(second, state.soundboard)
+    assertNull(state.ambience)
+    assertEquals(1, fire.closeCount)
+  }
+
   @Test
   fun loadShowsLoadingThenReadyForTheRequestedAccountAndBoard() = runTest {
     repository.board(BOARD_ID).value = board
@@ -59,8 +79,7 @@ internal class SoundboardViewModelSessionTest : SoundboardViewModelTestFixture()
     assertEquals(SoundboardLoadState.Failed(SoundboardError.SOUNDBOARD_NOT_FOUND), state.loadState)
     assertNull(state.soundboard)
 
-    repository.board(BOARD_ID).value = board
-    runCurrent()
+    publishBoard(board)
 
     assertEquals(SoundboardLoadState.Ready, state.loadState)
     assertEquals(board, state.soundboard)
@@ -109,8 +128,7 @@ internal class SoundboardViewModelSessionTest : SoundboardViewModelTestFixture()
     auth.authState.value = null
     runCurrent()
     sword.emit(Event.Started)
-    repository.board(BOARD_ID).value = board.copy(name = "Old account update")
-    runCurrent()
+    publishBoard(board.copy(name = "Old account update"))
 
     assertEquals(
         SoundboardUiState(loadState = SoundboardLoadState.Failed(SoundboardError.NOT_SIGNED_IN)),
@@ -131,8 +149,7 @@ internal class SoundboardViewModelSessionTest : SoundboardViewModelTestFixture()
 
     auth.authState.value = AuthUser(OTHER_USER_ID, null, null)
     runCurrent()
-    repository.board(BOARD_ID).value = board.copy(name = "Old account update")
-    runCurrent()
+    publishBoard(board.copy(name = "Old account update"))
 
     assertEquals(listOf(USER_ID to BOARD_ID, OTHER_USER_ID to BOARD_ID), repository.observations)
     assertEquals(otherBoard, state.soundboard)
@@ -181,13 +198,10 @@ internal class SoundboardViewModelSessionTest : SoundboardViewModelTestFixture()
     load()
     val fire = playFire()
     val thunder = playEffect(THUNDER)
-    vm.toggleSoundEffect(SWORD)
-    runCurrent()
-    val sword = player.latest(SWORD)
+    val sword = prepareEffect(SWORD)
     val edited = board.copy(playlists = listOf(dungeon), effects = listOf(effect(THUNDER)))
 
-    repository.board(BOARD_ID).value = edited
-    runCurrent()
+    publishBoard(edited)
     sword.emit(Event.Started)
     runCurrent()
 
@@ -206,8 +220,7 @@ internal class SoundboardViewModelSessionTest : SoundboardViewModelTestFixture()
     load()
     val fire = playFire()
 
-    repository.board(BOARD_ID).value = null
-    runCurrent()
+    publishBoard(null)
 
     assertEquals(SoundboardLoadState.Failed(SoundboardError.SOUNDBOARD_NOT_FOUND), state.loadState)
     assertNull(state.soundboard)
@@ -219,14 +232,14 @@ internal class SoundboardViewModelSessionTest : SoundboardViewModelTestFixture()
   fun switchingBoardsStopsOldPlaybackAndObservesOnlyTheNewBoard() = runTest {
     load()
     val fire = playFire()
-    val nextBoard = board.copy(id = "other", name = "Other Game", ambienceVolume = 0f)
+    val nextBoard = board.copy(id = "other", name = "Other Game")
 
     vm.setAmbienceLooping(false)
     vm.setAmbienceVolume(0.4f)
     vm.setSoundEffectVolume(0.3f)
+    vm.toggleAmbienceMute()
     load(nextBoard)
-    repository.board(BOARD_ID).value = board.copy(name = "Old update")
-    runCurrent()
+    publishBoard(board.copy(name = "Old update"))
 
     assertEquals(nextBoard, state.soundboard)
     assertEquals(SoundboardLoadState.Ready, state.loadState)
@@ -234,11 +247,7 @@ internal class SoundboardViewModelSessionTest : SoundboardViewModelTestFixture()
     assertNull(state.ambience)
     assertEquals(1, fire.closeCount)
 
-    val nextFire = playFire()
-    vm.toggleAmbienceMute()
-
-    assertEquals(1f, state.soundboard?.ambienceVolume)
-    assertEquals(1f, nextFire.volume)
+    assertEquals(false, state.isAmbienceMuted)
   }
 
   @Test
@@ -267,8 +276,7 @@ internal class SoundboardViewModelSessionTest : SoundboardViewModelTestFixture()
             effectsVolume = 0.8f,
         )
 
-    repository.board(BOARD_ID).value = edited
-    runCurrent()
+    publishBoard(edited)
     val thunder = playEffect(THUNDER)
 
     assertEquals(edited.copy(ambienceVolume = 0.4f, effectsVolume = 0.3f), state.soundboard)

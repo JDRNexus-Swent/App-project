@@ -5,12 +5,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.soundboard.AudioFile
-import com.github.se.jdrnexus.model.soundboard.DEFAULT_VOLUME
 import com.github.se.jdrnexus.model.soundboard.MAX_VOLUME
 import com.github.se.jdrnexus.model.soundboard.MIN_VOLUME
 import com.github.se.jdrnexus.model.soundboard.Soundboard
 import com.github.se.jdrnexus.model.soundboard.SoundboardError
 import com.github.se.jdrnexus.model.soundboard.SoundboardException
+import com.github.se.jdrnexus.model.soundboard.SoundboardPlayer
 import com.github.se.jdrnexus.model.soundboard.SoundboardRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -23,13 +23,14 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Playback state for one signed-in user's game session. Retain this ViewModel across configuration
  * changes and while the soundboard editor is open. Sign-out and account switches stop playback and
  * clear the previous account's board. Screen actions run on the main thread. Volume changes apply
- * to this board session only. When a board is opened at zero gain, unmuting uses [DEFAULT_VOLUME]
- * until an audible gain is known.
+ * immediately, and only [saveVolumes] persists them.
  */
 class SoundboardViewModel(
     private val repository: SoundboardRepository,
@@ -43,9 +44,10 @@ class SoundboardViewModel(
   private var observation: Job? = null
   private var ambienceHandle: ActiveSound? = null
   private val effects = mutableMapOf<String, ActiveSound>()
-  private val lastAudible = mutableMapOf<VolumeChannel, Float>()
+  private var boardSession: BoardSession? = null
+  private val volumeSaveLock = Mutex()
 
-  override fun loadSoundboard(soundboardId: String) {
+  override fun loadSoundboard(soundboardId: String?) {
     if (
         requestedBoardId == soundboardId &&
             observation?.isActive == true &&
@@ -69,17 +71,29 @@ class SoundboardViewModel(
     }
   }
 
-  private suspend fun observeBoard(userId: String, boardId: String) {
+  private suspend fun observeBoard(userId: String, boardId: String?) {
     resetBoard()
     when {
       userId.isBlank() -> failLoad(SoundboardError.NOT_SIGNED_IN)
-      boardId.isBlank() -> failLoad(SoundboardError.SOUNDBOARD_NOT_FOUND)
+      boardId?.isBlank() == true -> failLoad(SoundboardError.SOUNDBOARD_NOT_FOUND)
       else ->
           try {
-            repository.observeSoundboard(userId, boardId).collect { saved ->
+            val boards =
+                if (boardId == null) repository.observeSoundboards(userId).map { it.firstOrNull() }
+                else repository.observeSoundboard(userId, boardId)
+            boards.collect { saved ->
               currentCoroutineContext().ensureActive()
-              if (saved == null) failLoad(SoundboardError.SOUNDBOARD_NOT_FOUND)
-              else showBoard(saved)
+              when {
+                saved != null -> {
+                  if (saved.id != state.value.soundboard?.id) {
+                    resetBoard()
+                    boardSession = BoardSession(userId)
+                  }
+                  showBoard(saved)
+                }
+                boardId == null -> resetBoard(SoundboardLoadState.Empty)
+                else -> failLoad(SoundboardError.SOUNDBOARD_NOT_FOUND)
+              }
             }
           } catch (failure: Exception) {
             currentCoroutineContext().ensureActive()
@@ -90,7 +104,7 @@ class SoundboardViewModel(
 
   private fun resetBoard(loadState: SoundboardLoadState = SoundboardLoadState.Loading) {
     stopAll()
-    lastAudible.clear()
+    boardSession = null
     state.value = SoundboardUiState(loadState = loadState)
   }
 
@@ -136,6 +150,20 @@ class SoundboardViewModel(
     }
   }
 
+  override fun setTrackMenuExpanded(isExpanded: Boolean) {
+    state.update { it.copy(isTrackMenuExpanded = isExpanded) }
+  }
+
+  override fun playPlaylist(playlistId: String) {
+    val firstTrack =
+        state.value.soundboard
+            ?.playlists
+            ?.firstOrNull { it.id == playlistId }
+            ?.tracks
+            ?.firstOrNull() ?: return
+    playAmbience(playlistId, firstTrack.audio.id)
+  }
+
   override fun playAmbience(playlistId: String, audioId: String) {
     val board = state.value.soundboard ?: return
     val audio =
@@ -156,7 +184,7 @@ class SoundboardViewModel(
       return
     }
     stopAmbience()
-    start(audio, playlistId, board.ambienceVolume)
+    start(audio, playlistId, VolumeChannel.AMBIENCE.gain(state.value, board))
   }
 
   override fun pauseAmbience() {
@@ -186,7 +214,7 @@ class SoundboardViewModel(
     }
     val board = state.value.soundboard ?: return
     val audio = board.effects.firstOrNull { it.audio.id == audioId }?.audio ?: return
-    start(audio, null, board.effectsVolume)
+    start(audio, null, VolumeChannel.EFFECTS.gain(state.value, board))
   }
 
   /** Registers the new handle before invoking player controls that can deliver callbacks. */
@@ -224,17 +252,18 @@ class SoundboardViewModel(
     when (event) {
       SoundboardPlayer.Event.Started -> {
         state.update {
+          val error = it.error.takeUnless { error -> error is SoundboardPlaybackError.Playback }
           when {
             sound.playlistId == null ->
                 it.copy(
                     pendingEffectIds = it.pendingEffectIds - sound.audioId,
                     playingEffectIds = it.playingEffectIds + sound.audioId,
-                    error = null,
+                    error = error,
                 )
             playingAmbience != null ->
                 it.copy(
                     ambience = playingAmbience.copy(status = AmbiencePlaybackStatus.PLAYING),
-                    error = null,
+                    error = error,
                 )
             else -> it
           }
@@ -325,30 +354,62 @@ class SoundboardViewModel(
 
   private fun toggleMute(channel: VolumeChannel) {
     val board = state.value.soundboard ?: return
-    val audible = lastAudible[channel] ?: DEFAULT_VOLUME
-    setVolume(channel, if (channel.read(board) == MIN_VOLUME) audible else MIN_VOLUME)
+    state.update { channel.setMuted(it, !channel.isMuted(it)) }
+    applyVolume(channel, channel.gain(state.value, board))
   }
 
   private fun setVolume(channel: VolumeChannel, volume: Float) {
     val board = state.value.soundboard ?: return
-    if (volume !in MIN_VOLUME..MAX_VOLUME) {
-      state.update { it.copy(volumeError = channel.volumeError) }
-      return
-    }
-    val previous = channel.read(board)
-    if (previous > MIN_VOLUME) lastAudible[channel] = previous
-    state.update {
-      it.copy(
-          soundboard = channel.write(board, volume),
-          volumeError = it.volumeError.takeUnless { error -> error == channel.volumeError },
-      )
-    }
+    if (volume.isNaN()) return
+    val adjusted = channel.write(board, volume.coerceIn(MIN_VOLUME, MAX_VOLUME))
+    state.update { it.copy(soundboard = adjusted) }
+    applyVolume(channel, channel.gain(state.value, adjusted))
+  }
+
+  private fun applyVolume(channel: VolumeChannel, volume: Float) {
     val sounds =
         when (channel) {
           VolumeChannel.AMBIENCE -> listOfNotNull(ambienceHandle)
           VolumeChannel.EFFECTS -> effects.values.toList()
         }
     sounds.forEach { sound -> control(sound) { setVolume(volume) } }
+  }
+
+  override fun saveVolumes() {
+    val session = boardSession ?: return
+    val released = state.value.soundboard ?: return
+    viewModelScope.launch {
+      volumeSaveLock.withLock {
+        if (boardSession !== session) return@withLock
+        val board = state.value.soundboard ?: return@withLock
+        try {
+          // stale race with editing, but editing is not here yet
+          // and repo should implement save Volume in the meantime, avoiding it
+          repository
+              .saveSoundboard(
+                  session.userId,
+                  board.copy(
+                      ambienceVolume = released.ambienceVolume,
+                      effectsVolume = released.effectsVolume,
+                  ),
+              )
+              .getOrThrow()
+          if (boardSession === session) {
+            state.update {
+              it.copy(
+                  error =
+                      it.error.takeUnless { error -> error is SoundboardPlaybackError.SaveVolume }
+              )
+            }
+          }
+        } catch (failure: Exception) {
+          val reason = failure.reason()
+          if (boardSession === session) {
+            state.update { it.copy(error = SoundboardPlaybackError.SaveVolume(reason)) }
+          }
+        }
+      }
+    }
   }
 
   private fun Exception.reason(): SoundboardError =
@@ -363,14 +424,29 @@ class SoundboardViewModel(
     lateinit var playback: SoundboardPlayer.Playback
   }
 
-  private enum class VolumeChannel(val volumeError: SoundboardVolumeError) {
-    AMBIENCE(SoundboardVolumeError.AMBIENCE_OUT_OF_RANGE),
-    EFFECTS(SoundboardVolumeError.EFFECTS_OUT_OF_RANGE);
+  private class BoardSession(val userId: String)
 
-    fun read(board: Soundboard): Float =
+  private enum class VolumeChannel {
+    AMBIENCE,
+    EFFECTS;
+
+    fun isMuted(state: SoundboardUiState): Boolean =
         when (this) {
-          AMBIENCE -> board.ambienceVolume
-          EFFECTS -> board.effectsVolume
+          AMBIENCE -> state.isAmbienceMuted
+          EFFECTS -> state.isSoundEffectsMuted
+        }
+
+    fun setMuted(state: SoundboardUiState, muted: Boolean): SoundboardUiState =
+        when (this) {
+          AMBIENCE -> state.copy(isAmbienceMuted = muted)
+          EFFECTS -> state.copy(isSoundEffectsMuted = muted)
+        }
+
+    fun gain(state: SoundboardUiState, board: Soundboard): Float =
+        when {
+          isMuted(state) -> MIN_VOLUME
+          this == AMBIENCE -> board.ambienceVolume
+          else -> board.effectsVolume
         }
 
     fun write(board: Soundboard, gain: Float): Soundboard =

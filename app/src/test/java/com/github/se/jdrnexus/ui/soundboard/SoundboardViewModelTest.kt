@@ -2,7 +2,9 @@
 package com.github.se.jdrnexus.ui.soundboard
 
 import com.github.se.jdrnexus.model.soundboard.Soundboard
-import com.github.se.jdrnexus.ui.soundboard.SoundboardPlayer.Event
+import com.github.se.jdrnexus.model.soundboard.SoundboardError
+import com.github.se.jdrnexus.model.soundboard.SoundboardException
+import com.github.se.jdrnexus.model.soundboard.SoundboardPlayer.Event
 import com.github.se.jdrnexus.utils.BOARD_ID
 import com.github.se.jdrnexus.utils.CROWD
 import com.github.se.jdrnexus.utils.DUNGEON
@@ -11,6 +13,7 @@ import com.github.se.jdrnexus.utils.SWORD
 import com.github.se.jdrnexus.utils.SoundboardViewModelTestFixture
 import com.github.se.jdrnexus.utils.TAVERN
 import com.github.se.jdrnexus.utils.THUNDER
+import com.github.se.jdrnexus.utils.USER_ID
 import com.github.se.jdrnexus.utils.WIND
 import com.github.se.jdrnexus.utils.audio
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -82,9 +85,12 @@ internal class SoundboardViewModelTest : SoundboardViewModelTestFixture() {
   }
 
   @Test
-  fun ambienceAdvancesInPlaylistOrderAndWraps() = runTest {
+  fun playingAPlaylistStartsAtTheFirstTrackAndWraps() = runTest {
     load()
-    val fire = playFire()
+
+    vm.playPlaylist(TAVERN)
+    val fire = player.latest(FIRE)
+    fire.emit(Event.Started)
     vm.selectPlaylist(DUNGEON)
 
     fire.emit(Event.Completed)
@@ -202,9 +208,7 @@ internal class SoundboardViewModelTest : SoundboardViewModelTestFixture() {
   @Test
   fun effectFailureStaysVisibleUntilAnotherSoundStarts() = runTest {
     load()
-    vm.toggleSoundEffect(SWORD)
-    runCurrent()
-    val failed = player.latest(SWORD)
+    val failed = prepareEffect(SWORD)
 
     failed.emit(Event.Failed)
     runCurrent()
@@ -213,9 +217,7 @@ internal class SoundboardViewModelTest : SoundboardViewModelTestFixture() {
     assertEquals(emptySet<String>(), state.pendingEffectIds)
     assertEquals(1, failed.closeCount)
 
-    vm.toggleSoundEffect(THUNDER)
-    runCurrent()
-    val thunder = player.latest(THUNDER)
+    val thunder = prepareEffect(THUNDER)
     assertEquals(SoundboardPlaybackError.Playback(SWORD), state.error)
     thunder.emit(Event.Started)
     runCurrent()
@@ -243,9 +245,7 @@ internal class SoundboardViewModelTest : SoundboardViewModelTestFixture() {
     load()
     val fire = playFire()
     val sword = playEffect(SWORD)
-    vm.toggleSoundEffect(THUNDER)
-    runCurrent()
-    val thunder = player.latest(THUNDER)
+    val thunder = prepareEffect(THUNDER)
 
     vm.stopAll()
     vm.stopAll()
@@ -259,7 +259,7 @@ internal class SoundboardViewModelTest : SoundboardViewModelTestFixture() {
   }
 
   @Test
-  fun volumesApplyImmediatelyToTheirOwnChannelAndStayLocal() = runTest {
+  fun slidersApplyLiveAndSaveOnlyOnRelease() = runTest {
     load()
     val fire = playFire()
     val sword = playEffect(SWORD)
@@ -277,79 +277,106 @@ internal class SoundboardViewModelTest : SoundboardViewModelTestFixture() {
     runCurrent()
     assertEquals(emptyList<Pair<String, Soundboard>>(), repository.saves)
     assertEquals(board, repository.board(BOARD_ID).value)
+
+    val edited = board.copy(name = "Edited board")
+    publishBoard(edited)
+
+    vm.saveVolumes()
+    runCurrent()
+
+    val saved = edited.copy(ambienceVolume = 0.4f, effectsVolume = 0.3f)
+    assertEquals(listOf(USER_ID to BOARD_ID), repository.observations)
+    assertEquals(listOf(USER_ID to saved), repository.saves)
+    assertEquals(saved, repository.board(BOARD_ID).value)
   }
 
   @Test
-  fun muteTogglesRestoreEachChannelsLastAudibleGain() = runTest {
+  fun muteTogglesSilencePlaybackWithoutMovingTheSliders() = runTest {
     load()
     val fire = playFire()
     val sword = playEffect(SWORD)
-    vm.setAmbienceVolume(0.5f)
-    vm.setSoundEffectVolume(0.25f)
 
     vm.toggleAmbienceMute()
     vm.toggleSoundEffectMute()
 
     assertEquals(0f, fire.volume)
     assertEquals(0f, sword.volume)
-    assertEquals(board.copy(ambienceVolume = 0f, effectsVolume = 0f), state.soundboard)
+    assertEquals(true, state.isAmbienceMuted)
+    assertEquals(true, state.isSoundEffectsMuted)
+    assertEquals(board, state.soundboard)
+
+    val thunder = playEffect(THUNDER)
+    assertEquals(0f, thunder.volume)
 
     vm.toggleAmbienceMute()
     vm.toggleSoundEffectMute()
 
-    assertEquals(0.5f, fire.volume)
-    assertEquals(0.25f, sword.volume)
-    assertEquals(board.copy(ambienceVolume = 0.5f, effectsVolume = 0.25f), state.soundboard)
+    assertEquals(false, state.isAmbienceMuted)
+    assertEquals(false, state.isSoundEffectsMuted)
+    assertEquals(0.7f, fire.volume)
+    assertEquals(0.6f, sword.volume)
+    assertEquals(0.6f, thunder.volume)
+    runCurrent()
+    assertEquals(emptyList<Pair<String, Soundboard>>(), repository.saves)
   }
 
   @Test
-  fun invalidVolumeReportsTypedErrorWithoutChangingGain() = runTest {
+  fun sliderClampsOutOfRangeValuesAndIgnoresNaN() = runTest {
     load()
     val fire = playFire()
     val sword = playEffect(SWORD)
 
     vm.setAmbienceVolume(Float.NaN)
-    assertEquals(SoundboardVolumeError.AMBIENCE_OUT_OF_RANGE, state.volumeError)
     vm.setSoundEffectVolume(1.5f)
 
-    assertEquals(SoundboardVolumeError.EFFECTS_OUT_OF_RANGE, state.volumeError)
-    assertEquals(board, state.soundboard)
+    assertEquals(board.copy(effectsVolume = 1f), state.soundboard)
     assertEquals(0.7f, fire.volume)
-    assertEquals(0.6f, sword.volume)
+    assertEquals(1f, sword.volume)
   }
 
   @Test
-  fun invalidVolumeErrorClearsWhenItsOwnSliderIsCorrected() = runTest {
+  fun failedVolumeSaveKeepsLiveGainUntilAReleaseSucceeds() = runTest {
     load()
-
-    vm.setSoundEffectVolume(1.5f)
-    playFire()
+    val fire = playFire()
     vm.setAmbienceVolume(0.4f)
+    repository.saveFailure = SoundboardException(SoundboardError.STORAGE_FULL)
 
-    assertEquals(SoundboardVolumeError.EFFECTS_OUT_OF_RANGE, state.volumeError)
+    vm.saveVolumes()
+    runCurrent()
+    playEffect(SWORD)
 
-    vm.setSoundEffectVolume(0.5f)
+    assertEquals(SoundboardPlaybackError.SaveVolume(SoundboardError.STORAGE_FULL), state.error)
+    assertEquals(board, repository.board(BOARD_ID).value)
+    assertEquals(0.4f, fire.volume)
+    assertEquals(0.4f, state.soundboard?.ambienceVolume)
 
-    assertNull(state.volumeError)
-  }
-
-  @Test
-  fun correctingVolumeKeepsAnExistingPlaybackError() = runTest {
-    load()
-    val sword = playEffect(SWORD)
-    val playbackError = SoundboardPlaybackError.Playback(SWORD)
-    sword.emit(Event.Failed)
+    repository.saveFailure = null
+    vm.saveVolumes()
     runCurrent()
 
-    vm.setAmbienceVolume(1.5f)
+    assertNull(state.error)
+    assertEquals(board.copy(ambienceVolume = 0.4f), repository.board(BOARD_ID).value)
+  }
 
-    assertEquals(playbackError, state.error)
-    assertEquals(SoundboardVolumeError.AMBIENCE_OUT_OF_RANGE, state.volumeError)
+  @Test
+  fun playerCreationFailureReportsTheSoundWithoutTrackingIt() = runTest {
+    load()
+    player.failNextCreate = true
 
-    vm.setAmbienceVolume(0.5f)
+    vm.toggleSoundEffect(SWORD)
 
-    assertEquals(playbackError, state.error)
-    assertNull(state.volumeError)
+    assertEquals(SoundboardPlaybackError.Playback(SWORD), state.error)
+    assertEquals(emptySet<String>(), state.pendingEffectIds)
+    assertEquals(emptySet<String>(), state.playingEffectIds)
+  }
+
+  @Test
+  fun trackMenuReflectsWhetherItIsExpanded() = runTest {
+    vm.setTrackMenuExpanded(true)
+    assertEquals(true, state.isTrackMenuExpanded)
+
+    vm.setTrackMenuExpanded(false)
+    assertEquals(false, state.isTrackMenuExpanded)
   }
 
   @Test
@@ -357,9 +384,7 @@ internal class SoundboardViewModelTest : SoundboardViewModelTestFixture() {
     load()
     player.failNextStart = true
 
-    vm.toggleSoundEffect(SWORD)
-    runCurrent()
-    val failed = player.latest(SWORD)
+    val failed = prepareEffect(SWORD)
 
     assertEquals(1, failed.closeCount)
     assertEquals(emptySet<String>(), state.pendingEffectIds)

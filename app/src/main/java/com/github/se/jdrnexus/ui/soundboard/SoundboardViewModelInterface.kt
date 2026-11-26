@@ -43,16 +43,13 @@ data class AmbiencePlayback(
     val status: AmbiencePlaybackStatus,
 )
 
-/** A playback failure that can be displayed while the soundboard stays usable. */
+/** An action failure that can be displayed while the soundboard stays usable. */
 sealed interface SoundboardPlaybackError {
   /** The player failed to start or continue the identified track or effect. */
   data class Playback(val audioId: String) : SoundboardPlaybackError
-}
 
-/** Identifies the volume control that received a value outside [MIN_VOLUME]..[MAX_VOLUME]. */
-enum class SoundboardVolumeError {
-  AMBIENCE_OUT_OF_RANGE,
-  EFFECTS_OUT_OF_RANGE,
+  /** The current slider values could not be saved. */
+  data class SaveVolume(val reason: SoundboardError) : SoundboardPlaybackError
 }
 
 /**
@@ -67,11 +64,10 @@ enum class SoundboardVolumeError {
  * @property isAmbienceLooping Whether playback returns to the start after the last playlist track.
  * @property playingEffectIds Effects currently playing, independently of ambience and each other.
  * @property pendingEffectIds Effects with a playback action in progress.
- * @property error The latest playback failure, cleared when a sound starts successfully.
- * @property volumeError The latest invalid volume input, cleared by a valid value for that control.
- * @property isAmbienceMuted Whether ambience is muted; unmuting restores its last audible gain.
- * @property isSoundEffectsMuted Whether effects are muted; unmuting restores their last audible
- *   gain.
+ * @property error The latest playback or volume-save failure.
+ * @property isAmbienceMuted Whether ambience plays at zero gain while its slider value is retained.
+ * @property isSoundEffectsMuted Whether effects play at zero gain while their slider value is
+ *   retained.
  * @property isTrackMenuExpanded Whether the menu listing the selected playlist's tracks is open.
  */
 data class SoundboardUiState(
@@ -83,7 +79,6 @@ data class SoundboardUiState(
     val playingEffectIds: Set<String> = emptySet(),
     val pendingEffectIds: Set<String> = emptySet(),
     val error: SoundboardPlaybackError? = null,
-    val volumeError: SoundboardVolumeError? = null,
     val isAmbienceMuted: Boolean = false,
     val isSoundEffectsMuted: Boolean = false,
     val isTrackMenuExpanded: Boolean = false,
@@ -144,10 +139,10 @@ interface SoundboardViewModelInterface {
    */
   fun saveVolumes()
 
-  /** Mutes ambience or restores its last audible gain. */
+  /** Mutes ambience or restores its current slider gain. */
   fun toggleAmbienceMute()
 
-  /** Mutes effects or restores their last audible gain. */
+  /** Mutes effects or restores their current slider gain. */
   fun toggleSoundEffectMute()
 
   /** Stops all sounds and cancels pending starts on session exit. Safe to call repeatedly. */
