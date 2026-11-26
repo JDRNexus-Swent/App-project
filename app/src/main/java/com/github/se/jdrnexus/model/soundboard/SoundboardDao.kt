@@ -112,8 +112,12 @@ internal abstract class SoundboardDao {
   )
   abstract suspend fun findUnusedAudioIds(userId: String): List<String>
 
-  @Query("DELETE FROM soundboard_audio_files WHERE id = :audioId")
-  abstract suspend fun deleteAudioFile(audioId: String)
+  /** Ids of every imported audio file, whoever imported it. */
+  @Query("SELECT id FROM soundboard_audio_files")
+  abstract suspend fun findAllAudioIds(): List<String>
+
+  @Query("DELETE FROM soundboard_audio_files WHERE id IN (:audioIds)")
+  abstract suspend fun deleteAudioFiles(audioIds: List<String>)
 
   @Query("SELECT id FROM soundboard_audio_files WHERE userId = :userId AND id IN (:audioIds)")
   protected abstract suspend fun findAudioIds(userId: String, audioIds: List<String>): List<String>

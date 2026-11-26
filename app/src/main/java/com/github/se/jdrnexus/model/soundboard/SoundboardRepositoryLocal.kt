@@ -13,6 +13,7 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -44,8 +45,9 @@ private const val HAS_AUDIO = "yes"
  * [audioDirectory]. Use one instance for the whole app (see [SoundboardRepositoryProvider]), so
  * that [writeLock] covers every write.
  *
- * Each copy is named after the id of its [AudioFileEntity], in [audioDirectory]. A copy is deleted
- * before its row: if deleting the file fails, the row stays, and a later cleanup tries again.
+ * Each copy is named after the id of its [AudioFileEntity], in [audioDirectory]. A copy's row is
+ * deleted before its file, so a row never points to a missing file: a file left without a row, if
+ * deleting it fails or is interrupted, is deleted by the next cleanup.
  *
  * @param contentResolver Opens the uris the system file picker returns.
  * @param audioDirectory Folder of the copies, in the app's private storage.
@@ -67,6 +69,13 @@ internal constructor(
    */
   private val writeLock = Mutex()
 
+  /**
+   * Ids of the imports still copying: their file exists, but not their row yet, so the sweep of
+   * [deleteStrayCopies] leaves them alone. Empty again whenever the app restarts, so the file of an
+   * import the system killed counts as stray.
+   */
+  private val importsInProgress: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
   override fun getNewSoundboardId(): String = newId()
 
   override fun observeSoundboards(userId: String): Flow<List<Soundboard>> =
@@ -85,6 +94,8 @@ internal constructor(
 
           val id = newId()
           val copy = copyOf(id)
+          // Registered before the file exists, and until its row does.
+          importsInProgress += id
           try {
             copy(source, copy)
             val durationMs = readDurationMs(copy)
@@ -94,6 +105,8 @@ internal constructor(
             // Also on cancellation: an import that does not finish leaves nothing behind.
             copy.delete()
             throw e
+          } finally {
+            importsInProgress -= id
           }
         }
       }
@@ -186,17 +199,25 @@ internal constructor(
     }
   }
 
-  /** Copies the content of [source] into [destination]. */
+  /**
+   * Copies the content of [source] into [destination].
+   *
+   * Opening the source and writing the copy fail apart on purpose: both can throw
+   * [FileNotFoundException], which only means a missing picked file on the source side. On the
+   * copy's side, Android also throws it when it cannot create the file, for example because the
+   * disk is full.
+   */
   private fun copy(source: Uri, destination: File) {
-    try {
-      val input =
+    val input =
+        try {
           contentResolver.openInputStream(source)
-              ?: throw SoundboardException(SoundboardError.FILE_NOT_FOUND)
+        } catch (e: FileNotFoundException) {
+          throw SoundboardException(SoundboardError.FILE_NOT_FOUND, e)
+        } catch (e: SecurityException) {
+          throw SoundboardException(SoundboardError.FILE_NOT_FOUND, e)
+        } ?: throw SoundboardException(SoundboardError.FILE_NOT_FOUND)
+    try {
       input.use { from -> destination.outputStream().use { to -> from.copyTo(to) } }
-    } catch (e: FileNotFoundException) {
-      throw SoundboardException(SoundboardError.FILE_NOT_FOUND, e)
-    } catch (e: SecurityException) {
-      throw SoundboardException(SoundboardError.FILE_NOT_FOUND, e)
     } catch (e: IOException) {
       if (e.isStorageFull()) throw SoundboardException(SoundboardError.STORAGE_FULL, e)
       throw e
@@ -238,12 +259,33 @@ internal constructor(
   /** The file of the copy with [audioId]. */
   private fun copyOf(audioId: String) = File(audioDirectory, "$audioId.$MP3_EXTENSION")
 
-  /** Deletes each copy, then its row. A copy that cannot be deleted keeps its row. */
+  /**
+   * Deletes the rows of [audioIds], then their files along with any other file left without a row.
+   *
+   * The rows go first, in one statement: if the files are not deleted afterwards, because deleting
+   * one fails or the coroutine is cancelled, they are left without a row, and the next cleanup
+   * deletes them. The other way round, a row could stay after its file is gone, and a save could
+   * then use an audio file that no longer exists.
+   */
   private suspend fun deleteCopies(audioIds: Collection<String>) {
-    for (audioId in audioIds) {
-      val copy = copyOf(audioId)
-      val isDeleted = withContext(ioDispatcher) { !copy.exists() || copy.delete() }
-      if (isDeleted) dao.deleteAudioFile(audioId)
+    dao.deleteAudioFiles(audioIds.toList())
+    deleteStrayCopies()
+  }
+
+  /**
+   * Deletes the files of [audioDirectory] that have no row and no import in progress. Cleanup
+   * otherwise starts from the rows, so it would never find the copy of an import the system killed
+   * between creating the file and inserting its row.
+   */
+  private suspend fun deleteStrayCopies() {
+    val registered = dao.findAllAudioIds().toSet()
+    withContext(ioDispatcher) {
+      audioDirectory
+          .listFiles()
+          .orEmpty()
+          .filter { it.nameWithoutExtension !in registered }
+          .filter { it.nameWithoutExtension !in importsInProgress }
+          .forEach { it.delete() }
     }
   }
 

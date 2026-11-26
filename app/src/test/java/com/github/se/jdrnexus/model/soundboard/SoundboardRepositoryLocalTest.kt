@@ -19,9 +19,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
+import java.io.InputStream
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -220,6 +222,22 @@ class SoundboardRepositoryLocalTest {
     val result = repository.importAudio(USER, source)
 
     assertEquals(SoundboardError.STORAGE_FULL, result.error())
+    assertEquals(emptySet<String>(), copies())
+  }
+
+  @Test
+  fun aCopyThatCannotBeCreatedIsNotReportedAsAMissingFile() = runTest {
+    val source = pick("Tavern.mp3")
+    readableAsMp3(TRACK_DURATION_MS)
+    // The copy cannot be created: its folder exists but cannot be written to. Creating the file
+    // then throws FileNotFoundException, as it does on a device whose disk is full.
+    audioDirectory.mkdirs()
+    audioDirectory.setWritable(false)
+
+    val result = repository.importAudio(USER, source)
+
+    audioDirectory.setWritable(true)
+    assertEquals(SoundboardError.UNKNOWN, result.error())
     assertEquals(emptySet<String>(), copies())
   }
 
@@ -514,6 +532,68 @@ class SoundboardRepositoryLocalTest {
         )
 
     assertEquals(SoundboardError.AUDIO_NOT_FOUND, result.error())
+  }
+
+  @Test
+  fun saveAndDiscardDeleteTheCopiesOfImportsThatWereKilled() = runTest {
+    val board = tidesBoard()
+    val savedCopies = board.allAudio().map { File(it.filePath).name }.toSet()
+    // What a killed import leaves: a copy in the folder, with no row.
+    File(audioDirectory, "killed-before-save.mp3").writeBytes(MP3_BYTES)
+
+    repository.saveSoundboard(USER, board).getOrThrow()
+    val afterSave = copies()
+    File(audioDirectory, "killed-before-discard.mp3").writeBytes(MP3_BYTES)
+    repository.discardUnsavedImports(USER).getOrThrow()
+
+    assertEquals(listOf(savedCopies, savedCopies), listOf(afterSave, copies()))
+  }
+
+  @Test
+  fun aCopyThatCannotBeDeletedLosesItsRowAndGoesAtTheNextCleanup() = runTest {
+    val draft = importAudio("Draft.mp3")
+    // The files of a folder that cannot be written to cannot be deleted either.
+    audioDirectory.setWritable(false)
+
+    repository.discardUnsavedImports(USER).getOrThrow()
+    val afterFailedDelete = copies()
+    val reuse =
+        repository.saveSoundboard(
+            USER,
+            Soundboard(id = BOARD_ID, name = "Tides", effects = listOf(SoundEffect("Fx", draft))),
+        )
+    audioDirectory.setWritable(true)
+    repository.discardUnsavedImports(USER).getOrThrow()
+
+    // The file stayed, but no row pointed to it any more, and the next cleanup deleted it.
+    assertEquals(setOf(File(draft.filePath).name), afterFailedDelete)
+    assertEquals(SoundboardError.AUDIO_NOT_FOUND, reuse.error())
+    assertEquals(emptySet<String>(), copies())
+  }
+
+  @Test
+  fun aCleanupDuringAnImportKeepsTheImportsCopy() = runTest {
+    // Not offered by the fake picker: Robolectric serves its content from the stream below.
+    val source = Uri.parse("content://$AUTHORITY/Racing.mp3")
+    readableAsMp3(TRACK_DURATION_MS)
+    val bytes = MP3_BYTES.inputStream()
+    var isFirstRead = true
+    val stream =
+        object : InputStream() {
+          override fun read(): Int {
+            if (isFirstRead) {
+              isFirstRead = false
+              // The copy's file exists now, but not its row yet: a cleanup runs at this moment.
+              runBlocking { repository.discardUnsavedImports(USER).getOrThrow() }
+            }
+            return bytes.read()
+          }
+        }
+    shadowOf(context.contentResolver).registerInputStream(source, stream)
+
+    val imported = repository.importAudio(USER, source).getOrThrow()
+
+    assertEquals(MP3_BYTES.toList(), File(imported.audio.filePath).readBytes().toList())
   }
 
   // ============ Signed out and ids ============
