@@ -91,6 +91,7 @@ class MainActivityNotificationNavigationTest {
     composeTestRule
         .onNodeWithTag(C.Tag.notificationMarkAsRead(ID), useUnmergedTree = true)
         .performClick()
+    assertEquals(listOf(ID), viewModel.markedAsRead)
     // The fake only records the call: apply the update the repository would push back.
     viewModel.notificationUiState.update { state ->
       state.copy(
