@@ -1,7 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.firestoreRules
 
-import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentReference
@@ -76,15 +75,11 @@ class GroupSubcollectionsRulesTest {
     outsider = FirebaseEmulatorTestUtils.signInAs(OUTSIDER_ID)
     runBlocking {
       // The rules read the group (isGm) and users/{uid}.groupIds (isMember).
-      FirebaseEmulatorTestUtils.writeBypassingRules(
+      FirebaseEmulatorTestUtils.writeGroupBypassingRules(
           gm,
-          "campaign_groups/$groupId",
-          CampaignGroup(
-              id = groupId,
-              name = "The Sunken Crown",
-              gameMasterId = GM_ID,
-              participantIds = listOf(GM_ID, PLAYER_ID),
-          ),
+          groupId,
+          GM_ID,
+          listOf(GM_ID, PLAYER_ID),
       )
       FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(gm, GM_ID, groupId)
       FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(gm, PLAYER_ID, groupId)

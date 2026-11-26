@@ -6,6 +6,8 @@ import android.content.Context
 import android.os.Looper
 import android.util.Log
 import androidx.test.core.app.ApplicationProvider
+import com.github.se.jdrnexus.model.personalSpace.DocumentType
+import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
@@ -24,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -173,6 +176,48 @@ object FirebaseEmulatorTestUtils {
   ) = writeBypassingRules(firestore, "users/$userId", mapOf("groupIds" to groupIds.toList()))
 
   /**
+   * The root document of the group [id], as GroupRepositoryFirestore writes it with the group: same
+   * id and name, owned by the game master, of type GROUP_ROOT and shared with the group itself.
+   */
+  fun groupRootOf(id: String, gameMasterId: String, name: String) =
+      JDRFile(
+          id = id,
+          name = name,
+          ownerId = gameMasterId,
+          sharedGroupsIds = listOf(id),
+          type = DocumentType.GROUP_ROOT,
+      )
+
+  /**
+   * Writes the group `campaign_groups/[id]`, bypassing the security rules. For test setup only.
+   * [inviteCode] is written when given (CampaignGroup has no such field, so the group is written as
+   * a map). With [withRoot], the group's root document ([groupRootOf]) is written too, in
+   * `documents`: the class must then clear that collection in its tear down.
+   */
+  suspend fun writeGroupBypassingRules(
+      firestore: FirebaseFirestore,
+      id: String,
+      gameMasterId: String,
+      participantIds: List<String>,
+      name: String = "The Sunken Crown",
+      inviteCode: String? = null,
+      withRoot: Boolean = false,
+  ) {
+    val group =
+        mapOf(
+            "id" to id,
+            "name" to name,
+            "description" to "",
+            "gameMasterId" to gameMasterId,
+            "participantIds" to participantIds,
+        ) + listOfNotNull(inviteCode?.let { "inviteCode" to it })
+    writeBypassingRules(firestore, "campaign_groups/$id", group)
+    if (withRoot) {
+      writeBypassingRules(firestore, "documents/$id", groupRootOf(id, gameMasterId, name))
+    }
+  }
+
+  /**
    * The `groupIds` field of `users/[userId]`, read as that user so the rules apply; null when the
    * document or the field is missing.
    */
@@ -187,7 +232,20 @@ object FirebaseEmulatorTestUtils {
    * reason never passes as a rules denial. [case] names the request in the failure message, for
    * tests that check several requests in a row.
    */
-  suspend fun assertPermissionDenied(case: String = "request", action: suspend () -> Unit) {
+  suspend fun assertPermissionDenied(case: String = "request", action: suspend () -> Unit) =
+      assertFirestoreError(FirebaseFirestoreException.Code.PERMISSION_DENIED, case, action)
+
+  /**
+   * Runs [action] (a Firestore request, as for [assertPermissionDenied]) and fails unless it throws
+   * a FirebaseFirestoreException with exactly [code]. Any other outcome fails: success, another
+   * code, or another exception. Coroutine cancellation is rethrown, not counted as the expected
+   * error. [case] names the request in the failure message.
+   */
+  suspend fun assertFirestoreError(
+      code: FirebaseFirestoreException.Code,
+      case: String = "request",
+      action: suspend () -> Unit,
+  ) {
     val failure =
         try {
           action()
@@ -197,14 +255,8 @@ object FirebaseEmulatorTestUtils {
         } catch (e: Exception) {
           e
         }
-    if (
-        failure !is FirebaseFirestoreException ||
-            failure.code != FirebaseFirestoreException.Code.PERMISSION_DENIED
-    ) {
-      throw AssertionError(
-          "$case: expected PERMISSION_DENIED from the security rules, got: ${failure ?: "success"}",
-          failure,
-      )
+    if (failure !is FirebaseFirestoreException || failure.code != code) {
+      throw AssertionError("$case: expected $code, got: ${failure ?: "success"}", failure)
     }
   }
 
@@ -336,19 +388,20 @@ object FirebaseEmulatorTestUtils {
   private fun restBase(firestore: FirebaseFirestore) =
       "http://$EMULATOR_HOST:$EMULATOR_PORT/v1/${documentName(firestore, "").trimEnd('/')}"
 
-  // Sends one HTTP request as the emulator's "owner" and returns the response body; throws on
-  // error, except a 404 when [allowNotFound], which returns null.
+  // Sends one HTTP request as the emulator's "owner" (unless [asOwner] is false) and returns the
+  // response body; throws on error, except a 404 when [allowNotFound], which returns null.
   private suspend fun ownerRequest(
       method: String,
       url: String,
       body: String? = null,
       allowNotFound: Boolean = false,
+      asOwner: Boolean = true,
   ): String? =
       withContext(Dispatchers.IO) {
         val connection = URL(url).openConnection() as HttpURLConnection
         try {
           connection.requestMethod = method
-          connection.setRequestProperty("Authorization", "Bearer owner")
+          if (asOwner) connection.setRequestProperty("Authorization", "Bearer owner")
           if (body != null) {
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/json")
@@ -364,6 +417,25 @@ object FirebaseEmulatorTestUtils {
           connection.disconnect()
         }
       }
+
+  /**
+   * Deletes the Auth account that [idToken] belongs to on the Auth emulator, without telling the
+   * FirebaseAuth instance of this device: it keeps a session for an account that no longer exists.
+   *
+   * The account is named by its token, not by a project path: CI starts the emulator for the demo
+   * project, which differs from the project id of google-services.json.
+   */
+  suspend fun deleteAuthAccountKeepingLocalSession(idToken: String) {
+    val apiKey = FirebaseApp.getInstance().options.apiKey
+    ownerRequest(
+        "POST",
+        "http://$EMULATOR_HOST:$AUTH_EMULATOR_PORT/identitytoolkit.googleapis.com/v1/" +
+            "accounts:delete?key=$apiKey",
+        JSONObject().put("idToken", idToken).toString(),
+        // As the user: the emulator reads an owner request as an admin one, which needs a localId.
+        asOwner = false,
+    )
+  }
 
   /**
    * Returns the default app's Firestore on the emulator with no user signed in, for tests of what
@@ -453,6 +525,32 @@ object FirebaseEmulatorTestUtils {
       delay(50)
     }
     throw AssertionError(timeoutMessage())
+  }
+
+  /**
+   * Runs [block] (a repository call) in the background while pumping the main looper, where
+   * Firebase delivers its callbacks, and returns its result. Fails with an AssertionError if it
+   * does not complete within [timeoutMs], e.g. a write left waiting for the server while offline.
+   */
+  suspend fun <T> runAndPumpMainLooper(
+      operationName: String,
+      timeoutMs: Long = DEFAULT_TIMEOUT_MS,
+      block: suspend () -> T,
+  ): T {
+    val operation = CoroutineScope(Dispatchers.Default).async { block() }
+    try {
+      pumpMainLooperUntil(
+          timeoutMs = timeoutMs,
+          timeoutMessage = { "$operationName did not complete within $timeoutMs ms" },
+      ) {
+        operation.isCompleted
+      }
+    } catch (e: AssertionError) {
+      operation.cancel()
+      throw e
+    }
+    shadowOf(Looper.getMainLooper()).idle()
+    return operation.await()
   }
 }
 

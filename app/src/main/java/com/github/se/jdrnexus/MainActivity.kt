@@ -7,32 +7,45 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.credentials.CredentialManager
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.github.se.jdrnexus.model.connectivity.ConnectivityRepository
+import com.github.se.jdrnexus.model.connectivity.ConnectivityRepositoryProvider
 import com.github.se.jdrnexus.model.gameManagement.GameSessionRepository
 import com.github.se.jdrnexus.model.gameManagement.GameSessionRepositoryFirestore
+import com.github.se.jdrnexus.model.notification.Notification
+import com.github.se.jdrnexus.model.notification.NotificationRepositoryProvider
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.GroupRepositoryFirestore
@@ -43,8 +56,10 @@ import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.resources.LocalIsOnline
 import com.github.se.jdrnexus.resources.showComingSoon
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
+import com.github.se.jdrnexus.ui.authentication.SessionState
 import com.github.se.jdrnexus.ui.authentication.SignInScreen
 import com.github.se.jdrnexus.ui.authentication.SignUpScreen
 import com.github.se.jdrnexus.ui.dice.DiceOfflineScreen
@@ -61,6 +76,9 @@ import com.github.se.jdrnexus.ui.home.HomeScreen
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
 import com.github.se.jdrnexus.ui.map.MapScreen
 import com.github.se.jdrnexus.ui.map.MapViewModel
+import com.github.se.jdrnexus.ui.notification.NotificationDestination
+import com.github.se.jdrnexus.ui.notification.NotificationScreen
+import com.github.se.jdrnexus.ui.notification.destination
 import com.github.se.jdrnexus.ui.search.DocumentSearchInterfaceVM
 import com.github.se.jdrnexus.ui.search.DocumentSearchScope
 import com.github.se.jdrnexus.ui.search.DocumentSearchScreen
@@ -68,6 +86,8 @@ import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.GroupRole
+import com.github.se.jdrnexus.viewmodel.NotificationViewModel
+import com.github.se.jdrnexus.viewmodel.NotificationViewModelInterface
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.catch
@@ -101,6 +121,7 @@ enum class AllRoutes {
   EditChar,
   EditLore,
   Map,
+  Notifications,
 }
 
 object GroupWorkspaceRoute {
@@ -138,11 +159,24 @@ object GamePlayerRoute {
   fun createRoute(groupId: String): String = "game_player/${Uri.encode(groupId)}"
 }
 
-/** Optional dependencies let navigation tests use production screens with deterministic fakes. */
+/** The first screen for the session found at launch, or null while it is still being checked. */
+internal fun launchRouteFor(session: SessionState): AllRoutes? =
+    when (session) {
+      SessionState.Checking -> null
+      SessionState.SignedIn -> AllRoutes.Home
+      SessionState.SignedOut -> AllRoutes.SignIn
+    }
+
+/**
+ * Optional dependencies let navigation tests use production screens with deterministic fakes.
+ *
+ * Without a [startDestination], the app opens Home for a user still signed in from a previous
+ * launch and SignIn otherwise, showing a loading indicator until the session is known.
+ */
 @Composable
 fun JDRNexusApp(
     authViewModel: AuthViewModel? = null,
-    startDestination: AllRoutes = AllRoutes.SignIn,
+    startDestination: AllRoutes? = null,
     gameManagementViewModel: GameManagementViewModel? = null,
     personalSpaceViewModel: PersonalSpaceViewModel? = null,
     editFileViewModel: EditFileViewModel? = null,
@@ -151,7 +185,9 @@ fun JDRNexusApp(
     groupRepository: GroupRepository? = null,
     personalSearchViewModel: DocumentSearchInterfaceVM? = null,
     groupSearchViewModel: DocumentSearchInterfaceVM? = null,
+    notificationViewModel: NotificationViewModelInterface? = null,
     gameSessionRepository: GameSessionRepository? = null,
+    connectivityRepository: ConnectivityRepository? = null,
 ) {
   val activeAuthViewModel = authViewModel ?: viewModel(factory = AuthViewModel.Factory)
   val activeAuthRepository = authRepository ?: AuthRepositoryFirebase()
@@ -178,13 +214,38 @@ fun JDRNexusApp(
                     }
                   }
           )
+  val activeNotificationViewModel =
+      notificationViewModel
+          ?: viewModel<NotificationViewModel>(
+              factory =
+                  viewModelFactory {
+                    initializer {
+                      NotificationViewModel(
+                          repository = NotificationRepositoryProvider.repository,
+                          authRepository = activeAuthRepository,
+                      )
+                    }
+                  }
+          )
   val openDocument: (JDRFile, String?) -> Unit = { document, groupId ->
     activeEditFileViewModel.loadFile(document.id, groupId)
     when (document.type) {
       DocumentType.CHARACTER -> navigation.navigate(AllRoutes.EditChar.name)
       DocumentType.TEXT -> navigation.navigate(AllRoutes.EditLore.name)
       DocumentType.FOLDER,
-      DocumentType.GROUP_ROOT -> Unit
+      DocumentType.GROUP_ROOT,
+      DocumentType.IMAGE -> Unit
+    }
+  }
+  val openNotification: (Notification) -> Unit = { notification ->
+    when (val destination = notification.destination()) {
+      is NotificationDestination.GroupWorkspace ->
+          navigation.navigate(GroupWorkspaceRoute.createRoute(destination.groupId)) {
+            launchSingleTop = true
+          }
+      NotificationDestination.Campaigns ->
+          navigation.navigate(AllRoutes.GroupManagement.name) { launchSingleTop = true }
+      null -> Unit
     }
   }
   val onGameTabSelected: (String) -> Unit = { tab ->
@@ -196,331 +257,399 @@ fun JDRNexusApp(
     }
   }
 
-  Scaffold(
-      containerColor = MaterialTheme.colorScheme.background,
-      // Let each destination handle its own system-bar insets.
-      contentWindowInsets = WindowInsets(0),
-  ) { innerPadding ->
-    NavHost(
-        navController = navController,
-        // Use instead of deriving it from the current destination.
-        startDestination = startDestination.name,
-        modifier = Modifier.fillMaxSize().padding(innerPadding),
-    ) {
-      composable(route = AllRoutes.SignIn.name) {
-        val onSignUp = {
-          navigation.navigate(AllRoutes.SignUp.name) {
-            popUpTo(AllRoutes.SignIn.name)
-            launchSingleTop = true
+  // Every screen reads the connection through LocalIsOnline to show the offline banner.
+  val activeConnectivityRepository =
+      connectivityRepository
+          ?: remember(context) { ConnectivityRepositoryProvider.repository(context) }
+  // Collected only while the app is started, so the network callback is released in the
+  // background; starts as online, so no banner flashes before the first value.
+  val isOnline by
+      activeConnectivityRepository.isOnline.collectAsStateWithLifecycle(initialValue = true)
+
+  val launchSession by activeAuthViewModel.launchSession.collectAsStateWithLifecycle()
+  val launchRoute = startDestination ?: launchRouteFor(launchSession)
+
+  // A session that ends while the user is in the app (sign-out, expired token, deleted account)
+  // leads back to SignIn, with nothing left to return to. This is the only path back to SignIn,
+  // the Log out button included. Keyed on the route too, so the end is
+  // handled once the NavHost has a destination, however late this effect starts.
+  val sessionEnded by activeAuthViewModel.sessionEnded.collectAsStateWithLifecycle()
+  val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+  LaunchedEffect(sessionEnded, currentRoute) {
+    if (sessionEnded && currentRoute != null) {
+      navController.showSignInAfterSessionEnded(currentRoute)
+      activeAuthViewModel.onSessionEndHandled()
+    }
+  }
+
+  CompositionLocalProvider(LocalIsOnline provides isOnline) {
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        // Let each destination handle its own system-bar insets.
+        contentWindowInsets = WindowInsets(0),
+    ) { innerPadding ->
+      if (launchRoute == null) {
+        // Shown instead of SignIn so a signed-in user never sees it flash before Home.
+        Box(
+            modifier = Modifier.fillMaxSize().padding(innerPadding).testTag(C.Tag.session_loading),
+            contentAlignment = Alignment.Center,
+        ) {
+          CircularProgressIndicator()
+        }
+        return@Scaffold
+      }
+      NavHost(
+          navController = navController,
+          // Fixed for the app's lifetime: later sign-ins and sign-outs navigate instead.
+          startDestination = launchRoute.name,
+          modifier = Modifier.fillMaxSize().padding(innerPadding),
+      ) {
+        composable(route = AllRoutes.SignIn.name) {
+          val onSignUp = {
+            navigation.navigate(AllRoutes.SignUp.name) {
+              popUpTo(AllRoutes.SignIn.name)
+              launchSingleTop = true
+            }
           }
-        }
-        val onSignInSuccess = {
-          navigation.navigate(AllRoutes.Home.name) {
-            // Authenticated users should not return to either auth screen with Back.
-            popUpTo(AllRoutes.SignIn.name) { inclusive = true }
-            launchSingleTop = true
+          val onSignInSuccess = {
+            navigation.navigate(AllRoutes.Home.name) {
+              // Authenticated users should not return to either auth screen with Back.
+              popUpTo(AllRoutes.SignIn.name) { inclusive = true }
+              launchSingleTop = true
+            }
           }
+          SignInScreen(
+              signInViewModel = activeAuthViewModel,
+              credentialManager = credentialManager,
+              onSignUp = onSignUp,
+              onSignInSuccess = onSignInSuccess,
+          )
         }
-        SignInScreen(
-            signInViewModel = activeAuthViewModel,
-            credentialManager = credentialManager,
-            onSignUp = onSignUp,
-            onSignInSuccess = onSignInSuccess,
-        )
-      }
 
-      composable(route = AllRoutes.Home.name) {
-        val onLogout = {
-          navigation.navigate(AllRoutes.SignIn.name) {
-            // Sign-in may no longer be on the stack after authentication succeeds.
-            popUpTo(AllRoutes.Home.name) { inclusive = true }
-            launchSingleTop = true
-          }
+        composable(route = AllRoutes.Home.name) {
+          // No onLogout: a successful sign-out ends the session, and the session-end effect above
+          // is the one place that leads back to SignIn.
+          val onPersonalSpaceClicked = { navigation.navigate(AllRoutes.PersoSpace.name) }
+          val onDiceClicked = { navigation.navigate(AllRoutes.Dice.name) }
+          val onGroupManagementClicked = { navigation.navigate(AllRoutes.GroupManagement.name) }
+          val onMapClicked = { navigation.navigate(AllRoutes.Map.name) }
+          val notificationState by activeNotificationViewModel.notificationUiState.collectAsState()
+          HomeScreen(
+              viewModel = activeAuthViewModel,
+              onPersonalSpaceClick = onPersonalSpaceClicked,
+              onDiceClick = onDiceClicked,
+              onGroupManagementClick = onGroupManagementClicked,
+              onMapClick = onMapClicked,
+              unreadNotificationCount = notificationState.unreadCount,
+              onNotificationsClick = {
+                navigation.navigate(AllRoutes.Notifications.name) { launchSingleTop = true }
+              },
+          )
         }
-        val onPersonalSpaceClicked = { navigation.navigate(AllRoutes.PersoSpace.name) }
-        val onDiceClicked = { navigation.navigate(AllRoutes.Dice.name) }
-        val onGroupManagementClicked = { navigation.navigate(AllRoutes.GroupManagement.name) }
-        val onMapClicked = { navigation.navigate(AllRoutes.Map.name) }
-        HomeScreen(
-            viewModel = activeAuthViewModel,
-            onLogout = onLogout,
-            onPersonalSpaceClick = onPersonalSpaceClicked,
-            onDiceClick = onDiceClicked,
-            onGroupManagementClick = onGroupManagementClicked,
-            onMapClick = onMapClicked,
-        )
-      }
 
-      composable(route = AllRoutes.SignUp.name) {
-        val onRegister = {
-          navigation.navigate(AllRoutes.Home.name) {
-            // The signed-in back stack starts at Home, not the registration flow.
-            popUpTo(AllRoutes.SignIn.name) { inclusive = true }
-            launchSingleTop = true
-          }
-        }
-        // Return to the existing SignIn entry rather than pushing a duplicate.
-        val onSignInScreen: () -> Unit = {
-          navigation.popBackStack(AllRoutes.SignIn.name, inclusive = false)
-        }
-        SignUpScreen(
-            signUpViewModel = activeAuthViewModel,
-            onRegister = onRegister,
-            onSignInScreen = onSignInScreen,
-        )
-      }
-
-      composable(route = AllRoutes.PersoSpace.name) {
-        PersonalSpaceScreen(
-            onBackButton = { navigation.popBackStack() },
-            personalSpaceViewModel = personalSpaceViewModel ?: viewModel(),
-            onDocumentClicked = { document -> openDocument(document, null) },
-            onCreateFile = { fileId ->
-              activeEditFileViewModel.loadFile(fileId)
-              navigation.navigate(AllRoutes.EditChar.name)
-            },
-            onTabSelected = { tab ->
-              when (tab) {
-                "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
-                "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
-                "Files" -> Unit
-                "Map" -> navigation.navigate(AllRoutes.Map.name)
-              }
-            },
-            onSearchClicked = { navigation.navigate(AllRoutes.Search.name) },
-        )
-      }
-
-      composable(route = AllRoutes.Search.name) {
-        DocumentSearchScreen(
-            onBack = { navigation.popBackStack() },
-            onDocumentClicked = { file -> openDocument(file, null) },
-            searchViewModel = personalSearchViewModel ?: viewModel<DocumentSearchViewModel>(),
-        )
-      }
-
-      composable(route = AllRoutes.Dice.name) {
-        DiceOfflineScreen(onClose = { navigation.popBackStack() })
-      }
-
-      composable(route = AllRoutes.GroupManagement.name) {
-        val activeGameManagementViewModel =
-            gameManagementViewModel
-                ?: viewModel(
-                    factory =
-                        viewModelFactory {
-                          initializer {
-                            GameManagementViewModel(
-                                groupRepository = activeGroupRepository,
-                                authRepository = activeAuthRepository,
-                            )
-                          }
-                        }
-                )
-        GameManagementScreen(
-            gameManagementViewModel = activeGameManagementViewModel,
-            onEnterWorkspace = { groupId ->
-              navigation.navigate(GroupWorkspaceRoute.createRoute(groupId)) {
-                launchSingleTop = true
-              }
-            },
-            onPlay = { groupId, role ->
-              val route =
-                  when (role) {
-                    GroupRole.GAME_MASTER -> GameMasterRoute.createRoute(groupId)
-                    GroupRole.PLAYER -> GamePlayerRoute.createRoute(groupId)
-                  }
-              navigation.navigate(route) { launchSingleTop = true }
-            },
-            onManageGroup = { showComingSoon(context, "Group management") },
-            onTabSelected = { tab ->
-              when (tab) {
-                "Home" -> navigation.popBackStack(AllRoutes.Home.name, inclusive = false)
-                "Campaigns" -> Unit
-                "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
-                "Map" -> navigation.navigate(AllRoutes.Map.name)
-              }
-            },
-        )
-      }
-
-      composable(route = GameMasterRoute.route) { backStackEntry ->
-        val groupId =
-            requireNotNull(backStackEntry.arguments?.getString(GameMasterRoute.groupIdArgument))
-        val gameViewModel: GameViewModelGMViewModel =
-            viewModel(
-                factory =
-                    viewModelFactory {
-                      initializer {
-                        val firestore = FirebaseFirestore.getInstance()
-                        GameViewModelGMViewModel(
-                            sessionRepository =
-                                gameSessionRepository
-                                    ?: GameSessionRepositoryFirestore(
-                                        firestore,
-                                        DiceRepositoryFirestore(firestore, activeAuthRepository),
-                                    ),
-                            groupId = groupId,
-                        )
-                      }
-                    }
-            )
-        // The title stays blank if the group cannot be read; the session stays usable.
-        val groupName by
-            remember(groupId) {
-                  activeGroupRepository
-                      .getGroupFlow(groupId)
-                      .map { group -> group?.name.orEmpty() }
-                      .catch { emit("") }
+        composable(route = AllRoutes.Notifications.name) {
+          NotificationScreen(
+              viewModel = activeNotificationViewModel,
+              onBack = { navigation.popBackStack() },
+              onOpenNotification = openNotification,
+              onTabSelected = { tab ->
+                when (tab) {
+                  "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
+                  "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
+                  "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
+                  "Map" -> navigation.navigate(AllRoutes.Map.name)
                 }
-                .collectAsState(initial = "")
-        GameScreenGM(
-            viewModel = gameViewModel,
-            groupName = groupName,
-            onBack = { navigation.popBackStack() },
-            onTabSelected = onGameTabSelected,
-            onDiceClick = { navigation.navigate(AllRoutes.Dice.name) { launchSingleTop = true } },
-        )
-      }
+              },
+          )
+        }
 
-      composable(route = GamePlayerRoute.route) { backStackEntry ->
-        val groupId =
-            requireNotNull(backStackEntry.arguments?.getString(GamePlayerRoute.groupIdArgument))
-        val gameViewModel: GamePlayerViewModel =
-            viewModel(
-                factory =
-                    viewModelFactory {
-                      initializer {
-                        GamePlayerViewModel(
-                            workspaceRepository = activeWorkspaceRepository,
-                            groupRepository = activeGroupRepository,
-                            authRepository = activeAuthRepository,
-                        )
-                      }
-                    }
-            )
-        GameScreenPlayer(
-            groupId = groupId,
-            viewModel = gameViewModel,
-            onBack = { navigation.popBackStack() },
-            onOpenDice = { navigation.navigate(AllRoutes.Dice.name) { launchSingleTop = true } },
-            onOpenGroupWorkspace = { id ->
-              navigation.navigate(GroupWorkspaceRoute.createRoute(id)) { launchSingleTop = true }
-            },
-            onTabSelected = onGameTabSelected,
-        )
-      }
+        composable(route = AllRoutes.SignUp.name) {
+          val onRegister = {
+            navigation.navigate(AllRoutes.Home.name) {
+              // The signed-in back stack starts at Home, not the registration flow.
+              popUpTo(AllRoutes.SignIn.name) { inclusive = true }
+              launchSingleTop = true
+            }
+          }
+          // Return to the existing SignIn entry rather than pushing a duplicate.
+          val onSignInScreen: () -> Unit = {
+            navigation.popBackStack(AllRoutes.SignIn.name, inclusive = false)
+          }
+          SignUpScreen(
+              signUpViewModel = activeAuthViewModel,
+              onRegister = onRegister,
+              onSignInScreen = onSignInScreen,
+          )
+        }
 
-      composable(route = GroupWorkspaceRoute.route) { backStackEntry ->
-        val groupId =
-            requireNotNull(backStackEntry.arguments?.getString(GroupWorkspaceRoute.groupIdArgument))
-        val groupWorkspaceViewModel: GroupWorkspaceViewModel =
-            viewModel(
-                factory =
-                    viewModelFactory {
-                      initializer {
-                        GroupWorkspaceViewModel(
-                            groupId = groupId,
-                            groupRepository = activeGroupRepository,
-                            repository = activeWorkspaceRepository,
-                            authRepository = activeAuthRepository,
-                        )
-                      }
-                    }
-            )
-        val uiState by groupWorkspaceViewModel.uiState.collectAsState()
-        GroupWorkSpaceScreen(
-            gwViewModel = groupWorkspaceViewModel,
-            groupId = groupId,
-            groupName = uiState.groupName,
-            personalItems = uiState.personalFiles,
-            onBack = { navController.popBackStack() },
-            onItemClicked = { file, _ -> openDocument(file, groupId) },
-            onCharacterCreated = { fileId ->
-              activeEditFileViewModel.loadFile(fileId, groupId)
-              navigation.navigate(AllRoutes.EditChar.name)
-            },
-            onTabSelected = { tab ->
-              when (tab) {
-                "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
-                "Campaigns" -> navigation.popBackStack(AllRoutes.GroupManagement.name, false)
-                "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
-                "Map" -> navigation.navigate(AllRoutes.Map.name)
-              }
-            },
-            onSearchClicked = {
-              navigation.navigate(GroupDocumentSearchRoute.createRoute(groupId))
-            },
-        )
-      }
+        composable(route = AllRoutes.PersoSpace.name) {
+          PersonalSpaceScreen(
+              onBackButton = { navigation.popBackStack() },
+              personalSpaceViewModel = personalSpaceViewModel ?: viewModel(),
+              onDocumentClicked = { document -> openDocument(document, null) },
+              onCreateFile = { fileId ->
+                activeEditFileViewModel.loadFile(fileId)
+                navigation.navigate(AllRoutes.EditChar.name)
+              },
+              onTabSelected = { tab ->
+                when (tab) {
+                  "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
+                  "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
+                  "Files" -> Unit
+                  "Map" -> navigation.navigate(AllRoutes.Map.name)
+                }
+              },
+              onSearchClicked = { navigation.navigate(AllRoutes.Search.name) },
+          )
+        }
 
-      composable(
-          route = GroupDocumentSearchRoute.route,
-          arguments =
-              listOf(
-                  navArgument(GroupDocumentSearchRoute.groupIdArgument) {
-                    type = NavType.StringType
-                  }
-              ),
-      ) { backStackEntry ->
-        val groupId =
-            requireNotNull(
-                backStackEntry.arguments?.getString(GroupDocumentSearchRoute.groupIdArgument)
-            )
-        val activeGroupSearchViewModel =
-            groupSearchViewModel
-                ?: viewModel<DocumentSearchViewModel>(
-                    factory =
-                        viewModelFactory {
-                          initializer {
-                            DocumentSearchViewModel(
-                                scope = DocumentSearchScope.Group(groupId),
-                                repository = activeWorkspaceRepository,
-                                authRepository = activeAuthRepository,
-                                groupRepository = activeGroupRepository,
-                            )
+        composable(route = AllRoutes.Search.name) {
+          DocumentSearchScreen(
+              onBack = { navigation.popBackStack() },
+              onDocumentClicked = { file -> openDocument(file, null) },
+              searchViewModel = personalSearchViewModel ?: viewModel<DocumentSearchViewModel>(),
+          )
+        }
+
+        composable(route = AllRoutes.Dice.name) {
+          DiceOfflineScreen(onClose = { navigation.popBackStack() })
+        }
+
+        composable(route = AllRoutes.GroupManagement.name) {
+          val activeGameManagementViewModel =
+              gameManagementViewModel
+                  ?: viewModel(
+                      factory =
+                          viewModelFactory {
+                            initializer {
+                              GameManagementViewModel(
+                                  groupRepository = activeGroupRepository,
+                                  authRepository = activeAuthRepository,
+                              )
+                            }
                           }
+                  )
+          GameManagementScreen(
+              gameManagementViewModel = activeGameManagementViewModel,
+              onEnterWorkspace = { groupId ->
+                navigation.navigate(GroupWorkspaceRoute.createRoute(groupId)) {
+                  launchSingleTop = true
+                }
+              },
+              onPlay = { groupId, role ->
+                val route =
+                    when (role) {
+                      GroupRole.GAME_MASTER -> GameMasterRoute.createRoute(groupId)
+                      GroupRole.PLAYER -> GamePlayerRoute.createRoute(groupId)
+                    }
+                navigation.navigate(route) { launchSingleTop = true }
+              },
+              onManageGroup = { showComingSoon(context, "Group management") },
+              onTabSelected = { tab ->
+                when (tab) {
+                  "Home" -> navigation.popBackStack(AllRoutes.Home.name, inclusive = false)
+                  "Campaigns" -> Unit
+                  "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
+                  "Map" -> navigation.navigate(AllRoutes.Map.name)
+                }
+              },
+          )
+        }
+
+        composable(route = GameMasterRoute.route) { backStackEntry ->
+          val groupId =
+              requireNotNull(backStackEntry.arguments?.getString(GameMasterRoute.groupIdArgument))
+          val gameViewModel: GameViewModelGMViewModel =
+              viewModel(
+                  factory =
+                      viewModelFactory {
+                        initializer {
+                          val firestore = FirebaseFirestore.getInstance()
+                          GameViewModelGMViewModel(
+                              sessionRepository =
+                                  gameSessionRepository
+                                      ?: GameSessionRepositoryFirestore(
+                                          firestore,
+                                          DiceRepositoryFirestore(firestore, activeAuthRepository),
+                                      ),
+                              groupId = groupId,
+                          )
                         }
-                )
-        DocumentSearchScreen(
-            onBack = { navigation.popBackStack() },
-            onDocumentClicked = { file -> openDocument(file, groupId) },
-            searchViewModel = activeGroupSearchViewModel,
-        )
-      }
+                      }
+              )
+          // The title stays blank if the group cannot be read; the session stays usable.
+          val groupName by
+              remember(groupId) {
+                    activeGroupRepository
+                        .getGroupFlow(groupId)
+                        .map { group -> group?.name.orEmpty() }
+                        .catch { emit("") }
+                  }
+                  .collectAsState(initial = "")
+          GameScreenGM(
+              viewModel = gameViewModel,
+              groupName = groupName,
+              onBack = { navigation.popBackStack() },
+              onTabSelected = onGameTabSelected,
+              onDiceClick = { navigation.navigate(AllRoutes.Dice.name) { launchSingleTop = true } },
+          )
+        }
 
-      composable(route = AllRoutes.Map.name) {
-        MapScreen(
-            mapVM = viewModel<MapViewModel>(factory = MapViewModel.Factory),
-            onTabSelected = { tab ->
-              when (tab) {
-                "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
-                "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
-                "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
-                "Map" -> Unit
-              }
-            },
-            // No game details screen yet.
-            onViewGameDetails = { showComingSoon(context, "Game details") },
-        )
-      }
+        composable(route = GamePlayerRoute.route) { backStackEntry ->
+          val groupId =
+              requireNotNull(backStackEntry.arguments?.getString(GamePlayerRoute.groupIdArgument))
+          val gameViewModel: GamePlayerViewModel =
+              viewModel(
+                  factory =
+                      viewModelFactory {
+                        initializer {
+                          GamePlayerViewModel(
+                              workspaceRepository = activeWorkspaceRepository,
+                              groupRepository = activeGroupRepository,
+                              authRepository = activeAuthRepository,
+                          )
+                        }
+                      }
+              )
+          GameScreenPlayer(
+              groupId = groupId,
+              viewModel = gameViewModel,
+              onBack = { navigation.popBackStack() },
+              onOpenDice = { navigation.navigate(AllRoutes.Dice.name) { launchSingleTop = true } },
+              onOpenGroupWorkspace = { id ->
+                navigation.navigate(GroupWorkspaceRoute.createRoute(id)) { launchSingleTop = true }
+              },
+              onTabSelected = onGameTabSelected,
+          )
+        }
 
-      composable(route = AllRoutes.EditChar.name) {
-        EditFileCharacter(
-            viewModel = activeEditFileViewModel,
-            onBack = { navigation.popBackStack() },
-            onSaved = { navigation.popBackStack() },
-        )
-      }
+        composable(route = GroupWorkspaceRoute.route) { backStackEntry ->
+          val groupId =
+              requireNotNull(
+                  backStackEntry.arguments?.getString(GroupWorkspaceRoute.groupIdArgument)
+              )
+          val groupWorkspaceViewModel: GroupWorkspaceViewModel =
+              viewModel(
+                  factory =
+                      viewModelFactory {
+                        initializer {
+                          GroupWorkspaceViewModel(
+                              groupId = groupId,
+                              groupRepository = activeGroupRepository,
+                              repository = activeWorkspaceRepository,
+                              authRepository = activeAuthRepository,
+                          )
+                        }
+                      }
+              )
+          val uiState by groupWorkspaceViewModel.uiState.collectAsState()
+          GroupWorkSpaceScreen(
+              gwViewModel = groupWorkspaceViewModel,
+              groupId = groupId,
+              groupName = uiState.groupName,
+              personalItems = uiState.personalFiles,
+              onBack = { navController.popBackStack() },
+              onItemClicked = { file, _ -> openDocument(file, groupId) },
+              onCharacterCreated = { fileId ->
+                activeEditFileViewModel.loadFile(fileId, groupId)
+                navigation.navigate(AllRoutes.EditChar.name)
+              },
+              onTabSelected = { tab ->
+                when (tab) {
+                  "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
+                  "Campaigns" -> navigation.popBackStack(AllRoutes.GroupManagement.name, false)
+                  "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
+                  "Map" -> navigation.navigate(AllRoutes.Map.name)
+                }
+              },
+              onSearchClicked = {
+                navigation.navigate(GroupDocumentSearchRoute.createRoute(groupId))
+              },
+          )
+        }
 
-      composable(route = AllRoutes.EditLore.name) {
-        EditFileLore(
-            viewModel = activeEditFileViewModel,
-            onBack = { navigation.popBackStack() },
-            onSaved = { navigation.popBackStack() },
-        )
+        composable(
+            route = GroupDocumentSearchRoute.route,
+            arguments =
+                listOf(
+                    navArgument(GroupDocumentSearchRoute.groupIdArgument) {
+                      type = NavType.StringType
+                    }
+                ),
+        ) { backStackEntry ->
+          val groupId =
+              requireNotNull(
+                  backStackEntry.arguments?.getString(GroupDocumentSearchRoute.groupIdArgument)
+              )
+          val activeGroupSearchViewModel =
+              groupSearchViewModel
+                  ?: viewModel<DocumentSearchViewModel>(
+                      factory =
+                          viewModelFactory {
+                            initializer {
+                              DocumentSearchViewModel(
+                                  scope = DocumentSearchScope.Group(groupId),
+                                  repository = activeWorkspaceRepository,
+                                  authRepository = activeAuthRepository,
+                                  groupRepository = activeGroupRepository,
+                              )
+                            }
+                          }
+                  )
+          DocumentSearchScreen(
+              onBack = { navigation.popBackStack() },
+              onDocumentClicked = { file -> openDocument(file, groupId) },
+              searchViewModel = activeGroupSearchViewModel,
+          )
+        }
+
+        composable(route = AllRoutes.Map.name) {
+          MapScreen(
+              mapVM = viewModel<MapViewModel>(factory = MapViewModel.Factory),
+              onTabSelected = { tab ->
+                when (tab) {
+                  "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
+                  "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
+                  "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
+                  "Map" -> Unit
+                }
+              },
+              // No game details screen yet.
+              onViewGameDetails = { showComingSoon(context, "Game details") },
+          )
+        }
+
+        composable(route = AllRoutes.EditChar.name) {
+          EditFileCharacter(
+              viewModel = activeEditFileViewModel,
+              onBack = { navigation.popBackStack() },
+              onSaved = { navigation.popBackStack() },
+          )
+        }
+
+        composable(route = AllRoutes.EditLore.name) {
+          EditFileLore(
+              viewModel = activeEditFileViewModel,
+              onBack = { navigation.popBackStack() },
+              onSaved = { navigation.popBackStack() },
+          )
+        }
       }
     }
+  }
+}
+
+/**
+ * Opens SignIn and clears the back stack, unless [route], the current one, is an auth screen.
+ *
+ * Uses the NavController directly: NavigationHelper may ignore navigation during a transition, and
+ * this redirect must never be dropped, since the session end is marked as handled right after it.
+ */
+private fun NavHostController.showSignInAfterSessionEnded(route: String) {
+  if (route == AllRoutes.SignIn.name || route == AllRoutes.SignUp.name) return
+  navigate(AllRoutes.SignIn.name) {
+    popUpTo(graph.id) { inclusive = true }
+    launchSingleTop = true
   }
 }
 

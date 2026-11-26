@@ -31,7 +31,7 @@ data class ProfileUiState(
     val isLoading: Boolean = true,
     /** True while a save or a picture upload is running. */
     val isSaving: Boolean = false,
-    /** Error from the latest repository operation, or null. */
+    /** Error from the latest repository operation, or null. Cleared when a new one starts. */
     val errorMessage: String? = null,
 )
 
@@ -46,10 +46,13 @@ interface ProfileViewModelInterface {
   /** Current profile, stats, edit form and operation status. */
   val uiState: StateFlow<ProfileUiState>
 
-  /** Loads (or reloads) the profile and stats of the signed-in user. */
+  /**
+   * Loads the profile and stats of the signed-in user. Ignored while a load for that user runs or
+   * once that user's profile is loaded; for another user, replaces the previous user's state.
+   */
   fun loadProfile()
 
-  /** Opens the edit form, with the drafts set to the saved values. */
+  /** Opens the edit form, with the drafts set to the saved values. Ignored until it is loaded. */
   fun startEditing()
 
   /** Updates the username draft and its validation error. */
@@ -66,9 +69,7 @@ interface ProfileViewModelInterface {
 
   /**
    * Uploads the picked [image] as the new profile picture and shows it once the upload succeeds.
+   * Ignored until the profile is loaded or while another save or upload runs.
    */
   fun updateProfilePicture(image: Uri)
-
-  /** Clears [ProfileUiState.errorMessage] once the screen has shown it. */
-  fun clearError()
 }

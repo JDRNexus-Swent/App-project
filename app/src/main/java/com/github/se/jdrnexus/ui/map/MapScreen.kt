@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -76,6 +77,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.resources.OfflineBanner
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import com.google.android.gms.maps.model.CameraPosition
@@ -138,6 +140,8 @@ fun MapScreen(
 
   Scaffold(
       modifier = modifier.testTag(C.Tag.map_screen),
+      // Draws nothing while online, so the map keeps the status-bar inset of an empty top bar.
+      topBar = { OfflineBanner(Modifier.statusBarsPadding()) },
       bottomBar = { ScreenBottomBar(selectedTab = MAP_TAB, onTabSelected = onTabSelected) },
   ) { innerPadding ->
     Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {

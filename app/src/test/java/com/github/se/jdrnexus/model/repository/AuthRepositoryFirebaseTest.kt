@@ -344,6 +344,45 @@ class AuthRepositoryFirebaseTest {
   }
 
   @Test
+  fun refreshSessionKeepsAValidSession() = runBlocking {
+    val user = AuthUser("user-1", "player@example.com", "Player")
+    val client = FakeFirebaseAuthClient(initialUser = user)
+    val repository = AuthRepositoryFirebase(client)
+
+    val result = repository.refreshSession()
+
+    assertEquals(AuthResult.Success(Unit), result)
+    assertEquals(1, client.reloadCalls)
+    assertEquals(user, repository.authState.first())
+  }
+
+  @Test
+  fun refreshSessionSignsOutAnInvalidSession() = runBlocking {
+    val client =
+        FakeFirebaseAuthClient(initialUser = AuthUser("user-1", "player@example.com", "Player"))
+            .apply { sessionInvalid = true }
+    val repository = AuthRepositoryFirebase(client)
+
+    val result = repository.refreshSession()
+
+    assertEquals(AuthResult.Failure(AuthError.SESSION_NOT_FOUND), result)
+    assertEquals(null, repository.authState.first())
+  }
+
+  @Test
+  fun refreshSessionNetworkFailureKeepsTheSession() = runBlocking {
+    val user = AuthUser("user-1", "player@example.com", "Player")
+    val client =
+        FakeFirebaseAuthClient(initialUser = user).apply { reloadFailure = AuthError.NETWORK_ERROR }
+    val repository = AuthRepositoryFirebase(client)
+
+    val result = repository.refreshSession()
+
+    assertEquals(AuthResult.Failure(AuthError.NETWORK_ERROR), result)
+    assertEquals(user, repository.authState.first())
+  }
+
+  @Test
   fun signOutClearsSession() = runBlocking {
     val client = FakeFirebaseAuthClient(AuthUser("user-1", "player@example.com", "Player"))
     val repository = AuthRepositoryFirebase(client)
@@ -407,6 +446,9 @@ class AuthRepositoryFirebaseTest {
     val accountDeletionGate = CompletableDeferred<Unit>()
     var deleteAccountCalls = 0
     var signOutCalls = 0
+    var reloadCalls = 0
+    var reloadFailure: AuthError? = null
+    var sessionInvalid = false
 
     override suspend fun createEmailAccount(email: String, password: String): AuthUser {
       if (cancelAccountCreation) throw CancellationException("Account creation cancelled")
@@ -456,6 +498,16 @@ class AuthRepositoryFirebaseTest {
       signOutCalls++
       signOutFailure?.let { throw AuthOperationException(it) }
       authState.value = null
+    }
+
+    // Mirrors the Firebase client: an invalid session is signed out before the error is thrown.
+    override suspend fun reloadCurrentUser() {
+      reloadCalls++
+      reloadFailure?.let { throw AuthOperationException(it) }
+      if (sessionInvalid) {
+        authState.value = null
+        throw AuthOperationException(AuthError.SESSION_NOT_FOUND)
+      }
     }
   }
 }

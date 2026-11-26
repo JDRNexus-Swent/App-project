@@ -1,5 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.game
 
 import androidx.activity.compose.BackHandler
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
@@ -45,6 +47,7 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.resources.OfflineBanner
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 
@@ -161,6 +164,8 @@ private fun GameScreenPlayerContent(
 
   Scaffold(
       contentColor = MaterialTheme.colorScheme.onSurface,
+      // Draws nothing while online, so the content keeps the status-bar inset of an empty top bar.
+      topBar = { OfflineBanner(Modifier.statusBarsPadding()) },
       bottomBar = { ScreenBottomBar(selectedTab, onTabSelected) },
   ) { contentPadding ->
     LazyColumn(
