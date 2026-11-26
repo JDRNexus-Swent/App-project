@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.notification.NotificationType
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
@@ -32,6 +33,7 @@ import com.github.se.jdrnexus.utils.testNotification
 import com.google.firebase.FirebaseApp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -41,13 +43,6 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class MainActivityNotificationNavigationTest {
   @get:Rule val composeTestRule = createComposeRule()
-
-  @Test
-  fun homeHasNoBellWithoutNotificationViewModel() {
-    showApp(notificationViewModel = null)
-
-    composeTestRule.onAllNodesWithTag(C.Tag.notification_bell).assertCountEquals(0)
-  }
 
   @Test
   fun homeBellCountsOnlyUnreadNotificationsAndOpensThem() {
@@ -61,13 +56,52 @@ class MainActivityNotificationNavigationTest {
         )
     )
 
-    composeTestRule
-        .onNodeWithTag(C.Tag.notification_unread_badge, useUnmergedTree = true)
-        .onChild()
-        .assertTextEquals("2")
+    assertBadge("2")
     composeTestRule.onNodeWithTag(C.Tag.notification_bell).performClick()
 
     waitForTag(C.Tag.notification_list)
+  }
+
+  @Test
+  fun homeBadgeFollowsNotificationsArrivingWhileHomeIsShown() {
+    val viewModel = FakeNotificationViewModel(loadedNotifications(testNotification(ID)))
+    showApp(viewModel)
+    assertBadge("1")
+
+    // The repository pushes a new unread notification while the user stays on Home.
+    viewModel.notificationUiState.update { state ->
+      state.copy(notifications = state.notifications + testNotification(OTHER_ID))
+    }
+
+    composeTestRule.waitForIdle()
+    assertBadge("2")
+  }
+
+  @Test
+  fun homeBadgeDropsAfterMarkingANotificationRead() {
+    val viewModel =
+        FakeNotificationViewModel(
+            loadedNotifications(testNotification(ID), testNotification(OTHER_ID))
+        )
+    showApp(viewModel)
+    assertBadge("2")
+    composeTestRule.onNodeWithTag(C.Tag.notification_bell).performClick()
+    waitForTag(C.Tag.notification_list)
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.notificationMarkAsRead(ID), useUnmergedTree = true)
+        .performClick()
+    // The fake only records the call: apply the update the repository would push back.
+    viewModel.notificationUiState.update { state ->
+      state.copy(
+          notifications =
+              state.notifications.map { if (it.id == ID) it.copy(isRead = true) else it }
+      )
+    }
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    waitForTag(TestTags.TITLE)
+    assertBadge("1")
   }
 
   @Test
@@ -104,22 +138,28 @@ class MainActivityNotificationNavigationTest {
 
     waitForText(GROUP_NAME)
     assertEquals(listOf(ID), viewModel.markedAsRead)
-    // The workspace's back button has no shared tag: it is found by its description.
-    composeTestRule.onNodeWithContentDescription("Go back").performClick()
+    // The workspace's back button has no test tag: it is found by its description.
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    composeTestRule
+        .onNodeWithContentDescription(context.getString(R.string.workspace_back_description))
+        .performClick()
     waitForTag(C.Tag.notification_list)
   }
 
   @Test
-  fun invitationOpensCampaigns() {
-    openNotifications(
+  fun invitationOpensCampaignsAndBackReturnsToNotifications() {
+    val viewModel =
         FakeNotificationViewModel(
             loadedNotifications(testNotification(ID, type = NotificationType.GROUP_INVITATION))
         )
-    )
+    openNotifications(viewModel)
 
     composeTestRule.onNodeWithTag(C.Tag.notificationItem(ID)).performClick()
 
     waitForTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
+    assertEquals(listOf(ID), viewModel.markedAsRead)
+    Espresso.pressBack()
+    waitForTag(C.Tag.notification_list)
   }
 
   @Test
@@ -140,7 +180,7 @@ class MainActivityNotificationNavigationTest {
   }
 
   /** Starts the app on Home, signed in as [USER], a member of the group "The Sunken Crown". */
-  private fun showApp(notificationViewModel: FakeNotificationViewModel?) {
+  private fun showApp(notificationViewModel: FakeNotificationViewModel) {
     val context = ApplicationProvider.getApplicationContext<Context>()
     if (FirebaseApp.getApps(context).isEmpty()) {
       checkNotNull(FirebaseApp.initializeApp(context))
@@ -171,6 +211,13 @@ class MainActivityNotificationNavigationTest {
     showApp(viewModel)
     composeTestRule.onNodeWithTag(C.Tag.notification_bell).performClick()
     waitForTag(C.Tag.notification_list)
+  }
+
+  private fun assertBadge(text: String) {
+    composeTestRule
+        .onNodeWithTag(C.Tag.notification_unread_badge, useUnmergedTree = true)
+        .onChild()
+        .assertTextEquals(text)
   }
 
   private fun waitForTag(tag: String) {
@@ -206,6 +253,8 @@ class MainActivityNotificationNavigationTest {
 
   private companion object {
     const val ID = "notification-1"
+    /** A second unread notification, for tests where the unread count changes. */
+    const val OTHER_ID = "notification-2"
     const val GROUP_ID = "group-1"
     const val GROUP_NAME = "The Sunken Crown"
     const val GAME_MASTER_ID = "gm-1"
