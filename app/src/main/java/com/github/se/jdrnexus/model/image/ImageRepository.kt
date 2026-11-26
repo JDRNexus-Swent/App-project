@@ -14,9 +14,11 @@ interface ImageRepository {
 
   /**
    * Uploads the picture at [image] (a JPEG, PNG or WebP of at most 10 MiB) and creates its image
-   * file from [file]. Fails with [ImageError.NETWORK] after 60 seconds without progress. On any
-   * failure the uploaded picture is deleted again; if that delete gets no answer within 10 seconds,
-   * the picture stays in Storage, readable only by its owner.
+   * file from [file]. Fails with [ImageError.NETWORK] after 60 seconds without progress. When the
+   * upload stalls or is cancelled, or the file cannot be created, the uploaded picture is deleted
+   * again; if that delete gets no answer within 10 seconds, the picture stays in Storage, readable
+   * only by its owner. When Storage refuses the upload (for example a second upload with the same
+   * file id, since a picture is never overwritten), nothing is deleted.
    *
    * @param onProgress receives the fraction uploaded, from 0 to 1.
    */

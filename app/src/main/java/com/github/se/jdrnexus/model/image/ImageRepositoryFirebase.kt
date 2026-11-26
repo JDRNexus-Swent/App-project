@@ -49,15 +49,27 @@ class ImageRepositoryFirebase(
     val path = "images/${file.ownerId}/${file.id}"
     val picture = storage.reference.child(path)
     val imageFile = file.copy(type = DocumentType.IMAGE, content = path)
+    var mayHaveStoredPicture = true
     try {
-      putPicture(picture, image, checkNotNull(type), onProgress)
+      try {
+        putPicture(picture, image, checkNotNull(type), onProgress)
+      } catch (e: StorageException) {
+        // A refusal by the Storage rules means this upload stored nothing: a picture already at
+        // this path belongs to an earlier upload with the same id and must stay. Other failures
+        // (a lost connection) may come after the last chunk was saved, so they still clean up.
+        if (e.errorCode == StorageException.ERROR_NOT_AUTHORIZED) mayHaveStoredPicture = false
+        throw e
+      }
       workspaceRepository.createFile(imageFile).getOrThrow()
     } catch (e: Exception) {
-      // Whatever failed, even a cancellation, the picture must not stay without its record. A
-      // failed clean-up is ignored so that the original error is the one reported, and it is cut
-      // short offline, where the SDK would retry for 2 minutes before the error reaches the user.
-      withContext(NonCancellable) {
-        withTimeoutOrNull(CLEANUP_LIMIT_MS) { safeFirestoreRequest { picture.delete().await() } }
+      // After a stall, a cancellation or a refused record, the picture this call may have stored
+      // must not stay without its record. A failed clean-up is ignored so that the original error
+      // is the one reported, and it is cut short offline, where the SDK would retry for 2 minutes
+      // before the error reaches the user.
+      if (mayHaveStoredPicture) {
+        withContext(NonCancellable) {
+          withTimeoutOrNull(CLEANUP_LIMIT_MS) { safeFirestoreRequest { picture.delete().await() } }
+        }
       }
       throw e
     }
