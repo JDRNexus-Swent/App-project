@@ -497,6 +497,27 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun tappingAnImageInPersonalSpaceOpensNoEditor() {
+    val image =
+        JDRFile(
+            id = "image-1",
+            name = "Kingdom Map",
+            ownerId = "user-1",
+            type = DocumentType.IMAGE,
+            content = "images/user-1/image-1",
+        )
+    showAuthenticatedApp(extraFiles = listOf(image))
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    waitForText(image.name)
+    composeTestRule.onNodeWithText(image.name).performClick()
+    composeTestRule.waitForIdle()
+
+    composeTestRule.onAllNodesWithText(PERSONAL_SPACE_TITLE).assertCountEquals(1)
+    composeTestRule.onNodeWithText(image.name).assertIsDisplayed()
+  }
+
+  @Test
   fun mapTabOpensMapScreen() {
     val context = ApplicationProvider.getApplicationContext<Context>()
     if (FirebaseApp.getApps(context).isEmpty()) checkNotNull(FirebaseApp.initializeApp(context))
@@ -1114,6 +1135,7 @@ class MainActivityNavigationTest {
   private fun showAuthenticatedApp(
       documentSearchViewModel: DocumentSearchInterfaceVM? = null,
       personalFolder: JDRFile? = null,
+      extraFiles: List<JDRFile> = emptyList(),
   ): JDRFile {
     val repository = FakeAuthRepository()
     val loreFile =
@@ -1126,7 +1148,8 @@ class MainActivityNavigationTest {
             content =
                 """{"version":1,"type":"lore","title":"The Kingdom","sections":[{"sectionID":"history","title":"History","content":"Founded long ago."}]}""",
         )
-    val workspaceRepository = FakeWorkspaceRepository(listOfNotNull(personalFolder, loreFile))
+    val workspaceRepository =
+        FakeWorkspaceRepository(listOfNotNull(personalFolder, loreFile) + extraFiles)
     val groupRepository = FakeGroupRepository()
     val authViewModel = AuthViewModel(repository)
     val personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, repository)

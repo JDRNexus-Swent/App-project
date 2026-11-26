@@ -356,14 +356,16 @@ fun FolderItem(
                   DocumentType.FOLDER,
                   DocumentType.GROUP_ROOT -> Icons.Filled.Folder
                   DocumentType.CHARACTER -> Icons.Filled.Person
-                  DocumentType.TEXT -> Icons.AutoMirrored.Filled.MenuBook
+                  DocumentType.TEXT,
+                  DocumentType.IMAGE -> Icons.AutoMirrored.Filled.MenuBook
                 },
             contentDescription =
                 when (folder.type) {
                   DocumentType.FOLDER,
                   DocumentType.GROUP_ROOT -> "Folder"
                   DocumentType.CHARACTER -> "Character"
-                  DocumentType.TEXT -> "Text document"
+                  DocumentType.TEXT,
+                  DocumentType.IMAGE -> "Text document"
                 },
             tint = accentColor,
             modifier = Modifier.size(24.dp),
@@ -376,7 +378,8 @@ fun FolderItem(
                   DocumentType.FOLDER,
                   DocumentType.GROUP_ROOT -> "FOLDER"
                   DocumentType.CHARACTER -> "CHARACTER SHEET"
-                  DocumentType.TEXT -> "TEXT DOCUMENT"
+                  DocumentType.TEXT,
+                  DocumentType.IMAGE -> "TEXT DOCUMENT"
                 },
             color = secondaryText,
             fontSize = 9.sp,
