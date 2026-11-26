@@ -62,6 +62,7 @@ import com.github.se.jdrnexus.ui.search.DocumentSearchStatus
 import com.github.se.jdrnexus.ui.search.DocumentSearchUiState
 import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
 import com.github.se.jdrnexus.utils.FakeConnectivityRepository
+import com.github.se.jdrnexus.utils.FakeNotificationViewModel
 import com.github.se.jdrnexus.utils.NavigationGameSessionRepository
 import com.github.se.jdrnexus.utils.NavigationGroupRepository
 import com.github.se.jdrnexus.utils.NavigationWorkspaceRepository
@@ -305,6 +306,7 @@ class MainActivityNavigationTest {
             authRepository = repository,
             groupRepository = FakeGroupRepository(),
             workspaceRepository = NavigationWorkspaceRepository(),
+            notificationViewModel = FakeNotificationViewModel(),
             connectivityRepository = FakeConnectivityRepository(),
         )
       }
@@ -630,6 +632,7 @@ class MainActivityNavigationTest {
           authRepository = authRepository,
           groupRepository = groupRepository,
           workspaceRepository = workspaceRepository,
+          notificationViewModel = FakeNotificationViewModel(),
           connectivityRepository = FakeConnectivityRepository(),
       )
     }
@@ -733,6 +736,7 @@ class MainActivityNavigationTest {
           workspaceRepository = workspaceRepository,
           personalSearchViewModel = searchViewModel,
           groupSearchViewModel = searchViewModel,
+          notificationViewModel = FakeNotificationViewModel(),
           connectivityRepository = FakeConnectivityRepository(),
       )
     }
@@ -1106,6 +1110,7 @@ class MainActivityNavigationTest {
             workspaceRepository = workspaceRepository,
             editFileViewModel = editFileViewModel,
             gameSessionRepository = gameSessionRepository,
+            notificationViewModel = FakeNotificationViewModel(),
             connectivityRepository = connectivityRepository,
         )
       }
@@ -1166,6 +1171,7 @@ class MainActivityNavigationTest {
           workspaceRepository = workspaceRepository,
           personalSearchViewModel = documentSearchViewModel,
           groupSearchViewModel = documentSearchViewModel,
+          notificationViewModel = FakeNotificationViewModel(),
           connectivityRepository = FakeConnectivityRepository(),
       )
     }

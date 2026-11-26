@@ -8,6 +8,7 @@ import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.utils.MainDispatcherRule
+import com.github.se.jdrnexus.utils.testNotification
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -117,6 +118,17 @@ class NotificationViewModelTest {
     viewModel.clearActionError()
 
     assertTrue(viewModel.uiState.value.actionError == null)
+  }
+
+  @Test
+  fun unreadCountIgnoresReadNotifications() {
+    val state =
+        NotificationUiState(
+            notifications =
+                listOf(testNotification("unread"), testNotification("read", isRead = true))
+        )
+
+    assertEquals(1, state.unreadCount)
   }
 
   @Test

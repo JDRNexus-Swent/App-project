@@ -30,7 +30,11 @@ data class NotificationUiState(
     val loadState: NotificationLoadState = NotificationLoadState.Loading,
     /** Error from the latest notification mutation, if one occurred. */
     val actionError: String? = null,
-)
+) {
+  /** Number of notifications the user has not read yet, shown on the Home bell. */
+  val unreadCount: Int
+    get() = notifications.count { !it.isRead }
+}
 
 /**
  * Public contract exposed by the notification screen's ViewModel.

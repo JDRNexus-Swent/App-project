@@ -37,6 +37,8 @@ import com.github.se.jdrnexus.model.connectivity.ConnectivityRepository
 import com.github.se.jdrnexus.model.connectivity.ConnectivityRepositoryProvider
 import com.github.se.jdrnexus.model.gameManagement.GameSessionRepository
 import com.github.se.jdrnexus.model.gameManagement.GameSessionRepositoryFirestore
+import com.github.se.jdrnexus.model.notification.Notification
+import com.github.se.jdrnexus.model.notification.NotificationRepositoryProvider
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.GroupRepositoryFirestore
@@ -66,6 +68,9 @@ import com.github.se.jdrnexus.ui.home.HomeScreen
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
 import com.github.se.jdrnexus.ui.map.MapScreen
 import com.github.se.jdrnexus.ui.map.MapViewModel
+import com.github.se.jdrnexus.ui.notification.NotificationDestination
+import com.github.se.jdrnexus.ui.notification.NotificationScreen
+import com.github.se.jdrnexus.ui.notification.destination
 import com.github.se.jdrnexus.ui.search.DocumentSearchInterfaceVM
 import com.github.se.jdrnexus.ui.search.DocumentSearchScope
 import com.github.se.jdrnexus.ui.search.DocumentSearchScreen
@@ -73,6 +78,8 @@ import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.GroupRole
+import com.github.se.jdrnexus.viewmodel.NotificationViewModel
+import com.github.se.jdrnexus.viewmodel.NotificationViewModelInterface
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.catch
@@ -106,6 +113,7 @@ enum class AllRoutes {
   EditChar,
   EditLore,
   Map,
+  Notifications,
 }
 
 object GroupWorkspaceRoute {
@@ -156,6 +164,7 @@ fun JDRNexusApp(
     groupRepository: GroupRepository? = null,
     personalSearchViewModel: DocumentSearchInterfaceVM? = null,
     groupSearchViewModel: DocumentSearchInterfaceVM? = null,
+    notificationViewModel: NotificationViewModelInterface? = null,
     gameSessionRepository: GameSessionRepository? = null,
     connectivityRepository: ConnectivityRepository? = null,
 ) {
@@ -184,6 +193,19 @@ fun JDRNexusApp(
                     }
                   }
           )
+  val activeNotificationViewModel =
+      notificationViewModel
+          ?: viewModel<NotificationViewModel>(
+              factory =
+                  viewModelFactory {
+                    initializer {
+                      NotificationViewModel(
+                          repository = NotificationRepositoryProvider.repository,
+                          authRepository = activeAuthRepository,
+                      )
+                    }
+                  }
+          )
   val openDocument: (JDRFile, String?) -> Unit = { document, groupId ->
     activeEditFileViewModel.loadFile(document.id, groupId)
     when (document.type) {
@@ -192,6 +214,17 @@ fun JDRNexusApp(
       DocumentType.FOLDER,
       DocumentType.GROUP_ROOT,
       DocumentType.IMAGE -> Unit
+    }
+  }
+  val openNotification: (Notification) -> Unit = { notification ->
+    when (val destination = notification.destination()) {
+      is NotificationDestination.GroupWorkspace ->
+          navigation.navigate(GroupWorkspaceRoute.createRoute(destination.groupId)) {
+            launchSingleTop = true
+          }
+      NotificationDestination.Campaigns ->
+          navigation.navigate(AllRoutes.GroupManagement.name) { launchSingleTop = true }
+      null -> Unit
     }
   }
   val onGameTabSelected: (String) -> Unit = { tab ->
@@ -258,6 +291,7 @@ fun JDRNexusApp(
           val onDiceClicked = { navigation.navigate(AllRoutes.Dice.name) }
           val onGroupManagementClicked = { navigation.navigate(AllRoutes.GroupManagement.name) }
           val onMapClicked = { navigation.navigate(AllRoutes.Map.name) }
+          val notificationState by activeNotificationViewModel.notificationUiState.collectAsState()
           HomeScreen(
               viewModel = activeAuthViewModel,
               onLogout = onLogout,
@@ -265,6 +299,26 @@ fun JDRNexusApp(
               onDiceClick = onDiceClicked,
               onGroupManagementClick = onGroupManagementClicked,
               onMapClick = onMapClicked,
+              unreadNotificationCount = notificationState.unreadCount,
+              onNotificationsClick = {
+                navigation.navigate(AllRoutes.Notifications.name) { launchSingleTop = true }
+              },
+          )
+        }
+
+        composable(route = AllRoutes.Notifications.name) {
+          NotificationScreen(
+              viewModel = activeNotificationViewModel,
+              onBack = { navigation.popBackStack() },
+              onOpenNotification = openNotification,
+              onTabSelected = { tab ->
+                when (tab) {
+                  "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
+                  "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
+                  "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
+                  "Map" -> navigation.navigate(AllRoutes.Map.name)
+                }
+              },
           )
         }
 
