@@ -1,7 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
-package com.github.se.jdrnexus.ui.soundboard
-
-import com.github.se.jdrnexus.model.soundboard.AudioFile
+package com.github.se.jdrnexus.model.soundboard
 
 /** Opens independent playback handles for locally imported sounds. */
 interface SoundboardPlayer {

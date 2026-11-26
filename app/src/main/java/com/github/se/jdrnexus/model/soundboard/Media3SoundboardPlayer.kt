@@ -1,5 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
-package com.github.se.jdrnexus.ui.soundboard
+package com.github.se.jdrnexus.model.soundboard
 
 import android.content.Context
 import android.net.Uri
@@ -9,9 +9,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import com.github.se.jdrnexus.model.soundboard.AudioFile
-import com.github.se.jdrnexus.ui.soundboard.SoundboardPlayer.Event
-import com.github.se.jdrnexus.ui.soundboard.SoundboardPlayer.Playback
+import com.github.se.jdrnexus.model.soundboard.SoundboardPlayer.Event
+import com.github.se.jdrnexus.model.soundboard.SoundboardPlayer.Playback
 import java.io.File
 
 /** Plays each local MP3 on its own ExoPlayer so ambience and effects can overlap. */
