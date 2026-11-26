@@ -1,6 +1,7 @@
 package com.github.se.jdrnexus.ui.profile
 
 // Co-authored-by: Codex <codex@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -61,19 +62,18 @@ import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.profile.ProfileStats
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
-import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import com.github.se.jdrnexus.viewmodel.ProfileUiState
 import com.github.se.jdrnexus.viewmodel.ProfileViewModelInterface
 
-/** Displays the signed-in user's profile and forwards edits to the supplied ViewModel. */
+/**
+ * Displays the signed-in user's profile and forwards edits to the supplied ViewModel.
+ *
+ * The profile is a secondary screen: it has the shared top bar with a back button and no bottom
+ * bar. [onBack] is called by that button and by system back outside the edit form.
+ */
 @Composable
-fun ProfileScreen(
-    viewModel: ProfileViewModelInterface,
-    onBack: () -> Unit,
-    onTabSelected: (String) -> Unit,
-    selectedTab: String = "Home",
-) {
+fun ProfileScreen(viewModel: ProfileViewModelInterface, onBack: () -> Unit) {
   val state by viewModel.uiState.collectAsState()
   val pickPicture =
       rememberLauncherForActivityResult(PickVisualMedia()) { uri ->
@@ -91,8 +91,6 @@ fun ProfileScreen(
       onCancel = viewModel::cancelEditing,
       onSave = viewModel::saveProfile,
       onBack = onBack,
-      onTabSelected = onTabSelected,
-      selectedTab = selectedTab,
   ) {
     pickPicture.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly))
   }
@@ -108,8 +106,6 @@ private fun ProfileContent(
     onCancel: () -> Unit,
     onSave: () -> Unit,
     onBack: () -> Unit,
-    onTabSelected: (String) -> Unit,
-    selectedTab: String,
     onPickPicture: () -> Unit,
 ) {
   val colors = MaterialTheme.colorScheme
@@ -117,7 +113,6 @@ private fun ProfileContent(
       containerColor = colors.background,
       contentColor = colors.onBackground,
       topBar = { AppTopBar(title = "Profile", onBack = onBack) },
-      bottomBar = { ScreenBottomBar(selectedTab, onTabSelected) },
   ) { padding ->
     Column(
         modifier =
@@ -402,8 +397,6 @@ private const val NO_DESCRIPTION = "No description"
 //        state = state,
 //        viewModel = PreviewProfileViewModel,
 //        onBack = {},
-//        onTabSelected = {},
-//        selectedTab = "Home",
 //        onPickPicture = {},
 //    )
 //  }

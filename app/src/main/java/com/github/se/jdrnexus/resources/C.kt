@@ -63,6 +63,8 @@ object C {
     const val profile_loading = "profile_loading"
     const val profile_saving = "profile_saving"
     const val profile_error = "profile_error"
+    /** Button opening the profile screen, in the top bar of Home and of Campaigns. */
+    const val open_profile = "open_profile"
 
     const val sign_in_email = "auth_sign_in_email"
     const val sign_in_password = "auth_sign_in_password"

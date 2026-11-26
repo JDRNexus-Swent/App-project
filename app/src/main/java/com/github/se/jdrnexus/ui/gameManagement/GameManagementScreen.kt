@@ -134,7 +134,7 @@ internal object GameManagementTestTags {
  * can load its shared files. Selecting "Play" invokes [onPlay] with that group's ID and the user's
  * role in it, so the destination can open the matching game screen. [gameManagementViewModel]
  * provides the loading and creation state. [helpViewModel] decides when the help sheet, opened by
- * the top bar's help button, is shown.
+ * the top bar's help button, is shown. The top bar's profile button invokes [onProfileClick].
  */
 @Composable
 fun GameManagementScreen(
@@ -144,6 +144,7 @@ fun GameManagementScreen(
     onTabSelected: (String) -> Unit,
     gameManagementViewModel: GameManagementViewModel,
     helpViewModel: HelpViewModel = viewModel(),
+    onProfileClick: () -> Unit = {},
 ) {
   val uiState by gameManagementViewModel.uiState.collectAsState()
   val helpState by helpViewModel.uiState.collectAsState()
@@ -165,6 +166,7 @@ fun GameManagementScreen(
       showHelp = helpState.showHelp,
       onHelpClick = helpViewModel::onHelpClicked,
       onHelpDismiss = helpViewModel::onHelpDismissed,
+      onProfileClick = onProfileClick,
   )
 }
 
@@ -177,6 +179,7 @@ fun GameManagementScreen(
  * @param showHelp whether the help sheet with [campaignHelpPages] is shown.
  * @param onHelpClick called by the top bar's help button.
  * @param onHelpDismiss called once the help sheet has been closed.
+ * @param onProfileClick called by the top bar's profile button.
  * @param renderDialogsAsWindow whether dialogs open in their own window; tests render them inline.
  */
 @Composable
@@ -196,6 +199,7 @@ internal fun GameManagementScreenContent(
     showHelp: Boolean = false,
     onHelpClick: () -> Unit = {},
     onHelpDismiss: () -> Unit = {},
+    onProfileClick: () -> Unit = {},
     renderDialogsAsWindow: Boolean = true,
 ) {
   val colors = gameManagementColors()
@@ -207,7 +211,13 @@ internal fun GameManagementScreenContent(
 
   Scaffold(
       containerColor = colors.background,
-      topBar = { GameManagementHeader(colors = colors, onHelpClick = onHelpClick) },
+      topBar = {
+        GameManagementHeader(
+            colors = colors,
+            onHelpClick = onHelpClick,
+            onProfileClick = onProfileClick,
+        )
+      },
       bottomBar = {
         ScreenBottomBar(
             selectedTab = "Campaigns",
@@ -361,10 +371,14 @@ internal fun GameManagementScreenContent(
 
 /**
  * Shows the profile, app identity, help button and notification affordance at the top of the
- * screen. The help button calls [onHelpClick].
+ * screen. The help button calls [onHelpClick] and the profile button calls [onProfileClick].
  */
 @Composable
-private fun GameManagementHeader(colors: GameManagementColors, onHelpClick: () -> Unit) {
+private fun GameManagementHeader(
+    colors: GameManagementColors,
+    onHelpClick: () -> Unit,
+    onProfileClick: () -> Unit,
+) {
   val context = LocalContext.current
   AppTopBar(
       title = "JDRNexus",
@@ -381,15 +395,20 @@ private fun GameManagementHeader(colors: GameManagementColors, onHelpClick: () -
         }
       },
       leadingContent = {
-        Box(
+        IconButton(
+            onClick = onProfileClick,
             modifier =
                 Modifier.size(38.dp)
                     .clip(CircleShape)
                     .background(colors.raised)
-                    .border(1.dp, colors.outline, CircleShape),
-            contentAlignment = Alignment.Center,
+                    .border(1.dp, colors.outline, CircleShape)
+                    .testTag(C.Tag.open_profile),
         ) {
-          Icon(Icons.Filled.Person, contentDescription = "Profile", tint = colors.secondaryText)
+          Icon(
+              Icons.Filled.Person,
+              contentDescription = stringResource(R.string.profile_open),
+              tint = colors.secondaryText,
+          )
         }
       },
       trailingContent = {

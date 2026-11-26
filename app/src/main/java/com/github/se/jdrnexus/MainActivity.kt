@@ -66,6 +66,7 @@ import com.github.se.jdrnexus.ui.home.HomeScreen
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
 import com.github.se.jdrnexus.ui.map.MapScreen
 import com.github.se.jdrnexus.ui.map.MapViewModel
+import com.github.se.jdrnexus.ui.profile.ProfileScreen
 import com.github.se.jdrnexus.ui.search.DocumentSearchInterfaceVM
 import com.github.se.jdrnexus.ui.search.DocumentSearchScope
 import com.github.se.jdrnexus.ui.search.DocumentSearchScreen
@@ -74,6 +75,8 @@ import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.GroupRole
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
+import com.github.se.jdrnexus.viewmodel.ProfileViewModel
+import com.github.se.jdrnexus.viewmodel.ProfileViewModelInterface
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -105,6 +108,7 @@ enum class AllRoutes {
   GroupManagement,
   EditChar,
   EditLore,
+  Profile,
   Map,
 }
 
@@ -158,6 +162,7 @@ fun JDRNexusApp(
     groupSearchViewModel: DocumentSearchInterfaceVM? = null,
     gameSessionRepository: GameSessionRepository? = null,
     connectivityRepository: ConnectivityRepository? = null,
+    profileViewModel: ProfileViewModelInterface? = null,
 ) {
   val activeAuthViewModel = authViewModel ?: viewModel(factory = AuthViewModel.Factory)
   val activeAuthRepository = authRepository ?: AuthRepositoryFirebase()
@@ -184,6 +189,7 @@ fun JDRNexusApp(
                     }
                   }
           )
+  val openProfile = { navigation.navigate(AllRoutes.Profile.name) { launchSingleTop = true } }
   val openDocument: (JDRFile, String?) -> Unit = { document, groupId ->
     activeEditFileViewModel.loadFile(document.id, groupId)
     when (document.type) {
@@ -264,6 +270,7 @@ fun JDRNexusApp(
               onDiceClick = onDiceClicked,
               onGroupManagementClick = onGroupManagementClicked,
               onMapClick = onMapClicked,
+              onProfileClick = openProfile,
           )
         }
 
@@ -349,6 +356,7 @@ fun JDRNexusApp(
                 navigation.navigate(route) { launchSingleTop = true }
               },
               onManageGroup = { showComingSoon(context, "Group management") },
+              onProfileClick = openProfile,
               onTabSelected = { tab ->
                 when (tab) {
                   "Home" -> navigation.popBackStack(AllRoutes.Home.name, inclusive = false)
@@ -536,6 +544,22 @@ fun JDRNexusApp(
               viewModel = activeEditFileViewModel,
               onBack = { navigation.popBackStack() },
               onSaved = { navigation.popBackStack() },
+          )
+        }
+
+        composable(route = AllRoutes.Profile.name) {
+          // Scoped to this entry: each visit reloads the profile and drops unsaved drafts.
+          val activeProfileViewModel =
+              profileViewModel
+                  ?: viewModel<ProfileViewModel>(
+                      factory =
+                          viewModelFactory {
+                            initializer { ProfileViewModel(authRepository = activeAuthRepository) }
+                          }
+                  )
+          ProfileScreen(
+              viewModel = activeProfileViewModel,
+              onBack = { navigation.popBackStack() },
           )
         }
       }

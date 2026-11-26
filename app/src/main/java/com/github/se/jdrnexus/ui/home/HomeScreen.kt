@@ -13,12 +13,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -34,9 +36,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.AppTopBar
+import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
@@ -67,6 +72,8 @@ fun HomeScreen(
     onMapClick: () -> Unit = {},
     unreadNotificationCount: Int = 0,
     onNotificationsClick: (() -> Unit)? = null,
+    // Opens the profile screen; the top bar shows the profile button only when it is given.
+    onProfileClick: (() -> Unit)? = null,
 ) {
 
   val uiState by viewModel.uiState.collectAsState()
@@ -95,6 +102,20 @@ fun HomeScreen(
         AppTopBar(
             title = "JDRNexus",
             titleModifier = Modifier.testTag(TestTags.TITLE),
+            leadingContent = {
+              if (onProfileClick != null) {
+                IconButton(
+                    onClick = { if (canNavigate()) onProfileClick() },
+                    enabled = canNavigate(),
+                    modifier = Modifier.testTag(C.Tag.open_profile),
+                ) {
+                  Icon(
+                      Icons.Filled.AccountCircle,
+                      contentDescription = stringResource(R.string.profile_open),
+                  )
+                }
+              }
+            },
             trailingContent = {
               // Shown only when the caller can open the notifications, so the bell is never dead.
               if (onNotificationsClick != null) {
