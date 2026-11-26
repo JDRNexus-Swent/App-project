@@ -2,12 +2,12 @@
 package com.github.se.jdrnexus.viewmodel
 
 import android.net.Uri
-import com.github.se.jdrnexus.model.profile.ProfileRepository
 import com.github.se.jdrnexus.model.profile.ProfileStats
 import com.github.se.jdrnexus.model.profile.UserProfile
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
+import com.github.se.jdrnexus.utils.FakeProfileRepository
 import com.github.se.jdrnexus.utils.MainDispatcherRule
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
@@ -36,43 +36,6 @@ class ProfileViewModelTest {
 
   // ============ Fakes ============
 
-  /** Returns the configured results; a non-null gate holds the operation until completed. */
-  private class FakeProfileRepository : ProfileRepository {
-    var profileResult: Result<UserProfile> = Result.success(SAVED_PROFILE)
-    var statsResult: Result<ProfileStats> = Result.success(STATS)
-    var updateResult: Result<Unit> = Result.success(Unit)
-    var uploadResult: Result<String> = Result.success(PICTURE_URL)
-    var gate: CompletableDeferred<Unit>? = null
-
-    val profileRequests = mutableListOf<String>()
-    val updates = mutableListOf<Triple<String, String, String>>()
-    val uploads = mutableListOf<Pair<String, Uri>>()
-
-    override suspend fun getProfile(userId: String): Result<UserProfile> {
-      profileRequests.add(userId)
-      gate?.await()
-      return profileResult
-    }
-
-    override suspend fun updateProfile(
-        userId: String,
-        username: String,
-        bio: String,
-    ): Result<Unit> {
-      updates.add(Triple(userId, username, bio))
-      gate?.await()
-      return updateResult
-    }
-
-    override suspend fun uploadProfilePicture(userId: String, image: Uri): Result<String> {
-      uploads.add(userId to image)
-      gate?.await()
-      return uploadResult
-    }
-
-    override suspend fun getProfileStats(userId: String): Result<ProfileStats> = statsResult
-  }
-
   /** Signed in as the given user; tests switch user through [authState]. */
   private class FakeAuthRepository(user: AuthUser?) : AuthRepository {
     override val authState = MutableStateFlow(user)
@@ -87,7 +50,7 @@ class ProfileViewModelTest {
     override suspend fun signOut(): AuthResult<Unit> = error("unused")
   }
 
-  private val repository = FakeProfileRepository()
+  private val repository = FakeProfileRepository(SAVED_PROFILE, STATS, PICTURE_URL)
 
   private fun viewModel(
       user: AuthUser? = AuthUser(USER_ID, null, null),

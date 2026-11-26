@@ -42,6 +42,7 @@ import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import com.github.se.jdrnexus.model.profile.ProfileRepositoryProvider
 import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
@@ -62,6 +63,7 @@ import com.github.se.jdrnexus.ui.search.DocumentSearchStatus
 import com.github.se.jdrnexus.ui.search.DocumentSearchUiState
 import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
 import com.github.se.jdrnexus.utils.FakeConnectivityRepository
+import com.github.se.jdrnexus.utils.FakeProfileRepository
 import com.github.se.jdrnexus.utils.LOADED_PROFILE_STATE
 import com.github.se.jdrnexus.utils.NavigationGameSessionRepository
 import com.github.se.jdrnexus.utils.NavigationGroupRepository
@@ -295,6 +297,58 @@ class MainActivityNavigationTest {
 
     waitForTag(C.Tag.play_button)
     composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
+  fun filesTabFromProfileOpensPersonalSpace() {
+    openProfileFromHome(RecordingProfileViewModel(LOADED_PROFILE_STATE))
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+
+    waitForText(PERSONAL_SPACE_TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
+  fun mapTabFromProfileOpensTheMap() {
+    val defaultMapRepository = MapRepositoryProvider.mapRepository
+    MapRepositoryProvider.mapRepository = NoGamesMapRepository()
+    try {
+      openProfileFromHome(RecordingProfileViewModel(LOADED_PROFILE_STATE))
+
+      composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
+
+      waitForTag(C.Tag.map_screen)
+      composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+    } finally {
+      MapRepositoryProvider.mapRepository = defaultMapRepository
+    }
+  }
+
+  @Test
+  fun eachProfileVisitLoadsTheProfileWithAFreshViewModel() {
+    // No injected ViewModel: JDRNexusApp creates the real one for the Profile entry.
+    showApp(profileViewModel = null)
+    signIn()
+    // Read only after showApp: the provider's default repository needs the FirebaseApp it starts.
+    val defaultProfileRepository = ProfileRepositoryProvider.repository
+    val profileRepository = FakeProfileRepository()
+    ProfileRepositoryProvider.repository = profileRepository
+    try {
+      repeat(2) {
+        composeTestRule.onNodeWithTag(C.Tag.open_profile).performClick()
+        waitForTag(C.Tag.profile_username)
+        composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+        waitForTag(TestTags.TITLE)
+        composeTestRule.waitForIdle()
+      }
+
+      // ProfileViewModel.loadProfile keeps an already loaded profile of the same user, so only a
+      // new ViewModel on the second visit fetches it again.
+      assertEquals(2, profileRepository.profileRequests.size)
+    } finally {
+      ProfileRepositoryProvider.repository = defaultProfileRepository
+    }
   }
 
   @Test
@@ -1149,7 +1203,7 @@ class MainActivityNavigationTest {
       workspaceRepository: NavigationWorkspaceRepository = NavigationWorkspaceRepository(),
       gameSessionRepository: NavigationGameSessionRepository? = null,
       connectivityRepository: FakeConnectivityRepository = FakeConnectivityRepository(),
-      profileViewModel: RecordingProfileViewModel = RecordingProfileViewModel(),
+      profileViewModel: RecordingProfileViewModel? = RecordingProfileViewModel(),
   ) {
     val context = ApplicationProvider.getApplicationContext<Context>()
     if (FirebaseApp.getApps(context).isEmpty()) {
