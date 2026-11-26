@@ -65,11 +65,15 @@ object StorageEmulatorTestUtils {
   fun storageAs(uid: String): FirebaseStorage =
       storages.getOrPut(uid) { emulatorStorage(signedInApp(uid)) }
 
-  /** A Firestore client signed in as [uid], on the same FirebaseApp as [storageAs]. */
+  /**
+   * A Firestore client signed in as [uid], on the same FirebaseApp as [storageAs]. It uses the
+   * app's project (google-services.json), not the one the Storage rules read: write the documents
+   * the rules must see with [writeBypassingRules].
+   */
   @Synchronized
   fun firestoreAs(uid: String): FirebaseFirestore =
       firestores.getOrPut(uid) {
-        FirebaseFirestore.getInstance(signedInApp(uid)).apply { useEmulator(HOST, 8080) }
+        FirebaseFirestore.getInstance(signedInApp(uid)).apply { useEmulator(HOST, FIRESTORE_PORT) }
       }
 
   private fun signedInApp(uid: String): FirebaseApp =

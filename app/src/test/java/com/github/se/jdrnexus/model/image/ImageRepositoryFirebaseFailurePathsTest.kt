@@ -8,6 +8,7 @@ import android.provider.OpenableColumns
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -46,6 +47,7 @@ class ImageRepositoryFirebaseFailurePathsTest {
 
   private val image = Uri.parse("content://media/picker/0/42")
   private val file = JDRFile(id = "map", name = "Dungeon map", ownerId = "owner")
+  private val stored = file.copy(type = DocumentType.IMAGE, content = "images/owner/map")
   private val picture = mockk<StorageReference>()
   private val upload = mockk<UploadTask>(relaxed = true)
   private val storage =
@@ -67,6 +69,18 @@ class ImageRepositoryFirebaseFailurePathsTest {
 
   private fun storageFailure(httpCode: Int) =
       checkNotNull(StorageException.fromExceptionAndHttpCode(null, httpCode))
+
+  // The error getDownloadUrl reports when Storage fails with [failure].
+  private suspend fun downloadLinkErrorFor(failure: Exception): ImageError? {
+    every { picture.downloadUrl } returns Tasks.forException(failure)
+    return errorOf(repository.getDownloadUrl(stored))
+  }
+
+  // deleteImage finds the stored image file, and Storage answers the picture delete with [answer].
+  private fun givenPictureDeleteAnswers(answer: Task<Void>) {
+    coEvery { workspace.getFile("map") } returns Result.success(stored)
+    every { picture.delete() } returns answer
+  }
 
   @Test
   fun stalledUploadIsCancelledCleanedUpAndReportsNetworkAfter60Seconds() =
@@ -125,36 +139,61 @@ class ImageRepositoryFirebaseFailurePathsTest {
       }
 
   @Test
-  fun offlineAndUnexpectedFailuresBecomeNetworkOrUnknown() = runTest {
-    val stored = file.copy(type = DocumentType.IMAGE, content = "images/owner/map")
-    every { picture.downloadUrl } returnsMany
-        listOf(
-            Tasks.forException(storageFailure(-2)),
-            Tasks.forException(storageFailure(500)),
-            Tasks.forException(IllegalStateException("unexpected")),
+  fun cancellingTheCallerStopsTheUploadAndDeletesThePicture() = runTest {
+    every { picture.delete() } returns Tasks.forResult(null)
+    val pending = async { repository.uploadImage(file, image) }
+    runCurrent()
+
+    pending.cancel()
+    pending.join()
+
+    verify { upload.cancel() }
+    verify { picture.delete() }
+  }
+
+  @Test
+  fun downloadLinkWithoutConnectionIsNetwork() = runTest {
+    assertEquals(ImageError.NETWORK, downloadLinkErrorFor(storageFailure(-2)))
+  }
+
+  @Test
+  fun downloadLinkServerErrorIsUnknown() = runTest {
+    assertEquals(ImageError.UNKNOWN, downloadLinkErrorFor(storageFailure(500)))
+  }
+
+  @Test
+  fun downloadLinkUnexpectedExceptionIsUnknown() = runTest {
+    assertEquals(ImageError.UNKNOWN, downloadLinkErrorFor(IllegalStateException("unexpected")))
+  }
+
+  @Test
+  fun deleteImageOfflineIsNetwork() = runTest {
+    coEvery { workspace.getFile("map") } returns
+        Result.failure(
+            FirebaseFirestoreException("offline", FirebaseFirestoreException.Code.UNAVAILABLE)
         )
-    coEvery { workspace.getFile("map") } returnsMany
-        listOf(
-            Result.failure(
-                FirebaseFirestoreException("offline", FirebaseFirestoreException.Code.UNAVAILABLE)
-            ),
-            Result.success(stored),
-        )
-    every { picture.delete() } returnsMany
-        listOf(Tasks.forException(storageFailure(403)), Tasks.forResult(null))
+
+    assertEquals(ImageError.NETWORK, errorOf(repository.deleteImage("map")))
+  }
+
+  @Test
+  fun refusedPictureDeleteKeepsTheFile() = runTest {
+    givenPictureDeleteAnswers(Tasks.forException(storageFailure(403)))
+
+    val result = repository.deleteImage("map")
+
+    assertEquals(ImageError.PERMISSION_DENIED, errorOf(result))
+    coVerify(exactly = 0) { workspace.deleteFile(any()) }
+  }
+
+  @Test
+  fun fileDeleteFailingAfterThePictureIsGoneIsUnknown() = runTest {
+    givenPictureDeleteAnswers(Tasks.forResult(null))
     coEvery { workspace.deleteFile("map") } returns
         Result.failure(
             FirebaseFirestoreException("aborted", FirebaseFirestoreException.Code.ABORTED)
         )
 
-    assertEquals(ImageError.NETWORK, errorOf(repository.getDownloadUrl(stored)))
-    assertEquals(ImageError.UNKNOWN, errorOf(repository.getDownloadUrl(stored)))
-    assertEquals(ImageError.UNKNOWN, errorOf(repository.getDownloadUrl(stored)))
-    assertEquals(ImageError.NETWORK, errorOf(repository.deleteImage("map")))
-    // A refused picture delete keeps the record; a record that fails after the picture is gone
-    // reports its own error.
-    assertEquals(ImageError.PERMISSION_DENIED, errorOf(repository.deleteImage("map")))
     assertEquals(ImageError.UNKNOWN, errorOf(repository.deleteImage("map")))
-    coVerify(exactly = 1) { workspace.deleteFile("map") }
   }
 }

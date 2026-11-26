@@ -55,7 +55,14 @@ class ImageRepositoryFirebaseTest {
         it.toByteArray()
       }
 
-  @After fun deletePicked() = picked.forEach { resolver.delete(it, null, null) }
+  // Removes the picked pictures and what the test stored. A failed delete (already gone) is
+  // ignored.
+  @After
+  fun tearDown() = runBlocking {
+    picked.forEach { resolver.delete(it, null, null) }
+    runCatching { storedPicture().delete().awaitWithTimeout() }
+    runCatching { storedRecordReference().delete().awaitWithTimeout() }
+  }
 
   private fun repositoryAs(uid: String) =
       ImageRepositoryFirebase(
@@ -95,13 +102,11 @@ class ImageRepositoryFirebaseTest {
   private suspend fun storedBytes() =
       storedPicture().getBytes(MAX_IMAGE_BYTES.toLong()).awaitWithTimeout()
 
+  private fun storedRecordReference() =
+      firestoreAs(ownerId).collection("documents").document(fileId)
+
   private suspend fun storedRecord(): JDRFile? =
-      firestoreAs(ownerId)
-          .collection("documents")
-          .document(fileId)
-          .get()
-          .awaitWithTimeout()
-          .toObject(JDRFile::class.java)
+      storedRecordReference().get().awaitWithTimeout().toObject(JDRFile::class.java)
 
   private fun errorOf(result: Result<*>) = (result.exceptionOrNull() as? ImageException)?.error
 
@@ -175,6 +180,19 @@ class ImageRepositoryFirebaseTest {
     // The Firestore rules refuse a file in a folder that does not exist: the picture is deleted.
     val missingFolder = imageFile(parentId = "$run-none")
     assertRefused("record refused", ImageError.PERMISSION_DENIED, upload(missingFolder))
+  }
+
+  // Storage never overwrites a picture, so a second upload with the same id is refused, and its
+  // clean-up must not delete the first upload's picture.
+  @Test
+  fun secondUploadWithTheSameIdKeepsTheFirstImage() = runBlocking {
+    val first = upload().getOrThrow()
+
+    val second = upload()
+
+    assertEquals(ImageError.PERMISSION_DENIED, errorOf(second))
+    assertArrayEquals(png, storedBytes())
+    assertEquals(first, storedRecord())
   }
 
   @Test
