@@ -1,7 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.firestoreRules
 
-import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -54,16 +53,7 @@ class UsersRulesTest {
       mapOf("groupIds" to FieldValue.arrayRemove(*groupIds))
 
   private suspend fun writeGroup(id: String, vararg participantIds: String) =
-      FirebaseEmulatorTestUtils.writeBypassingRules(
-          gm,
-          "campaign_groups/$id",
-          CampaignGroup(
-              id = id,
-              name = "The Sunken Crown",
-              gameMasterId = GM_ID,
-              participantIds = participantIds.toList(),
-          ),
-      )
+      FirebaseEmulatorTestUtils.writeGroupBypassingRules(gm, id, GM_ID, participantIds.toList())
 
   @Before
   fun setUp() {

@@ -146,6 +146,7 @@ dependencies {
   implementation(libs.androidx.ui.graphics)
   implementation(libs.googleid)
   implementation(libs.material)
+  implementation(libs.androidx.media3.exoplayer)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(platform(libs.compose.bom))
   testImplementation(libs.junit)
@@ -185,6 +186,7 @@ dependencies {
 
   // ----------       Robolectric     ------------
   testImplementation(libs.robolectric)
+  testImplementation(libs.androidx.media3.test.utils)
 
   // ----------       FireBase        ------------
   // Firebase BoM

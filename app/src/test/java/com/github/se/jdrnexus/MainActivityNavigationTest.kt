@@ -61,6 +61,8 @@ import com.github.se.jdrnexus.ui.search.DocumentSearchResult
 import com.github.se.jdrnexus.ui.search.DocumentSearchStatus
 import com.github.se.jdrnexus.ui.search.DocumentSearchUiState
 import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
+import com.github.se.jdrnexus.utils.FakeConnectivityRepository
+import com.github.se.jdrnexus.utils.FakeNotificationViewModel
 import com.github.se.jdrnexus.utils.NavigationGameSessionRepository
 import com.github.se.jdrnexus.utils.NavigationGroupRepository
 import com.github.se.jdrnexus.utils.NavigationWorkspaceRepository
@@ -94,6 +96,26 @@ class MainActivityNavigationTest {
     scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotDisplayed()
+  }
+
+  @Test
+  fun offlineBannerFollowsTheConnectionOnEveryScreenWithATopBar() {
+    val connectivity = FakeConnectivityRepository(isOnline = false)
+    showApp(groupRepository = groupRepository(), connectivityRepository = connectivity)
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
+    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
+    waitForTag(TestTags.GROUPMANAGEMENTBUTTON)
+
+    composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertIsDisplayed()
+
+    composeTestRule.runOnIdle { connectivity.online.value = true }
+    composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertDoesNotExist()
+
+    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+    waitForTag(C.Tag.enter_workspace_button)
+    composeTestRule.runOnIdle { connectivity.online.value = false }
+    composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertIsDisplayed()
   }
 
   @Test
@@ -284,6 +306,8 @@ class MainActivityNavigationTest {
             authRepository = repository,
             groupRepository = FakeGroupRepository(),
             workspaceRepository = NavigationWorkspaceRepository(),
+            notificationViewModel = FakeNotificationViewModel(),
+            connectivityRepository = FakeConnectivityRepository(),
         )
       }
     }
@@ -475,6 +499,27 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun tappingAnImageInPersonalSpaceOpensNoEditor() {
+    val image =
+        JDRFile(
+            id = "image-1",
+            name = "Kingdom Map",
+            ownerId = "user-1",
+            type = DocumentType.IMAGE,
+            content = "images/user-1/image-1",
+        )
+    showAuthenticatedApp(extraFiles = listOf(image))
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    waitForText(image.name)
+    composeTestRule.onNodeWithText(image.name).performClick()
+    composeTestRule.waitForIdle()
+
+    composeTestRule.onAllNodesWithText(PERSONAL_SPACE_TITLE).assertCountEquals(1)
+    composeTestRule.onNodeWithText(image.name).assertIsDisplayed()
+  }
+
+  @Test
   fun mapTabOpensMapScreen() {
     val context = ApplicationProvider.getApplicationContext<Context>()
     if (FirebaseApp.getApps(context).isEmpty()) checkNotNull(FirebaseApp.initializeApp(context))
@@ -599,6 +644,8 @@ class MainActivityNavigationTest {
           authRepository = authRepository,
           groupRepository = groupRepository,
           workspaceRepository = workspaceRepository,
+          notificationViewModel = FakeNotificationViewModel(),
+          connectivityRepository = FakeConnectivityRepository(),
       )
     }
     signInAndOpenCampaigns()
@@ -701,6 +748,8 @@ class MainActivityNavigationTest {
           workspaceRepository = workspaceRepository,
           personalSearchViewModel = searchViewModel,
           groupSearchViewModel = searchViewModel,
+          notificationViewModel = FakeNotificationViewModel(),
+          connectivityRepository = FakeConnectivityRepository(),
       )
     }
 
@@ -1058,6 +1107,7 @@ class MainActivityNavigationTest {
       groupRepository: NavigationGroupRepository? = null,
       workspaceRepository: NavigationWorkspaceRepository = NavigationWorkspaceRepository(),
       gameSessionRepository: NavigationGameSessionRepository? = null,
+      connectivityRepository: FakeConnectivityRepository = FakeConnectivityRepository(),
   ) {
     val context = ApplicationProvider.getApplicationContext<Context>()
     if (FirebaseApp.getApps(context).isEmpty()) {
@@ -1080,6 +1130,8 @@ class MainActivityNavigationTest {
             workspaceRepository = workspaceRepository,
             editFileViewModel = editFileViewModel,
             gameSessionRepository = gameSessionRepository,
+            notificationViewModel = FakeNotificationViewModel(),
+            connectivityRepository = connectivityRepository,
         )
       }
     }
@@ -1108,6 +1160,7 @@ class MainActivityNavigationTest {
   private fun showAuthenticatedApp(
       documentSearchViewModel: DocumentSearchInterfaceVM? = null,
       personalFolder: JDRFile? = null,
+      extraFiles: List<JDRFile> = emptyList(),
   ): JDRFile {
     val repository = FakeAuthRepository()
     val loreFile =
@@ -1120,7 +1173,8 @@ class MainActivityNavigationTest {
             content =
                 """{"version":1,"type":"lore","title":"The Kingdom","sections":[{"sectionID":"history","title":"History","content":"Founded long ago."}]}""",
         )
-    val workspaceRepository = FakeWorkspaceRepository(listOfNotNull(personalFolder, loreFile))
+    val workspaceRepository =
+        FakeWorkspaceRepository(listOfNotNull(personalFolder, loreFile) + extraFiles)
     val groupRepository = FakeGroupRepository()
     val authViewModel = AuthViewModel(repository)
     val personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, repository)
@@ -1137,6 +1191,8 @@ class MainActivityNavigationTest {
           workspaceRepository = workspaceRepository,
           personalSearchViewModel = documentSearchViewModel,
           groupSearchViewModel = documentSearchViewModel,
+          notificationViewModel = FakeNotificationViewModel(),
+          connectivityRepository = FakeConnectivityRepository(),
       )
     }
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
@@ -1299,9 +1355,10 @@ class MainActivityNavigationTest {
         object : WorkspaceRepository {
           override fun getNewUid() = error("Not used")
 
-          override suspend fun createFile(file: JDRFile) = error("Not used")
+          override suspend fun createFile(file: JDRFile, waitForServer: Boolean) = error("Not used")
 
-          override suspend fun updateFile(edit: FileEdit) = error("Not used")
+          override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean) =
+              error("Not used")
 
           override suspend fun deleteFile(fileId: String) = error("Not used")
 
@@ -1317,6 +1374,8 @@ class MainActivityNavigationTest {
               isHidden: Boolean,
               includeContent: Boolean,
           ) = error("Not used")
+
+          override suspend fun hasPendingWrites(): Boolean = false
 
           override suspend fun setItemHidden(itemId: String, groupId: String, isHidden: Boolean) =
               error("Not used")
