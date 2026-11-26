@@ -240,6 +240,22 @@ object C {
     /** Tag of the button restoring the hidden GM dashboard section [key]. */
     fun gameGmRestore(key: String) = "game_gm_restore_$key"
 
+    const val soundboard_loading = "soundboard_loading"
+    const val soundboard_error = "soundboard_error"
+    const val soundboard_retry = "soundboard_retry"
+    const val soundboard_empty = "soundboard_empty"
+    const val soundboard_edit = "soundboard_edit"
+    const val soundboard_content = "soundboard_content"
+    const val soundboard_play_pause = "soundboard_play_pause"
+    const val soundboard_preparing = "soundboard_preparing"
+    const val soundboard_effects_grid = "soundboard_effects_grid"
+
+    /** Tag of the soundboard's tab for the playlist with [id]. */
+    fun soundboardPlaylist(id: String) = "soundboard_playlist_$id"
+
+    /** Tag of the button of the sound effect whose audio has [audioId]. */
+    fun soundboardEffect(audioId: String) = "soundboard_effect_$audioId"
+
     /** Tag of the search result item with [fileId]. */
     fun searchResult(fileId: String) = "document_search_result_$fileId"
 

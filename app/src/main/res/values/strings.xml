@@ -233,4 +233,31 @@
     <string name="campaign_help_workspace_body">\"Enter workspace\" opens the group\'s shared files: your personal files (Files tab) stay private until you share them, and a hidden file is seen only by its owner and the GameMaster. \"Play\" opens the game: the session screen for the GameMaster, their character for players.</string>
     <string name="campaign_help_example_name">The Sunken Crown</string>
     <string name="campaign_help_example_system">Fantasy campaign</string>
+
+    <!-- Soundboard screen -->
+    <string name="soundboard_title">Soundboard</string>
+    <string name="soundboard_header_label">Campaign · Game Master</string>
+    <string name="soundboard_retry">Retry</string>
+    <string name="soundboard_empty">No sounds yet. Add ambience tracks and sound effects in the editor.</string>
+    <string name="soundboard_edit">Edit soundboard</string>
+    <string name="soundboard_ambience">Ambience</string>
+    <string name="soundboard_ambience_hint">Continuous playback</string>
+    <string name="soundboard_playing_cd">Playing</string>
+    <string name="soundboard_play_cd">Play</string>
+    <string name="soundboard_pause_cd">Pause</string>
+    <string name="soundboard_effects">Sound Effects</string>
+    <plurals name="soundboard_effects_count">
+        <item quantity="one">%d sound</item>
+        <item quantity="other">%d sounds</item>
+    </plurals>
+    <string name="soundboard_error_not_signed_in">Sign in to use your soundboard.</string>
+    <string name="soundboard_error_unsupported_format">Only mp3 files are supported.</string>
+    <string name="soundboard_error_corrupted_file">This file cannot be read as audio.</string>
+    <string name="soundboard_error_file_not_found">The file can no longer be found.</string>
+    <string name="soundboard_error_storage_full">Not enough free space on the device.</string>
+    <string name="soundboard_error_invalid_name">Every name must be filled in.</string>
+    <string name="soundboard_error_invalid_volume">The volume is out of range.</string>
+    <string name="soundboard_error_audio_not_found">A sound file is missing.</string>
+    <string name="soundboard_error_soundboard_not_found">This soundboard no longer exists.</string>
+    <string name="soundboard_error_unknown">Something went wrong. Try again.</string>
 </resources>
