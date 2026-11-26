@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.github.se.jdrnexus.ui.search
 
@@ -371,9 +372,11 @@ class DocumentSearchViewModelTest {
 
     override fun getNewUid(): String = "new-id"
 
-    override suspend fun createFile(file: JDRFile): Result<Unit> = Result.success(Unit)
+    override suspend fun createFile(file: JDRFile, waitForServer: Boolean): Result<Unit> =
+        Result.success(Unit)
 
-    override suspend fun updateFile(edit: FileEdit): Result<Unit> = Result.success(Unit)
+    override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean): Result<Unit> =
+        Result.success(Unit)
 
     override suspend fun deleteFile(fileId: String): Result<Unit> = Result.success(Unit)
 
@@ -391,6 +394,8 @@ class DocumentSearchViewModelTest {
         isHidden: Boolean,
         includeContent: Boolean,
     ): Result<Unit> = Result.success(Unit)
+
+    override suspend fun hasPendingWrites(): Boolean = false
 
     override suspend fun setItemHidden(
         itemId: String,

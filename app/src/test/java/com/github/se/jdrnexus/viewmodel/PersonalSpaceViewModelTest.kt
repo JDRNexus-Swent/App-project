@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.viewmodel
 
 import android.os.Looper
@@ -44,7 +45,33 @@ class PersonalSpaceViewModelTest {
     shadowOf(Looper.getMainLooper()).idle()
   }
 
+  // ============ Rename test data ============
+  private val ownedFolder =
+      JDRFile("maps", "Maps", ownerId = "authenticated-user-42", type = DocumentType.FOLDER)
+  private val ownedChild =
+      JDRFile("atlas", "Atlas", ownerId = "authenticated-user-42", personalParentId = "maps")
+  private val ownedSubfolder =
+      JDRFile(
+          "regions",
+          "Regions",
+          ownerId = "authenticated-user-42",
+          personalParentId = "maps",
+          type = DocumentType.FOLDER,
+      )
+
+  /** A view model at the root of [repository], with the rename dialog open on [folder]. */
+  private fun renamingViewModel(
+      repository: FakePersonalSpaceRepository,
+      folder: JDRFile = ownedFolder,
+  ): PersonalSpaceViewModel {
+    val viewModel = PersonalSpaceViewModel(repository, FakeAuthRepository())
+    idleMainLooper()
+    viewModel.onRenameSelected(folder)
+    return viewModel
+  }
+
   // ============ Workspace repository fake ============
+
   private class FakePersonalSpaceRepository(
       private val rootItems: List<JDRFile> = emptyList(),
       private val itemsByFolder: Map<String, List<JDRFile>> = emptyMap(),
@@ -53,8 +80,11 @@ class PersonalSpaceViewModelTest {
       private val fetchGate: CompletableDeferred<Unit>? = null,
       private val folderFetchGate: CompletableDeferred<Unit>? = null,
       private val createGate: CompletableDeferred<Unit>? = null,
+      private val updateFailure: Exception? = null,
+      private val updateGate: CompletableDeferred<Unit>? = null,
   ) : WorkspaceRepository {
     val requestedRootOwners = mutableListOf<String>()
+    val updates = mutableListOf<FileEdit>()
     val folderFetchRequests = mutableListOf<String>()
     val createdFiles = mutableListOf<JDRFile>()
     val rootItemsFlow = MutableStateFlow(rootItems)
@@ -91,7 +121,7 @@ class PersonalSpaceViewModelTest {
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = flowOf(null)
 
     /** Captures the exact file submitted and can simulate a create failure. */
-    override suspend fun createFile(file: JDRFile): Result<Unit> {
+    override suspend fun createFile(file: JDRFile, waitForServer: Boolean): Result<Unit> {
       createdFiles.add(file)
       try {
         createGate?.await()
@@ -112,18 +142,36 @@ class PersonalSpaceViewModelTest {
         includeContent: Boolean,
     ): Result<Unit> = error("Not used")
 
+    override suspend fun hasPendingWrites(): Boolean = false
+
     override suspend fun setItemHidden(
         itemId: String,
         groupId: String,
         isHidden: Boolean,
     ): Result<Unit> = error("Not used")
 
-    /** These operations are unrelated to the tested list and folder-creation interactions. */
-    override suspend fun updateFile(edit: FileEdit): Result<Unit> = Result.success(Unit)
+    /** Records the edit and applies it to the root items, so the root flow shows it. */
+    override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean): Result<Unit> {
+      updates.add(edit)
+      updateGate?.await()
+      updateFailure?.let {
+        return Result.failure(it)
+      }
+      rootItemsFlow.value =
+          rootItemsFlow.value.map {
+            if (it.id == edit.id) it.copy(name = edit.name, content = edit.content) else it
+          }
+      return Result.success(Unit)
+    }
 
+    /** Finds the file among the root items, then the configured folder contents. */
+    override suspend fun getFile(fileId: String): Result<JDRFile?> =
+        Result.success(
+            (rootItemsFlow.value + itemsByFolder.values.flatten()).firstOrNull { it.id == fileId }
+        )
+
+    /** This operation is unrelated to the tested list, creation and rename interactions. */
     override suspend fun deleteFile(fileId: String): Result<Unit> = Result.success(Unit)
-
-    override suspend fun getFile(fileId: String): Result<JDRFile?> = Result.success(null)
 
     override suspend fun removeItemFromGroup(
         itemId: String,
@@ -587,5 +635,178 @@ class PersonalSpaceViewModelTest {
     assertTrue(repository.createCancelled)
     assertEquals(LoadState.SignedOut, viewModel.uiState.value.loadState)
     assertEquals(null, navigatedFileId)
+  }
+
+  // ============ Rename tests ============
+
+  @Test
+  fun renameSelectedOpensTheDialogWithTheFolderName() {
+    val viewModel = renamingViewModel(FakePersonalSpaceRepository(rootItems = listOf(ownedFolder)))
+
+    assertEquals("maps", viewModel.uiState.value.renamingItemId)
+    assertEquals("Maps", viewModel.uiState.value.renameName)
+    assertEquals("", viewModel.uiState.value.renameError)
+  }
+
+  @Test
+  fun renameSelectedIgnoresItemsThatAreNotFolders() {
+    val character = characterFile.copy(ownerId = ownerId)
+    val viewModel =
+        renamingViewModel(FakePersonalSpaceRepository(rootItems = listOf(character)), character)
+
+    assertEquals(null, viewModel.uiState.value.renamingItemId)
+  }
+
+  @Test
+  fun renamingFolderSavesTrimmedNameAndShowsItInTheList() {
+    val repository = FakePersonalSpaceRepository(rootItems = listOf(ownedFolder, rootFile))
+    val viewModel = renamingViewModel(repository)
+
+    viewModel.onRenameNameChanged("  World maps  ")
+    viewModel.renameFolder()
+    idleMainLooper()
+
+    assertEquals(listOf(FileEdit("maps", "World maps", "")), repository.updates)
+    assertEquals(listOf("World maps", "File"), viewModel.uiState.value.items.map { it.name })
+    assertEquals(null, viewModel.uiState.value.renamingItemId)
+    assertFalse(viewModel.uiState.value.isRenaming)
+  }
+
+  @Test
+  fun renamedFolderKeepsItsNameAfterReopeningPersonalSpace() {
+    val repository = FakePersonalSpaceRepository(rootItems = listOf(ownedFolder))
+    val viewModel = renamingViewModel(repository)
+    viewModel.onRenameNameChanged("World maps")
+    viewModel.renameFolder()
+    idleMainLooper()
+
+    val reopened = PersonalSpaceViewModel(repository, FakeAuthRepository())
+    idleMainLooper()
+
+    assertEquals(listOf(ownedFolder.copy(name = "World maps")), reopened.uiState.value.items)
+  }
+
+  @Test
+  fun renamedFolderKeepsItsContentsAndOpensUnderItsNewName() {
+    val repository =
+        FakePersonalSpaceRepository(
+            rootItems = listOf(ownedFolder),
+            itemsByFolder = mapOf("maps" to listOf(ownedChild, ownedSubfolder)),
+        )
+    val viewModel = renamingViewModel(repository)
+    viewModel.onRenameNameChanged("World maps")
+    viewModel.renameFolder()
+    idleMainLooper()
+
+    viewModel.onItemClicked(viewModel.uiState.value.items.single()) {}
+    idleMainLooper()
+
+    assertEquals(listOf(FileEdit("maps", "World maps", "")), repository.updates)
+    assertEquals("maps", viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf("World maps"), viewModel.uiState.value.folderPath)
+    assertEquals(listOf(ownedChild, ownedSubfolder), viewModel.uiState.value.items)
+  }
+
+  @Test
+  fun blankRenameShowsAnErrorWithoutSaving() {
+    val repository = FakePersonalSpaceRepository(rootItems = listOf(ownedFolder))
+    val viewModel = renamingViewModel(repository)
+
+    viewModel.onRenameNameChanged("   ")
+    viewModel.renameFolder()
+    idleMainLooper()
+
+    assertEquals("The item name cannot be blank.", viewModel.uiState.value.renameError)
+    assertEquals("maps", viewModel.uiState.value.renamingItemId)
+    assertEquals(emptyList<FileEdit>(), repository.updates)
+  }
+
+  @Test
+  fun folderOwnedBySomeoneElseCannotBeRenamed() {
+    val foreign = ownedFolder.copy(ownerId = "someone-else")
+    val repository = FakePersonalSpaceRepository(rootItems = listOf(foreign))
+    val viewModel = renamingViewModel(repository, foreign)
+
+    viewModel.onRenameNameChanged("Taken")
+    viewModel.renameFolder()
+    idleMainLooper()
+
+    assertEquals(
+        "You cannot edit an item that you do not own.",
+        viewModel.uiState.value.renameError,
+    )
+    assertEquals(emptyList<FileEdit>(), repository.updates)
+    assertEquals(listOf(foreign), viewModel.uiState.value.items)
+  }
+
+  @Test
+  fun folderThatNoLongerExistsCannotBeRenamed() {
+    val repository = FakePersonalSpaceRepository()
+    val viewModel = renamingViewModel(repository)
+
+    viewModel.onRenameNameChanged("World maps")
+    viewModel.renameFolder()
+    idleMainLooper()
+
+    assertEquals("Item no longer exists.", viewModel.uiState.value.renameError)
+    assertEquals(emptyList<FileEdit>(), repository.updates)
+  }
+
+  @Test
+  fun repositoryFailureKeepsTheDialogOpenWithTheError() {
+    val repository =
+        FakePersonalSpaceRepository(
+            rootItems = listOf(ownedFolder),
+            updateFailure = IllegalStateException("Permission denied"),
+        )
+    val viewModel = renamingViewModel(repository)
+
+    viewModel.onRenameNameChanged("World maps")
+    viewModel.renameFolder()
+    idleMainLooper()
+
+    assertEquals("Permission denied", viewModel.uiState.value.renameError)
+    assertEquals("maps", viewModel.uiState.value.renamingItemId)
+    assertFalse(viewModel.uiState.value.isRenaming)
+    assertEquals(listOf(ownedFolder), viewModel.uiState.value.items)
+  }
+
+  @Test
+  fun renameInProgressIgnoresSecondTapAndDismissal() {
+    val updateGate = CompletableDeferred<Unit>()
+    val repository =
+        FakePersonalSpaceRepository(rootItems = listOf(ownedFolder), updateGate = updateGate)
+    val viewModel = renamingViewModel(repository)
+    viewModel.onRenameNameChanged("World maps")
+
+    viewModel.renameFolder()
+    viewModel.renameFolder()
+    viewModel.onRenameDialogDismissed()
+    idleMainLooper()
+
+    assertTrue(viewModel.uiState.value.isRenaming)
+    assertEquals("maps", viewModel.uiState.value.renamingItemId)
+    assertEquals(1, repository.updates.size)
+
+    updateGate.complete(Unit)
+    idleMainLooper()
+
+    assertFalse(viewModel.uiState.value.isRenaming)
+    assertEquals(null, viewModel.uiState.value.renamingItemId)
+  }
+
+  @Test
+  fun dismissingRenameClosesTheDialogWithoutSaving() {
+    val repository = FakePersonalSpaceRepository(rootItems = listOf(ownedFolder))
+    val viewModel = renamingViewModel(repository)
+    viewModel.onRenameNameChanged("World maps")
+
+    viewModel.onRenameDialogDismissed()
+    idleMainLooper()
+
+    assertEquals(null, viewModel.uiState.value.renamingItemId)
+    assertEquals("", viewModel.uiState.value.renameName)
+    assertEquals(emptyList<FileEdit>(), repository.updates)
+    assertEquals(listOf(ownedFolder), viewModel.uiState.value.items)
   }
 }

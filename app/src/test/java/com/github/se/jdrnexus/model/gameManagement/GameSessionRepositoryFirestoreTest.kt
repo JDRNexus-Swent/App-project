@@ -8,17 +8,13 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
-import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
 import com.github.se.jdrnexus.model.repository.DiceRollEntity
+import com.github.se.jdrnexus.utils.FakeDiceRepository
 import com.github.se.jdrnexus.utils.FirebaseEmulatorTestUtils
 import com.github.se.jdrnexus.utils.waitFor
 import com.google.firebase.firestore.FirebaseFirestore
-import io.mockk.coEvery
-import io.mockk.every
-import io.mockk.mockk
 import java.util.Date
 import java.util.UUID
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import org.junit.After
@@ -34,7 +30,7 @@ import org.robolectric.RobolectricTestRunner
 class GameSessionRepositoryFirestoreTest {
   private lateinit var firestore: FirebaseFirestore
   private lateinit var repository: GameSessionRepositoryFirestore
-  private lateinit var diceRepository: DiceRepositoryFirestore
+  private lateinit var diceRepository: FakeDiceRepository
   private val groupId = UUID.randomUUID().toString()
 
   @Before
@@ -58,9 +54,7 @@ class GameSessionRepositoryFirestoreTest {
         FirebaseEmulatorTestUtils.writeUserGroupIdsBypassingRules(firestore, userId, groupId)
       }
     }
-    diceRepository = mockk()
-    coEvery { diceRepository.getDiceRollsHistory(any()) } returns Result.success(emptyList())
-    every { diceRepository.getDiceRollsStream(any()) } returns flowOf(emptyList())
+    diceRepository = FakeDiceRepository()
     repository = GameSessionRepositoryFirestore(firestore, diceRepository)
   }
 
@@ -284,8 +278,7 @@ class GameSessionRepositoryFirestoreTest {
         repository.recordActivity(groupId, "outsider", "Name", "Action").exceptionOrNull()?.message,
     )
 
-    coEvery { diceRepository.getDiceRollsHistory(groupId) } returns
-        Result.failure(IllegalStateException("Dice history unavailable"))
+    diceRepository.historyFailure = IllegalStateException("Dice history unavailable")
     assertEquals(
         "Dice history unavailable",
         repository.loadActivities(groupId).exceptionOrNull()?.message,
@@ -334,8 +327,7 @@ class GameSessionRepositoryFirestoreTest {
             totalValue = 17,
             timestamp = Date(1234),
         )
-    coEvery { diceRepository.getDiceRollsHistory(groupId) } returns Result.success(listOf(roll))
-    every { diceRepository.getDiceRollsStream(groupId) } returns flowOf(listOf(roll))
+    diceRepository.rollsByGroup.value = mapOf(groupId to listOf(roll))
 
     val expected =
         GameActivityEntry(

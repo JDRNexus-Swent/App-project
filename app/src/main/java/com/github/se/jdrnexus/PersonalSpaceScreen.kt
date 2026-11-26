@@ -62,6 +62,8 @@ import com.github.se.jdrnexus.model.personalSpace.isContainer
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
+import com.github.se.jdrnexus.ui.groupWorkSpace.EditItemDialog
+import com.github.se.jdrnexus.ui.groupWorkSpace.FolderCard
 import com.github.se.jdrnexus.viewmodel.LoadState
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 
@@ -236,18 +238,34 @@ fun PersonalSpaceScreen(
                   verticalArrangement = Arrangement.spacedBy(12.dp),
               ) {
                 items(personalSpaceItems, key = { it.id }) { item ->
-                  FolderItem(
-                      folder = item,
-                      onFolderClicked = {
-                        personalSpaceViewModel.onItemClicked(item, onDocumentClicked)
-                      },
-                      cardColor = cardColor,
-                      iconBackground = iconBackground,
-                      primaryText = primaryText,
-                      secondaryText = secondaryText,
-                      borderColor = borderColor,
-                      accentColor = accentColor,
-                  )
+                  val open = { personalSpaceViewModel.onItemClicked(item, onDocumentClicked) }
+                  if (item.isContainer()) {
+                    // Same folder card as the Group Workspace. Personal Space folders can only be
+                    // renamed: there is no delete or visibility here, and group roots have no
+                    // actions at all.
+                    FolderCard(
+                        folder = item,
+                        onOpen = open,
+                        onEdit =
+                            if (item.type == DocumentType.FOLDER) {
+                              { personalSpaceViewModel.onRenameSelected(item) }
+                            } else {
+                              null
+                            },
+                        actionsEnabled = !uiState.isRenaming,
+                    )
+                  } else {
+                    FolderItem(
+                        folder = item,
+                        onFolderClicked = open,
+                        cardColor = cardColor,
+                        iconBackground = iconBackground,
+                        primaryText = primaryText,
+                        secondaryText = secondaryText,
+                        borderColor = borderColor,
+                        accentColor = accentColor,
+                    )
+                  }
                 }
               }
             }
@@ -285,6 +303,19 @@ fun PersonalSpaceScreen(
             Text("Cancel")
           }
         },
+    )
+  }
+
+  // Same rename dialog as the Group Workspace.
+  if (uiState.renamingItemId != null) {
+    EditItemDialog(
+        isFolder = true,
+        name = uiState.renameName,
+        onNameChange = personalSpaceViewModel::onRenameNameChanged,
+        errorMessage = uiState.renameError,
+        isInProgress = uiState.isRenaming,
+        onSave = personalSpaceViewModel::renameFolder,
+        onCancel = personalSpaceViewModel::onRenameDialogDismissed,
     )
   }
 }

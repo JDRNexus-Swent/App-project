@@ -109,6 +109,7 @@ import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.DivideWithDiamonds
 import com.github.se.jdrnexus.resources.MAX_LANDSCAPE_CONTENT_WIDTH
+import com.github.se.jdrnexus.resources.OfflineBanner
 import com.github.se.jdrnexus.resources.useLandscapeLayout
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import dev.romainguy.kotlin.math.Quaternion
@@ -289,16 +290,20 @@ internal fun DiceOfflineContent(
         border = BorderStroke(1.dp, colors.cardBorder),
     ) {
       if (isLandscape) {
-        DiceLandscapeBody(
-            uiState = uiState,
-            diceViewModel = diceViewModel,
-            colors = colors,
-            dimens = dimens,
-            onClose = onClose,
-            shakeToggle = shakeToggle,
-            firstRollSeed = firstRollSeed,
-            dieView = dieView,
-        )
+        // Landscape has no AppTopBar, so the offline banner sits at the top of the card instead.
+        Column {
+          OfflineBanner()
+          DiceLandscapeBody(
+              uiState = uiState,
+              diceViewModel = diceViewModel,
+              colors = colors,
+              dimens = dimens,
+              onClose = onClose,
+              shakeToggle = shakeToggle,
+              firstRollSeed = firstRollSeed,
+              dieView = dieView,
+          )
+        }
       } else {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
           val contentPadding = dimens.scaled(16.dp)
