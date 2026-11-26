@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.soundboard
 
+import android.text.format.DateUtils
 import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -80,17 +82,10 @@ import com.github.se.jdrnexus.model.soundboard.SoundboardError
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
-import java.util.Locale
 import kotlin.math.roundToInt
 
 /** Number of rows of the sound effects grid, as in the mockup. */
 private const val EFFECT_ROWS = 3
-
-/**
- * Columns of effects that fit on a phone in portrait. With more, the grid scrolls sideways and its
- * count says "Swipe →".
- */
-private const val VISIBLE_EFFECT_COLUMNS = 3
 
 /** Height of one sound effect button. */
 private val EFFECT_TILE_HEIGHT = 56.dp
@@ -396,8 +391,9 @@ private fun AmbienceSection(
     ) {
       Box(Modifier.weight(1f)) {
         TrackField(
-            playlistName = playingPlaylist?.name,
-            trackName = playingTrack?.name,
+            // The field describes the playlist whose tracks its menu lists: the selected one.
+            playlistName = selectedPlaylist?.name,
+            trackName = playingTrack?.name?.takeIf { playingPlaylist == selectedPlaylist },
             status = ambience?.status,
             enabled = selectedPlaylist?.tracks?.isNotEmpty() == true,
             onClick = { viewModel.setTrackMenuExpanded(true) },
@@ -504,8 +500,9 @@ internal fun PlaylistTab(
 }
 
 /**
- * The field that opens the track menu. It shows the current playlist and track with their [status]
- * (starting, playing or paused), or asks to choose a track when nothing plays.
+ * The field that opens the track menu of the selected playlist. It shows that playlist's current
+ * track with its [status] (starting, playing or paused), or asks to choose a track when none of its
+ * tracks plays.
  */
 @Composable
 private fun TrackField(
@@ -643,17 +640,21 @@ private fun EffectsSection(
   // The effects read row by row, as the Game Master ordered them: column c holds the effects
   // c, c + columns and c + 2 × columns.
   val columns = (effects.size + EFFECT_ROWS - 1) / EFFECT_ROWS
+  // The count says "Swipe →" only when the columns do not all fit the window's width.
+  val gridState = rememberLazyListState()
+  val canSwipe = gridState.canScrollForward || gridState.canScrollBackward
   SoundboardSection(
       title = stringResource(R.string.soundboard_effects),
       trailing =
           pluralStringResource(
-              if (columns > VISIBLE_EFFECT_COLUMNS) R.plurals.soundboard_effects_count_swipe
+              if (canSwipe) R.plurals.soundboard_effects_count_swipe
               else R.plurals.soundboard_effects_count,
               effects.size,
               effects.size,
           ),
   ) {
     LazyRow(
+        state = gridState,
         modifier = Modifier.fillMaxWidth().testTag(C.Tag.soundboard_effects_grid),
         horizontalArrangement = Arrangement.spacedBy(EFFECT_TILE_SPACING),
     ) {
@@ -824,8 +825,6 @@ internal fun SoundEffectIcon.imageVector(): ImageVector =
       SoundEffectIcon.BELL -> Icons.Outlined.Notifications
     }
 
-/** Formats [durationMs] as minutes and seconds, such as "02:34". */
-internal fun formatDuration(durationMs: Long): String {
-  val totalSeconds = durationMs.coerceAtLeast(0L) / 1000
-  return String.format(Locale.ROOT, "%02d:%02d", totalSeconds / 60, totalSeconds % 60)
-}
+/** Formats [durationMs] as minutes and seconds, such as "02:34", with hours past an hour. */
+internal fun formatDuration(durationMs: Long): String =
+    DateUtils.formatElapsedTime(durationMs.coerceAtLeast(0L) / 1000)
