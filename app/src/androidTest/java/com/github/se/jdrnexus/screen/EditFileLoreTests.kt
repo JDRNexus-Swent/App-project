@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.screen
@@ -228,9 +229,10 @@ class EditFileLoreTests {
 
     override fun getNewUid(): String = "generated-id"
 
-    override suspend fun createFile(file: JDRFile): Result<Unit> = Result.success(Unit)
+    override suspend fun createFile(file: JDRFile, waitForServer: Boolean): Result<Unit> =
+        Result.success(Unit)
 
-    override suspend fun updateFile(edit: FileEdit): Result<Unit> {
+    override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean): Result<Unit> {
       updatedFiles += file.copy(name = edit.name, content = edit.content)
       updateError?.let { throw IllegalStateException(it) }
       return Result.success(Unit)
@@ -263,6 +265,8 @@ class EditFileLoreTests {
         isHidden: Boolean,
         includeContent: Boolean,
     ): Result<Unit> = error("Not used")
+
+    override suspend fun hasPendingWrites(): Boolean = false
 
     override suspend fun setItemHidden(
         itemId: String,

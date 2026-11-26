@@ -1806,6 +1806,32 @@ class GroupWorkSpaceViewModelTest {
     assertEquals(text.copy(name = "Journal"), repository.files.getValue(text.id))
   }
 
+  // The Group Workspace only works online: its saves wait for the server, so a refusal is shown.
+  @Test
+  fun createdItemWaitsForTheServer() = runTest {
+    val repository = FakeWorkspaceRepository()
+    val player = viewModel(repository, GroupWorkspaceRole.PLAYER)
+    runCurrent()
+
+    player.createFolder("Maps")
+    runCurrent()
+
+    assertEquals(listOf(true), repository.createWaits)
+  }
+
+  @Test
+  fun editedItemWaitsForTheServer() = runTest {
+    val folder = groupFolder("maps", ownerId = OWNER_ID).copy(name = "Maps")
+    val repository = FakeWorkspaceRepository(listOf(folder))
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER)
+    runCurrent()
+
+    gm.editItem(folder.copy(name = "World maps"))
+    runCurrent()
+
+    assertEquals(listOf(true), repository.updateWaits)
+  }
+
   // A renamed folder shows its new name in the folder that holds it straight away.
   @Test
   fun renamedFolderAppearsWithItsNewNameInItsParent() = runTest {
@@ -1973,6 +1999,9 @@ class GroupWorkSpaceViewModelTest {
     private var nextId = 0
     var createFailure: Exception? = null
     var updateFailure: Exception? = null
+    /** The `waitForServer` argument of each createFile / updateFile call, in order. */
+    val createWaits = mutableListOf<Boolean>()
+    val updateWaits = mutableListOf<Boolean>()
     var hiddenFailure: Exception? = null
     var addFailure: Exception? = null
     var groupRootLoads = 0
@@ -1987,7 +2016,8 @@ class GroupWorkSpaceViewModelTest {
 
     override fun getNewUid(): String = "new-folder-${++nextId}"
 
-    override suspend fun createFile(file: JDRFile): Result<Unit> {
+    override suspend fun createFile(file: JDRFile, waitForServer: Boolean): Result<Unit> {
+      createWaits += waitForServer
       createFailure?.let {
         return Result.failure(it)
       }
@@ -1998,7 +2028,8 @@ class GroupWorkSpaceViewModelTest {
       return Result.success(Unit)
     }
 
-    override suspend fun updateFile(edit: FileEdit): Result<Unit> {
+    override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean): Result<Unit> {
+      updateWaits += waitForServer
       updateFailure?.let {
         return Result.failure(it)
       }
@@ -2051,6 +2082,8 @@ class GroupWorkSpaceViewModelTest {
       files[itemId] = item.withPlacement(groupId, Placement(folderId, isHidden))
       refresh()
     }
+
+    override suspend fun hasPendingWrites(): Boolean = false
 
     override suspend fun setItemHidden(
         itemId: String,

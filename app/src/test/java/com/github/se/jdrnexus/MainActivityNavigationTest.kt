@@ -1306,9 +1306,10 @@ class MainActivityNavigationTest {
         object : WorkspaceRepository {
           override fun getNewUid() = error("Not used")
 
-          override suspend fun createFile(file: JDRFile) = error("Not used")
+          override suspend fun createFile(file: JDRFile, waitForServer: Boolean) = error("Not used")
 
-          override suspend fun updateFile(edit: FileEdit) = error("Not used")
+          override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean) =
+              error("Not used")
 
           override suspend fun deleteFile(fileId: String) = error("Not used")
 
@@ -1324,6 +1325,8 @@ class MainActivityNavigationTest {
               isHidden: Boolean,
               includeContent: Boolean,
           ) = error("Not used")
+
+          override suspend fun hasPendingWrites(): Boolean = false
 
           override suspend fun setItemHidden(itemId: String, groupId: String, isHidden: Boolean) =
               error("Not used")

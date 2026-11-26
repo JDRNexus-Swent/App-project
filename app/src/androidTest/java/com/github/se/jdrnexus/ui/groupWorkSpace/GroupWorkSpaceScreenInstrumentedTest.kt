@@ -1219,14 +1219,16 @@ class GroupWorkSpaceScreenInstrumentedTest {
 
     override fun getNewUid() = "created-${++nextId}"
 
-    override suspend fun createFile(file: JDRFile): Result<Unit> = runOperation {
-      state.value += file.id to file
-    }
+    override suspend fun createFile(file: JDRFile, waitForServer: Boolean): Result<Unit> =
+        runOperation {
+          state.value += file.id to file
+        }
 
-    override suspend fun updateFile(edit: FileEdit): Result<Unit> = runOperation {
-      val file = state.value.getValue(edit.id)
-      state.value += edit.id to file.copy(name = edit.name, content = edit.content)
-    }
+    override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean): Result<Unit> =
+        runOperation {
+          val file = state.value.getValue(edit.id)
+          state.value += edit.id to file.copy(name = edit.name, content = edit.content)
+        }
 
     override suspend fun deleteFile(fileId: String): Result<Unit> = runOperation {
       state.value -= fileId
@@ -1265,6 +1267,8 @@ class GroupWorkSpaceScreenInstrumentedTest {
                   placements = item.placements + (groupId to Placement(folderId, isHidden)),
               )
     }
+
+    override suspend fun hasPendingWrites(): Boolean = false
 
     override suspend fun setItemHidden(itemId: String, groupId: String, isHidden: Boolean) =
         runOperation {

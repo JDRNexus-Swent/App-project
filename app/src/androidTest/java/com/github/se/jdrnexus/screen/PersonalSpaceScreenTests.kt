@@ -653,9 +653,10 @@ class PersonalSpaceScreenTests {
 
     override fun getNewUid(): String = "new-folder-id"
 
-    override suspend fun createFile(file: JDRFile): Result<Unit> = Result.success(Unit)
+    override suspend fun createFile(file: JDRFile, waitForServer: Boolean): Result<Unit> =
+        Result.success(Unit)
 
-    override suspend fun updateFile(edit: FileEdit): Result<Unit> {
+    override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean): Result<Unit> {
       updates.add(edit)
       stored?.let { files ->
         files.value =
@@ -698,6 +699,8 @@ class PersonalSpaceScreenTests {
         isHidden: Boolean,
         includeContent: Boolean,
     ): Result<Unit> = error("Not used")
+
+    override suspend fun hasPendingWrites(): Boolean = false
 
     override suspend fun setItemHidden(
         itemId: String,

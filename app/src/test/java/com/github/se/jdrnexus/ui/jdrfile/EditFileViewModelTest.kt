@@ -1312,9 +1312,10 @@ class EditFileViewModelTest {
 
     override fun getNewUid(): String = "new-id"
 
-    override suspend fun createFile(file: JDRFile): Result<Unit> = Result.success(Unit)
+    override suspend fun createFile(file: JDRFile, waitForServer: Boolean): Result<Unit> =
+        Result.success(Unit)
 
-    override suspend fun updateFile(edit: FileEdit): Result<Unit> {
+    override suspend fun updateFile(edit: FileEdit, waitForServer: Boolean): Result<Unit> {
       val existing = file?.takeIf { it.id == edit.id } ?: JDRFile(id = edit.id)
       updatedFiles.add(existing.copy(name = edit.name, content = edit.content))
       updateFileGate?.await()
@@ -1352,6 +1353,8 @@ class EditFileViewModelTest {
         isHidden: Boolean,
         includeContent: Boolean,
     ): Result<Unit> = error("Not used")
+
+    override suspend fun hasPendingWrites(): Boolean = false
 
     override suspend fun setItemHidden(
         itemId: String,
