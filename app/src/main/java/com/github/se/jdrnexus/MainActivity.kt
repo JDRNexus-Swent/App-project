@@ -236,7 +236,8 @@ fun JDRNexusApp(
   val launchRoute = startDestination ?: launchRouteFor(launchSession)
 
   // A session that ends while the user is in the app (sign-out, expired token, deleted account)
-  // leads back to SignIn, with nothing left to return to. Keyed on the route too, so the end is
+  // leads back to SignIn, with nothing left to return to. This is the only path back to SignIn,
+  // the Log out button included. Keyed on the route too, so the end is
   // handled once the NavHost has a destination, however late this effect starts.
   val sessionEnded by activeAuthViewModel.sessionEnded.collectAsStateWithLifecycle()
   val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
@@ -292,20 +293,14 @@ fun JDRNexusApp(
         }
 
         composable(route = AllRoutes.Home.name) {
-          val onLogout = {
-            navigation.navigate(AllRoutes.SignIn.name) {
-              // Sign-in may no longer be on the stack after authentication succeeds.
-              popUpTo(AllRoutes.Home.name) { inclusive = true }
-              launchSingleTop = true
-            }
-          }
+          // No onLogout: a successful sign-out ends the session, and the session-end effect above
+          // is the one place that leads back to SignIn.
           val onPersonalSpaceClicked = { navigation.navigate(AllRoutes.PersoSpace.name) }
           val onDiceClicked = { navigation.navigate(AllRoutes.Dice.name) }
           val onGroupManagementClicked = { navigation.navigate(AllRoutes.GroupManagement.name) }
           val onMapClicked = { navigation.navigate(AllRoutes.Map.name) }
           HomeScreen(
               viewModel = activeAuthViewModel,
-              onLogout = onLogout,
               onPersonalSpaceClick = onPersonalSpaceClicked,
               onDiceClick = onDiceClicked,
               onGroupManagementClick = onGroupManagementClicked,
@@ -589,7 +584,12 @@ fun JDRNexusApp(
   }
 }
 
-/** Opens SignIn and clears the back stack, unless [route], the current one, is an auth screen. */
+/**
+ * Opens SignIn and clears the back stack, unless [route], the current one, is an auth screen.
+ *
+ * Uses the NavController directly: NavigationHelper may ignore navigation during a transition, and
+ * this redirect must never be dropped, since the session end is marked as handled right after it.
+ */
 private fun NavHostController.showSignInAfterSessionEnded(route: String) {
   if (route == AllRoutes.SignIn.name || route == AllRoutes.SignUp.name) return
   navigate(AllRoutes.SignIn.name) {

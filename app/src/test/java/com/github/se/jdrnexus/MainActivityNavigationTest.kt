@@ -74,6 +74,7 @@ import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
 import com.google.firebase.FirebaseApp
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -124,23 +125,13 @@ class MainActivityNavigationTest {
 
   @Test
   fun launchShowsLoadingUntilTheSessionIsKnownAndNeverShowsSignIn() {
-    val repository = PendingSessionAuthRepository()
-    val viewModel = AuthViewModel(repository)
-    composeTestRule.setContent {
-      JDRNexusApp(
-          authViewModel = viewModel,
-          authRepository = repository,
-          // A fake: the Firestore repository would start the default Firestore off the emulator.
-          groupRepository = FakeGroupRepository(),
-          workspaceRepository = NavigationWorkspaceRepository(),
-          connectivityRepository = FakeConnectivityRepository(),
-      )
-    }
+    val authState = MutableSharedFlow<AuthUser?>(replay = 1)
+    showApp(FakeAuthRepository(authState), groupRepository = groupRepository())
 
     composeTestRule.onNodeWithTag(C.Tag.session_loading).assertIsDisplayed()
     composeTestRule.onAllNodesWithTag(C.Tag.sign_in_submit).assertCountEquals(0)
 
-    composeTestRule.runOnIdle { repository.authState.tryEmit(FakeAuthRepository.TEST_USER) }
+    composeTestRule.runOnIdle { authState.tryEmit(FakeAuthRepository.TEST_USER) }
     waitForTag(TestTags.TITLE)
 
     composeTestRule.onAllNodesWithTag(C.Tag.session_loading).assertCountEquals(0)
@@ -156,6 +147,9 @@ class MainActivityNavigationTest {
 
     composeTestRule.runOnIdle { repository.endSession() }
     waitForTag(C.Tag.sign_in_submit)
+    // SignIn must be alone on the back stack: Back must not lead to Dice or Home.
+    Espresso.pressBackUnconditionally()
+    composeTestRule.waitForIdle()
 
     composeTestRule.onAllNodesWithTag(C.Tag.dice_offline_screen).assertCountEquals(0)
     composeTestRule.onAllNodesWithTag(TestTags.TITLE).assertCountEquals(0)
@@ -169,16 +163,7 @@ class MainActivityNavigationTest {
     val viewModel = AuthViewModel(repository)
     composeTestRule.runOnIdle { repository.endSession() }
 
-    composeTestRule.setContent {
-      JDRNexusApp(
-          authViewModel = viewModel,
-          authRepository = repository,
-          // A fake: the Firestore repository would start the default Firestore off the emulator.
-          groupRepository = FakeGroupRepository(),
-          workspaceRepository = NavigationWorkspaceRepository(),
-          connectivityRepository = FakeConnectivityRepository(),
-      )
-    }
+    showApp(repository, groupRepository = groupRepository(), authViewModel = viewModel)
     waitForTag(C.Tag.sign_in_submit)
 
     composeTestRule.onAllNodesWithTag(TestTags.TITLE).assertCountEquals(0)
@@ -253,7 +238,7 @@ class MainActivityNavigationTest {
     val repository = FakeAuthRepository()
     showApp(repository)
 
-    assertEquals(null, repository.authState.value)
+    assertEquals(null, repository.currentUser)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
@@ -262,14 +247,14 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsNotDisplayed()
     assertEquals(1, repository.signInCalls)
-    assertEquals(FakeAuthRepository.TEST_USER, repository.authState.value)
+    assertEquals(FakeAuthRepository.TEST_USER, repository.currentUser)
 
     composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
     waitForTag(C.Tag.sign_in_sign_up)
     scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsNotDisplayed()
-    assertEquals(null, repository.authState.value)
+    assertEquals(null, repository.currentUser)
   }
 
   @Test
@@ -277,7 +262,7 @@ class MainActivityNavigationTest {
     val repository = FakeAuthRepository()
     showApp(repository)
 
-    assertEquals(null, repository.authState.value)
+    assertEquals(null, repository.currentUser)
     scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).performClick()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_username).performTextInput("Ranger")
@@ -289,7 +274,7 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.sign_up_sign_in).assertIsNotDisplayed()
     assertEquals(1, repository.signUpCalls)
-    assertEquals(FakeAuthRepository.TEST_USER, repository.authState.value)
+    assertEquals(FakeAuthRepository.TEST_USER, repository.currentUser)
   }
 
   @Test
@@ -303,7 +288,7 @@ class MainActivityNavigationTest {
     waitForTag(C.Tag.sign_up_sign_in)
 
     assertEquals(0, repository.signInCalls)
-    assertEquals(null, repository.authState.value)
+    assertEquals(null, repository.currentUser)
     composeTestRule.onAllNodesWithTag(TestTags.TITLE).assertCountEquals(0)
   }
 
@@ -391,7 +376,7 @@ class MainActivityNavigationTest {
     scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
     composeTestRule.onNodeWithTag(C.Tag.sign_in_sign_up).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TestTags.TITLE).assertIsNotDisplayed()
-    assertEquals(null, repository.authState.value)
+    assertEquals(null, repository.currentUser)
   }
 
   @Test
@@ -1161,17 +1146,17 @@ class MainActivityNavigationTest {
       )
 
   private fun showApp(
-      repository: FakeAuthRepository = FakeAuthRepository(),
+      repository: AuthRepository = FakeAuthRepository(),
       groupRepository: NavigationGroupRepository? = null,
       workspaceRepository: NavigationWorkspaceRepository = NavigationWorkspaceRepository(),
       gameSessionRepository: NavigationGameSessionRepository? = null,
       connectivityRepository: FakeConnectivityRepository = FakeConnectivityRepository(),
+      authViewModel: AuthViewModel = AuthViewModel(repository),
   ) {
     val context = ApplicationProvider.getApplicationContext<Context>()
     if (FirebaseApp.getApps(context).isEmpty()) {
       checkNotNull(FirebaseApp.initializeApp(context))
     }
-    val viewModel = AuthViewModel(repository)
     val editFileViewModel =
         EditFileViewModel(
             workspaceRepository = workspaceRepository,
@@ -1182,7 +1167,7 @@ class MainActivityNavigationTest {
       // The 3D die cannot render under Robolectric: the dice screen draws the flat one instead.
       CompositionLocalProvider(LocalDieView provides FlatDieView) {
         JDRNexusApp(
-            authViewModel = viewModel,
+            authViewModel = authViewModel,
             authRepository = repository,
             groupRepository = groupRepository,
             workspaceRepository = workspaceRepository,
@@ -1289,24 +1274,22 @@ class MainActivityNavigationTest {
   private fun hasEditableText(text: String) =
       SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(text))
 
-  /** Never reports the session until the test emits it, like a slow start-up check. */
-  private class PendingSessionAuthRepository : AuthRepository {
-    override val authState = MutableSharedFlow<AuthUser?>(replay = 1)
+  /**
+   * Reports the session through [mutableAuthState]: a StateFlow by default, or a
+   * `MutableSharedFlow(replay = 1)` that reports nothing until the test emits, like a slow start-up
+   * check.
+   */
+  private class FakeAuthRepository(
+      private val mutableAuthState: MutableSharedFlow<AuthUser?> = MutableStateFlow(null)
+  ) : AuthRepository {
+    constructor(initialUser: AuthUser?) : this(MutableStateFlow(initialUser))
 
-    override suspend fun signUpWithEmail(email: String, password: String, username: String) =
-        AuthResult.Failure(AuthError.UNKNOWN)
+    override val authState: Flow<AuthUser?> = mutableAuthState
 
-    override suspend fun signInWithEmail(email: String, password: String) =
-        AuthResult.Failure(AuthError.UNKNOWN)
+    /** The last user reported by [authState], or null if none was reported. */
+    val currentUser: AuthUser?
+      get() = mutableAuthState.replayCache.lastOrNull()
 
-    override suspend fun signInWithGoogle(idToken: String) = AuthResult.Failure(AuthError.UNKNOWN)
-
-    override suspend fun signOut() = AuthResult.Failure(AuthError.UNKNOWN)
-  }
-
-  private class FakeAuthRepository(initialUser: AuthUser? = null) : AuthRepository {
-    private val mutableAuthState = MutableStateFlow(initialUser)
-    override val authState: StateFlow<AuthUser?> = mutableAuthState
     var signInCalls = 0
     var signUpCalls = 0
     var signOutResult: CompletableDeferred<AuthResult<Unit>>? = null
@@ -1321,21 +1304,21 @@ class MainActivityNavigationTest {
       signUpCalls++
       signUpResult?.let {
         val result = it.await()
-        if (result is AuthResult.Success) mutableAuthState.value = result.value
+        if (result is AuthResult.Success) mutableAuthState.tryEmit(result.value)
         return result
       }
-      mutableAuthState.value = TEST_USER
+      mutableAuthState.tryEmit(TEST_USER)
       return AuthResult.Success(TEST_USER)
     }
 
     override suspend fun signInWithEmail(email: String, password: String): AuthResult<AuthUser> {
       signInCalls++
-      mutableAuthState.value = TEST_USER
+      mutableAuthState.tryEmit(TEST_USER)
       return AuthResult.Success(TEST_USER)
     }
 
     override suspend fun signInWithGoogle(idToken: String): AuthResult<AuthUser> {
-      mutableAuthState.value = TEST_USER
+      mutableAuthState.tryEmit(TEST_USER)
       return AuthResult.Success(TEST_USER)
     }
 
@@ -1343,16 +1326,16 @@ class MainActivityNavigationTest {
       signOutFailure?.let { throw it }
       signOutResult?.let {
         val result = it.await()
-        if (result is AuthResult.Success) mutableAuthState.value = null
+        if (result is AuthResult.Success) mutableAuthState.tryEmit(null)
         return result
       }
-      mutableAuthState.value = null
+      mutableAuthState.tryEmit(null)
       return AuthResult.Success(Unit)
     }
 
     /** Ends the session without a sign-out request, as an expired or revoked session does. */
     fun endSession() {
-      mutableAuthState.value = null
+      mutableAuthState.tryEmit(null)
     }
 
     companion object {

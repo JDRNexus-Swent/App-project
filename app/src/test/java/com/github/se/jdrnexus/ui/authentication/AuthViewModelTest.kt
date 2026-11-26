@@ -514,13 +514,11 @@ class AuthViewModelTest {
     val viewModel = AuthViewModel(FakeAuthRepository(authState))
     runCurrent()
 
-    assertEquals(SessionState.Checking, viewModel.sessionState.value)
     assertEquals(SessionState.Checking, viewModel.launchSession.value)
 
     authState.emit(USER)
     runCurrent()
 
-    assertEquals(SessionState.SignedIn, viewModel.sessionState.value)
     assertEquals(SessionState.SignedIn, viewModel.launchSession.value)
   }
 
@@ -530,7 +528,6 @@ class AuthViewModelTest {
     val viewModel = AuthViewModel(repository)
     runCurrent()
 
-    assertEquals(SessionState.SignedOut, viewModel.sessionState.value)
     assertEquals(SessionState.SignedOut, viewModel.launchSession.value)
     assertEquals(0, repository.refreshCalls)
   }
@@ -544,7 +541,7 @@ class AuthViewModelTest {
     authState.value = null
     runCurrent()
 
-    assertEquals(SessionState.SignedOut, viewModel.sessionState.value)
+    assertEquals(true, viewModel.sessionEnded.value)
     assertEquals(SessionState.SignedIn, viewModel.launchSession.value)
   }
 
@@ -575,7 +572,8 @@ class AuthViewModelTest {
     runCurrent()
 
     assertEquals(1, repository.refreshCalls)
-    assertEquals(SessionState.SignedIn, viewModel.sessionState.value)
+    // Still signed in: the session was not reported as ended.
+    assertEquals(false, viewModel.sessionEnded.value)
     assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
   }
 
@@ -585,7 +583,6 @@ class AuthViewModelTest {
     val viewModel = AuthViewModel(FakeAuthRepository(authState))
     runCurrent()
 
-    assertEquals(SessionState.SignedOut, viewModel.sessionState.value)
     assertEquals(SessionState.SignedOut, viewModel.launchSession.value)
   }
 

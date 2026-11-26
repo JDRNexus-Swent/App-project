@@ -66,10 +66,8 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
   private val _uiState = MutableStateFlow(AuthUiState())
   val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
 
-  private val _sessionState = MutableStateFlow<SessionState>(SessionState.Checking)
-
-  /** The current session; [SessionState.Checking] until the repository reports it. */
-  val sessionState: StateFlow<SessionState> = _sessionState.asStateFlow()
+  // The last session the repository reported; only used to spot a session that ends.
+  private var currentSession: SessionState = SessionState.Checking
 
   private val _launchSession = MutableStateFlow<SessionState>(SessionState.Checking)
 
@@ -106,9 +104,9 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
           emit(null)
         }
         .collect { user ->
-          val previous = _sessionState.value
+          val previous = currentSession
           val session = if (user == null) SessionState.SignedOut else SessionState.SignedIn
-          _sessionState.value = session
+          currentSession = session
           if (_launchSession.value == SessionState.Checking) {
             _launchSession.value = session
             // Checked in the background: the user is not kept waiting, even offline.
