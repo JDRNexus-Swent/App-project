@@ -3,6 +3,8 @@
 package com.github.se.jdrnexus.utils
 
 import android.net.Uri
+import com.github.se.jdrnexus.model.profile.ProfileStats
+import com.github.se.jdrnexus.model.profile.UserProfile
 import com.github.se.jdrnexus.viewmodel.ProfileUiState
 import com.github.se.jdrnexus.viewmodel.ProfileViewModelInterface
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,3 +66,11 @@ internal class RecordingProfileViewModel(initialState: ProfileUiState = ProfileU
     pickedImages.add(image)
   }
 }
+
+/** Saved profile of the fake signed-in user ("user-1"), shared by the profile tests. */
+internal val LOADED_PROFILE =
+    UserProfile(userId = "user-1", username = "Rowan", bio = "Dungeon guide")
+
+/** State of a profile screen once [LOADED_PROFILE] and its stats are loaded. */
+internal val LOADED_PROFILE_STATE =
+    ProfileUiState(profile = LOADED_PROFILE, stats = ProfileStats(2, 5, 8), isLoading = false)

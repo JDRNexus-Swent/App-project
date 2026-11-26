@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -77,6 +76,7 @@ import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.resources.showComingSoon
 import com.github.se.jdrnexus.ui.help.HelpSheet
 import com.github.se.jdrnexus.ui.help.HelpViewModel
+import com.github.se.jdrnexus.ui.profile.ProfileButton
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementUiState
@@ -394,23 +394,7 @@ private fun GameManagementHeader(
           )
         }
       },
-      leadingContent = {
-        IconButton(
-            onClick = onProfileClick,
-            modifier =
-                Modifier.size(38.dp)
-                    .clip(CircleShape)
-                    .background(colors.raised)
-                    .border(1.dp, colors.outline, CircleShape)
-                    .testTag(C.Tag.open_profile),
-        ) {
-          Icon(
-              Icons.Filled.Person,
-              contentDescription = stringResource(R.string.profile_open),
-              tint = colors.secondaryText,
-          )
-        }
-      },
+      leadingContent = { ProfileButton(onClick = onProfileClick) },
       trailingContent = {
         IconButton(
             onClick = onHelpClick,

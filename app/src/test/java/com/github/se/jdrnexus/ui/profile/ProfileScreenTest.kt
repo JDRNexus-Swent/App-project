@@ -36,10 +36,11 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.github.se.jdrnexus.model.profile.ProfileStats
 import com.github.se.jdrnexus.model.profile.UserProfile
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import com.github.se.jdrnexus.utils.LOADED_PROFILE
+import com.github.se.jdrnexus.utils.LOADED_PROFILE_STATE
 import com.github.se.jdrnexus.utils.RecordingProfileViewModel
 import com.github.se.jdrnexus.viewmodel.ProfileUiState
 import com.github.se.jdrnexus.viewmodel.ProfileViewModelInterface
@@ -52,9 +53,8 @@ import org.junit.runner.RunWith
 class ProfileScreenTest {
   @get:Rule val composeTestRule = createComposeRule()
 
-  private val profile = UserProfile(userId = "user-1", username = "Rowan", bio = "Dungeon guide")
-  private val loadedState =
-      ProfileUiState(profile = profile, stats = ProfileStats(2, 5, 8), isLoading = false)
+  private val profile = LOADED_PROFILE
+  private val loadedState = LOADED_PROFILE_STATE
 
   @Test
   fun enteringScreenRequestsProfileAndShowsLoading() {

@@ -42,7 +42,6 @@ import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
-import com.github.se.jdrnexus.model.profile.UserProfile
 import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
@@ -63,6 +62,7 @@ import com.github.se.jdrnexus.ui.search.DocumentSearchStatus
 import com.github.se.jdrnexus.ui.search.DocumentSearchUiState
 import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
 import com.github.se.jdrnexus.utils.FakeConnectivityRepository
+import com.github.se.jdrnexus.utils.LOADED_PROFILE_STATE
 import com.github.se.jdrnexus.utils.NavigationGameSessionRepository
 import com.github.se.jdrnexus.utils.NavigationGroupRepository
 import com.github.se.jdrnexus.utils.NavigationWorkspaceRepository
@@ -70,7 +70,6 @@ import com.github.se.jdrnexus.utils.RecordingProfileViewModel
 import com.github.se.jdrnexus.utils.tapInOneFrame
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
-import com.github.se.jdrnexus.viewmodel.ProfileUiState
 import com.google.firebase.FirebaseApp
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -250,7 +249,7 @@ class MainActivityNavigationTest {
 
   @Test
   fun homeProfileButtonOpensProfileAndBackButtonReturnsHome() {
-    val profileViewModel = RecordingProfileViewModel(loadedProfileState())
+    val profileViewModel = RecordingProfileViewModel(LOADED_PROFILE_STATE)
     openProfileFromHome(profileViewModel)
 
     composeTestRule.onNodeWithTag(C.Tag.profile_username).assertTextContains("Rowan")
@@ -265,7 +264,7 @@ class MainActivityNavigationTest {
 
   @Test
   fun systemBackFromProfileReturnsHome() {
-    openProfileFromHome(RecordingProfileViewModel(loadedProfileState()))
+    openProfileFromHome(RecordingProfileViewModel(LOADED_PROFILE_STATE))
 
     Espresso.pressBack()
 
@@ -275,7 +274,7 @@ class MainActivityNavigationTest {
 
   @Test
   fun doubleTapOnProfileButtonOpensASingleProfile() {
-    showApp(profileViewModel = RecordingProfileViewModel(loadedProfileState()))
+    showApp(profileViewModel = RecordingProfileViewModel(LOADED_PROFILE_STATE))
     signIn()
 
     composeTestRule.onNodeWithTag(C.Tag.open_profile).performTouchInput {
@@ -294,7 +293,7 @@ class MainActivityNavigationTest {
   fun campaignsProfileButtonOpensProfileAndBackReturnsToCampaigns() {
     showApp(
         groupRepository = groupRepository(),
-        profileViewModel = RecordingProfileViewModel(loadedProfileState()),
+        profileViewModel = RecordingProfileViewModel(LOADED_PROFILE_STATE),
     )
     signInAndOpenCampaigns()
     waitForTag(C.Tag.play_button)
@@ -1155,20 +1154,17 @@ class MainActivityNavigationTest {
     }
   }
 
-  private fun signInAndOpenCampaigns() {
-    composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
-    composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
-    composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
-    waitForTag(TestTags.GROUPMANAGEMENTBUTTON)
-    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
-  }
-
   /** Signs in with the fake account and waits for Home. */
   private fun signIn() {
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
-    waitForTag(TestTags.TITLE)
+    waitForTag(TestTags.GROUPMANAGEMENTBUTTON)
+  }
+
+  private fun signInAndOpenCampaigns() {
+    signIn()
+    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
   }
 
   /** Shows the app with [profileViewModel], signs in and opens the profile from Home. */
@@ -1178,12 +1174,6 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(C.Tag.open_profile).performClick()
     waitForTag(C.Tag.profile_username)
   }
-
-  private fun loadedProfileState() =
-      ProfileUiState(
-          profile = UserProfile(userId = "user-1", username = "Rowan", bio = "Dungeon guide"),
-          isLoading = false,
-      )
 
   private fun waitForTag(tag: String) {
     composeTestRule.waitUntil(5_000) {
