@@ -1,11 +1,9 @@
 package com.github.se.jdrnexus.ui.profile
 
 // Co-authored-by: Codex <codex@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -62,6 +60,7 @@ import com.github.se.jdrnexus.model.profile.ProfileStats
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
+import com.github.se.jdrnexus.resources.rememberImagePicker
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import com.github.se.jdrnexus.viewmodel.ProfileUiState
 import com.github.se.jdrnexus.viewmodel.ProfileViewModelInterface
@@ -75,10 +74,7 @@ fun ProfileScreen(
     selectedTab: String = "Home",
 ) {
   val state by viewModel.uiState.collectAsState()
-  val pickPicture =
-      rememberLauncherForActivityResult(PickVisualMedia()) { uri ->
-        uri?.let(viewModel::updateProfilePicture)
-      }
+  val pickPicture = rememberImagePicker(viewModel::updateProfilePicture)
   LaunchedEffect(viewModel) { viewModel.loadProfile() }
   BackHandler { if (state.isEditing) viewModel.cancelEditing() else onBack() }
 
@@ -93,9 +89,8 @@ fun ProfileScreen(
       onBack = onBack,
       onTabSelected = onTabSelected,
       selectedTab = selectedTab,
-  ) {
-    pickPicture.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly))
-  }
+      onPickPicture = pickPicture,
+  )
 }
 
 @Composable
