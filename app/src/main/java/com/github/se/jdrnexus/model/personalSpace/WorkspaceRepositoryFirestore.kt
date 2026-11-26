@@ -111,14 +111,9 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
     awaitLocalWrite(batch.commit(), "deleteFile($fileId)")
   }
 
+  // toObject is null for a missing document.
   override suspend fun getFile(fileId: String): Result<JDRFile?> = safeFirestoreRequest {
-    val documentSnapshot = getWithCacheFallback(collection.document(fileId))
-
-    if (!documentSnapshot.exists()) {
-      throw Exception("Document not found in Firestore")
-    }
-
-    documentSnapshot.toObject(JDRFile::class.java)
+    getWithCacheFallback(collection.document(fileId)).toObject(JDRFile::class.java)
   }
 
   override suspend fun removeItemFromGroup(

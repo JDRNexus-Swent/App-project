@@ -191,6 +191,12 @@
     <string name="invitation_error_network">Something went wrong. Check your connection and try again.</string>
     <string name="join_error_network">Something went wrong. You may already have joined: check your groups list before trying again.</string>
 
+    <string name="profile_open">Open profile</string>
+    <string name="profile_leave_title">Leave while saving?</string>
+    <string name="profile_leave_message">Your profile or picture is still being saved. If you leave now, the change may be lost.</string>
+    <string name="profile_leave_confirm">Leave anyway</string>
+    <string name="profile_leave_stay">Stay</string>
+
     <string name="notifications_title">Notifications</string>
     <string name="notifications_open">Notifications</string>
     <string name="notifications_open_unread">Notifications, unread notifications available</string>

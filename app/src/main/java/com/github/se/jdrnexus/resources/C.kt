@@ -41,6 +41,7 @@ object C {
     fun gamePlayerNavigationTab(name: String) = "game_player_navigation_$name"
 
     const val main_screen_container = "main_screen_container"
+    const val session_loading = "session_loading"
 
     const val shared_top_bar = "shared_top_bar"
     const val shared_back_button = "shared_back_button"
@@ -63,6 +64,12 @@ object C {
     const val profile_loading = "profile_loading"
     const val profile_saving = "profile_saving"
     const val profile_error = "profile_error"
+    /** Dialog asking to confirm leaving the profile while a save or picture upload runs. */
+    const val profile_leave_dialog = "profile_leave_dialog"
+    const val profile_leave_confirm = "profile_leave_confirm"
+    const val profile_leave_stay = "profile_leave_stay"
+    /** Button opening the profile screen, in the top bar of Home and of Campaigns. */
+    const val open_profile = "open_profile"
 
     const val sign_in_email = "auth_sign_in_email"
     const val sign_in_password = "auth_sign_in_password"

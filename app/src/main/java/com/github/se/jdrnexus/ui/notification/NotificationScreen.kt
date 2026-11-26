@@ -166,7 +166,7 @@ fun NotificationScreen(
   val snackbarHostState = remember { SnackbarHostState() }
   // Saveable so the confirmation dialog survives a rotation instead of silently closing.
   var confirmingMarkAll by rememberSaveable { mutableStateOf(false) }
-  val hasUnread = uiState.notifications.any { !it.isRead }
+  val hasUnread = uiState.unreadCount > 0
 
   val actionErrorMessage = stringResource(R.string.notifications_action_error)
 

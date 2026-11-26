@@ -396,7 +396,8 @@ fun GroupWorkSpaceScreen(
                         imageVector =
                             when (item.type) {
                               DocumentType.FOLDER -> Icons.Default.Folder
-                              DocumentType.TEXT -> Icons.Default.Description
+                              DocumentType.TEXT,
+                              DocumentType.IMAGE -> Icons.Default.Description
                               DocumentType.CHARACTER -> Icons.Default.People
                               DocumentType.GROUP_ROOT -> Icons.Default.Folder
                             },
@@ -613,7 +614,9 @@ fun WorkspaceCard(
   WorkspaceItemCard(
       file = file,
       icon =
-          if (file.type == DocumentType.TEXT) Icons.Default.Description else Icons.Default.People,
+          if (file.type == DocumentType.TEXT || file.type == DocumentType.IMAGE)
+              Icons.Default.Description
+          else Icons.Default.People,
       typeLabel = stringResource(file.type.labelResource),
       title =
           if (character == null) file.name
@@ -1082,7 +1085,8 @@ private val DocumentType.labelResource: Int
   get() =
       when (this) {
         DocumentType.FOLDER -> R.string.workspace_folder_type
-        DocumentType.TEXT -> R.string.workspace_text_type
+        DocumentType.TEXT,
+        DocumentType.IMAGE -> R.string.workspace_text_type
         DocumentType.CHARACTER -> R.string.workspace_character_type
         DocumentType.GROUP_ROOT -> R.string.workspace_group_root_type
       }

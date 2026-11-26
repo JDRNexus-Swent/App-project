@@ -1,8 +1,12 @@
 rules_version = '2';
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 
-// Storage holds one file per user: their profile picture at profilePictures/{uid}.jpg
-// (DATA_ARCHITECTURE.md, section 1.8). The app shrinks it to 256 px before the upload, so the
-// 1 MB limit only stops abuse. Any other path is denied.
+// Storage holds two kinds of files (DATA_ARCHITECTURE.md, sections 1.8 and 1.9):
+// - profilePictures/{uid}.jpg: one profile picture per user. The app shrinks it to 256 px before the
+//   upload, so the 1 MB limit only stops abuse.
+// - images/{ownerId}/{fileId}: the picture of an image file, whose Firestore document is
+//   documents/{fileId} (type IMAGE).
+// Any other path is denied.
 service firebase.storage {
   match /b/{bucket}/o {
     match /profilePictures/{fileName} {
@@ -14,6 +18,36 @@ service firebase.storage {
         && request.resource != null
         && request.resource.contentType == 'image/jpeg'
         && request.resource.size < 1024 * 1024;
+    }
+
+    // A signed-in reader may see the picture when its document exists, is an IMAGE, belongs to the
+    // owner in the path, and is shared in one of the reader's groups (users/{uid}.groupIds, as in
+    // the Firestore rules). Hidden placements still count: hidden is a display choice, not a
+    // security boundary. The two documents read here are the most a Storage rule may read.
+    function isSharedWithReader(ownerId, fileId) {
+      let file = /databases/(default)/documents/documents/$(fileId);
+      let reader = /databases/(default)/documents/users/$(request.auth.uid);
+      return firestore.exists(file)
+        && firestore.exists(reader)
+        && firestore.get(file).data.type == 'IMAGE'
+        && firestore.get(file).data.ownerId == ownerId
+        && firestore.get(file).data.sharedGroupsIds.hasAny(
+             firestore.get(reader).data.get('groupIds', []));
+    }
+
+    match /images/{ownerId}/{fileId} {
+      // The owner, or a member of a group the image is shared in. Anyone with the download URL can
+      // still load the picture.
+      allow read: if request.auth != null
+        && (request.auth.uid == ownerId || isSharedWithReader(ownerId, fileId));
+      // A new picture only, by the owner of the path: a JPEG, PNG or WebP of at most 10 MiB. No
+      // overwrite (resource is the stored picture, if any) and no metadata update (no update rule).
+      allow create: if request.auth != null
+        && request.auth.uid == ownerId
+        && resource == null
+        && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp']
+        && request.resource.size <= 10 * 1024 * 1024;
+      allow delete: if request.auth != null && request.auth.uid == ownerId;
     }
   }
 }

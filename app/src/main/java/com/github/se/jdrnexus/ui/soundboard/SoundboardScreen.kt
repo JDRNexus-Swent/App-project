@@ -31,9 +31,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Bolt
-import androidx.compose.material.icons.outlined.Dangerous
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Hardware
 import androidx.compose.material.icons.outlined.HistoryEdu
 import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.Notifications
@@ -65,6 +63,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -356,8 +355,9 @@ private fun VolumeCard(
  * The ambience section: the playlist tabs, the track menu with the play/pause button, the elapsed
  * time and the Looping toggle.
  *
- * Picking a track in the menu starts it. With nothing playing, play/pause starts the selected
- * playlist from its first track; otherwise it pauses or resumes the current track.
+ * Picking a track in the menu starts it. Play/pause pauses the current track, or resumes it when it
+ * is paused and its playlist is selected. Otherwise it starts the selected playlist from its first
+ * track.
  */
 @Composable
 private fun AmbienceSection(
@@ -370,7 +370,11 @@ private fun AmbienceSection(
   val selectedPlaylist = board.playlists.firstOrNull { it.id == uiState.selectedPlaylistId }
   val playingPlaylist = board.playlists.firstOrNull { it.id == ambience?.playlistId }
   val playingTrack = playingPlaylist?.tracks?.firstOrNull { it.audio.id == ambience?.audioId }
-
+  // A paused track resumes from its own playlist's tab; from another tab, play starts that
+  // playlist instead.
+  val resumable = ambience?.takeUnless {
+    it.status == AmbiencePlaybackStatus.PAUSED && it.playlistId != uiState.selectedPlaylistId
+  }
   SoundboardSection(
       title = stringResource(R.string.soundboard_ambience),
       trailing = stringResource(R.string.soundboard_ambience_hint),
@@ -415,11 +419,10 @@ private fun AmbienceSection(
         }
       }
       PlayPauseButton(
-          status = ambience?.status,
+          status = resumable?.status,
           canStart = selectedPlaylist?.tracks?.isNotEmpty() == true,
           onPlay = {
-            // Resume the paused track, or start the selected playlist from its first track.
-            if (ambience != null) viewModel.playAmbience(ambience.playlistId, ambience.audioId)
+            if (resumable != null) viewModel.playAmbience(resumable.playlistId, resumable.audioId)
             else selectedPlaylist?.let { viewModel.playPlaylist(it.id) }
           },
           onPause = viewModel::pauseAmbience,
@@ -555,9 +558,9 @@ private fun TrackField(
 }
 
 /**
- * Plays or pauses the ambience. With nothing playing ([status] is null), it starts the selected
- * playlist, so it is enabled only when that playlist has tracks ([canStart]). Disabled while a
- * track is being prepared, when it shows a spinner instead of its icon.
+ * Plays or pauses the ambience. With no track to pause or resume ([status] is null), it starts the
+ * selected playlist, so it is enabled only when that playlist has tracks ([canStart]). Disabled
+ * while a track is being prepared, when it shows a spinner instead of its icon.
  */
 @Composable
 private fun PlayPauseButton(
@@ -810,16 +813,20 @@ internal fun soundboardErrorText(reason: SoundboardError): Int =
       SoundboardError.UNKNOWN -> R.string.soundboard_error_unknown
     }
 
-/** The Material icon drawn for this effect icon. */
+/**
+ * The Material icon drawn for this effect icon. The sword and skull are Material Symbols drawables,
+ * because the Compose icon library has neither.
+ */
+@Composable
 internal fun SoundEffectIcon.imageVector(): ImageVector =
     when (this) {
       SoundEffectIcon.SPEAKER -> Icons.AutoMirrored.Outlined.VolumeUp
-      SoundEffectIcon.SWORD -> Icons.Outlined.Hardware
+      SoundEffectIcon.SWORD -> ImageVector.vectorResource(R.drawable.ic_sword)
       SoundEffectIcon.SHIELD -> Icons.Outlined.Shield
       SoundEffectIcon.ARROW -> Icons.AutoMirrored.Outlined.ArrowForward
       SoundEffectIcon.LIGHTNING -> Icons.Outlined.Bolt
       SoundEffectIcon.FIRE -> Icons.Outlined.LocalFireDepartment
-      SoundEffectIcon.SKULL -> Icons.Outlined.Dangerous
+      SoundEffectIcon.SKULL -> ImageVector.vectorResource(R.drawable.ic_skull)
       SoundEffectIcon.FOOTSTEPS -> Icons.AutoMirrored.Outlined.DirectionsWalk
       SoundEffectIcon.SCROLL -> Icons.Outlined.HistoryEdu
       SoundEffectIcon.BELL -> Icons.Outlined.Notifications
