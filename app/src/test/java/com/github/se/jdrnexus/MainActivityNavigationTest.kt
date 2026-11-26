@@ -527,16 +527,9 @@ class MainActivityNavigationTest {
     showApp(groupRepository = groupRepository("user-1"))
     signInAndOpenCampaigns()
 
-    waitForTag(C.Tag.help_button)
-    composeTestRule.onNodeWithTag(C.Tag.help_button).performClick()
+    // The help opens by itself on the first visit; close it so that "?" is tapped with it closed.
     waitForTag(C.Tag.help_sheet)
-
-    composeTestRule.onNodeWithTag(C.Tag.help_next).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.help_next).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.help_done).performClick()
-    composeTestRule.waitUntil(5_000) {
-      composeTestRule.onAllNodesWithTag(C.Tag.help_sheet).fetchSemanticsNodes().isEmpty()
-    }
+    closeHelpWithGotIt()
 
     composeTestRule.onNodeWithTag(C.Tag.help_button).performClick()
     waitForTag(C.Tag.help_sheet)
@@ -548,12 +541,7 @@ class MainActivityNavigationTest {
     signInAndOpenCampaigns()
 
     waitForTag(C.Tag.help_sheet)
-    composeTestRule.onNodeWithTag(C.Tag.help_next).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.help_next).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.help_done).performClick()
-    composeTestRule.waitUntil(5_000) {
-      composeTestRule.onAllNodesWithTag(C.Tag.help_sheet).fetchSemanticsNodes().isEmpty()
-    }
+    closeHelpWithGotIt()
 
     // Home removes Campaigns from the back stack, so coming back creates a new help ViewModel,
     // which reads the record again.
@@ -1031,6 +1019,14 @@ class MainActivityNavigationTest {
   private fun assertBackOnCampaigns(gameScreenTag: String) {
     waitForTag(C.Tag.play_button)
     composeTestRule.onAllNodesWithTag(gameScreenTag).assertCountEquals(0)
+  }
+
+  /** Closes the open Campaigns help through its pages and "Got it", then waits for it to go. */
+  private fun closeHelpWithGotIt() {
+    composeTestRule.onNodeWithTag(C.Tag.help_next).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.help_next).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.help_done).performClick()
+    waitForTagToDisappear(C.Tag.help_sheet)
   }
 
   private fun waitForTagToDisappear(tag: String) {
