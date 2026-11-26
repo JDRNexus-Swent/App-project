@@ -295,6 +295,7 @@ fun JDRNexusApp(
           val onDiceClicked = { navigation.navigate(AllRoutes.Dice.name) }
           val onGroupManagementClicked = { navigation.navigate(AllRoutes.GroupManagement.name) }
           val onMapClicked = { navigation.navigate(AllRoutes.Map.name) }
+          val notificationState = notificationViewModel?.notificationUiState?.collectAsState()
           HomeScreen(
               viewModel = activeAuthViewModel,
               onLogout = onLogout,
@@ -302,53 +303,40 @@ fun JDRNexusApp(
               onDiceClick = onDiceClicked,
               onGroupManagementClick = onGroupManagementClicked,
               onMapClick = onMapClicked,
+              unreadNotificationCount =
+                  notificationState?.value?.notifications?.count { !it.isRead } ?: 0,
+              onNotificationsClick =
+                  notificationViewModel?.let {
+                    { navigation.navigate(AllRoutes.Notifications.name) { launchSingleTop = true } }
+                  },
           )
         }
-        val onPersonalSpaceClicked = { navigation.navigate(AllRoutes.PersoSpace.name) }
-        val onDiceClicked = { navigation.navigate(AllRoutes.Dice.name) }
-        val onGroupManagementClicked = { navigation.navigate(AllRoutes.GroupManagement.name) }
-        val onMapClicked = { navigation.navigate(AllRoutes.Map.name) }
-        val notificationState = notificationViewModel?.notificationUiState?.collectAsState()
-        HomeScreen(
-            viewModel = activeAuthViewModel,
-            onLogout = onLogout,
-            onPersonalSpaceClick = onPersonalSpaceClicked,
-            onDiceClick = onDiceClicked,
-            onGroupManagementClick = onGroupManagementClicked,
-            onMapClick = onMapClicked,
-            unreadNotificationCount =
-                notificationState?.value?.notifications?.count { !it.isRead } ?: 0,
-            onNotificationsClick =
-                notificationViewModel?.let {
-                  { navigation.navigate(AllRoutes.Notifications.name) { launchSingleTop = true } }
+
+        if (notificationViewModel != null) {
+          composable(route = AllRoutes.Notifications.name) {
+            NotificationScreen(
+                viewModel = notificationViewModel,
+                onBack = { navigation.popBackStack() },
+                onOpenNotification = openNotification,
+                onTabSelected = { tab ->
+                  when (tab) {
+                    "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
+                    "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
+                    "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
+                    "Map" -> navigation.navigate(AllRoutes.Map.name)
+                  }
                 },
-        )
-      }
-
-      if (notificationViewModel != null) {
-        composable(route = AllRoutes.Notifications.name) {
-          NotificationScreen(
-              viewModel = notificationViewModel,
-              onBack = { navigation.popBackStack() },
-              onOpenNotification = openNotification,
-              onTabSelected = { tab ->
-                when (tab) {
-                  "Home" -> navigation.popBackStack(AllRoutes.Home.name, false)
-                  "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
-                  "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
-                  "Map" -> navigation.navigate(AllRoutes.Map.name)
-                }
-              },
-          )
+            )
+          }
         }
-      }
 
-      composable(route = AllRoutes.SignUp.name) {
-        val onRegister = {
-          navigation.navigate(AllRoutes.Home.name) {
-            // The signed-in back stack starts at Home, not the registration flow.
-            popUpTo(AllRoutes.SignIn.name) { inclusive = true }
-            launchSingleTop = true
+        composable(route = AllRoutes.SignUp.name) {
+          val onRegister = {
+            navigation.navigate(AllRoutes.Home.name) {
+              // The signed-in back stack starts at Home, not the registration flow.
+              popUpTo(AllRoutes.SignIn.name) { inclusive = true }
+              launchSingleTop = true
+            }
           }
           // Return to the existing SignIn entry rather than pushing a duplicate.
           val onSignInScreen: () -> Unit = {
