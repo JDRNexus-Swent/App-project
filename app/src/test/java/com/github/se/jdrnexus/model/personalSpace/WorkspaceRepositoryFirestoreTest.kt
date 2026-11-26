@@ -222,8 +222,8 @@ class WorkspaceRepositoryFirestoreTest {
         )
 
     assertTrue(result.isFailure)
-    assertEquals(Exception::class.java, result.exceptionOrNull()?.javaClass)
-    assertEquals("Document not found in Firestore", result.exceptionOrNull()?.message)
+    assertEquals(IllegalArgumentException::class.java, result.exceptionOrNull()?.javaClass)
+    assertEquals("Item not found.", result.exceptionOrNull()?.message)
   }
 
   @Test
@@ -1343,13 +1343,12 @@ class WorkspaceRepositoryFirestoreTest {
     }
   }
 
-  /** Ensures that attempting to fetch a non-existent document returns a failure. */
+  /** Ensures that fetching a non-existent document succeeds with null, as the KDoc promises. */
   @Test
   fun testGetFile_NotFound() {
     runBlocking {
       val result = repository.getFile("non_existent_id")
-      assertTrue("getFile should fail when document is not found", result.isFailure)
-      assertEquals("Document not found in Firestore", result.exceptionOrNull()?.message)
+      assertEquals(Result.success(null), result)
     }
   }
 
