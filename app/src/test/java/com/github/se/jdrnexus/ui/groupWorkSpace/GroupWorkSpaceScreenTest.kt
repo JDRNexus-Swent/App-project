@@ -1,8 +1,11 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -16,10 +19,12 @@ import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.GraphicsMode
 
 /**
  * Tests of the item-sharing picker filter, of the [WorkspaceFab] actions menu and of the
@@ -175,6 +180,20 @@ class GroupWorkSpaceScreenTest {
     )
   }
 
+  // Same name and content, so the two cards can differ only by their icon and type label.
+  @Test
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  fun imageCardShowsTheTextIconAndLabel() {
+    val text = JDRFile(id = "text", name = "Map", type = DocumentType.TEXT, content = "North")
+    val image = text.copy(id = "image", type = DocumentType.IMAGE)
+    setCards(text, image)
+
+    assertArrayEquals(cardPixels(text.id), cardPixels(image.id))
+  }
+
+  private fun cardPixels(id: String): IntArray =
+      composeTestRule.onNodeWithTag(C.Tag.workspaceItem(id)).captureToImage().toPixelMap().buffer
+
   @Test
   fun actionsMenuLabelsTheSharingActionShareAndOpensTheSharingDialog() {
     var shareRequests = 0
@@ -212,21 +231,27 @@ class GroupWorkSpaceScreenTest {
                   "}}",
       )
 
-  private fun setCard(file: JDRFile) {
+  private fun setCard(file: JDRFile) = setCards(file)
+
+  private fun setCards(vararg files: JDRFile) {
     composeTestRule.setContent {
       SampleAppTheme {
-        WorkspaceCard(
-            file = file,
-            canEdit = false,
-            canRemove = false,
-            isHidden = false,
-            canChangeVisibility = false,
-            operationInProgress = false,
-            onOpen = {},
-            onEdit = {},
-            onRemove = {},
-            onToggleVisibility = {},
-        )
+        Column {
+          files.forEach { file ->
+            WorkspaceCard(
+                file = file,
+                canEdit = false,
+                canRemove = false,
+                isHidden = false,
+                canChangeVisibility = false,
+                operationInProgress = false,
+                onOpen = {},
+                onEdit = {},
+                onRemove = {},
+                onToggleVisibility = {},
+            )
+          }
+        }
       }
     }
   }
