@@ -49,8 +49,10 @@ class SoundboardRepositoryLocalTest {
 
     /** Authority of the [FakeAudioProvider], standing in for the system file picker's. */
     const val AUTHORITY = "com.github.se.jdrnexus.test.audio"
-    const val MP3_TYPE = "audio/mpeg"
+    /** The type providers give mp3s, shared with mp1 and mp2: the whole MPEG audio family. */
+    const val MPEG_AUDIO_TYPE = "audio/mpeg"
     const val MP3_EXTENSION = "mp3"
+    const val MP2_EXTENSION = "mp2"
     const val AAC_TYPE = "audio/mp4"
 
     /** What [MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO] returns for a file with audio. */
@@ -87,7 +89,9 @@ class SoundboardRepositoryLocalTest {
     database = Room.inMemoryDatabaseBuilder(context, SoundboardDatabase::class.java).build()
     audioDirectory = File(context.filesDir, "soundboard_audio")
     ShadowStatFs.registerStats(audioDirectory, PLENTY_OF_BLOCKS, PLENTY_OF_BLOCKS, PLENTY_OF_BLOCKS)
-    shadowOf(MimeTypeMap.getSingleton()).addExtensionMimeTypeMapping(MP3_EXTENSION, MP3_TYPE)
+    // As on a device: both extensions map to the same MPEG audio type.
+    shadowOf(MimeTypeMap.getSingleton()).addExtensionMimeTypeMapping(MP3_EXTENSION, MPEG_AUDIO_TYPE)
+    shadowOf(MimeTypeMap.getSingleton()).addExtensionMimeTypeMapping(MP2_EXTENSION, MPEG_AUDIO_TYPE)
     picker = Robolectric.setupContentProvider(FakeAudioProvider::class.java, AUTHORITY)
     repository =
         SoundboardRepositoryLocal(
@@ -128,6 +132,27 @@ class SoundboardRepositoryLocalTest {
     val imported = repository.importAudio(USER, source).getOrThrow()
 
     assertEquals("Tavern", imported.name)
+  }
+
+  @Test
+  fun importKeepsADotThatIsNotAnExtensionInTheName() = runTest {
+    val source = pick("Dr. Dre - Still")
+    readableAsMp3(TRACK_DURATION_MS)
+
+    val imported = repository.importAudio(USER, source).getOrThrow()
+
+    assertEquals("Dr. Dre - Still", imported.name)
+  }
+
+  @Test
+  fun importRejectsAnMp2SentWithTheMpegAudioType() = runTest {
+    // mp2 shares mp3's type, audio/mpeg: only its extension gives it away.
+    val source = pick("Old broadcast.mp2", mimeType = MPEG_AUDIO_TYPE)
+
+    val result = repository.importAudio(USER, source)
+
+    assertEquals(SoundboardError.UNSUPPORTED_FORMAT, result.error())
+    assertEquals(emptySet<String>(), copies())
   }
 
   @Test
@@ -573,7 +598,7 @@ class SoundboardRepositoryLocalTest {
   }
 
   /** Offers [name] in the fake file picker and returns its uri. */
-  private fun pick(name: String, mimeType: String? = MP3_TYPE): Uri {
+  private fun pick(name: String, mimeType: String? = MPEG_AUDIO_TYPE): Uri {
     picker.files[name] = FakeAudioProvider.Served(name, mimeType, MP3_BYTES)
     return Uri.Builder().scheme("content").authority(AUTHORITY).appendPath(name).build()
   }
@@ -582,7 +607,7 @@ class SoundboardRepositoryLocalTest {
   private fun nextCopy() = File(audioDirectory, "id-${lastId + 1}.mp3")
 
   /** Makes the platform's media parser read the next copy as an mp3 of [durationMs]. */
-  private fun readableAsMp3(durationMs: Long) = readableAs(durationMs, MP3_TYPE)
+  private fun readableAsMp3(durationMs: Long) = readableAs(durationMs, MPEG_AUDIO_TYPE)
 
   /** Makes the platform's media parser read the next copy as audio of [type]. */
   private fun readableAs(durationMs: Long, type: String) {

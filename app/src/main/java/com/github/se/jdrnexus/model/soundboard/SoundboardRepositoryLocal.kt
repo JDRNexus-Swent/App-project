@@ -24,12 +24,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-/** Extension of the copies, and of the picked files when their provider gives no type. */
+/** Extension of the copies, and the one a picked file's name must have if it has a known one. */
 private const val MP3_EXTENSION = "mp3"
 
 /**
  * Types that mean mp3. `audio/mpeg` is the standard one; some file managers send the non-standard
- * `audio/mp3`.
+ * `audio/mp3`. `audio/mpeg` also covers mp1 and mp2, which only the extension tells apart.
  */
 private val MP3_MIME_TYPES = setOf("audio/mpeg", "audio/mp3")
 
@@ -131,18 +131,27 @@ internal constructor(
       val sizeBytes: Long?,
       val mimeType: String?,
   ) {
+    /**
+     * The name's extension, lowercased, if the system knows it as one ("mp3", "mp2", "txt"…). A dot
+     * inside a name without an extension, as in "Dr. Dre", gives null.
+     */
+    private val knownExtension: String?
+      get() =
+          displayName.substringAfterLast('.', "").lowercase().takeIf {
+            it.isNotEmpty() && MimeTypeMap.getSingleton().hasExtension(it)
+          }
+
     val nameWithoutExtension: String
-      get() = displayName.substringBeforeLast('.')
+      get() = if (knownExtension != null) displayName.substringBeforeLast('.') else displayName
 
     /**
-     * Whether the provider's type or the name's extension says mp3. [readDurationMs] then checks
-     * the content itself.
+     * Whether the file looks like an mp3: by its extension when the name has a known one, so that
+     * an mp1 or mp2 sent as `audio/mpeg` is refused, otherwise by the provider's type.
+     * [readDurationMs] then checks the content itself.
      */
     fun looksLikeMp3(): Boolean {
-      val extensionType =
-          MimeTypeMap.getSingleton()
-              .getMimeTypeFromExtension(displayName.substringAfterLast('.', "").lowercase())
-      return mimeType in MP3_MIME_TYPES || extensionType in MP3_MIME_TYPES
+      val extension = knownExtension
+      return if (extension != null) extension == MP3_EXTENSION else mimeType in MP3_MIME_TYPES
     }
   }
 
