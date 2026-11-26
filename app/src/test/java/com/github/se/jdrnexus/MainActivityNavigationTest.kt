@@ -254,7 +254,6 @@ class MainActivityNavigationTest {
 
     composeTestRule.onNodeWithTag(C.Tag.profile_username).assertTextContains("Rowan")
     assertEquals(1, profileViewModel.loadCalls)
-    composeTestRule.onAllNodesWithTag(C.Tag.shared_bottom_bar).assertCountEquals(0)
 
     composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
 
@@ -269,6 +268,32 @@ class MainActivityNavigationTest {
     Espresso.pressBack()
 
     waitForTag(TestTags.TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
+  fun homeTabFromProfileReturnsHome() {
+    openProfileFromHome(RecordingProfileViewModel(LOADED_PROFILE_STATE))
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
+  fun campaignsTabFromProfileOpensCampaigns() {
+    showApp(
+        groupRepository = groupRepository(),
+        profileViewModel = RecordingProfileViewModel(LOADED_PROFILE_STATE),
+    )
+    signIn()
+    composeTestRule.onNodeWithTag(C.Tag.open_profile).performClick()
+    waitForTag(C.Tag.profile_username)
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+
+    waitForTag(C.Tag.play_button)
     composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
   }
 

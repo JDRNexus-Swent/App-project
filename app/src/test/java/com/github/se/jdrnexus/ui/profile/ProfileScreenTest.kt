@@ -22,6 +22,7 @@ import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasAnySibling
 import androidx.compose.ui.test.hasText
@@ -288,7 +289,7 @@ class ProfileScreenTest {
     val viewModel = RecordingProfileViewModel(loadedState)
     composeTestRule.setContent {
       CompositionLocalProvider(LocalActivityResultRegistryOwner provides picker) {
-        SampleAppTheme { ProfileScreen(viewModel = viewModel, onBack = {}) }
+        SampleAppTheme { ProfileScreen(viewModel = viewModel, onBack = {}, onTabSelected = {}) }
       }
     }
     composeTestRule.onNodeWithTag(C.Tag.profile_edit).performScrollTo().performClick()
@@ -331,16 +332,41 @@ class ProfileScreenTest {
   }
 
   @Test
-  fun profileIsASecondaryScreenWithoutBottomBar() {
-    setContent(RecordingProfileViewModel(loadedState))
+  fun bottomBarSelectsHomeByDefaultAndForwardsTappedTab() {
+    val selectedTabs = mutableListOf<String>()
+    setContent(RecordingProfileViewModel(loadedState), onTabSelected = { selectedTabs.add(it) })
 
-    composeTestRule.onNodeWithTag(C.Tag.shared_top_bar).assertIsDisplayed()
-    composeTestRule.onAllNodesWithTag(C.Tag.shared_bottom_bar).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).assertIsSelected()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+
+    assertEquals(listOf("Files"), selectedTabs)
   }
 
-  private fun setContent(viewModel: ProfileViewModelInterface, onBack: () -> Unit = {}) {
+  @Test
+  fun bottomBarReflectsProvidedSelectedTab() {
     composeTestRule.setContent {
-      SampleAppTheme { ProfileScreen(viewModel = viewModel, onBack = onBack) }
+      SampleAppTheme {
+        ProfileScreen(
+            viewModel = RecordingProfileViewModel(loadedState),
+            onBack = {},
+            onTabSelected = {},
+            selectedTab = "Map",
+        )
+      }
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).assertIsSelected()
+  }
+
+  private fun setContent(
+      viewModel: ProfileViewModelInterface,
+      onBack: () -> Unit = {},
+      onTabSelected: (String) -> Unit = {},
+  ) {
+    composeTestRule.setContent {
+      SampleAppTheme {
+        ProfileScreen(viewModel = viewModel, onBack = onBack, onTabSelected = onTabSelected)
+      }
     }
   }
 

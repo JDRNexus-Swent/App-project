@@ -560,6 +560,14 @@ fun JDRNexusApp(
           ProfileScreen(
               viewModel = activeProfileViewModel,
               onBack = { navigation.popBackStack() },
+              onTabSelected = { tab ->
+                when (tab) {
+                  "Home" -> navigation.popBackStack(AllRoutes.Home.name, inclusive = false)
+                  "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
+                  "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
+                  "Map" -> navigation.navigate(AllRoutes.Map.name)
+                }
+              },
           )
         }
       }
