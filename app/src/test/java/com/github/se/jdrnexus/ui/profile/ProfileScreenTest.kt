@@ -26,6 +26,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasAnySibling
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -56,6 +57,8 @@ class ProfileScreenTest {
 
   private val profile = LOADED_PROFILE
   private val loadedState = LOADED_PROFILE_STATE
+  /** A picture upload is running: leaving would cancel it. */
+  private val savingState = loadedState.copy(isSaving = true)
 
   @Test
   fun enteringScreenRequestsProfileAndShowsLoading() {
@@ -356,6 +359,89 @@ class ProfileScreenTest {
     }
 
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).assertIsSelected()
+  }
+
+  @Test
+  fun backWhileSavingLeavesOnlyAfterConfirmation() {
+    var backCalls = 0
+    setContent(RecordingProfileViewModel(savingState), onBack = { backCalls++ })
+
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    composeTestRule.onNodeWithTag(C.Tag.profile_leave_dialog).assertIsDisplayed()
+    assertEquals(0, backCalls)
+    composeTestRule.onNodeWithTag(C.Tag.profile_leave_confirm).performClick()
+    assertEquals(1, backCalls)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_leave_dialog).assertCountEquals(0)
+  }
+
+  @Test
+  fun stayingAfterSystemBackWhileSavingKeepsTheProfileOpen() {
+    var backCalls = 0
+    setContent(RecordingProfileViewModel(savingState), onBack = { backCalls++ })
+
+    Espresso.pressBack()
+    composeTestRule.onNodeWithTag(C.Tag.profile_leave_stay).performClick()
+
+    assertEquals(0, backCalls)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_leave_dialog).assertCountEquals(0)
+  }
+
+  @Test
+  fun systemBackDuringAnEditorSaveAsksInsteadOfCancellingTheEdit() {
+    var backCalls = 0
+    val viewModel = RecordingProfileViewModel(savingState.copy(isEditing = true))
+    setContent(viewModel, onBack = { backCalls++ })
+
+    Espresso.pressBack()
+
+    composeTestRule.onNodeWithTag(C.Tag.profile_leave_dialog).assertIsDisplayed()
+    assertEquals(0, viewModel.cancelEditingCalls)
+    assertEquals(0, backCalls)
+  }
+
+  @Test
+  fun tabWhileSavingIsForwardedOnlyAfterConfirmation() {
+    val selectedTabs = mutableListOf<String>()
+    setContent(RecordingProfileViewModel(savingState), onTabSelected = { selectedTabs.add(it) })
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+
+    assertEquals(emptyList<String>(), selectedTabs)
+    composeTestRule.onNodeWithTag(C.Tag.profile_leave_confirm).performClick()
+    assertEquals(listOf("Files"), selectedTabs)
+  }
+
+  @Test
+  fun leaveDialogClosesWhenTheSaveEnds() {
+    var backCalls = 0
+    val viewModel = RecordingProfileViewModel(savingState)
+    setContent(viewModel, onBack = { backCalls++ })
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    viewModel.uiState.value = loadedState
+
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_leave_dialog).assertCountEquals(0)
+    assertEquals(0, backCalls)
+  }
+
+  @Test
+  fun leaveDialogSurvivesRecreation() {
+    val restorationTester = StateRestorationTester(composeTestRule)
+    restorationTester.setContent {
+      SampleAppTheme {
+        ProfileScreen(
+            viewModel = RecordingProfileViewModel(savingState),
+            onBack = {},
+            onTabSelected = {},
+        )
+      }
+    }
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    restorationTester.emulateSavedInstanceStateRestore()
+
+    composeTestRule.onNodeWithTag(C.Tag.profile_leave_dialog).assertIsDisplayed()
   }
 
   private fun setContent(

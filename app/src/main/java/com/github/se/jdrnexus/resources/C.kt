@@ -63,6 +63,10 @@ object C {
     const val profile_loading = "profile_loading"
     const val profile_saving = "profile_saving"
     const val profile_error = "profile_error"
+    /** Dialog asking to confirm leaving the profile while a save or picture upload runs. */
+    const val profile_leave_dialog = "profile_leave_dialog"
+    const val profile_leave_confirm = "profile_leave_confirm"
+    const val profile_leave_stay = "profile_leave_stay"
     /** Button opening the profile screen, in the top bar of Home and of Campaigns. */
     const val open_profile = "open_profile"
 
