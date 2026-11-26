@@ -156,8 +156,9 @@ interface SoundboardViewModelInterface {
    * the previous board. If the requested board is missing or deleted, stop its playback and report
    * [SoundboardError.SOUNDBOARD_NOT_FOUND].
    *
-   * When [soundboardId] is null, observes the user's first saved board instead. If the user has
-   * none, [SoundboardUiState.soundboard] stays null and the state is [SoundboardLoadState.Empty].
+   * The navigation route from the game screen passes null, because it has no soundboard id. When
+   * [soundboardId] is null, observes the user's first saved board instead. If the user has none,
+   * [SoundboardUiState.soundboard] stays null and the state is [SoundboardLoadState.Empty].
    *
    * Loading the board that is already loaded keeps its state and playback, because the screen calls
    * this again after a rotation or when the Game Master comes back from the editor. After a failed
