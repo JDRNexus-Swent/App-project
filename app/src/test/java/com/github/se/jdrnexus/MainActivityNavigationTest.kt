@@ -364,6 +364,17 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun groupSearchLabelsRootResultsWithTheGroupNotThePersonalSpace() {
+    val loreFile = loreFile()
+    groupWorkspaceSearchStart(loreFile)
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.searchResult(loreFile.id))
+        .assertTextContains("The Sunken Crown")
+    composeTestRule.onAllNodesWithText("Personal Space").assertCountEquals(0)
+  }
+
+  @Test
   fun groupSearchOpensAnotherMembersFileReadOnly() {
     val loreFile = loreFile().copy(ownerId = "another-player")
     groupWorkspaceSearchStart(loreFile)
@@ -675,6 +686,9 @@ class MainActivityNavigationTest {
     waitForText(loreFile.name)
     composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
     composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Kingdom")
+    composeTestRule
+        .onNodeWithTag(C.Tag.searchResult(loreFile.id))
+        .assertTextContains("Personal Space")
     composeTestRule.onNodeWithTag(C.Tag.searchResult(loreFile.id)).performClick()
 
     waitForTag(EditFileLoreTestTags.LIST)

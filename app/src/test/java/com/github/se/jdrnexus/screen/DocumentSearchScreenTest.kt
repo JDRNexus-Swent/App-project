@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -82,6 +83,26 @@ class DocumentSearchScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.searchResult(result.file.id)).performClick()
 
     assertEquals(result.file, openedFile)
+  }
+
+  @Test
+  fun rootResultShowsTheWorkspaceLabelAndNestedResultShowsItsFolders() {
+    val viewModel =
+        FakeDocumentSearchViewModel(
+            DocumentSearchUiState(
+                query = "Dragon",
+                results = listOf(rootResult, result),
+                status = DocumentSearchStatus.Results,
+            )
+        )
+    setScreen(viewModel, rootPathLabel = "The Sunken Crown")
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.searchResult(rootResult.file.id))
+        .assertTextContains("The Sunken Crown")
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(result.file.id)).assertTextContains("Campaign")
+    composeTestRule.onAllNodesWithText("The Sunken Crown").assertCountEquals(1)
+    composeTestRule.onAllNodesWithText("Personal Space").assertCountEquals(0)
   }
 
   @Test
@@ -188,6 +209,7 @@ class DocumentSearchScreenTest {
       viewModel: FakeDocumentSearchViewModel,
       onDocumentClicked: (JDRFile) -> Unit = {},
       onFolderClicked: (DocumentSearchResult) -> Unit = {},
+      rootPathLabel: String = "Personal Space",
   ) {
     composeTestRule.setContent {
       SampleAppTheme {
@@ -195,6 +217,7 @@ class DocumentSearchScreenTest {
             onBack = {},
             onDocumentClicked = onDocumentClicked,
             onFolderClicked = onFolderClicked,
+            rootPathLabel = rootPathLabel,
             searchViewModel = viewModel,
         )
       }
@@ -237,6 +260,11 @@ class DocumentSearchScreenTest {
                     type = DocumentType.TEXT,
                 ),
             folderPath = listOf("Campaign"),
+        )
+    val rootResult =
+        DocumentSearchResult(
+            file = JDRFile(id = "dragon-map", name = "Dragon map", type = DocumentType.TEXT),
+            folderPath = emptyList(),
         )
     val folderResult =
         DocumentSearchResult(

@@ -20,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
@@ -336,6 +337,7 @@ fun JDRNexusApp(
                 workspaceViewModel.openFolderAt(result.file, result.folderIds, result.folderPath)
                 navigation.popBackStack()
               },
+              rootPathLabel = stringResource(R.string.search_personal_space_path),
               searchViewModel = personalSearchViewModel ?: viewModel<DocumentSearchViewModel>(),
           )
         }
@@ -520,6 +522,12 @@ fun JDRNexusApp(
               }
           val groupWorkspaceViewModel: GroupWorkspaceViewModel =
               viewModel(workspaceEntry, factory = groupWorkspaceViewModelFactory(groupId))
+          val workspaceState by groupWorkspaceViewModel.uiState.collectAsState()
+          // A result at the group root is labelled with the group, never with the Personal Space.
+          val groupRootLabel =
+              workspaceState.groupName.ifBlank {
+                stringResource(R.string.search_group_workspace_path)
+              }
           DocumentSearchScreen(
               onBack = { navigation.popBackStack() },
               onDocumentClicked = { file -> openDocument(file, groupId) },
@@ -527,6 +535,7 @@ fun JDRNexusApp(
                 groupWorkspaceViewModel.openFolderAt(result.file.id, result.folderIds)
                 navigation.popBackStack()
               },
+              rootPathLabel = groupRootLabel,
               searchViewModel = activeGroupSearchViewModel,
           )
         }

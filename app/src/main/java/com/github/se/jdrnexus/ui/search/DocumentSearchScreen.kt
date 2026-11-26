@@ -53,12 +53,15 @@ import com.github.se.jdrnexus.resources.C
  * @param onDocumentClicked opens a lore or character result.
  * @param onFolderClicked opens a folder result in its workspace; the result carries the folders
  *   above it ([DocumentSearchResult.folderIds]).
+ * @param rootPathLabel the location shown for a result at the root of the searched workspace, such
+ *   as "Personal Space" or the group's name.
  */
 @Composable
 fun DocumentSearchScreen(
     onBack: () -> Unit,
     onDocumentClicked: (JDRFile) -> Unit,
     onFolderClicked: (DocumentSearchResult) -> Unit,
+    rootPathLabel: String,
     searchViewModel: DocumentSearchInterfaceVM = viewModel<DocumentSearchViewModel>(),
 ) {
   val uiState by searchViewModel.uiState.collectAsState()
@@ -156,10 +159,7 @@ fun DocumentSearchScreen(
               FolderItem(
                   folder =
                       result.file.copy(
-                          content =
-                              result.folderPath.joinToString(" / ").ifEmpty {
-                                stringResource(R.string.search_personal_space_path)
-                              }
+                          content = result.folderPath.joinToString(" / ").ifEmpty { rootPathLabel }
                       ),
                   onFolderClicked = {
                     if (result.file.isContainer()) onFolderClicked(result)

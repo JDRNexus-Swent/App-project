@@ -159,6 +159,7 @@
     <string name="search_no_results">No matching documents found.</string>
     <string name="search_retry">Retry</string>
     <string name="search_personal_space_path">Personal Space</string>
+    <string name="search_group_workspace_path">Group workspace</string>
     <string name="search_error_not_signed_in">Sign in to search documents.</string>
     <string name="search_error_group_access_denied">You do not have access to search this workspace.</string>
     <string name="search_error_failed">Search could not be completed. Please try again.</string>
