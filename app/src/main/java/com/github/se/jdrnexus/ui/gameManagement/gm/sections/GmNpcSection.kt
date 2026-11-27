@@ -65,9 +65,7 @@ internal fun GmNpcDialog(npc: Npc, onDismiss: () -> Unit) {
         Text(npc.information.ifBlank { stringResource(R.string.game_gm_npc_no_information) })
       },
       confirmButton = {
-        TextButton(onClick = onDismiss) {
-          Text(stringResource(R.string.game_gm_close))
-        }
+        TextButton(onClick = onDismiss) { Text(stringResource(R.string.game_gm_close)) }
       },
   )
 }
