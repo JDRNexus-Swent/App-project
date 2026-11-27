@@ -130,7 +130,7 @@ class DocumentSearchScreenTest {
   }
 
   @Test
-  fun tappingDocumentResultDoesNotOpenAFolder() {
+  fun tappingDocumentResultOpensTheDocumentInsteadOfAFolder() {
     val viewModel =
         FakeDocumentSearchViewModel(
             DocumentSearchUiState(
@@ -140,10 +140,16 @@ class DocumentSearchScreenTest {
             )
         )
     var openedFolder: DocumentSearchResult? = null
-    setScreen(viewModel, onFolderClicked = { openedFolder = it })
+    var openedFile: JDRFile? = null
+    setScreen(
+        viewModel,
+        onDocumentClicked = { openedFile = it },
+        onFolderClicked = { openedFolder = it },
+    )
 
     composeTestRule.onNodeWithTag(C.Tag.searchResult(result.file.id)).performClick()
 
+    assertEquals(result.file, openedFile)
     assertEquals(null, openedFolder)
   }
 

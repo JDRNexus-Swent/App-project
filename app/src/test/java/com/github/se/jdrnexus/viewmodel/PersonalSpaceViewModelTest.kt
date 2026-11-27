@@ -326,21 +326,45 @@ class PersonalSpaceViewModelTest {
   }
 
   @Test
-  fun openFolderAtRejectsAFileAndAncestorsWithoutNames() {
-    val viewModel = PersonalSpaceViewModel(FakePersonalSpaceRepository(), FakeAuthRepository())
+  fun openFolderAtRejectsAFileAndStaysWhereItWas() {
+    val viewModel =
+        PersonalSpaceViewModel(
+            FakePersonalSpaceRepository(rootItems = listOf(rootFolder)),
+            FakeAuthRepository(),
+        )
     idleMainLooper()
 
-    val fileError =
+    val error =
         assertThrows(IllegalArgumentException::class.java) {
           viewModel.openFolderAt(rootFile, emptyList(), emptyList())
         }
-    val namesError =
+    idleMainLooper()
+
+    assertEquals("Only a folder can be opened.", error.message)
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(rootFolder), viewModel.uiState.value.items)
+    assertFalse(viewModel.uiState.value.canNavigateUp)
+  }
+
+  @Test
+  fun openFolderAtRejectsAncestorsWithoutNamesAndStaysWhereItWas() {
+    val viewModel =
+        PersonalSpaceViewModel(
+            FakePersonalSpaceRepository(rootItems = listOf(rootFolder)),
+            FakeAuthRepository(),
+        )
+    idleMainLooper()
+
+    val error =
         assertThrows(IllegalArgumentException::class.java) {
           viewModel.openFolderAt(nestedFolder, listOf(rootFolder.id), emptyList())
         }
+    idleMainLooper()
 
-    assertEquals("Only a folder can be opened.", fileError.message)
-    assertEquals("Each ancestor folder needs its name.", namesError.message)
+    assertEquals("Each ancestor folder needs its name.", error.message)
+    assertEquals("", viewModel.uiState.value.currentFolderId)
+    assertEquals(listOf(rootFolder), viewModel.uiState.value.items)
+    assertFalse(viewModel.uiState.value.canNavigateUp)
   }
 
   @Test
