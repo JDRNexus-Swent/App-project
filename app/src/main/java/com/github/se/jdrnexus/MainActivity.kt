@@ -29,6 +29,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.credentials.CredentialManager
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -55,6 +58,8 @@ import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
+import com.github.se.jdrnexus.model.soundboard.Media3SoundboardPlayer
+import com.github.se.jdrnexus.model.soundboard.SoundboardRepositoryProvider
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.LocalIsOnline
 import com.github.se.jdrnexus.resources.showComingSoon
@@ -86,6 +91,9 @@ import com.github.se.jdrnexus.ui.search.DocumentSearchInterfaceVM
 import com.github.se.jdrnexus.ui.search.DocumentSearchScope
 import com.github.se.jdrnexus.ui.search.DocumentSearchScreen
 import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
+import com.github.se.jdrnexus.ui.soundboard.SoundboardScreen
+import com.github.se.jdrnexus.ui.soundboard.SoundboardViewModel
+import com.github.se.jdrnexus.ui.soundboard.SoundboardViewModelInterface
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.GroupRole
@@ -128,6 +136,7 @@ enum class AllRoutes {
   Profile,
   Map,
   Notifications,
+  Soundboard,
 }
 
 object GroupWorkspaceRoute {
@@ -207,6 +216,7 @@ fun JDRNexusApp(
     gameSessionRepository: GameSessionRepository? = null,
     connectivityRepository: ConnectivityRepository? = null,
     profileViewModel: ProfileViewModelInterface? = null,
+    soundboardViewModelFactory: ViewModelProvider.Factory? = null,
 ) {
   val activeAuthViewModel = authViewModel ?: viewModel(factory = AuthViewModel.Factory)
   val activeAuthRepository = authRepository ?: AuthRepositoryFirebase()
@@ -358,6 +368,7 @@ fun JDRNexusApp(
               viewModel = activeAuthViewModel,
               onPersonalSpaceClick = onPersonalSpaceClicked,
               onDiceClick = onDiceClicked,
+              onSoundboardClick = { navigation.navigate(AllRoutes.Soundboard.name) },
               onGroupManagementClick = onGroupManagementClicked,
               onMapClick = onMapClicked,
               onProfileClick = openProfile,
@@ -668,6 +679,52 @@ fun JDRNexusApp(
               },
               // No game details screen yet.
               onViewGameDetails = { showComingSoon(context, "Game details") },
+          )
+        }
+
+        composable(route = AllRoutes.Soundboard.name) { backStackEntry ->
+          // Home owns the soundboard, so there is one for the whole session: reopening it finds
+          // the music still playing, and it stops at logout. The soundboard's own entry is the
+          // owner only when Home is not on the stack (tests with another start destination).
+          val owner: ViewModelStoreOwner =
+              remember(backStackEntry) {
+                runCatching { navController.getBackStackEntry(AllRoutes.Home.name) }.getOrNull()
+                    ?: backStackEntry
+              }
+          // Requested as ViewModel so tests can pass a fake through soundboardViewModelFactory;
+          // both factories build a SoundboardViewModelInterface.
+          val soundboardViewModel =
+              viewModel<ViewModel>(
+                  viewModelStoreOwner = owner,
+                  key = AllRoutes.Soundboard.name,
+                  factory =
+                      soundboardViewModelFactory
+                          ?: viewModelFactory {
+                            initializer<ViewModel> {
+                              SoundboardViewModel(
+                                  SoundboardRepositoryProvider.repository(context),
+                                  Media3SoundboardPlayer(context),
+                                  activeAuthRepository,
+                              )
+                            }
+                          },
+              )
+                  as SoundboardViewModelInterface
+          SoundboardScreen(
+              viewModel = soundboardViewModel,
+              soundboardId = null,
+              onBack = { navigation.popBackStack() },
+              // TODO(#301): open the editor route once a SoundboardEditViewModelInterface
+              //  implementation exists.
+              onEdit = {},
+              onTabSelected = { tab ->
+                when (tab) {
+                  "Home" -> navigation.popBackStack(AllRoutes.Home.name, inclusive = false)
+                  // Opened from Home, Campaigns is not on the stack, so popping would do nothing.
+                  "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
+                  else -> onGameTabSelected(tab)
+                }
+              },
           )
         }
 

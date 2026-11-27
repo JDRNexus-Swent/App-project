@@ -169,7 +169,7 @@ class CampaignGroupWorkspaceE2ETest {
     val fileId = seedPersonalFile(fileName)
 
     // Verify that the user can create a campaign group from the application UI.
-    composeRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+    composeRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
     waitForTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
     composeRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_BUTTON).performClick()
     composeRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_DIALOG).assertIsDisplayed()

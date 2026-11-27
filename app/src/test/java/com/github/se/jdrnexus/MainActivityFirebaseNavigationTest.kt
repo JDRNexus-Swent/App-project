@@ -124,7 +124,7 @@ class MainActivityFirebaseNavigationTest {
     scrollToTag(SIGN_UP_SCROLL_CONTAINER, C.Tag.sign_up_submit)
     composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
     waitForTag(TestTags.TITLE)
-    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
     waitForTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
     composeTestRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_BUTTON).assertIsDisplayed()
 
