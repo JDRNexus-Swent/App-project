@@ -1,14 +1,12 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.connectivity
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -22,27 +20,30 @@ class OfflineException : IllegalStateException(NEEDS_CONNECTION)
  * Runs [action], an action that needs the server, while [isOnline] stays true.
  *
  * Offline, a Firestore request that waits for the server never returns, so its loading state would
- * last forever. Here, the action is cancelled and [OfflineException] is thrown as soon as
- * [isOnline] reads false: at once if the device is already offline, or when the connection drops
- * while the action runs. A write already in Firestore's local cache is not undone by the
- * cancellation.
+ * last forever. Here, [action] starts only once [isOnline] has emitted true: if its first value is
+ * false, [OfflineException] is thrown and [action] never runs, even when that first value arrives
+ * late (a `callbackFlow` may suspend before sending it). If the connection drops while [action]
+ * runs, [action] is cancelled and [OfflineException] is thrown. A write already in Firestore's
+ * local cache is not undone by the cancellation.
  *
  * [isOnline] must emit its current state first, as [ConnectivityRepository.isOnline] does. If it
  * ends without reading false, the device counts as online until the action ends.
  */
 suspend fun <T> Flow<Boolean>.failWhenOffline(action: suspend () -> T): T = coroutineScope {
-  // Started before the action, so an offline device fails without the action ever running.
-  val watcher =
-      launch(start = CoroutineStart.UNDISPATCHED) {
-        // Null when the flow ends while online: the action then runs to its end.
-        if (firstOrNull { online -> !online } != null) {
-          // Failing this child cancels the action and makes coroutineScope throw this exception.
-          throw OfflineException()
-        }
-      }
+  // Completed by the first value when it is true, or when the flow ends while online.
+  val confirmedOnline = CompletableDeferred<Unit>()
+  val watcher = launch {
+    collect { online ->
+      // Failing this child cancels the action, or the wait for the first value, and makes
+      // coroutineScope throw this exception.
+      if (!online) throw OfflineException()
+      confirmedOnline.complete(Unit)
+    }
+    confirmedOnline.complete(Unit)
+  }
   try {
-    // Throws if the watcher has already failed, before the action makes any request.
-    ensureActive()
+    // The action makes no request before the device is known to be online.
+    confirmedOnline.await()
     action()
   } finally {
     watcher.cancel()

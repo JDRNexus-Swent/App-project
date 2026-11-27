@@ -79,18 +79,16 @@ fun HomeScreen(
   val context = LocalContext.current
   val colors = MaterialTheme.colorScheme
 
-  LaunchedEffect(uiState.status) {
-    when (uiState.status) {
-      AuthStatus.Idle -> {
-        // Idle with the unsynced-changes warning means the sign-out waits for the user's answer.
-        if (logoutRequested.value && !uiState.isSignOutWarningShown) {
-          logoutRequested.value = false
-          onLogout()
-        }
-      }
-      is AuthStatus.Error -> logoutRequested.value = false
-      else -> Unit
+  // Keyed on the flag, not the status: a sign-out that ends at once never shows Loading.
+  LaunchedEffect(uiState.isSignedOut) {
+    if (uiState.isSignedOut) {
+      logoutRequested.value = false
+      viewModel.onSignedOutHandled()
+      onLogout()
     }
+  }
+  LaunchedEffect(uiState.status) {
+    if (uiState.status is AuthStatus.Error) logoutRequested.value = false
   }
 
   Scaffold(

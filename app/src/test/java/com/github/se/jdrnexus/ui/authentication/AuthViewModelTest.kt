@@ -555,6 +555,48 @@ class AuthViewModelTest {
   }
 
   @Test
+  fun signOutSuccessSetsSignedOutUntilHandled() = runTest {
+    val viewModel = AuthViewModel(FakeAuthRepository())
+
+    viewModel.signOut()
+    runCurrent()
+    val afterSignOut = viewModel.uiState.value.isSignedOut
+    viewModel.onSignedOutHandled()
+
+    assertTrue(afterSignOut)
+    assertFalse(viewModel.uiState.value.isSignedOut)
+  }
+
+  @Test
+  fun signOutFailureDoesNotSetSignedOut() = runTest {
+    val repository =
+        FakeAuthRepository().apply {
+          signOutResponse = CompletableDeferred(AuthResult.Failure(AuthError.UNKNOWN))
+        }
+    val viewModel = AuthViewModel(repository)
+
+    viewModel.signOut()
+    runCurrent()
+
+    assertFalse(viewModel.uiState.value.isSignedOut)
+  }
+
+  @Test
+  fun unsyncedWarningDoesNotSetSignedOutUntilConfirmed() = runTest {
+    val viewModel =
+        AuthViewModel(FakeAuthRepository(), PendingWritesWorkspaceRepository(pendingWrites = true))
+
+    viewModel.requestSignOut()
+    runCurrent()
+    val whileWarning = viewModel.uiState.value.isSignedOut
+    viewModel.confirmSignOut()
+    runCurrent()
+
+    assertFalse(whileWarning)
+    assertTrue(viewModel.uiState.value.isSignedOut)
+  }
+
+  @Test
   fun signOutExposesRepositoryFailure() = runTest {
     val repository =
         FakeAuthRepository().apply {

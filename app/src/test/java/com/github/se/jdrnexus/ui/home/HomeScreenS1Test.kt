@@ -270,6 +270,26 @@ class HomeScreenS1Test {
   }
 
   @Test
+  fun confirmingTheUnsyncedWarningLeavesHomeWhenTheSignOutEndsAtOnce() {
+    // Ends without suspending, like Firebase's sign-out: the screen never sees Loading.
+    val repository = FakeAuthRepository()
+    val viewModel = AuthViewModel(repository, PendingWritesWorkspaceRepository(true))
+    var logouts = 0
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(viewModel, onLogout = { logouts++ }) }
+    }
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) { viewModel.uiState.value.isSignOutWarningShown }
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_out_unsynced_confirm).performClick()
+
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) { logouts == 1 }
+    composeTestRule.waitForIdle()
+    Assert.assertEquals(1, logouts)
+    Assert.assertFalse(viewModel.uiState.value.isSignedOut)
+  }
+
+  @Test
   fun logoutWithoutUnsyncedChangesSignsOutWithoutWarning() {
     val signOutResult = CompletableDeferred<AuthResult<Unit>>()
     val repository = FakeAuthRepository { signOutResult.await() }

@@ -5,6 +5,7 @@ import com.github.se.jdrnexus.utils.FakeConnectivityRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
@@ -39,6 +40,35 @@ class ConnectionGuardTest {
     assertEquals(OfflineException::class, failure?.let { it::class })
     assertEquals(NEEDS_CONNECTION, failure?.message)
     assertFalse(actionRan)
+  }
+
+  @Test
+  fun failWhenOfflineWaitsForALateFirstValueBeforeRunningTheAction() = runTest {
+    // Like a callbackFlow that suspends before sending the current state.
+    val firstValue = CompletableDeferred<Boolean>()
+    var actionRan = false
+    val call = async {
+      runCatching { flow { emit(firstValue.await()) }.failWhenOffline { actionRan = true } }
+    }
+    runCurrent()
+    assertFalse(actionRan)
+
+    firstValue.complete(false)
+    runCurrent()
+
+    assertFalse(actionRan)
+    assertEquals(OfflineException::class, call.await().exceptionOrNull()?.let { it::class })
+  }
+
+  @Test
+  fun failWhenOfflineRunsTheActionOnceALateFirstValueIsOnline() = runTest {
+    val firstValue = CompletableDeferred<Boolean>()
+    val call = async { flow { emit(firstValue.await()) }.failWhenOffline { "saved" } }
+    runCurrent()
+
+    firstValue.complete(true)
+
+    assertEquals("saved", call.await())
   }
 
   @Test

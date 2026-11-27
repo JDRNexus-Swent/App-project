@@ -42,6 +42,12 @@ data class AuthUiState(
     val status: AuthStatus = AuthStatus.Idle,
     /** The user asked to sign out while some changes have not reached the server yet. */
     val isSignOutWarningShown: Boolean = false,
+    /**
+     * A sign-out has just succeeded, and the screen has not left yet; it calls
+     * [AuthViewModel.onSignedOutHandled] once it has. A flag rather than the status, since a
+     * sign-out that ends at once goes from [AuthStatus.Idle] back to [AuthStatus.Idle].
+     */
+    val isSignedOut: Boolean = false,
 )
 
 sealed interface AuthStatus {
@@ -162,7 +168,15 @@ class AuthViewModel(
     viewModelScope.launch { performSignOut() }
   }
 
-  /** Signs out with the repository, the status being already [AuthStatus.Loading]. */
+  /** The screen has left after [AuthUiState.isSignedOut]; clears that flag. */
+  fun onSignedOutHandled() {
+    _uiState.update { it.copy(isSignedOut = false) }
+  }
+
+  /**
+   * Signs out with the repository, the status being already [AuthStatus.Loading]. Success sets
+   * [AuthUiState.isSignedOut].
+   */
   private suspend fun performSignOut() {
     val status =
         try {
@@ -178,7 +192,8 @@ class AuthViewModel(
           AuthStatus.Error(AuthError.UNKNOWN.message)
         }
 
-    setStatus(status)
+    // Idle here only after a successful sign-out; a cancellation never reaches this line.
+    _uiState.update { it.copy(status = status, isSignedOut = status == AuthStatus.Idle) }
   }
 
   fun googleSignIn(

@@ -98,6 +98,15 @@ internal fun joinErrorMessage(error: InvitationError): Int =
     else invitationErrorMessage(error)
 
 /**
+ * This error, unless it is [InvitationError.OFFLINE] while the device is offline: the "Needs a
+ * connection" hint already says it then, so the dialog shows that text once. Back online, the hint
+ * goes and the error shows again, until the request is retried.
+ */
+private fun InvitationError.withoutOfflineHint(isOnline: Boolean): InvitationError? = takeUnless {
+  it == InvitationError.OFFLINE && !isOnline
+}
+
+/**
  * Uppercases [input] and keeps only characters a code can contain, up to the length of a generated
  * code. Characters like `0`, `O`, `1`, `I` or `L` are never in a code, so they are dropped as the
  * user types.
@@ -136,6 +145,7 @@ internal fun InviteDialog(
   val colors = gameManagementColors()
   val isLoading = state == InvitationState.Loading
   val error = (state as? InvitationState.Error)?.error
+  val shownError = error?.withoutOfflineHint(isOnline)
   val canUseCode = code != null && !isLoading
   var confirmingRegenerate by rememberSaveable { mutableStateOf(false) }
   val clipboard = LocalClipboard.current
@@ -194,8 +204,8 @@ internal fun InviteDialog(
             }
       }
     }
-    if (error != null) {
-      ErrorLine(stringResource(invitationErrorMessage(error)), C.Tag.invite_error)
+    if (shownError != null) {
+      ErrorLine(stringResource(invitationErrorMessage(shownError)), C.Tag.invite_error)
     }
     NeedsConnectionHint(
         isOnline = isOnline,
@@ -322,8 +332,9 @@ internal fun JoinGroupDialog(
         colors = gameManagementFieldColors(colors),
         modifier = Modifier.fillMaxWidth().testTag(C.Tag.join_code_field),
     )
-    if (error != null) {
-      ErrorLine(stringResource(joinErrorMessage(error)), C.Tag.join_error)
+    val shownError = error?.withoutOfflineHint(isOnline)
+    if (shownError != null) {
+      ErrorLine(stringResource(joinErrorMessage(shownError)), C.Tag.join_error)
     }
     NeedsConnectionHint(isOnline = isOnline, tag = C.Tag.join_needs_connection)
     Button(
