@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
@@ -38,16 +37,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
 import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
-import com.github.se.jdrnexus.resources.OfflineBanner
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 
@@ -112,7 +113,7 @@ fun GameScreenPlayer(
   if (failed != null) {
     AlertDialog(
         onDismissRequest = viewModel::stayOnScreen,
-        title = { Text("Changes could not be saved") },
+        title = { Text(stringResource(R.string.game_player_leave_title)) },
         text = {
           Text(failed.saveBeforeLeavingError, Modifier.testTag(C.Tag.game_player_leave_error))
         },
@@ -121,7 +122,7 @@ fun GameScreenPlayer(
               onClick = viewModel::leaveAnyway,
               modifier = Modifier.testTag(C.Tag.game_player_leave_anyway),
           ) {
-            Text("Leave anyway")
+            Text(stringResource(R.string.game_player_leave_anyway))
           }
         },
         dismissButton = {
@@ -129,7 +130,7 @@ fun GameScreenPlayer(
               onClick = viewModel::stayOnScreen,
               modifier = Modifier.testTag(C.Tag.game_player_stay),
           ) {
-            Text("Stay")
+            Text(stringResource(R.string.game_player_stay))
           }
         },
     )
@@ -164,8 +165,22 @@ private fun GameScreenPlayerContent(
 
   Scaffold(
       contentColor = MaterialTheme.colorScheme.onSurface,
-      // Draws nothing while online, so the content keeps the status-bar inset of an empty top bar.
-      topBar = { OfflineBanner(Modifier.statusBarsPadding()) },
+      topBar = {
+        AppTopBar(
+            title = stringResource(R.string.game_player_title),
+            onBack = onBack,
+            backTestTag = C.Tag.game_player_back,
+            trailingContent = {
+              OutlinedButton(
+                  onClick = { uiState.groupId?.let(onOpenGroupWorkspace) },
+                  enabled = uiState.groupId != null,
+                  modifier = Modifier.testTag(C.Tag.game_player_workspace),
+              ) {
+                Text(stringResource(R.string.game_player_workspace))
+              }
+            },
+        )
+      },
       bottomBar = { ScreenBottomBar(selectedTab, onTabSelected) },
   ) { contentPadding ->
     LazyColumn(
@@ -173,28 +188,6 @@ private fun GameScreenPlayerContent(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      item {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-          OutlinedButton(
-              onClick = onBack,
-              modifier = Modifier.testTag(C.Tag.game_player_back),
-          ) {
-            Text("Back")
-          }
-          Text("Game session", style = MaterialTheme.typography.titleLarge)
-          OutlinedButton(
-              onClick = { uiState.groupId?.let(onOpenGroupWorkspace) },
-              enabled = uiState.groupId != null,
-              modifier = Modifier.testTag(C.Tag.game_player_workspace),
-          ) {
-            Text("Group Workspace")
-          }
-        }
-      }
       when {
         uiState.isLoading -> {
           item {
@@ -204,7 +197,7 @@ private fun GameScreenPlayerContent(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
               CircularProgressIndicator(modifier = Modifier.testTag(C.Tag.game_player_loading))
-              Text("Loading game session...")
+              Text(stringResource(R.string.game_player_loading))
             }
           }
         }
@@ -212,7 +205,7 @@ private fun GameScreenPlayerContent(
           val error = uiState.error
           item {
             Text(
-                text = error ?: "No character is available.",
+                text = error ?: stringResource(R.string.game_player_empty),
                 modifier =
                     Modifier.fillMaxWidth()
                         .padding(vertical = 32.dp)
@@ -251,20 +244,25 @@ private fun GameScreenPlayerContent(
                     enabled = sheet.hp.current > 0,
                     modifier = Modifier.weight(1f).testTag(C.Tag.game_player_hp_decrease),
                 ) {
-                  Text("Take damage (−)")
+                  Text(stringResource(R.string.game_player_take_damage))
                 }
                 OutlinedButton(
                     onClick = { onHpChanged(sheet.hp.current + 1) },
                     enabled = sheet.hp.current < sheet.hp.max,
                     modifier = Modifier.weight(1f).testTag(C.Tag.game_player_hp_increase),
                 ) {
-                  Text("Heal (+)")
+                  Text(stringResource(R.string.game_player_heal))
                 }
               }
-              Text("Max HP: ${sheet.hp.max}")
+              Text(stringResource(R.string.game_player_max_hp, sheet.hp.max.toString()))
             }
           }
-          item { Text("Stats", style = MaterialTheme.typography.titleMedium) }
+          item {
+            Text(
+                stringResource(R.string.game_player_stats),
+                style = MaterialTheme.typography.titleMedium,
+            )
+          }
           items(sheet.stats, key = { it.statID }) { stat ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -273,19 +271,22 @@ private fun GameScreenPlayerContent(
             ) {
               Column {
                 Text(stat.name, style = MaterialTheme.typography.bodyLarge)
-                Text("Value: ${stat.value}")
+                Text(stringResource(R.string.game_player_stat_value, stat.value.toString()))
               }
               OutlinedButton(
                   onClick = { onOpenDice(PLACEHOLDER_DICE_MODIFIER) },
                   modifier = Modifier.testTag(C.Tag.gamePlayerStatRoll(stat.statID)),
               ) {
-                Text("Modifier +0 · Roll")
+                Text(stringResource(R.string.game_player_roll))
               }
             }
           }
           item {
             HorizontalDivider()
-            Text("Actions", style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.game_player_actions),
+                style = MaterialTheme.typography.titleMedium,
+            )
           }
           items(sheet.actions, key = { it.actionID }) { action ->
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -310,7 +311,10 @@ private fun GameScreenPlayerContent(
                   verticalAlignment = Alignment.CenterVertically,
               ) {
                 CircularProgressIndicator()
-                Text("Saving changes...", modifier = Modifier.padding(start = 12.dp))
+                Text(
+                    stringResource(R.string.game_player_saving),
+                    modifier = Modifier.padding(start = 12.dp),
+                )
               }
             }
           } else {
@@ -319,14 +323,14 @@ private fun GameScreenPlayerContent(
                   onClick = onSave,
                   modifier = Modifier.fillMaxWidth().testTag(C.Tag.game_player_save),
               ) {
-                Text("Save Changes")
+                Text(stringResource(R.string.game_player_save))
               }
             }
           }
           if (saveSucceeded) {
             item {
               Text(
-                  "Changes saved.",
+                  stringResource(R.string.game_player_saved),
                   color = MaterialTheme.colorScheme.primary,
                   modifier = Modifier.testTag(C.Tag.game_player_save_success),
               )
@@ -348,7 +352,8 @@ private fun NumericField(
   var draft by remember { mutableStateOf(value) }
   var isFocused by remember { mutableStateOf(false) }
   var hasInvalidInput by remember { mutableStateOf(false) }
-  val displayedError = if (hasInvalidInput) "Enter a whole number." else error
+  val displayedError =
+      if (hasInvalidInput) stringResource(R.string.game_player_invalid_number) else error
   LaunchedEffect(value, isFocused) {
     if (!isFocused || draft.toIntOrNull() != value.toIntOrNull()) {
       draft = value
@@ -364,7 +369,7 @@ private fun NumericField(
         hasInvalidInput = parsed == null
         parsed?.let(onValidValue)
       },
-      label = { Text("Current HP") },
+      label = { Text(stringResource(R.string.game_player_current_hp)) },
       singleLine = true,
       isError = displayedError != null,
       supportingText = displayedError?.let { message -> ({ Text(message) }) },
