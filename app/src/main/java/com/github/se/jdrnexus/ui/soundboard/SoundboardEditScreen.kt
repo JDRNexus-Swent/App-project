@@ -2,6 +2,8 @@
 package com.github.se.jdrnexus.ui.soundboard
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +33,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -55,6 +58,9 @@ import com.github.se.jdrnexus.model.soundboard.Soundboard
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
+
+/** MIME type of the files the Game Master can import: the soundboard only plays mp3. */
+private const val MP3_MIME_TYPE = "audio/mpeg"
 
 // ============ Screen entry ============
 
@@ -153,7 +159,10 @@ fun SoundboardEditScreen(
 
 /**
  * The draft, top to bottom as in the mockup: the name field, the ambience card, the sound effects
- * card and Save soundboard. While the draft is being saved or discarded, nothing can be edited.
+ * card and Save soundboard.
+ *
+ * While the draft is being saved or discarded, nothing can be edited. While a file is imported, the
+ * draft stays editable but no second import or save can start.
  */
 @Composable
 private fun SoundboardEditContent(
@@ -186,8 +195,8 @@ private fun SoundboardEditContent(
           modifier = Modifier.fillMaxWidth().testTag(C.Tag.soundboard_edit_name),
       )
     }
-    item { AmbienceEditor(draft, uiState, viewModel, canEdit) }
-    item { EffectsEditor(draft, viewModel, canEdit) }
+    item { AmbienceEditor(draft, uiState, viewModel, canEdit, isIdle) }
+    item { EffectsEditor(draft, uiState, viewModel, canEdit, isIdle) }
     item {
       if (uiState.error is SoundboardEditError.Save) {
         InlineError(
@@ -232,8 +241,9 @@ private fun nameErrorText(error: SoundboardNameError): String =
 // ============ Ambience ============
 
 /**
- * The ambience card: the playlist tabs, Add playlist and the selected playlist's tracks, or a hint
- * when it has none.
+ * The ambience card: the playlist tabs, Add playlist, the selected playlist's name, its tracks (or
+ * a hint when it has none) and Add track. Add track opens the system file picker for an mp3 and
+ * imports it into the selected playlist; it is disabled until a playlist exists.
  */
 @Composable
 private fun AmbienceEditor(
@@ -241,9 +251,15 @@ private fun AmbienceEditor(
     uiState: SoundboardEditUiState,
     viewModel: SoundboardEditViewModelInterface,
     canEdit: Boolean,
+    isIdle: Boolean,
 ) {
   val selected = draft.playlists.firstOrNull { it.id == uiState.selectedPlaylistId }
   val newPlaylistName = stringResource(R.string.soundboard_edit_new_playlist)
+  val picker =
+      rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        val playlistId = uiState.selectedPlaylistId
+        if (uri != null && playlistId != null) viewModel.importTrack(playlistId, uri)
+      }
   val trackCount = selected?.tracks?.size ?: 0
 
   SoundboardSection(
@@ -274,7 +290,21 @@ private fun AmbienceEditor(
       Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
       Text(stringResource(R.string.soundboard_edit_add_playlist))
     }
+    if (draft.playlists.isEmpty()) EmptyHint(R.string.soundboard_edit_no_playlist)
     if (selected != null) {
+      OutlinedTextField(
+          value = selected.name,
+          onValueChange = { viewModel.renamePlaylist(selected.id, it) },
+          enabled = canEdit,
+          label = { Text(stringResource(R.string.soundboard_edit_playlist_name)) },
+          isError = selected.name.isBlank(),
+          supportingText =
+              if (selected.name.isBlank()) {
+                { Text(stringResource(R.string.soundboard_edit_name_required)) }
+              } else null,
+          singleLine = true,
+          modifier = Modifier.fillMaxWidth().testTag(C.Tag.soundboard_edit_playlist_name),
+      )
       if (selected.tracks.isEmpty()) EmptyHint(R.string.soundboard_no_tracks)
       selected.tracks.forEach { track ->
         // Keyed by sound, so a field keeps its focus on its own sound when a row above is removed.
@@ -296,18 +326,39 @@ private fun AmbienceEditor(
         }
       }
     }
+    AddButton(
+        text = stringResource(R.string.soundboard_edit_add_track),
+        enabled = isIdle && selected != null,
+        isImporting = uiState.status == SoundboardEditStatus.IMPORTING_TRACK,
+        onClick = { picker.launch(MP3_MIME_TYPE) },
+        tag = C.Tag.soundboard_edit_add_track,
+        progressTag = C.Tag.soundboard_edit_add_track_progress,
+    )
+    (uiState.error as? SoundboardEditError.ImportTrack)?.let {
+      InlineError(soundboardErrorText(it.reason), C.Tag.soundboard_edit_track_error)
+    }
   }
 }
 
 // ============ Sound effects ============
 
-/** The sound effects card: one row per effect, or a hint when there are none. */
+/**
+ * The sound effects card: one row per effect (or a hint when there are none) and Add sound, which
+ * opens the system file picker for an mp3 and imports it as an effect with the default icon.
+ */
 @Composable
 private fun EffectsEditor(
     draft: Soundboard,
+    uiState: SoundboardEditUiState,
     viewModel: SoundboardEditViewModelInterface,
     canEdit: Boolean,
+    isIdle: Boolean,
 ) {
+  val picker =
+      rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let(viewModel::importSoundEffect)
+      }
+
   SoundboardSection(
       title = stringResource(R.string.soundboard_effects),
       trailing =
@@ -336,10 +387,21 @@ private fun EffectsEditor(
         )
       }
     }
+    AddButton(
+        text = stringResource(R.string.soundboard_edit_add_sound),
+        enabled = isIdle,
+        isImporting = uiState.status == SoundboardEditStatus.IMPORTING_EFFECT,
+        onClick = { picker.launch(MP3_MIME_TYPE) },
+        tag = C.Tag.soundboard_edit_add_sound,
+        progressTag = C.Tag.soundboard_edit_add_sound_progress,
+    )
+    (uiState.error as? SoundboardEditError.ImportEffect)?.let {
+      InlineError(soundboardErrorText(it.reason), C.Tag.soundboard_edit_effect_error)
+    }
   }
 }
 
-// ============ Rows shared by both cards ============
+// ============ Rows and buttons shared by both cards ============
 
 /** A one-line hint, in the muted text colour, that stands in for an empty list in a card. */
 @Composable
@@ -353,7 +415,8 @@ private fun EmptyHint(@StringRes message: Int) {
 
 /**
  * One track or effect: its [icon], its [name] edited in place, its [subtitle] and a remove button.
- * Tapping the name edits it; each keystroke calls [onRename].
+ * Tapping the name edits it; each keystroke calls [onRename]. A blank name is shown as "Name
+ * required" in the error colour, since the draft cannot be saved with it.
  */
 @Composable
 private fun SoundRow(
@@ -392,6 +455,18 @@ private fun SoundRow(
           textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.onSurface),
           cursorBrush = SolidColor(colors.primary),
           modifier = Modifier.fillMaxWidth().testTag(nameTag),
+          decorationBox = { field ->
+            Box {
+              if (name.isBlank()) {
+                Text(
+                    stringResource(R.string.soundboard_edit_name_required),
+                    color = colors.error,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+              }
+              field()
+            }
+          },
       )
       Text(subtitle, color = colors.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
     }
@@ -403,11 +478,45 @@ private fun SoundRow(
     ) {
       Icon(
           Icons.Filled.Remove,
-          contentDescription = stringResource(R.string.soundboard_edit_remove_cd, name),
+          contentDescription =
+              if (name.isBlank()) stringResource(R.string.soundboard_edit_remove_unnamed_cd)
+              else stringResource(R.string.soundboard_edit_remove_cd, name),
           tint = colors.error,
           modifier = Modifier.size(16.dp),
       )
     }
+  }
+}
+
+/**
+ * Add track or Add sound: opens the file picker. Shows a spinner while its own import runs
+ * ([isImporting]), and is disabled while any import or save runs.
+ */
+@Composable
+private fun AddButton(
+    text: String,
+    enabled: Boolean,
+    isImporting: Boolean,
+    onClick: () -> Unit,
+    tag: String,
+    progressTag: String,
+) {
+  OutlinedButton(
+      onClick = onClick,
+      enabled = enabled,
+      modifier = Modifier.fillMaxWidth().testTag(tag),
+      shape = RoundedCornerShape(10.dp),
+  ) {
+    if (isImporting) {
+      CircularProgressIndicator(
+          modifier = Modifier.size(16.dp).testTag(progressTag),
+          color = LocalContentColor.current,
+          strokeWidth = 2.dp,
+      )
+    } else {
+      Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+    }
+    Text(text, Modifier.padding(start = 8.dp))
   }
 }
 
