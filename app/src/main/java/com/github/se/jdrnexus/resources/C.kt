@@ -259,12 +259,25 @@ object C {
     const val soundboard_empty = "soundboard_empty"
     const val soundboard_edit = "soundboard_edit"
     const val soundboard_content = "soundboard_content"
+    const val soundboard_ambience_volume = "soundboard_ambience_volume"
+    const val soundboard_ambience_mute = "soundboard_ambience_mute"
+    const val soundboard_effects_volume = "soundboard_effects_volume"
+    const val soundboard_effects_mute = "soundboard_effects_mute"
+    const val soundboard_volume_error = "soundboard_volume_error"
+    const val soundboard_track_menu = "soundboard_track_menu"
     const val soundboard_play_pause = "soundboard_play_pause"
     const val soundboard_preparing = "soundboard_preparing"
+    const val soundboard_elapsed = "soundboard_elapsed"
+    const val soundboard_looping = "soundboard_looping"
+    const val soundboard_ambience_error = "soundboard_ambience_error"
     const val soundboard_effects_grid = "soundboard_effects_grid"
+    const val soundboard_effects_error = "soundboard_effects_error"
 
     /** Tag of the soundboard's tab for the playlist with [id]. */
     fun soundboardPlaylist(id: String) = "soundboard_playlist_$id"
+
+    /** Tag of the track menu item playing the track whose audio has [audioId]. */
+    fun soundboardTrack(audioId: String) = "soundboard_track_$audioId"
 
     /** Tag of the button of the sound effect whose audio has [audioId]. */
     fun soundboardEffect(audioId: String) = "soundboard_effect_$audioId"

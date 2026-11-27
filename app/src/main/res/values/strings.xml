@@ -258,16 +258,34 @@
     <string name="soundboard_retry">Retry</string>
     <string name="soundboard_empty">No sounds yet. Add ambience tracks and sound effects in the editor.</string>
     <string name="soundboard_edit">Edit soundboard</string>
+    <string name="soundboard_ambience_volume">Ambience volume</string>
+    <string name="soundboard_effects_volume">Sound effect volume</string>
+    <string name="soundboard_volume_percent">%1$d %%</string>
+    <string name="soundboard_mute_cd">Mute</string>
+    <string name="soundboard_unmute_cd">Unmute</string>
     <string name="soundboard_ambience">Ambience</string>
     <string name="soundboard_ambience_hint">Continuous playback</string>
     <string name="soundboard_playing_cd">Playing</string>
+    <string name="soundboard_playing">Playing · %1$s</string>
+    <string name="soundboard_paused">Paused · %1$s</string>
+    <string name="soundboard_starting">Starting · %1$s</string>
+    <string name="soundboard_choose_track">Choose a track</string>
+    <string name="soundboard_no_tracks">No tracks in this playlist</string>
     <string name="soundboard_play_cd">Play</string>
     <string name="soundboard_pause_cd">Pause</string>
+    <string name="soundboard_time">%1$s / %2$s</string>
+    <string name="soundboard_looping">Looping</string>
     <string name="soundboard_effects">Sound Effects</string>
     <plurals name="soundboard_effects_count">
         <item quantity="one">%d sound</item>
         <item quantity="other">%d sounds</item>
     </plurals>
+    <plurals name="soundboard_effects_count_swipe">
+        <item quantity="one">%d sound · Swipe →</item>
+        <item quantity="other">%d sounds · Swipe →</item>
+    </plurals>
+    <string name="soundboard_error_playback">This sound could not be played.</string>
+    <string name="soundboard_error_save_volume">The volume could not be saved.</string>
     <string name="soundboard_error_not_signed_in">Sign in to use your soundboard.</string>
     <string name="soundboard_error_unsupported_format">Only mp3 files are supported.</string>
     <string name="soundboard_error_corrupted_file">This file cannot be read as audio.</string>

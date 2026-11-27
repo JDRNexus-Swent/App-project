@@ -1,10 +1,13 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.soundboard
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -13,6 +16,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.model.soundboard.AmbiencePlaylist
 import com.github.se.jdrnexus.model.soundboard.AmbienceTrack
@@ -58,8 +63,8 @@ class SoundboardScreenTest {
           name = "Tides",
           playlists = listOf(tavern, dungeon, combat),
           effects = effects,
-          ambienceVolume = 0.7f,
-          effectsVolume = 0.4f,
+          ambienceVolume = AMBIENCE_VOLUME,
+          effectsVolume = EFFECTS_VOLUME,
       )
 
   private val ready =
@@ -79,6 +84,14 @@ class SoundboardScreenTest {
 
   private val preparing =
       playing.copy(ambience = playing.ambience!!.copy(status = AmbiencePlaybackStatus.PREPARING))
+
+  private companion object {
+    // Each sample volume and the text the screen shows for it.
+    const val AMBIENCE_VOLUME = 0.7f
+    const val AMBIENCE_VOLUME_TEXT = "70 %"
+    const val EFFECTS_VOLUME = 0.4f
+    const val EFFECTS_VOLUME_TEXT = "40 %"
+  }
 
   private var backs = 0
   private val edits = mutableListOf<String?>()
@@ -176,6 +189,55 @@ class SoundboardScreenTest {
     assertEquals(listOf<String?>("board"), edits)
   }
 
+  // ============ Volume ============
+
+  @Test
+  fun volumesShowTheirPercentage() {
+    setContent(ready)
+
+    composeTestRule.onNodeWithText(AMBIENCE_VOLUME_TEXT).assertIsDisplayed()
+    composeTestRule.onNodeWithText(EFFECTS_VOLUME_TEXT).assertIsDisplayed()
+  }
+
+  @Test
+  fun slidersApplyTheNewVolumeThenSaveIt() {
+    val vm = setContent(ready)
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_ambience_volume).setProgress(0.5f)
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_effects_volume).setProgress(0.25f)
+
+    assertEquals(
+        listOf(
+            "setAmbienceVolume(0.5)",
+            "saveVolumes",
+            "setSoundEffectVolume(0.25)",
+            "saveVolumes",
+        ),
+        vm.callsAfterLoad(),
+    )
+  }
+
+  @Test
+  fun muteButtonsToggleMuteAndShowIt() {
+    val vm = setContent(ready.copy(isAmbienceMuted = true))
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_ambience_mute).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_effects_mute).performClick()
+
+    assertEquals(listOf("toggleAmbienceMute", "toggleSoundEffectMute"), vm.callsAfterLoad())
+    composeTestRule.onNodeWithContentDescription("Unmute").assertIsDisplayed()
+    composeTestRule.onNodeWithContentDescription("Mute").assertIsDisplayed()
+  }
+
+  @Test
+  fun volumeSaveErrorIsShownUnderTheVolume() {
+    setContent(ready.copy(error = SoundboardPlaybackError.SaveVolume(SoundboardError.UNKNOWN)))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.soundboard_volume_error)
+        .assertTextContains("The volume could not be saved.")
+  }
+
   // ============ Ambience ============
 
   @Test
@@ -185,6 +247,61 @@ class SoundboardScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.soundboardPlaylist("dungeon")).performClick()
 
     assertEquals(listOf("selectPlaylist(dungeon)"), vm.callsAfterLoad())
+  }
+
+  @Test
+  fun trackFieldOpensTheMenuThroughTheViewModel() {
+    val vm = setContent(ready)
+
+    composeTestRule.onNodeWithText("Choose a track").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_track_menu).performClick()
+
+    assertEquals(listOf("setTrackMenuExpanded(true)"), vm.callsAfterLoad())
+  }
+
+  @Test
+  fun trackFieldDescribesTheSelectedPlaylist() {
+    val drips = AmbienceTrack("Drips", AudioFile("drips", "/a/drips.mp3", 60_000))
+    val crypt = AmbiencePlaylist("crypt", "Crypt", listOf(drips))
+    setContent(
+        playing.copy(
+            soundboard = board.copy(playlists = listOf(tavern, crypt)),
+            selectedPlaylistId = "crypt",
+        )
+    )
+
+    composeTestRule.onNodeWithText("Choose a track").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Playing · Tavern").assertDoesNotExist()
+    composeTestRule.onNodeWithContentDescription("Playing").assertIsDisplayed()
+  }
+
+  @Test
+  fun pickingATrackPlaysItAndClosesTheMenu() {
+    val vm = setContent(ready.copy(isTrackMenuExpanded = true))
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboardTrack("murmurs")).performClick()
+
+    assertEquals(
+        listOf("playAmbience(tavern, murmurs)", "setTrackMenuExpanded(false)"),
+        vm.callsAfterLoad(),
+    )
+  }
+
+  @Test
+  fun trackMenuStaysClosedUntilTheViewModelOpensIt() {
+    setContent(ready)
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboardTrack("murmurs")).assertDoesNotExist()
+  }
+
+  @Test
+  fun dismissingTheMenuClosesItThroughTheViewModel() {
+    val vm = setContent(ready.copy(isTrackMenuExpanded = true))
+
+    Espresso.pressBack()
+    composeTestRule.waitForIdle()
+
+    assertEquals(listOf("setTrackMenuExpanded(false)"), vm.callsAfterLoad())
   }
 
   @Test
@@ -200,6 +317,8 @@ class SoundboardScreenTest {
     setContent(ready.copy(selectedPlaylistId = "dungeon"))
 
     composeTestRule.onNodeWithTag(C.Tag.soundboard_play_pause).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_track_menu).assertIsNotEnabled()
+    composeTestRule.onNodeWithText("No tracks in this playlist").assertIsDisplayed()
   }
 
   @Test
@@ -212,19 +331,36 @@ class SoundboardScreenTest {
   }
 
   @Test
+  fun timeIsHiddenUntilATrackPlays() {
+    setContent(ready)
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_elapsed).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_looping).assertIsDisplayed()
+  }
+
+  @Test
   fun playingAmbienceMarksItsPlaylistAndPausesOnTap() {
     val vm = setContent(playing)
 
     composeTestRule.onNodeWithContentDescription("Playing").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Playing · Tavern").assertIsDisplayed()
+    composeTestRule.onNodeWithText("By the fire").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_elapsed).assertTextContains("02:34 / 08:12")
     composeTestRule.onNodeWithTag(C.Tag.soundboard_play_pause).performClick()
 
     assertEquals(listOf("pauseAmbience"), vm.callsAfterLoad())
   }
 
   @Test
+  fun durationsPastAnHourShowTheHours() {
+    assertEquals("1:15:00", formatDuration(4_500_000))
+  }
+
+  @Test
   fun pausedTrackResumesOnTap() {
     val vm = setContent(paused)
 
+    composeTestRule.onNodeWithText("Paused · Tavern").assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.soundboard_play_pause).performClick()
 
     assertEquals(listOf("playAmbience(tavern, fire)"), vm.callsAfterLoad())
@@ -254,6 +390,28 @@ class SoundboardScreenTest {
 
     composeTestRule.onNodeWithTag(C.Tag.soundboard_preparing).assertExists()
     composeTestRule.onNodeWithTag(C.Tag.soundboard_play_pause).assertIsNotEnabled()
+    composeTestRule.onNodeWithText("Starting · Tavern").assertExists()
+  }
+
+  @Test
+  fun loopingToggleShowsAndChangesLooping() {
+    val vm = setContent(ready)
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_looping).assertIsOn().performClick()
+    vm.state.value = ready.copy(isAmbienceLooping = false)
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_looping).assertIsOff()
+
+    assertEquals(listOf("setAmbienceLooping(false)"), vm.callsAfterLoad())
+  }
+
+  @Test
+  fun trackPlaybackErrorIsShownUnderTheAmbience() {
+    setContent(playing.copy(error = SoundboardPlaybackError.Playback("fire")))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.soundboard_ambience_error)
+        .assertTextContains("This sound could not be played.")
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_effects_error).assertDoesNotExist()
   }
 
   @Test
@@ -294,6 +452,22 @@ class SoundboardScreenTest {
   }
 
   @Test
+  fun manyEffectsAskToSwipe() {
+    setContent(ready)
+
+    composeTestRule.onNodeWithText("10 sounds · Swipe →").assertIsDisplayed()
+  }
+
+  @Test
+  // As wide as a phone in landscape, so the four columns of effects fit without scrolling.
+  @Config(qualifiers = "w891dp-h1600dp")
+  fun effectsThatFitInAWideWindowDoNotAskToSwipe() {
+    setContent(ready)
+
+    composeTestRule.onNodeWithText("10 sounds").assertIsDisplayed()
+  }
+
+  @Test
   fun effectsReadRowByRowInTheirOrder() {
     setContent(ready)
     val first = effectBounds(effects[0])
@@ -317,6 +491,16 @@ class SoundboardScreenTest {
 
     composeTestRule.onNodeWithTag(C.Tag.soundboardEffect(swordId)).assertIsNotEnabled()
     composeTestRule.onNodeWithTag(C.Tag.soundboardEffect("fx_FIRE")).assertIsEnabled()
+  }
+
+  @Test
+  fun effectPlaybackErrorIsShownUnderTheEffects() {
+    setContent(ready.copy(error = SoundboardPlaybackError.Playback(swordId)))
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.soundboard_effects_error)
+        .assertTextContains("This sound could not be played.")
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_ambience_error).assertDoesNotExist()
   }
 
   // ============ Helpers ============
@@ -345,6 +529,9 @@ class SoundboardScreenTest {
       composeTestRule
           .onNodeWithTag(C.Tag.soundboardEffect(effect.audio.id))
           .getUnclippedBoundsInRoot()
+
+  private fun androidx.compose.ui.test.SemanticsNodeInteraction.setProgress(value: Float) =
+      performSemanticsAction(SemanticsActions.SetProgress) { it(value) }
 
   private fun androidx.compose.ui.test.SemanticsNodeInteraction.fetchText(): String =
       fetchSemanticsNode()
