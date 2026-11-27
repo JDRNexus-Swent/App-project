@@ -197,6 +197,12 @@
     <string name="invitation_error_network">Something went wrong. Check your connection and try again.</string>
     <string name="join_error_network">Something went wrong. You may already have joined: check your groups list before trying again.</string>
 
+    <string name="profile_open">Open profile</string>
+    <string name="profile_leave_title">Leave while saving?</string>
+    <string name="profile_leave_message">Your profile or picture is still being saved. If you leave now, the change may be lost.</string>
+    <string name="profile_leave_confirm">Leave anyway</string>
+    <string name="profile_leave_stay">Stay</string>
+
     <string name="notifications_title">Notifications</string>
     <string name="notifications_open">Notifications</string>
     <string name="notifications_open_unread">Notifications, unread notifications available</string>
@@ -233,4 +239,102 @@
     <string name="campaign_help_workspace_body">\"Enter workspace\" opens the group\'s shared files: your personal files (Files tab) stay private until you share them, and a hidden file is seen only by its owner and the GameMaster. \"Play\" opens the game: the session screen for the GameMaster, their character for players.</string>
     <string name="campaign_help_example_name">The Sunken Crown</string>
     <string name="campaign_help_example_system">Fantasy campaign</string>
+    <string name="group_management_title">Manage group</string>
+    <string name="role_game_master">GameMaster</string>
+    <string name="role_player">Player</string>
+    <plurals name="group_management_member_count">
+        <item quantity="one">%d member</item>
+        <item quantity="other">%d members</item>
+    </plurals>
+    <string name="group_management_remove">Remove</string>
+    <string name="group_management_delete">Delete group</string>
+    <string name="group_management_cancel">Cancel</string>
+    <string name="group_management_retry">Retry</string>
+    <string name="group_management_remove_title">Remove this player?</string>
+    <string name="group_management_remove_message">%1$s will lose access to the group and its workspace.</string>
+    <string name="group_management_delete_title">Delete \"%1$s\"?</string>
+    <string name="group_management_delete_message">The group, its workspace and its invitation code will be deleted for every member. Personal files are kept. This cannot be undone.</string>
+    <string name="group_management_load_failed">Couldn\'t load the group.</string>
+    <string name="group_management_remove_failed">Couldn\'t remove the player. Try again.</string>
+    <string name="group_management_delete_failed">Couldn\'t delete the group. Try again.</string>
+
+    <!-- Soundboard screen -->
+    <string name="soundboard_title">Soundboard</string>
+    <string name="soundboard_header_label">Campaign · Game Master</string>
+    <string name="soundboard_retry">Retry</string>
+    <string name="soundboard_empty">No sounds yet. Add ambience tracks and sound effects in the editor.</string>
+    <string name="soundboard_edit">Edit soundboard</string>
+    <string name="soundboard_ambience_volume">Ambience volume</string>
+    <string name="soundboard_effects_volume">Sound effect volume</string>
+    <string name="soundboard_volume_percent">%1$d %%</string>
+    <string name="soundboard_mute_cd">Mute</string>
+    <string name="soundboard_unmute_cd">Unmute</string>
+    <string name="soundboard_ambience">Ambience</string>
+    <string name="soundboard_ambience_hint">Continuous playback</string>
+    <string name="soundboard_playing_cd">Playing</string>
+    <string name="soundboard_playing">Playing · %1$s</string>
+    <string name="soundboard_paused">Paused · %1$s</string>
+    <string name="soundboard_starting">Starting · %1$s</string>
+    <string name="soundboard_choose_track">Choose a track</string>
+    <string name="soundboard_no_tracks">No tracks in this playlist</string>
+    <string name="soundboard_play_cd">Play</string>
+    <string name="soundboard_pause_cd">Pause</string>
+    <string name="soundboard_time">%1$s / %2$s</string>
+    <string name="soundboard_looping">Looping</string>
+    <string name="soundboard_effects">Sound Effects</string>
+    <plurals name="soundboard_effects_count">
+        <item quantity="one">%d sound</item>
+        <item quantity="other">%d sounds</item>
+    </plurals>
+    <plurals name="soundboard_effects_count_swipe">
+        <item quantity="one">%d sound · Swipe →</item>
+        <item quantity="other">%d sounds · Swipe →</item>
+    </plurals>
+    <string name="soundboard_error_playback">This sound could not be played.</string>
+    <string name="soundboard_error_save_volume">The volume could not be saved.</string>
+    <string name="soundboard_error_not_signed_in">Sign in to use your soundboard.</string>
+    <string name="soundboard_error_unsupported_format">Only mp3 files are supported.</string>
+    <string name="soundboard_error_corrupted_file">This file cannot be read as audio.</string>
+    <string name="soundboard_error_file_not_found">The file can no longer be found.</string>
+    <string name="soundboard_error_storage_full">Not enough free space on the device.</string>
+    <string name="soundboard_error_invalid_name">Every name must be filled in.</string>
+    <string name="soundboard_error_invalid_volume">The volume is out of range.</string>
+    <string name="soundboard_error_audio_not_found">A sound file is missing.</string>
+    <string name="soundboard_error_soundboard_not_found">This soundboard no longer exists.</string>
+    <string name="soundboard_error_unknown">Something went wrong. Try again.</string>
+
+    <!-- Soundboard editor -->
+    <string name="soundboard_edit_title">Edit Soundboard</string>
+    <string name="soundboard_edit_header_label">Campaign · Sound Library</string>
+    <string name="soundboard_edit_name_label">Soundboard name</string>
+    <string name="soundboard_edit_name_empty">Give the soundboard a name.</string>
+    <plurals name="soundboard_edit_name_too_long">
+        <item quantity="one">At most %d character.</item>
+        <item quantity="other">At most %d characters.</item>
+    </plurals>
+    <string name="soundboard_edit_add_playlist">Add playlist</string>
+    <string name="soundboard_edit_new_playlist">New playlist</string>
+    <string name="soundboard_edit_no_playlist">Add a playlist to add ambience tracks.</string>
+    <string name="soundboard_edit_playlist_name">Playlist name</string>
+    <plurals name="soundboard_edit_tracks_count">
+        <item quantity="one">%d track</item>
+        <item quantity="other">%d tracks</item>
+    </plurals>
+    <plurals name="soundboard_edit_sounds_count">
+        <item quantity="one">%d sound</item>
+        <item quantity="other">%d sounds</item>
+    </plurals>
+    <string name="soundboard_edit_no_effects">No sound effects yet</string>
+    <string name="soundboard_edit_track_subtitle">%1$s · Ambience track</string>
+    <string name="soundboard_edit_effect_subtitle">%1$s · One-shot effect</string>
+    <string name="soundboard_edit_name_required">Name required</string>
+    <string name="soundboard_edit_remove_cd">Remove %1$s</string>
+    <string name="soundboard_edit_remove_unnamed_cd">Remove unnamed sound</string>
+    <string name="soundboard_edit_add_track">Add track</string>
+    <string name="soundboard_edit_add_sound">Add sound</string>
+    <string name="soundboard_edit_save">Save soundboard</string>
+    <string name="soundboard_edit_discard_title">Discard changes?</string>
+    <string name="soundboard_edit_discard_body">Your unsaved changes and the sounds imported since the last save will be lost.</string>
+    <string name="soundboard_edit_discard_confirm">Discard</string>
+    <string name="soundboard_edit_discard_cancel">Keep editing</string>
 </resources>

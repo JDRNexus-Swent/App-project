@@ -18,6 +18,12 @@ import com.github.se.jdrnexus.ui.help.HelpPage
 internal const val CAMPAIGN_HELP_ILLUSTRATION_HEIGHT_FRACTION = 0.25f
 
 /**
+ * Identifies the Campaigns screen's help in a
+ * [com.github.se.jdrnexus.model.help.HelpSeenRepository].
+ */
+internal const val CAMPAIGNS_HELP_TOPIC = "campaigns"
+
+/**
  * Pages of the Campaigns screen's help, in the order [GameManagementScreen] shows them. Every user
  * sees every page, whatever their role in their groups.
  *

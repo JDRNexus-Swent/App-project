@@ -382,6 +382,44 @@ class HomeScreenS1Test {
     signOutResult.complete(AuthResult.Success(Unit))
   }
 
+  @Test
+  fun profileButtonIsHiddenWithoutProfileCallback() {
+    composeTestRule.setContent { SampleAppTheme { HomeScreen(createViewModel()) } }
+
+    composeTestRule.onAllNodesWithTag(C.Tag.open_profile).assertCountEquals(0)
+  }
+
+  @Test
+  fun profileButtonOpensProfile() {
+    var profileClicks = 0
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(createViewModel(), onProfileClick = { profileClicks++ }) }
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.open_profile).assertIsDisplayed().performClick()
+
+    Assert.assertEquals(1, profileClicks)
+  }
+
+  @Test
+  fun profileButtonCannotOpenProfileWhileSignOutIsPending() {
+    val signOutResult = CompletableDeferred<AuthResult<Unit>>()
+    val repository = FakeAuthRepository { signOutResult.await() }
+    val viewModel = AuthViewModel(repository)
+    var profileClicks = 0
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(viewModel, onProfileClick = { profileClicks++ }) }
+    }
+
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) { repository.signOutCalls == 1 }
+    composeTestRule.onNodeWithTag(C.Tag.open_profile).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.open_profile).performClick()
+
+    Assert.assertEquals(0, profileClicks)
+    signOutResult.complete(AuthResult.Success(Unit))
+  }
+
   private fun createViewModel() = AuthViewModel(FakeAuthRepository())
 
   private class FakeAuthRepository(

@@ -29,6 +29,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -60,6 +61,16 @@ sealed interface AuthStatus {
   data class Error(val message: String) : AuthStatus
 }
 
+/** Whether a user is signed in, as reported by [AuthRepository.authState]. */
+sealed interface SessionState {
+  /** The repository has not reported the session yet. */
+  data object Checking : SessionState
+
+  data object SignedIn : SessionState
+
+  data object SignedOut : SessionState
+}
+
 /**
  * Signs the user up, in and out.
  *
@@ -75,6 +86,75 @@ class AuthViewModel(
 
   private val _uiState = MutableStateFlow(AuthUiState())
   val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
+
+  // The last session the repository reported; only used to spot a session that ends.
+  private var currentSession: SessionState = SessionState.Checking
+
+  private val _launchSession = MutableStateFlow<SessionState>(SessionState.Checking)
+
+  /**
+   * The session found when the app started. It leaves [SessionState.Checking] once and then never
+   * changes, so the app can pick its first screen from it without reacting to later sign-ins.
+   */
+  val launchSession: StateFlow<SessionState> = _launchSession.asStateFlow()
+
+  private val _sessionEnded = MutableStateFlow(false)
+
+  /**
+   * True from the moment a signed-in session ends (sign-out, expired token, deleted account) until
+   * [onSessionEndHandled] is called. Kept as state, not as a transition to observe, so a screen
+   * that starts collecting after the session ended still sees it.
+   */
+  val sessionEnded: StateFlow<Boolean> = _sessionEnded.asStateFlow()
+
+  /** Marks the end of the session as handled, once the app has left the signed-in screens. */
+  fun onSessionEndHandled() {
+    _sessionEnded.value = false
+  }
+
+  init {
+    viewModelScope.launch { observeSession() }
+  }
+
+  private suspend fun observeSession() {
+    // A failing auth state is treated as signed out: the user can still sign in again.
+    repository.authState
+        .catch { failure ->
+          if (failure is CancellationException) throw failure
+          Log.e("AuthViewModel", "Auth state unavailable", failure)
+          emit(null)
+        }
+        .collect { user ->
+          val previous = currentSession
+          val session = if (user == null) SessionState.SignedOut else SessionState.SignedIn
+          currentSession = session
+          if (_launchSession.value == SessionState.Checking) {
+            _launchSession.value = session
+            // Checked in the background: the user is not kept waiting, even offline.
+            if (session == SessionState.SignedIn) viewModelScope.launch { refreshSession() }
+          }
+          val ended = previous == SessionState.SignedIn && session == SessionState.SignedOut
+          if (session == SessionState.SignedIn) _sessionEnded.value = false
+          if (ended) _sessionEnded.value = true
+          // The session ended outside a request of this ViewModel (expired, deleted account):
+          // forget the previous user's form. A running request handles its own state.
+          if (ended && _uiState.value.status !is AuthStatus.Loading) {
+            // Keeps a sign-out of this ViewModel that Home has not handled yet.
+            _uiState.update { AuthUiState(isSignedOut = it.isSignedOut) }
+          }
+        }
+  }
+
+  private suspend fun refreshSession() {
+    try {
+      // An invalid session is signed out by the repository and reported through authState.
+      repository.refreshSession()
+    } catch (cancellation: CancellationException) {
+      throw cancellation
+    } catch (failure: Exception) {
+      Log.e("AuthViewModel", "Session check failed", failure)
+    }
+  }
 
   fun onEmailChange(email: String) = updateInput { copy(email = email) }
 
@@ -174,8 +254,8 @@ class AuthViewModel(
   }
 
   /**
-   * Signs out with the repository, the status being already [AuthStatus.Loading]. Success sets
-   * [AuthUiState.isSignedOut].
+   * Signs out with the repository, the status being already [AuthStatus.Loading]. Success clears
+   * the form and sets [AuthUiState.isSignedOut].
    */
   private suspend fun performSignOut() {
     val status =
@@ -193,7 +273,14 @@ class AuthViewModel(
         }
 
     // Idle here only after a successful sign-out; a cancellation never reaches this line.
-    _uiState.update { it.copy(status = status, isSignedOut = status == AuthStatus.Idle) }
+    _uiState.update {
+      if (status == AuthStatus.Idle) {
+        // Nothing typed by the signed-out user stays in the shared sign-in form.
+        AuthUiState(isSignedOut = true)
+      } else {
+        it.copy(status = status)
+      }
+    }
   }
 
   fun googleSignIn(

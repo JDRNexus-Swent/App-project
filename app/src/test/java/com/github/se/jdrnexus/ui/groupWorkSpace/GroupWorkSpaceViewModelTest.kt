@@ -1549,7 +1549,7 @@ class GroupWorkSpaceViewModelTest {
     assertEquals("A group root cannot be added here.", gm.uiState.value.errorMessage)
     gm.shareItem("missing")
     runCurrent()
-    assertEquals("Document not found in Firestore", gm.uiState.value.errorMessage)
+    assertEquals("Item not found", gm.uiState.value.errorMessage)
     assertTrue(repository.addRequests.isEmpty())
   }
 
@@ -2158,15 +2158,8 @@ class GroupWorkSpaceViewModelTest {
       return Result.success(Unit)
     }
 
-    override suspend fun getFile(fileId: String): Result<JDRFile?> {
-      val file = files[fileId]
-
-      return if (file != null) {
-        Result.success(file)
-      } else {
-        Result.failure(Exception("Document not found in Firestore"))
-      }
-    }
+    // Like WorkspaceRepositoryFirestore.getFile: a missing file is null, not a failure.
+    override suspend fun getFile(fileId: String): Result<JDRFile?> = Result.success(files[fileId])
 
     override suspend fun removeItemFromGroup(
         itemId: String,

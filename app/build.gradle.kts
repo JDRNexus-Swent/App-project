@@ -9,6 +9,7 @@ plugins {
   alias(libs.plugins.sonar)
   id("jacoco")
   alias(libs.plugins.google.services)
+  alias(libs.plugins.ksp)
 }
 
 android {
@@ -146,6 +147,7 @@ dependencies {
   implementation(libs.androidx.ui.graphics)
   implementation(libs.googleid)
   implementation(libs.material)
+  implementation(libs.androidx.media3.exoplayer)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(platform(libs.compose.bom))
   testImplementation(libs.junit)
@@ -185,6 +187,7 @@ dependencies {
 
   // ----------       Robolectric     ------------
   testImplementation(libs.robolectric)
+  testImplementation(libs.androidx.media3.test.utils)
 
   // ----------       FireBase        ------------
   // Firebase BoM
@@ -202,6 +205,10 @@ dependencies {
   implementation(libs.kotlinx.coroutines.play.services)
 
   implementation(libs.sceneview)
+
+  // ----------         Room          ------------
+  implementation(libs.androidx.room.runtime)
+  ksp(libs.androidx.room.compiler)
 }
 
 // Kaspresso pulls an old protobuf-lite that clashes with the protobuf-javalite used by Firestore
