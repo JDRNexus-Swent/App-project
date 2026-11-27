@@ -48,7 +48,7 @@ sealed interface SoundboardPlaybackError {
   /** The player failed to start or continue the identified track or effect. */
   data class Playback(val audioId: String) : SoundboardPlaybackError
 
-  /** The effective volume settings could not be saved. */
+  /** The current slider values could not be saved. */
   data class SaveVolume(val reason: SoundboardError) : SoundboardPlaybackError
 }
 
@@ -64,10 +64,10 @@ sealed interface SoundboardPlaybackError {
  * @property isAmbienceLooping Whether playback returns to the start after the last playlist track.
  * @property playingEffectIds Effects currently playing, independently of ambience and each other.
  * @property pendingEffectIds Effects with a playback action in progress.
- * @property error The latest playback or volume failure, or null when there is none.
- * @property isAmbienceMuted Whether ambience is muted; unmuting restores its last audible gain.
- * @property isSoundEffectsMuted Whether effects are muted; unmuting restores their last audible
- *   gain.
+ * @property error The latest playback or volume-save failure.
+ * @property isAmbienceMuted Whether ambience plays at zero gain while its slider value is retained.
+ * @property isSoundEffectsMuted Whether effects play at zero gain while their slider value is
+ *   retained.
  * @property isTrackMenuExpanded Whether the menu listing the selected playlist's tracks is open.
  */
 data class SoundboardUiState(
@@ -139,10 +139,10 @@ interface SoundboardViewModelInterface {
    */
   fun saveVolumes()
 
-  /** Mutes ambience or restores its last audible gain. */
+  /** Mutes ambience or restores its current slider gain. */
   fun toggleAmbienceMute()
 
-  /** Mutes effects or restores their last audible gain. */
+  /** Mutes effects or restores their current slider gain. */
   fun toggleSoundEffectMute()
 
   /** Stops all sounds and cancels pending starts on session exit. Safe to call repeatedly. */
