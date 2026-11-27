@@ -1,6 +1,7 @@
 package com.github.se.jdrnexus.ui.profile
 
 // Co-authored-by: Codex <codex@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -31,6 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -47,12 +49,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -66,7 +72,14 @@ import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import com.github.se.jdrnexus.viewmodel.ProfileUiState
 import com.github.se.jdrnexus.viewmodel.ProfileViewModelInterface
 
-/** Displays the signed-in user's profile and forwards edits to the supplied ViewModel. */
+/**
+ * Displays the signed-in user's profile and forwards edits to the supplied ViewModel.
+ *
+ * System back cancels the edit form when no save is running. Leaving the screen (back button,
+ * system back, or a bottom-bar tab) while [ProfileUiState.isSaving] is true first asks the user to
+ * confirm, since leaving cancels the save or picture upload. The dialog closes by itself when the
+ * save ends.
+ */
 @Composable
 fun ProfileScreen(
     viewModel: ProfileViewModelInterface,
@@ -80,7 +93,27 @@ fun ProfileScreen(
         uri?.let(viewModel::updateProfilePicture)
       }
   LaunchedEffect(viewModel) { viewModel.loadProfile() }
-  BackHandler { if (state.isEditing) viewModel.cancelEditing() else onBack() }
+  // The exit waiting for confirmation: BACK_EXIT or the name of a tab. Saveable so the dialog
+  // survives a rotation.
+  var pendingExit by rememberSaveable { mutableStateOf<String?>(null) }
+  val leave = { exit: String -> if (exit == BACK_EXIT) onBack() else onTabSelected(exit) }
+  val requestExit = { exit: String -> if (state.isSaving) pendingExit = exit else leave(exit) }
+  LaunchedEffect(state.isSaving) { if (!state.isSaving) pendingExit = null }
+  // A running save comes first: the editor's Cancel button is disabled meanwhile, so system back
+  // asks to leave instead of cancelling the edit.
+  BackHandler {
+    if (state.isEditing && !state.isSaving) viewModel.cancelEditing() else requestExit(BACK_EXIT)
+  }
+
+  pendingExit?.let { exit ->
+    LeaveWhileSavingDialog(
+        onLeave = {
+          pendingExit = null
+          leave(exit)
+        },
+        onStay = { pendingExit = null },
+    )
+  }
 
   ProfileContent(
       state,
@@ -90,12 +123,36 @@ fun ProfileScreen(
       onBioChange = viewModel::onBioChange,
       onCancel = viewModel::cancelEditing,
       onSave = viewModel::saveProfile,
-      onBack = onBack,
-      onTabSelected = onTabSelected,
+      onBack = { requestExit(BACK_EXIT) },
+      onTabSelected = requestExit,
       selectedTab = selectedTab,
   ) {
     pickPicture.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly))
   }
+}
+
+/** [ProfileScreen]'s pending exit for the back button, as opposed to a tab name. */
+private const val BACK_EXIT = "back"
+
+/** Asks whether to leave the profile while a save or picture upload is still running. */
+@Composable
+private fun LeaveWhileSavingDialog(onLeave: () -> Unit, onStay: () -> Unit) {
+  AlertDialog(
+      modifier = Modifier.testTag(C.Tag.profile_leave_dialog),
+      onDismissRequest = onStay,
+      title = { Text(stringResource(R.string.profile_leave_title)) },
+      text = { Text(stringResource(R.string.profile_leave_message)) },
+      confirmButton = {
+        TextButton(onClick = onLeave, modifier = Modifier.testTag(C.Tag.profile_leave_confirm)) {
+          Text(stringResource(R.string.profile_leave_confirm))
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = onStay, modifier = Modifier.testTag(C.Tag.profile_leave_stay)) {
+          Text(stringResource(R.string.profile_leave_stay))
+        }
+      },
+  )
 }
 
 @Composable

@@ -47,6 +47,8 @@ class SoundboardScreenTest {
   private val murmurs = AmbienceTrack("Tavern murmurs", AudioFile("murmurs", "/a/m.mp3", 400_000))
   private val tavern = AmbiencePlaylist("tavern", "Tavern", listOf(byTheFire, murmurs))
   private val dungeon = AmbiencePlaylist("dungeon", "Dungeon")
+  private val battle = AmbienceTrack("Battle drums", AudioFile("drums", "/a/drums.mp3", 300_000))
+  private val combat = AmbiencePlaylist("combat", "Combat", listOf(battle))
 
   /** One effect per icon, so every icon is drawn once. */
   private val effects =
@@ -59,10 +61,10 @@ class SoundboardScreenTest {
       Soundboard(
           id = "board",
           name = "Tides",
-          playlists = listOf(tavern, dungeon),
+          playlists = listOf(tavern, dungeon, combat),
           effects = effects,
-          ambienceVolume = 0.7f,
-          effectsVolume = 0.4f,
+          ambienceVolume = AMBIENCE_VOLUME,
+          effectsVolume = EFFECTS_VOLUME,
       )
 
   private val ready =
@@ -82,6 +84,14 @@ class SoundboardScreenTest {
 
   private val preparing =
       playing.copy(ambience = playing.ambience!!.copy(status = AmbiencePlaybackStatus.PREPARING))
+
+  private companion object {
+    // Each sample volume and the text the screen shows for it.
+    const val AMBIENCE_VOLUME = 0.7f
+    const val AMBIENCE_VOLUME_TEXT = "70 %"
+    const val EFFECTS_VOLUME = 0.4f
+    const val EFFECTS_VOLUME_TEXT = "40 %"
+  }
 
   private var backs = 0
   private val edits = mutableListOf<String?>()
@@ -185,8 +195,8 @@ class SoundboardScreenTest {
   fun volumesShowTheirPercentage() {
     setContent(ready)
 
-    composeTestRule.onNodeWithText("70 %").assertIsDisplayed()
-    composeTestRule.onNodeWithText("40 %").assertIsDisplayed()
+    composeTestRule.onNodeWithText(AMBIENCE_VOLUME_TEXT).assertIsDisplayed()
+    composeTestRule.onNodeWithText(EFFECTS_VOLUME_TEXT).assertIsDisplayed()
   }
 
   @Test
@@ -247,6 +257,22 @@ class SoundboardScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.soundboard_track_menu).performClick()
 
     assertEquals(listOf("setTrackMenuExpanded(true)"), vm.callsAfterLoad())
+  }
+
+  @Test
+  fun trackFieldDescribesTheSelectedPlaylist() {
+    val drips = AmbienceTrack("Drips", AudioFile("drips", "/a/drips.mp3", 60_000))
+    val crypt = AmbiencePlaylist("crypt", "Crypt", listOf(drips))
+    setContent(
+        playing.copy(
+            soundboard = board.copy(playlists = listOf(tavern, crypt)),
+            selectedPlaylistId = "crypt",
+        )
+    )
+
+    composeTestRule.onNodeWithText("Choose a track").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Playing · Tavern").assertDoesNotExist()
+    composeTestRule.onNodeWithContentDescription("Playing").assertIsDisplayed()
   }
 
   @Test
@@ -326,6 +352,11 @@ class SoundboardScreenTest {
   }
 
   @Test
+  fun durationsPastAnHourShowTheHours() {
+    assertEquals("1:15:00", formatDuration(4_500_000))
+  }
+
+  @Test
   fun pausedTrackResumesOnTap() {
     val vm = setContent(paused)
 
@@ -333,6 +364,22 @@ class SoundboardScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.soundboard_play_pause).performClick()
 
     assertEquals(listOf("playAmbience(tavern, fire)"), vm.callsAfterLoad())
+  }
+
+  @Test
+  fun pausedTrackOfAnotherPlaylistStartsTheSelectedOne() {
+    val vm = setContent(paused.copy(selectedPlaylistId = "combat"))
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_play_pause).performClick()
+
+    assertEquals(listOf("playPlaylist(combat)"), vm.callsAfterLoad())
+  }
+
+  @Test
+  fun pausedTrackCannotStartAnEmptyPlaylist() {
+    setContent(paused.copy(selectedPlaylistId = "dungeon"))
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_play_pause).assertIsNotEnabled()
   }
 
   @Test
@@ -367,6 +414,25 @@ class SoundboardScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.soundboard_effects_error).assertDoesNotExist()
   }
 
+  @Test
+  fun playingTrackPausesFromAnotherPlaylistTab() {
+    val vm = setContent(playing.copy(selectedPlaylistId = "combat"))
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_play_pause).performClick()
+
+    assertEquals(listOf("pauseAmbience"), vm.callsAfterLoad())
+  }
+
+  @Test
+  fun preparingTrackShowsASpinnerFromAnotherPlaylistTab() {
+    composeTestRule.mainClock.autoAdvance = false
+    setContent(preparing.copy(selectedPlaylistId = "combat"))
+    composeTestRule.mainClock.advanceTimeBy(100)
+
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_preparing).assertExists()
+    composeTestRule.onNodeWithTag(C.Tag.soundboard_play_pause).assertIsNotEnabled()
+  }
+
   // ============ Sound effects ============
 
   @Test
@@ -390,6 +456,15 @@ class SoundboardScreenTest {
     setContent(ready)
 
     composeTestRule.onNodeWithText("10 sounds · Swipe →").assertIsDisplayed()
+  }
+
+  @Test
+  // As wide as a phone in landscape, so the four columns of effects fit without scrolling.
+  @Config(qualifiers = "w891dp-h1600dp")
+  fun effectsThatFitInAWideWindowDoNotAskToSwipe() {
+    setContent(ready)
+
+    composeTestRule.onNodeWithText("10 sounds").assertIsDisplayed()
   }
 
   @Test

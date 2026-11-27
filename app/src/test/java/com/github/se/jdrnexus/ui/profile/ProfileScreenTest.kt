@@ -2,6 +2,7 @@
 package com.github.se.jdrnexus.ui.profile
 
 // Co-authored-by: Codex <codex@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 import android.app.Activity
 import android.content.Intent
@@ -23,6 +24,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasAnySibling
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -33,14 +35,15 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.text.AnnotatedString
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.github.se.jdrnexus.model.profile.ProfileStats
 import com.github.se.jdrnexus.model.profile.UserProfile
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import com.github.se.jdrnexus.utils.LOADED_PROFILE
+import com.github.se.jdrnexus.utils.LOADED_PROFILE_STATE
 import com.github.se.jdrnexus.utils.RecordingPickerOwner
+import com.github.se.jdrnexus.utils.RecordingProfileViewModel
 import com.github.se.jdrnexus.viewmodel.ProfileUiState
 import com.github.se.jdrnexus.viewmodel.ProfileViewModelInterface
-import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -50,9 +53,10 @@ import org.junit.runner.RunWith
 class ProfileScreenTest {
   @get:Rule val composeTestRule = createComposeRule()
 
-  private val profile = UserProfile(userId = "user-1", username = "Rowan", bio = "Dungeon guide")
-  private val loadedState =
-      ProfileUiState(profile = profile, stats = ProfileStats(2, 5, 8), isLoading = false)
+  private val profile = LOADED_PROFILE
+  private val loadedState = LOADED_PROFILE_STATE
+  /** A picture upload is running: leaving would cancel it. */
+  private val savingState = loadedState.copy(isSaving = true)
 
   @Test
   fun enteringScreenRequestsProfileAndShowsLoading() {
@@ -355,6 +359,89 @@ class ProfileScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).assertIsSelected()
   }
 
+  @Test
+  fun backWhileSavingLeavesOnlyAfterConfirmation() {
+    var backCalls = 0
+    setContent(RecordingProfileViewModel(savingState), onBack = { backCalls++ })
+
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    composeTestRule.onNodeWithTag(C.Tag.profile_leave_dialog).assertIsDisplayed()
+    assertEquals(0, backCalls)
+    composeTestRule.onNodeWithTag(C.Tag.profile_leave_confirm).performClick()
+    assertEquals(1, backCalls)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_leave_dialog).assertCountEquals(0)
+  }
+
+  @Test
+  fun stayingAfterSystemBackWhileSavingKeepsTheProfileOpen() {
+    var backCalls = 0
+    setContent(RecordingProfileViewModel(savingState), onBack = { backCalls++ })
+
+    Espresso.pressBack()
+    composeTestRule.onNodeWithTag(C.Tag.profile_leave_stay).performClick()
+
+    assertEquals(0, backCalls)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_leave_dialog).assertCountEquals(0)
+  }
+
+  @Test
+  fun systemBackDuringAnEditorSaveAsksInsteadOfCancellingTheEdit() {
+    var backCalls = 0
+    val viewModel = RecordingProfileViewModel(savingState.copy(isEditing = true))
+    setContent(viewModel, onBack = { backCalls++ })
+
+    Espresso.pressBack()
+
+    composeTestRule.onNodeWithTag(C.Tag.profile_leave_dialog).assertIsDisplayed()
+    assertEquals(0, viewModel.cancelEditingCalls)
+    assertEquals(0, backCalls)
+  }
+
+  @Test
+  fun tabWhileSavingIsForwardedOnlyAfterConfirmation() {
+    val selectedTabs = mutableListOf<String>()
+    setContent(RecordingProfileViewModel(savingState), onTabSelected = { selectedTabs.add(it) })
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+
+    assertEquals(emptyList<String>(), selectedTabs)
+    composeTestRule.onNodeWithTag(C.Tag.profile_leave_confirm).performClick()
+    assertEquals(listOf("Files"), selectedTabs)
+  }
+
+  @Test
+  fun leaveDialogClosesWhenTheSaveEnds() {
+    var backCalls = 0
+    val viewModel = RecordingProfileViewModel(savingState)
+    setContent(viewModel, onBack = { backCalls++ })
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    viewModel.uiState.value = loadedState
+
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_leave_dialog).assertCountEquals(0)
+    assertEquals(0, backCalls)
+  }
+
+  @Test
+  fun leaveDialogSurvivesRecreation() {
+    val restorationTester = StateRestorationTester(composeTestRule)
+    restorationTester.setContent {
+      SampleAppTheme {
+        ProfileScreen(
+            viewModel = RecordingProfileViewModel(savingState),
+            onBack = {},
+            onTabSelected = {},
+        )
+      }
+    }
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    restorationTester.emulateSavedInstanceStateRestore()
+
+    composeTestRule.onNodeWithTag(C.Tag.profile_leave_dialog).assertIsDisplayed()
+  }
+
   private fun setContent(
       viewModel: ProfileViewModelInterface,
       onBack: () -> Unit = {},
@@ -364,59 +451,6 @@ class ProfileScreenTest {
       SampleAppTheme {
         ProfileScreen(viewModel = viewModel, onBack = onBack, onTabSelected = onTabSelected)
       }
-    }
-  }
-
-  private class RecordingProfileViewModel(initialState: ProfileUiState) :
-      ProfileViewModelInterface {
-    override val uiState = MutableStateFlow(initialState)
-    var loadCalls = 0
-      private set
-
-    var startEditingCalls = 0
-      private set
-
-    var cancelEditingCalls = 0
-      private set
-
-    val savedDrafts = mutableListOf<Pair<String, String>>()
-    val pickedImages = mutableListOf<Uri>()
-
-    override fun loadProfile() {
-      loadCalls++
-    }
-
-    override fun startEditing() {
-      startEditingCalls++
-      val state = uiState.value
-      uiState.value =
-          state.copy(
-              isEditing = true,
-              usernameDraft = state.profile.username,
-              bioDraft = state.profile.bio,
-          )
-    }
-
-    override fun onUsernameChange(username: String) {
-      uiState.value = uiState.value.copy(usernameDraft = username, canSave = true)
-    }
-
-    override fun onBioChange(bio: String) {
-      uiState.value = uiState.value.copy(bioDraft = bio, canSave = true)
-    }
-
-    override fun cancelEditing() {
-      cancelEditingCalls++
-      uiState.value = uiState.value.copy(isEditing = false)
-    }
-
-    override fun saveProfile() {
-      val state = uiState.value
-      savedDrafts.add(state.usernameDraft to state.bioDraft)
-    }
-
-    override fun updateProfilePicture(image: Uri) {
-      pickedImages.add(image)
     }
   }
 }

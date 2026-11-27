@@ -9,6 +9,7 @@ import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -140,6 +141,37 @@ class AuthRepositoryFirebaseEmulatorTest {
         call { repository.signInWithEmail(randomEmail(), "secret1") },
     )
     assertEquals(null, firebaseAuth.currentUser)
+  }
+
+  @Test
+  fun refreshSessionKeepsAValidAccountSignedIn() {
+    val user = signUp(randomEmail())
+
+    val result = call { repository.refreshSession() }
+
+    assertEquals(AuthResult.Success(Unit), result)
+    assertEquals(user.uid, firebaseAuth.currentUser?.uid)
+  }
+
+  @Test
+  fun refreshSessionSignsOutADeletedAccount() {
+    signUp(randomEmail())
+    val idToken = call { checkNotNull(firebaseAuth.currentUser).getIdToken(false).await().token }
+    runBlocking {
+      FirebaseEmulatorTestUtils.deleteAuthAccountKeepingLocalSession(checkNotNull(idToken))
+    }
+
+    val result = call { repository.refreshSession() }
+
+    assertEquals(AuthResult.Failure(AuthError.SESSION_NOT_FOUND), result)
+    assertEquals(null, firebaseAuth.currentUser)
+  }
+
+  @Test
+  fun refreshSessionWithoutSessionReturnsSessionNotFound() {
+    val result = call { repository.refreshSession() }
+
+    assertEquals(AuthResult.Failure(AuthError.SESSION_NOT_FOUND), result)
   }
 
   @Test

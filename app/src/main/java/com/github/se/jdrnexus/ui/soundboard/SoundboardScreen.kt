@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.soundboard
 
+import android.text.format.DateUtils
 import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -29,9 +31,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Bolt
-import androidx.compose.material.icons.outlined.Dangerous
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Hardware
 import androidx.compose.material.icons.outlined.HistoryEdu
 import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.Notifications
@@ -63,6 +63,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -80,17 +81,10 @@ import com.github.se.jdrnexus.model.soundboard.SoundboardError
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
-import java.util.Locale
 import kotlin.math.roundToInt
 
 /** Number of rows of the sound effects grid, as in the mockup. */
 private const val EFFECT_ROWS = 3
-
-/**
- * Columns of effects that fit on a phone in portrait. With more, the grid scrolls sideways and its
- * count says "Swipe →".
- */
-private const val VISIBLE_EFFECT_COLUMNS = 3
 
 /** Height of one sound effect button. */
 private val EFFECT_TILE_HEIGHT = 56.dp
@@ -361,8 +355,9 @@ private fun VolumeCard(
  * The ambience section: the playlist tabs, the track menu with the play/pause button, the elapsed
  * time and the Looping toggle.
  *
- * Picking a track in the menu starts it. With nothing playing, play/pause starts the selected
- * playlist from its first track; otherwise it pauses or resumes the current track.
+ * Picking a track in the menu starts it. Play/pause pauses the current track, or resumes it when it
+ * is paused and its playlist is selected. Otherwise it starts the selected playlist from its first
+ * track.
  */
 @Composable
 private fun AmbienceSection(
@@ -375,7 +370,11 @@ private fun AmbienceSection(
   val selectedPlaylist = board.playlists.firstOrNull { it.id == uiState.selectedPlaylistId }
   val playingPlaylist = board.playlists.firstOrNull { it.id == ambience?.playlistId }
   val playingTrack = playingPlaylist?.tracks?.firstOrNull { it.audio.id == ambience?.audioId }
-
+  // A paused track resumes from its own playlist's tab; from another tab, play starts that
+  // playlist instead.
+  val resumable = ambience?.takeUnless {
+    it.status == AmbiencePlaybackStatus.PAUSED && it.playlistId != uiState.selectedPlaylistId
+  }
   SoundboardSection(
       title = stringResource(R.string.soundboard_ambience),
       trailing = stringResource(R.string.soundboard_ambience_hint),
@@ -396,8 +395,9 @@ private fun AmbienceSection(
     ) {
       Box(Modifier.weight(1f)) {
         TrackField(
-            playlistName = playingPlaylist?.name,
-            trackName = playingTrack?.name,
+            // The field describes the playlist whose tracks its menu lists: the selected one.
+            playlistName = selectedPlaylist?.name,
+            trackName = playingTrack?.name?.takeIf { playingPlaylist == selectedPlaylist },
             status = ambience?.status,
             enabled = selectedPlaylist?.tracks?.isNotEmpty() == true,
             onClick = { viewModel.setTrackMenuExpanded(true) },
@@ -419,11 +419,10 @@ private fun AmbienceSection(
         }
       }
       PlayPauseButton(
-          status = ambience?.status,
+          status = resumable?.status,
           canStart = selectedPlaylist?.tracks?.isNotEmpty() == true,
           onPlay = {
-            // Resume the paused track, or start the selected playlist from its first track.
-            if (ambience != null) viewModel.playAmbience(ambience.playlistId, ambience.audioId)
+            if (resumable != null) viewModel.playAmbience(resumable.playlistId, resumable.audioId)
             else selectedPlaylist?.let { viewModel.playPlaylist(it.id) }
           },
           onPause = viewModel::pauseAmbience,
@@ -504,8 +503,9 @@ internal fun PlaylistTab(
 }
 
 /**
- * The field that opens the track menu. It shows the current playlist and track with their [status]
- * (starting, playing or paused), or asks to choose a track when nothing plays.
+ * The field that opens the track menu of the selected playlist. It shows that playlist's current
+ * track with its [status] (starting, playing or paused), or asks to choose a track when none of its
+ * tracks plays.
  */
 @Composable
 private fun TrackField(
@@ -558,9 +558,9 @@ private fun TrackField(
 }
 
 /**
- * Plays or pauses the ambience. With nothing playing ([status] is null), it starts the selected
- * playlist, so it is enabled only when that playlist has tracks ([canStart]). Disabled while a
- * track is being prepared, when it shows a spinner instead of its icon.
+ * Plays or pauses the ambience. With no track to pause or resume ([status] is null), it starts the
+ * selected playlist, so it is enabled only when that playlist has tracks ([canStart]). Disabled
+ * while a track is being prepared, when it shows a spinner instead of its icon.
  */
 @Composable
 private fun PlayPauseButton(
@@ -643,17 +643,21 @@ private fun EffectsSection(
   // The effects read row by row, as the Game Master ordered them: column c holds the effects
   // c, c + columns and c + 2 × columns.
   val columns = (effects.size + EFFECT_ROWS - 1) / EFFECT_ROWS
+  // The count says "Swipe →" only when the columns do not all fit the window's width.
+  val gridState = rememberLazyListState()
+  val canSwipe = gridState.canScrollForward || gridState.canScrollBackward
   SoundboardSection(
       title = stringResource(R.string.soundboard_effects),
       trailing =
           pluralStringResource(
-              if (columns > VISIBLE_EFFECT_COLUMNS) R.plurals.soundboard_effects_count_swipe
+              if (canSwipe) R.plurals.soundboard_effects_count_swipe
               else R.plurals.soundboard_effects_count,
               effects.size,
               effects.size,
           ),
   ) {
     LazyRow(
+        state = gridState,
         modifier = Modifier.fillMaxWidth().testTag(C.Tag.soundboard_effects_grid),
         horizontalArrangement = Arrangement.spacedBy(EFFECT_TILE_SPACING),
     ) {
@@ -809,23 +813,25 @@ internal fun soundboardErrorText(reason: SoundboardError): Int =
       SoundboardError.UNKNOWN -> R.string.soundboard_error_unknown
     }
 
-/** The Material icon drawn for this effect icon. */
+/**
+ * The Material icon drawn for this effect icon. The sword and skull are Material Symbols drawables,
+ * because the Compose icon library has neither.
+ */
+@Composable
 internal fun SoundEffectIcon.imageVector(): ImageVector =
     when (this) {
       SoundEffectIcon.SPEAKER -> Icons.AutoMirrored.Outlined.VolumeUp
-      SoundEffectIcon.SWORD -> Icons.Outlined.Hardware
+      SoundEffectIcon.SWORD -> ImageVector.vectorResource(R.drawable.ic_sword)
       SoundEffectIcon.SHIELD -> Icons.Outlined.Shield
       SoundEffectIcon.ARROW -> Icons.AutoMirrored.Outlined.ArrowForward
       SoundEffectIcon.LIGHTNING -> Icons.Outlined.Bolt
       SoundEffectIcon.FIRE -> Icons.Outlined.LocalFireDepartment
-      SoundEffectIcon.SKULL -> Icons.Outlined.Dangerous
+      SoundEffectIcon.SKULL -> ImageVector.vectorResource(R.drawable.ic_skull)
       SoundEffectIcon.FOOTSTEPS -> Icons.AutoMirrored.Outlined.DirectionsWalk
       SoundEffectIcon.SCROLL -> Icons.Outlined.HistoryEdu
       SoundEffectIcon.BELL -> Icons.Outlined.Notifications
     }
 
-/** Formats [durationMs] as minutes and seconds, such as "02:34". */
-internal fun formatDuration(durationMs: Long): String {
-  val totalSeconds = durationMs.coerceAtLeast(0L) / 1000
-  return String.format(Locale.ROOT, "%02d:%02d", totalSeconds / 60, totalSeconds % 60)
-}
+/** Formats [durationMs] as minutes and seconds, such as "02:34", with hours past an hour. */
+internal fun formatDuration(durationMs: Long): String =
+    DateUtils.formatElapsedTime(durationMs.coerceAtLeast(0L) / 1000)

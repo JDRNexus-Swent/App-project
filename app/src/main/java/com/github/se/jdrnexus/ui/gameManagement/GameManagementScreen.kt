@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -69,6 +68,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.R
+import com.github.se.jdrnexus.model.help.HelpSeenRepositorySharedPreferences
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
@@ -77,6 +77,7 @@ import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.resources.showComingSoon
 import com.github.se.jdrnexus.ui.help.HelpSheet
 import com.github.se.jdrnexus.ui.help.HelpViewModel
+import com.github.se.jdrnexus.ui.profile.ProfileButton
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementUiState
@@ -133,8 +134,9 @@ internal object GameManagementTestTags {
  * Selecting "Enter workspace" invokes [onEnterWorkspace] with that group's ID so the destination
  * can load its shared files. Selecting "Play" invokes [onPlay] with that group's ID and the user's
  * role in it, so the destination can open the matching game screen. [gameManagementViewModel]
- * provides the loading and creation state. [helpViewModel] decides when the help sheet, opened by
- * the top bar's help button, is shown.
+ * provides the loading and creation state. [helpViewModel] decides when the help sheet is shown: by
+ * itself on the first visit on this device, then when the top bar's help button is tapped. The top
+ * bar's profile button, shown only when [onProfileClick] is given, invokes it.
  */
 @Composable
 fun GameManagementScreen(
@@ -143,7 +145,15 @@ fun GameManagementScreen(
     onManageGroup: (String) -> Unit,
     onTabSelected: (String) -> Unit,
     gameManagementViewModel: GameManagementViewModel,
-    helpViewModel: HelpViewModel = viewModel(),
+    helpViewModel: HelpViewModel =
+        viewModel(
+            factory =
+                HelpViewModel.factory(
+                    topic = CAMPAIGNS_HELP_TOPIC,
+                    repository = HelpSeenRepositorySharedPreferences(LocalContext.current),
+                )
+        ),
+    onProfileClick: (() -> Unit)? = null,
 ) {
   val uiState by gameManagementViewModel.uiState.collectAsState()
   val helpState by helpViewModel.uiState.collectAsState()
@@ -165,6 +175,7 @@ fun GameManagementScreen(
       showHelp = helpState.showHelp,
       onHelpClick = helpViewModel::onHelpClicked,
       onHelpDismiss = helpViewModel::onHelpDismissed,
+      onProfileClick = onProfileClick,
   )
 }
 
@@ -177,6 +188,7 @@ fun GameManagementScreen(
  * @param showHelp whether the help sheet with [campaignHelpPages] is shown.
  * @param onHelpClick called by the top bar's help button.
  * @param onHelpDismiss called once the help sheet has been closed.
+ * @param onProfileClick called by the top bar's profile button, which is hidden when null.
  * @param renderDialogsAsWindow whether dialogs open in their own window; tests render them inline.
  */
 @Composable
@@ -196,6 +208,7 @@ internal fun GameManagementScreenContent(
     showHelp: Boolean = false,
     onHelpClick: () -> Unit = {},
     onHelpDismiss: () -> Unit = {},
+    onProfileClick: (() -> Unit)? = null,
     renderDialogsAsWindow: Boolean = true,
 ) {
   val colors = gameManagementColors()
@@ -207,7 +220,13 @@ internal fun GameManagementScreenContent(
 
   Scaffold(
       containerColor = colors.background,
-      topBar = { GameManagementHeader(colors = colors, onHelpClick = onHelpClick) },
+      topBar = {
+        GameManagementHeader(
+            colors = colors,
+            onHelpClick = onHelpClick,
+            onProfileClick = onProfileClick,
+        )
+      },
       bottomBar = {
         ScreenBottomBar(
             selectedTab = "Campaigns",
@@ -361,10 +380,15 @@ internal fun GameManagementScreenContent(
 
 /**
  * Shows the profile, app identity, help button and notification affordance at the top of the
- * screen. The help button calls [onHelpClick].
+ * screen. The help button calls [onHelpClick] and the profile button, shown when [onProfileClick]
+ * is not null, calls it.
  */
 @Composable
-private fun GameManagementHeader(colors: GameManagementColors, onHelpClick: () -> Unit) {
+private fun GameManagementHeader(
+    colors: GameManagementColors,
+    onHelpClick: () -> Unit,
+    onProfileClick: (() -> Unit)?,
+) {
   val context = LocalContext.current
   AppTopBar(
       title = "JDRNexus",
@@ -380,18 +404,7 @@ private fun GameManagementHeader(colors: GameManagementColors, onHelpClick: () -
           )
         }
       },
-      leadingContent = {
-        Box(
-            modifier =
-                Modifier.size(38.dp)
-                    .clip(CircleShape)
-                    .background(colors.raised)
-                    .border(1.dp, colors.outline, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-          Icon(Icons.Filled.Person, contentDescription = "Profile", tint = colors.secondaryText)
-        }
-      },
+      leadingContent = { if (onProfileClick != null) ProfileButton(onClick = onProfileClick) },
       trailingContent = {
         IconButton(
             onClick = onHelpClick,
@@ -653,27 +666,12 @@ internal fun CampaignGroupCard(
     }
     Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
       Row(verticalAlignment = Alignment.CenterVertically) {
-        Row(
+        RoleBadge(
+            isGameMaster = isGameMaster,
+            colors = colors,
             modifier =
-                Modifier.campaignCardHighlight(CampaignCardElement.ROLE, highlighted, colors)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(colors.raised)
-                    .padding(horizontal = 7.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-          Icon(
-              if (isGameMaster) Icons.Filled.Settings else Icons.Filled.Person,
-              contentDescription = null,
-              modifier = Modifier.size(11.dp),
-              tint = colors.accent,
-          )
-          Text(
-              text = if (isGameMaster) "GameMaster" else "Player",
-              color = colors.accent,
-              fontSize = 9.sp,
-              modifier = Modifier.padding(start = 4.dp),
-          )
-        }
+                Modifier.campaignCardHighlight(CampaignCardElement.ROLE, highlighted, colors),
+        )
         Spacer(Modifier.weight(1f))
         Text(
             "Your group",
@@ -776,6 +774,40 @@ internal fun CampaignGroupCard(
         }
       }
     }
+  }
+}
+
+/**
+ * The badge naming a member's role in a group: a gear and "GameMaster", or a person and "Player".
+ * Shared by [CampaignGroupCard] and the member cards of [GroupManagementScreen], so both show the
+ * same role badge.
+ */
+@Composable
+internal fun RoleBadge(
+    isGameMaster: Boolean,
+    colors: GameManagementColors,
+    modifier: Modifier = Modifier,
+) {
+  Row(
+      modifier =
+          modifier
+              .clip(RoundedCornerShape(5.dp))
+              .background(colors.raised)
+              .padding(horizontal = 7.dp, vertical = 4.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Icon(
+        if (isGameMaster) Icons.Filled.Settings else Icons.Filled.Person,
+        contentDescription = null,
+        modifier = Modifier.size(11.dp),
+        tint = colors.accent,
+    )
+    Text(
+        stringResource(if (isGameMaster) R.string.role_game_master else R.string.role_player),
+        color = colors.accent,
+        fontSize = 9.sp,
+        modifier = Modifier.padding(start = 4.dp),
+    )
   }
 }
 

@@ -41,6 +41,7 @@ object C {
     fun gamePlayerNavigationTab(name: String) = "game_player_navigation_$name"
 
     const val main_screen_container = "main_screen_container"
+    const val session_loading = "session_loading"
 
     const val shared_top_bar = "shared_top_bar"
     const val shared_back_button = "shared_back_button"
@@ -63,6 +64,12 @@ object C {
     const val profile_loading = "profile_loading"
     const val profile_saving = "profile_saving"
     const val profile_error = "profile_error"
+    /** Dialog asking to confirm leaving the profile while a save or picture upload runs. */
+    const val profile_leave_dialog = "profile_leave_dialog"
+    const val profile_leave_confirm = "profile_leave_confirm"
+    const val profile_leave_stay = "profile_leave_stay"
+    /** Button opening the profile screen, in the top bar of Home and of Campaigns. */
+    const val open_profile = "open_profile"
 
     const val sign_in_email = "auth_sign_in_email"
     const val sign_in_password = "auth_sign_in_password"
@@ -232,6 +239,19 @@ object C {
 
     /** Tag of the button restoring the hidden GM dashboard section [key]. */
     fun gameGmRestore(key: String) = "game_gm_restore_$key"
+
+    const val group_management_loading = "group_management_loading"
+    const val group_management_error = "group_management_error"
+    const val group_management_delete = "group_management_delete"
+    const val group_management_confirm = "group_management_confirm"
+    const val group_management_cancel = "group_management_cancel"
+    const val group_management_retry = "group_management_retry"
+
+    /** Tag of the row of the group member [uid] on the group management screen. */
+    fun groupManagementMember(uid: String) = "group_management_member_$uid"
+
+    /** Tag of the button removing the player [uid] on the group management screen. */
+    fun groupManagementRemove(uid: String) = "group_management_remove_$uid"
 
     const val soundboard_loading = "soundboard_loading"
     const val soundboard_error = "soundboard_error"
