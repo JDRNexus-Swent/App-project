@@ -233,6 +233,24 @@
     <string name="campaign_help_workspace_body">\"Enter workspace\" opens the group\'s shared files: your personal files (Files tab) stay private until you share them, and a hidden file is seen only by its owner and the GameMaster. \"Play\" opens the game: the session screen for the GameMaster, their character for players.</string>
     <string name="campaign_help_example_name">The Sunken Crown</string>
     <string name="campaign_help_example_system">Fantasy campaign</string>
+    <string name="group_management_title">Manage group</string>
+    <string name="role_game_master">GameMaster</string>
+    <string name="role_player">Player</string>
+    <plurals name="group_management_member_count">
+        <item quantity="one">%d member</item>
+        <item quantity="other">%d members</item>
+    </plurals>
+    <string name="group_management_remove">Remove</string>
+    <string name="group_management_delete">Delete group</string>
+    <string name="group_management_cancel">Cancel</string>
+    <string name="group_management_retry">Retry</string>
+    <string name="group_management_remove_title">Remove this player?</string>
+    <string name="group_management_remove_message">%1$s will lose access to the group and its workspace.</string>
+    <string name="group_management_delete_title">Delete \"%1$s\"?</string>
+    <string name="group_management_delete_message">The group, its workspace and its invitation code will be deleted for every member. Personal files are kept. This cannot be undone.</string>
+    <string name="group_management_load_failed">Couldn\'t load the group.</string>
+    <string name="group_management_remove_failed">Couldn\'t remove the player. Try again.</string>
+    <string name="group_management_delete_failed">Couldn\'t delete the group. Try again.</string>
 
     <!-- Soundboard screen -->
     <string name="soundboard_title">Soundboard</string>

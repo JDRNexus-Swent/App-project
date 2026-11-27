@@ -70,6 +70,8 @@ import com.github.se.jdrnexus.ui.game.GameScreenPlayer
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementScreen
 import com.github.se.jdrnexus.ui.gameManagement.GameScreenGM
 import com.github.se.jdrnexus.ui.gameManagement.GameViewModelGMViewModel
+import com.github.se.jdrnexus.ui.gameManagement.GroupManagementScreen
+import com.github.se.jdrnexus.ui.gameManagement.GroupManagementViewModel
 import com.github.se.jdrnexus.ui.groupWorkSpace.GroupWorkSpaceScreen
 import com.github.se.jdrnexus.ui.groupWorkSpace.GroupWorkspaceViewModel
 import com.github.se.jdrnexus.ui.home.HomeScreen
@@ -161,6 +163,18 @@ object GamePlayerRoute {
 
   /** Builds the route opening the player's game screen of [groupId]. */
   fun createRoute(groupId: String): String = "game_player/${Uri.encode(groupId)}"
+}
+
+/**
+ * Route of the screen where a Game Master manages one group (members, removal, deletion). The list
+ * of the user's groups (Campaigns) is [AllRoutes.GroupManagement].
+ */
+object ManageGroupRoute {
+  const val route = "manage_group/{groupId}"
+  const val groupIdArgument = "groupId"
+
+  /** Builds the route opening the management screen of [groupId]. */
+  fun createRoute(groupId: String): String = "manage_group/${Uri.encode(groupId)}"
 }
 
 /** The first screen for the session found at launch, or null while it is still being checked. */
@@ -451,7 +465,11 @@ fun JDRNexusApp(
                     }
                 navigation.navigate(route) { launchSingleTop = true }
               },
-              onManageGroup = { showComingSoon(context, "Group management") },
+              onManageGroup = { groupId ->
+                navigation.navigate(ManageGroupRoute.createRoute(groupId)) {
+                  launchSingleTop = true
+                }
+              },
               onProfileClick = openProfile,
               onTabSelected = { tab ->
                 when (tab) {
@@ -461,6 +479,32 @@ fun JDRNexusApp(
                   "Map" -> navigation.navigate(AllRoutes.Map.name)
                 }
               },
+          )
+        }
+
+        composable(route = ManageGroupRoute.route) { backStackEntry ->
+          val groupId =
+              requireNotNull(backStackEntry.arguments?.getString(ManageGroupRoute.groupIdArgument))
+          val groupManagementViewModel: GroupManagementViewModel =
+              viewModel(
+                  factory =
+                      viewModelFactory {
+                        initializer {
+                          GroupManagementViewModel(
+                              groupId,
+                              activeGroupRepository,
+                              activeAuthRepository,
+                          )
+                        }
+                      }
+              )
+          GroupManagementScreen(
+              viewModel = groupManagementViewModel,
+              onBack = { navigation.popBackStack() },
+              onGroupDeleted = {
+                navigation.popBackStack(AllRoutes.GroupManagement.name, inclusive = false)
+              },
+              onTabSelected = onGameTabSelected,
           )
         }
 
