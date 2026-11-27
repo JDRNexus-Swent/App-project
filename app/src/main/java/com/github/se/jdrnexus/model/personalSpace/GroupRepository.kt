@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Sonnet 5.5
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.model.personalSpace
 
 import kotlinx.coroutines.flow.Flow
@@ -165,6 +166,12 @@ enum class InvitationError {
 
   /** Any other failure: network, timeout, permission or unexpected error. */
   NETWORK,
+
+  /**
+   * The device was offline when the request should have started, or went offline while it ran. Set
+   * by the ViewModel, which sees the connection; the repository never returns it.
+   */
+  OFFLINE,
 }
 
 /** Failure of an invitation operation. Every failed [Result] of those operations holds one. */

@@ -4,6 +4,9 @@ package com.github.se.jdrnexus.ui.dice
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.github.se.jdrnexus.model.connectivity.ConnectivityRepository
+import com.github.se.jdrnexus.model.connectivity.OfflineException
+import com.github.se.jdrnexus.model.connectivity.failWhenOffline
 import com.github.se.jdrnexus.model.repository.DiceLogic
 import com.github.se.jdrnexus.model.repository.DiceRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +23,7 @@ class DiceViewModelFactory(
     private val diceLogic: DiceLogic,
     private val diceRepository: DiceRepository?,
     private val groupId: String? = null,
+    private val connectivityRepository: ConnectivityRepository? = null,
 ) : ViewModelProvider.Factory {
 
   @Suppress("UNCHECKED_CAST")
@@ -27,7 +31,7 @@ class DiceViewModelFactory(
     // Verify that the requested ViewModel class matches our DiceViewModel
     if (modelClass.isAssignableFrom(DiceViewModel::class.java)) {
       // Construct and return the ViewModel with the provided parameters
-      return DiceViewModel(diceLogic, diceRepository, groupId) as T
+      return DiceViewModel(diceLogic, diceRepository, groupId, connectivityRepository) as T
     }
     throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
   }
@@ -41,11 +45,15 @@ class DiceViewModelFactory(
  *   [groupId] is null.
  * @property groupId The ID of the current campaign group. If null, the app operates in
  *   offline/local mode and skips database synchronization.
+ * @property connectivityRepository Tells whether the device is online, for group rolls: saving one
+ *   needs the server, so offline, or when the connection drops while it is saved, the save stops
+ *   with an error instead of waiting forever. May be null when [groupId] is null.
  */
 class DiceViewModel(
     private val diceLogic: DiceLogic,
     private val diceRepository: DiceRepository?,
     private val groupId: String? = null,
+    private val connectivityRepository: ConnectivityRepository? = null,
 ) : ViewModel(), DiceInterfaceVM {
 
   // Internal mutable state
@@ -91,7 +99,13 @@ class DiceViewModel(
     if (groupId != null && repository != null) {
       // Launch a coroutine in the ViewModel's scope so it doesn't block the main thread
       viewModelScope.launch {
-        val saveResult = repository.saveRollResult(groupId, result)
+        val save = suspend { repository.saveRollResult(groupId, result) }
+        val saveResult =
+            try {
+              connectivityRepository?.isOnline?.failWhenOffline(save) ?: save()
+            } catch (offline: OfflineException) {
+              Result.failure(offline)
+            }
 
         // If saving fails (e.g., permission error or weird edge case), notify the UI
         if (saveResult.isFailure) {

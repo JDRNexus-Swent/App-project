@@ -7,6 +7,7 @@ import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.utils.MainDispatcherRule
+import com.github.se.jdrnexus.utils.PendingWritesWorkspaceRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -407,6 +409,108 @@ class AuthViewModelTest {
   }
 
   @Test
+  fun requestSignOutSignsOutDirectlyWithoutUnsyncedChanges() = runTest {
+    val repository = FakeAuthRepository()
+    val workspace = PendingWritesWorkspaceRepository(pendingWrites = false)
+    val viewModel = AuthViewModel(repository, workspace)
+
+    viewModel.requestSignOut()
+    runCurrent()
+
+    assertEquals(1, workspace.pendingWritesChecks)
+    assertEquals(1, repository.signOutCalls)
+    assertFalse(viewModel.uiState.value.isSignOutWarningShown)
+    assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun requestSignOutWarnsInsteadOfSigningOutWithUnsyncedChanges() = runTest {
+    val repository = FakeAuthRepository()
+    val viewModel =
+        AuthViewModel(repository, PendingWritesWorkspaceRepository(pendingWrites = true))
+
+    viewModel.requestSignOut()
+    runCurrent()
+
+    assertTrue(viewModel.uiState.value.isSignOutWarningShown)
+    assertEquals(0, repository.signOutCalls)
+    assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun confirmSignOutClosesTheWarningAndSignsOut() = runTest {
+    val repository = FakeAuthRepository()
+    val viewModel =
+        AuthViewModel(repository, PendingWritesWorkspaceRepository(pendingWrites = true))
+    viewModel.requestSignOut()
+    runCurrent()
+
+    viewModel.confirmSignOut()
+    runCurrent()
+
+    assertFalse(viewModel.uiState.value.isSignOutWarningShown)
+    assertEquals(1, repository.signOutCalls)
+    assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun dismissSignOutWarningClosesTheWarningAndStaysSignedIn() = runTest {
+    val repository = FakeAuthRepository()
+    val viewModel =
+        AuthViewModel(repository, PendingWritesWorkspaceRepository(pendingWrites = true))
+    viewModel.requestSignOut()
+    runCurrent()
+
+    viewModel.dismissSignOutWarning()
+    runCurrent()
+
+    assertFalse(viewModel.uiState.value.isSignOutWarningShown)
+    assertEquals(0, repository.signOutCalls)
+  }
+
+  @Test
+  fun requestSignOutIsLoadingFromTheCallUntilTheWarningOpens() = runTest {
+    val viewModel =
+        AuthViewModel(FakeAuthRepository(), PendingWritesWorkspaceRepository(pendingWrites = true))
+
+    viewModel.requestSignOut()
+    val afterCall = viewModel.uiState.value.status
+    runCurrent()
+
+    assertEquals(AuthStatus.Loading, afterCall)
+    assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
+    assertTrue(viewModel.uiState.value.isSignOutWarningShown)
+  }
+
+  @Test
+  fun requestSignOutIsIgnoredWhileSigningOut() = runTest {
+    val repository = FakeAuthRepository().apply { signOutResponse = CompletableDeferred() }
+    val workspace = PendingWritesWorkspaceRepository(pendingWrites = false)
+    val viewModel = AuthViewModel(repository, workspace)
+    viewModel.requestSignOut()
+    runCurrent()
+
+    viewModel.requestSignOut()
+    runCurrent()
+
+    assertEquals(1, workspace.pendingWritesChecks)
+    assertEquals(1, repository.signOutCalls)
+    assertEquals(AuthStatus.Loading, viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun requestSignOutWithoutWorkspaceRepositorySignsOutDirectly() = runTest {
+    val repository = FakeAuthRepository()
+    val viewModel = AuthViewModel(repository)
+
+    viewModel.requestSignOut()
+    runCurrent()
+
+    assertEquals(1, repository.signOutCalls)
+    assertFalse(viewModel.uiState.value.isSignOutWarningShown)
+  }
+
+  @Test
   fun signOutCallsRepositoryAndReturnsToIdle() = runTest {
     val repository = FakeAuthRepository()
     val response = CompletableDeferred<AuthResult<Unit>>()
@@ -450,6 +554,48 @@ class AuthViewModelTest {
 
     assertEquals(1, repository.signOutCalls)
     assertEquals(AuthStatus.Idle, viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun signOutSuccessSetsSignedOutUntilHandled() = runTest {
+    val viewModel = AuthViewModel(FakeAuthRepository())
+
+    viewModel.signOut()
+    runCurrent()
+    val afterSignOut = viewModel.uiState.value.isSignedOut
+    viewModel.onSignedOutHandled()
+
+    assertTrue(afterSignOut)
+    assertFalse(viewModel.uiState.value.isSignedOut)
+  }
+
+  @Test
+  fun signOutFailureDoesNotSetSignedOut() = runTest {
+    val repository =
+        FakeAuthRepository().apply {
+          signOutResponse = CompletableDeferred(AuthResult.Failure(AuthError.UNKNOWN))
+        }
+    val viewModel = AuthViewModel(repository)
+
+    viewModel.signOut()
+    runCurrent()
+
+    assertFalse(viewModel.uiState.value.isSignedOut)
+  }
+
+  @Test
+  fun unsyncedWarningDoesNotSetSignedOutUntilConfirmed() = runTest {
+    val viewModel =
+        AuthViewModel(FakeAuthRepository(), PendingWritesWorkspaceRepository(pendingWrites = true))
+
+    viewModel.requestSignOut()
+    runCurrent()
+    val whileWarning = viewModel.uiState.value.isSignedOut
+    viewModel.confirmSignOut()
+    runCurrent()
+
+    assertFalse(whileWarning)
+    assertTrue(viewModel.uiState.value.isSignedOut)
   }
 
   @Test
@@ -666,7 +812,8 @@ class AuthViewModelTest {
     viewModel.signOut()
     runCurrent()
 
-    assertEquals(AuthUiState(), viewModel.uiState.value)
+    // Only the signed-out flag is left, for Home to handle.
+    assertEquals(AuthUiState(isSignedOut = true), viewModel.uiState.value)
   }
 
   @Test

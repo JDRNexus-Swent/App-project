@@ -2,6 +2,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.gameManagement
 
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertCountEquals
@@ -322,6 +323,54 @@ class GameManagementScreenTest {
     composeTestRule.onNodeWithTag(C.Tag.help_next).assertIsDisplayed()
   }
 
+  @Test
+  fun offlineDisablesCreateJoinAndInviteWithNeedsConnectionUntilReconnect() {
+    val isOnline = mutableStateOf(false)
+    setContent(
+        uiState = stateFor(CampaignGroup(id = "gm-group", name = "Crown", gameMasterId = "user-1")),
+        isOnline = isOnline,
+    )
+
+    composeTestRule.onNodeWithTag(C.Tag.needs_connection).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_BUTTON).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.join_group_button).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.invite_button).assertIsNotEnabled()
+    // Content already loaded stays usable offline.
+    composeTestRule.onNodeWithTag(C.Tag.enter_workspace_button).assertIsEnabled()
+
+    isOnline.value = true
+
+    composeTestRule.onAllNodesWithTag(C.Tag.needs_connection).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_BUTTON).assertIsEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.join_group_button).assertIsEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.invite_button).assertIsEnabled()
+  }
+
+  @Test
+  fun offlineDisablesTheFirstGroupButtonOfTheEmptyState() {
+    setContent(uiState = stateFor(), isOnline = mutableStateOf(false))
+
+    composeTestRule.onNodeWithText("Create your first group").assertIsNotEnabled()
+  }
+
+  @Test
+  fun createDialogDisablesCreateWithNeedsConnectionWhileOffline() {
+    var attempts = 0
+    setContent(
+        uiState = stateFor().copy(isCreateDialogOpen = true, groupName = "Keep this name"),
+        onCreateGroup = { attempts++ },
+        isOnline = mutableStateOf(false),
+    )
+
+    composeTestRule.onNodeWithTag(C.Tag.create_group_needs_connection).assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(GameManagementTestTags.CREATE_GROUP_CONFIRM)
+        .assertIsNotEnabled()
+        .performClick()
+
+    assertEquals(0, attempts)
+  }
+
   private fun assertPlayReports(gameMasterId: String, expectedRole: GroupRole) {
     var played: Pair<String, GroupRole>? = null
     setContent(
@@ -345,6 +394,7 @@ class GameManagementScreenTest {
       onDismissSuccess: () -> Unit = {},
       showHelp: Boolean = false,
       onHelpClick: () -> Unit = {},
+      isOnline: MutableState<Boolean> = mutableStateOf(true),
       onProfileClick: (() -> Unit)? = null,
   ) {
     if (uiState.isCreateDialogOpen) {
@@ -368,6 +418,7 @@ class GameManagementScreenTest {
             onManageGroup = {},
             invitationVM = RecordingInvitationVM(),
             onTabSelected = {},
+            isOnline = isOnline.value,
             showHelp = showHelp,
             onHelpClick = onHelpClick,
             onProfileClick = onProfileClick,

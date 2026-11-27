@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -34,9 +35,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.AppTopBar
+import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
@@ -79,17 +83,16 @@ fun HomeScreen(
   val context = LocalContext.current
   val colors = MaterialTheme.colorScheme
 
-  LaunchedEffect(uiState.status) {
-    when (uiState.status) {
-      AuthStatus.Idle -> {
-        if (logoutRequested.value) {
-          logoutRequested.value = false
-          onLogout()
-        }
-      }
-      is AuthStatus.Error -> logoutRequested.value = false
-      else -> Unit
+  // Keyed on the flag, not the status: a sign-out that ends at once never shows Loading.
+  LaunchedEffect(uiState.isSignedOut) {
+    if (uiState.isSignedOut) {
+      logoutRequested.value = false
+      viewModel.onSignedOutHandled()
+      onLogout()
     }
+  }
+  LaunchedEffect(uiState.status) {
+    if (uiState.status is AuthStatus.Error) logoutRequested.value = false
   }
 
   Scaffold(
@@ -120,7 +123,7 @@ fun HomeScreen(
                   onClick = {
                     if (!logoutRequested.value) {
                       logoutRequested.value = true
-                      viewModel.signOut()
+                      viewModel.requestSignOut()
                     }
                   },
                   enabled = !logoutRequested.value && uiState.status !is AuthStatus.Loading,
@@ -222,4 +225,50 @@ fun HomeScreen(
       }
     }
   }
+
+  if (uiState.isSignOutWarningShown) {
+    UnsyncedChangesSignOutDialog(
+        onCancel = {
+          logoutRequested.value = false
+          viewModel.dismissSignOutWarning()
+        },
+        onConfirm = {
+          // Set again: the dialog lives in the ViewModel, so it survives a rotation that resets it.
+          logoutRequested.value = true
+          viewModel.confirmSignOut()
+        },
+    )
+  }
+}
+
+/**
+ * Warns that changes made offline have not reached the server yet and would be lost by signing out.
+ * [onConfirm] signs out anyway; [onCancel], or dismissing the dialog, stays signed in.
+ */
+@Composable
+internal fun UnsyncedChangesSignOutDialog(onCancel: () -> Unit, onConfirm: () -> Unit) {
+  AlertDialog(
+      onDismissRequest = onCancel,
+      modifier = Modifier.testTag(C.Tag.sign_out_unsynced_dialog),
+      title = { Text(stringResource(R.string.sign_out_unsynced_title)) },
+      text = { Text(stringResource(R.string.sign_out_unsynced_message)) },
+      confirmButton = {
+        TextButton(
+            onClick = onConfirm,
+            modifier = Modifier.testTag(C.Tag.sign_out_unsynced_confirm),
+            colors =
+                ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+        ) {
+          Text(stringResource(R.string.sign_out_unsynced_confirm))
+        }
+      },
+      dismissButton = {
+        TextButton(
+            onClick = onCancel,
+            modifier = Modifier.testTag(C.Tag.sign_out_unsynced_cancel),
+        ) {
+          Text(stringResource(R.string.sign_out_unsynced_cancel))
+        }
+      },
+  )
 }

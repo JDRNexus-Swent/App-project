@@ -16,6 +16,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.se.jdrnexus.R
+import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
@@ -39,6 +41,14 @@ data class AuthUiState(
     val passwordError: String? = null,
     val usernameError: String? = null,
     val status: AuthStatus = AuthStatus.Idle,
+    /** The user asked to sign out while some changes have not reached the server yet. */
+    val isSignOutWarningShown: Boolean = false,
+    /**
+     * A sign-out has just succeeded, and the screen has not left yet; it calls
+     * [AuthViewModel.onSignedOutHandled] once it has. A flag rather than the status, since a
+     * sign-out that ends at once goes from [AuthStatus.Idle] back to [AuthStatus.Idle].
+     */
+    val isSignedOut: Boolean = false,
 )
 
 sealed interface AuthStatus {
@@ -61,7 +71,18 @@ sealed interface SessionState {
   data object SignedOut : SessionState
 }
 
-class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
+/**
+ * Signs the user up, in and out.
+ *
+ * @param repository Authenticates the user.
+ * @param workspaceRepository Tells, before signing out, whether changes made offline have not
+ *   reached the server yet (see [requestSignOut]). Null skips that check, for the screens that
+ *   never sign out.
+ */
+class AuthViewModel(
+    private val repository: AuthRepository,
+    private val workspaceRepository: WorkspaceRepository? = null,
+) : ViewModel() {
 
   private val _uiState = MutableStateFlow(AuthUiState())
   val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
@@ -118,7 +139,8 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
           // The session ended outside a request of this ViewModel (expired, deleted account):
           // forget the previous user's form. A running request handles its own state.
           if (ended && _uiState.value.status !is AuthStatus.Loading) {
-            _uiState.value = AuthUiState()
+            // Keeps a sign-out of this ViewModel that Home has not handled yet.
+            _uiState.update { AuthUiState(isSignedOut = it.isSignedOut) }
           }
         }
   }
@@ -188,30 +210,76 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     authenticate { repository.signInWithEmail(form.email.trim(), form.password) }
   }
 
+  /**
+   * Signs out, unless some changes made offline have not reached the server yet: signing out would
+   * lose them, so [AuthUiState.isSignOutWarningShown] becomes true instead, and the screen asks the
+   * user to [confirmSignOut] or [dismissSignOutWarning].
+   *
+   * The status is [AuthStatus.Loading] from the call, through the check, until the sign-out ends;
+   * it goes back to [AuthStatus.Idle] when the warning opens. Ignored while already loading.
+   */
+  fun requestSignOut() {
+    if (_uiState.value.status is AuthStatus.Loading) return
+    setStatus(AuthStatus.Loading)
+    viewModelScope.launch {
+      if (workspaceRepository?.hasPendingWrites() == true) {
+        _uiState.update { it.copy(status = AuthStatus.Idle, isSignOutWarningShown = true) }
+      } else {
+        performSignOut()
+      }
+    }
+  }
+
+  /** Closes the unsynced-changes warning and signs out anyway; the unsynced changes are lost. */
+  fun confirmSignOut() {
+    _uiState.update { it.copy(isSignOutWarningShown = false) }
+    signOut()
+  }
+
+  /** Closes the unsynced-changes warning and stays signed in. */
+  fun dismissSignOutWarning() {
+    _uiState.update { it.copy(isSignOutWarningShown = false) }
+  }
+
+  /** Signs out at once, without checking for unsynced changes; see [requestSignOut]. */
   fun signOut() {
     if (_uiState.value.status is AuthStatus.Loading) return
     setStatus(AuthStatus.Loading)
+    viewModelScope.launch { performSignOut() }
+  }
 
-    viewModelScope.launch {
-      val status =
-          try {
-            when (val result = repository.signOut()) {
-              is AuthResult.Success -> {
-                // Nothing typed by the signed-out user stays in the shared sign-in form.
-                _uiState.value = AuthUiState()
-                AuthStatus.Idle
-              }
-              is AuthResult.Failure -> AuthStatus.Error(result.error.message)
-              is AuthResult.AccountCreatedNeedsRecovery -> AuthStatus.Error(result.message)
-            }
-          } catch (cancellation: CancellationException) {
-            setStatus(AuthStatus.Idle)
-            throw cancellation
-          } catch (_: Exception) {
-            AuthStatus.Error(AuthError.UNKNOWN.message)
+  /** The screen has left after [AuthUiState.isSignedOut]; clears that flag. */
+  fun onSignedOutHandled() {
+    _uiState.update { it.copy(isSignedOut = false) }
+  }
+
+  /**
+   * Signs out with the repository, the status being already [AuthStatus.Loading]. Success clears
+   * the form and sets [AuthUiState.isSignedOut].
+   */
+  private suspend fun performSignOut() {
+    val status =
+        try {
+          when (val result = repository.signOut()) {
+            is AuthResult.Success -> AuthStatus.Idle
+            is AuthResult.Failure -> AuthStatus.Error(result.error.message)
+            is AuthResult.AccountCreatedNeedsRecovery -> AuthStatus.Error(result.message)
           }
+        } catch (cancellation: CancellationException) {
+          setStatus(AuthStatus.Idle)
+          throw cancellation
+        } catch (_: Exception) {
+          AuthStatus.Error(AuthError.UNKNOWN.message)
+        }
 
-      setStatus(status)
+    // Idle here only after a successful sign-out; a cancellation never reaches this line.
+    _uiState.update {
+      if (status == AuthStatus.Idle) {
+        // Nothing typed by the signed-out user stays in the shared sign-in form.
+        AuthUiState(isSignedOut = true)
+      } else {
+        it.copy(status = status)
+      }
     }
   }
 
@@ -376,7 +444,9 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
 
   companion object {
     val Factory: ViewModelProvider.Factory = viewModelFactory {
-      initializer { AuthViewModel(AuthRepositoryFirebase()) }
+      initializer {
+        AuthViewModel(AuthRepositoryFirebase(), WorkspaceRepositoryProvider.repository)
+      }
     }
 
     const val MIN_PASSWORD_LENGTH = 6

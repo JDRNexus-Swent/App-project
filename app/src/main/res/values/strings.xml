@@ -3,6 +3,12 @@
 <resources>
     <string name="app_name">JDRNexus</string>
     <string name="offline_banner">You\'re offline</string>
+    <!-- Shown next to actions that need the server while the device is offline. -->
+    <string name="needs_connection">Needs a connection</string>
+    <string name="sign_out_unsynced_title">Sign out?</string>
+    <string name="sign_out_unsynced_message">Changes made offline will be lost: they have not reached the server yet.</string>
+    <string name="sign_out_unsynced_cancel">Cancel</string>
+    <string name="sign_out_unsynced_confirm">Sign out anyway</string>
     <string name="edit_lore_title">LORE NOTE</string>
     <string name="edit_lore_loading">Loading lore…</string>
     <string name="edit_lore_empty">No lore is loaded.</string>

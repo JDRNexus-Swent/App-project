@@ -17,6 +17,9 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.isNotEnabled
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -58,6 +61,104 @@ class GroupInvitationDialogsTest {
 
   private val uiState = MutableStateFlow(GameManagementUiState())
   private val invitationVM = RecordingInvitationVM()
+  private val isOnline = MutableStateFlow(true)
+
+  // --- Offline ---
+
+  @Test
+  fun joinIsDisabledWithNeedsConnectionWhileOfflineAndReenabledOnReconnect() {
+    openJoinDialog()
+    composeTestRule.onNodeWithTag(C.Tag.join_code_field).performTextInput(CODE)
+
+    isOnline.value = false
+
+    composeTestRule.onNodeWithTag(C.Tag.join_needs_connection).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.join_submit).assertIsNotEnabled().performClick()
+    assertEquals(emptyList<String>(), invitationVM.joinedCodes)
+
+    isOnline.value = true
+
+    composeTestRule.onAllNodesWithTag(C.Tag.join_needs_connection).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(C.Tag.join_submit).assertIsEnabled().performClick()
+    assertEquals(listOf(CODE), invitationVM.joinedCodes)
+  }
+
+  @Test
+  fun inviteDialogOfflineDisablesRegenerateButKeepsTheCodeShareable() {
+    openInviteDialog()
+
+    isOnline.value = false
+
+    composeTestRule.onNodeWithTag(C.Tag.invite_needs_connection).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.invite_regenerate).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.invite_copy).assertIsEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.invite_share).assertIsEnabled()
+  }
+
+  @Test
+  fun inviteDialogOfflineDisablesRetry() {
+    openInviteDialog(code = null)
+
+    isOnline.value = false
+
+    composeTestRule.onNodeWithTag(C.Tag.invite_retry).assertIsNotEnabled()
+  }
+
+  @Test
+  fun regenerateConfirmationIsDisabledWhenTheConnectionDrops() {
+    openInviteDialog()
+    composeTestRule.onNodeWithTag(C.Tag.invite_regenerate).performClick()
+
+    isOnline.value = false
+
+    composeTestRule.onNodeWithTag(C.Tag.invite_regenerate_confirm).assertIsNotEnabled()
+  }
+
+  @Test
+  fun offlineJoinErrorShowsNeedsConnection() {
+    openJoinDialog()
+
+    uiState.update { it.copy(joinState = JoinState.Error(InvitationError.OFFLINE)) }
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.join_error)
+        .assertTextEquals(string(R.string.needs_connection))
+  }
+
+  @Test
+  fun offlineJoinErrorWhileOfflineShowsNeedsConnectionOnce() {
+    openJoinDialog()
+
+    isOnline.value = false
+    uiState.update { it.copy(joinState = JoinState.Error(InvitationError.OFFLINE)) }
+
+    composeTestRule.onNodeWithTag(C.Tag.join_needs_connection).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(C.Tag.join_error).assertCountEquals(0)
+    composeTestRule.onAllNodes(needsConnectionTextIn(C.Tag.join_dialog)).assertCountEquals(1)
+  }
+
+  @Test
+  fun offlineInviteErrorWhileOfflineShowsNeedsConnectionOnce() {
+    openInviteDialog(code = null)
+
+    isOnline.value = false
+    uiState.update { it.copy(invitationState = InvitationState.Error(InvitationError.OFFLINE)) }
+
+    composeTestRule.onNodeWithTag(C.Tag.invite_needs_connection).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(C.Tag.invite_error).assertCountEquals(0)
+    composeTestRule.onAllNodes(needsConnectionTextIn(C.Tag.invite_dialog)).assertCountEquals(1)
+  }
+
+  @Test
+  fun otherErrorsStayShownBesideTheOfflineHint() {
+    openJoinDialog()
+
+    isOnline.value = false
+    uiState.update { it.copy(joinState = JoinState.Error(InvitationError.NETWORK)) }
+
+    composeTestRule.onNodeWithTag(C.Tag.join_needs_connection).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.join_error).assertIsDisplayed()
+  }
 
   // --- Entry points on the group list ---
 
@@ -502,6 +603,10 @@ class GroupInvitationDialogsTest {
     composeTestRule.waitForIdle()
   }
 
+  /** The "Needs a connection" texts in the dialog tagged [dialogTag], not the screen behind it. */
+  private fun needsConnectionTextIn(dialogTag: String): SemanticsMatcher =
+      hasText(string(R.string.needs_connection)) and hasAnyAncestor(hasTestTag(dialogTag))
+
   private fun openInviteDialog(code: String? = CODE, renderDialogsAsWindow: Boolean = false) {
     setContent(gameMasterGroup(), renderDialogsAsWindow = renderDialogsAsWindow)
     composeTestRule.onNodeWithTag(C.Tag.invite_button).performClick()
@@ -522,6 +627,7 @@ class GroupInvitationDialogsTest {
     composeTestRule.setContent {
       SampleAppTheme(darkTheme = true) {
         val state by uiState.collectAsState()
+        val online by isOnline.collectAsState()
         GameManagementScreenContent(
             uiState = state,
             onCreateGroupClick = {},
@@ -535,6 +641,7 @@ class GroupInvitationDialogsTest {
             onManageGroup = {},
             invitationVM = invitationVM,
             onTabSelected = {},
+            isOnline = online,
             renderDialogsAsWindow = renderDialogsAsWindow,
         )
       }

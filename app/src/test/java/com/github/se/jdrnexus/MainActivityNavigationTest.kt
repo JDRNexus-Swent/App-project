@@ -1602,7 +1602,8 @@ class MainActivityNavigationTest {
     val groupRepository = FakeGroupRepository()
     val authViewModel = AuthViewModel(repository)
     val personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, repository)
-    val gameManagementViewModel = GameManagementViewModel(groupRepository, repository)
+    val gameManagementViewModel =
+        GameManagementViewModel(groupRepository, repository, FakeConnectivityRepository())
     val editFileViewModel = EditFileViewModel(workspaceRepository)
     composeTestRule.setContent {
       JDRNexusApp(

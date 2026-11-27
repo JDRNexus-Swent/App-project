@@ -73,6 +73,7 @@ import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.JdrNexusLogo
+import com.github.se.jdrnexus.resources.NeedsConnectionHint
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.resources.showComingSoon
 import com.github.se.jdrnexus.ui.help.HelpSheet
@@ -156,6 +157,7 @@ fun GameManagementScreen(
     onProfileClick: (() -> Unit)? = null,
 ) {
   val uiState by gameManagementViewModel.uiState.collectAsState()
+  val isOnline by gameManagementViewModel.isOnline.collectAsState()
   val helpState by helpViewModel.uiState.collectAsState()
   LaunchedEffect(gameManagementViewModel) { gameManagementViewModel.loadGroups() }
 
@@ -172,6 +174,7 @@ fun GameManagementScreen(
       onManageGroup = onManageGroup,
       invitationVM = gameManagementViewModel,
       onTabSelected = onTabSelected,
+      isOnline = isOnline,
       showHelp = helpState.showHelp,
       onHelpClick = helpViewModel::onHelpClicked,
       onHelpDismiss = helpViewModel::onHelpDismissed,
@@ -185,6 +188,9 @@ fun GameManagementScreen(
  *
  * @param onPlay receives the group ID and the user's role when a card's Play button is tapped.
  * @param invitationVM receives the invite and join actions of the dialogs.
+ * @param isOnline whether the device is online. Offline, creating, joining and inviting need the
+ *   server, so their buttons are disabled with a "Needs a connection" line; the groups stay
+ *   visible.
  * @param showHelp whether the help sheet with [campaignHelpPages] is shown.
  * @param onHelpClick called by the top bar's help button.
  * @param onHelpDismiss called once the help sheet has been closed.
@@ -205,6 +211,7 @@ internal fun GameManagementScreenContent(
     onManageGroup: (String) -> Unit,
     invitationVM: GroupInvitationVM,
     onTabSelected: (String) -> Unit,
+    isOnline: Boolean = true,
     showHelp: Boolean = false,
     onHelpClick: () -> Unit = {},
     onHelpDismiss: () -> Unit = {},
@@ -245,6 +252,7 @@ internal fun GameManagementScreenContent(
           CreateGroupButton(
               colors = colors,
               onClick = onCreateGroupClick,
+              enabled = isOnline,
               modifier = Modifier.testTag(GameManagementTestTags.CREATE_GROUP_BUTTON),
           )
         }
@@ -256,9 +264,11 @@ internal fun GameManagementScreenContent(
                 invitationVM.resetJoinState()
                 isJoinDialogOpen = true
               },
+              enabled = isOnline,
               modifier = Modifier.testTag(C.Tag.join_group_button),
           )
         }
+        if (!isOnline) item { NeedsConnectionHint(isOnline = false) }
       }
       if (uiState.successMessage.isNotEmpty()) {
         item {
@@ -292,6 +302,7 @@ internal fun GameManagementScreenContent(
               EmptyGroupsCard(
                   colors = colors,
                   onCreateGroup = onCreateGroupClick,
+                  createEnabled = isOnline,
               )
             }
         GroupLoadState.Success ->
@@ -300,6 +311,7 @@ internal fun GameManagementScreenContent(
                 EmptyGroupsCard(
                     colors = colors,
                     onCreateGroup = onCreateGroupClick,
+                    createEnabled = isOnline,
                 )
               }
             } else {
@@ -317,7 +329,8 @@ internal fun GameManagementScreenContent(
                     },
                     // The ViewModel ignores a load while another runs, so opening a second
                     // group's dialog then would show the first group's code under its name.
-                    inviteEnabled = uiState.invitationState != InvitationState.Loading,
+                    // Codes live on the server, so inviting also needs a connection.
+                    inviteEnabled = isOnline && uiState.invitationState != InvitationState.Loading,
                 )
               }
             }
@@ -345,6 +358,7 @@ internal fun GameManagementScreenContent(
         groupName = invitedGroup.name,
         code = uiState.inviteCode,
         state = uiState.invitationState,
+        isOnline = isOnline,
         renderAsWindow = renderDialogsAsWindow,
         onRetry = { invitationVM.loadInvitation(invitedGroup.id) },
         onRegenerate = { invitationVM.regenerateInvitation(invitedGroup.id) },
@@ -354,6 +368,7 @@ internal fun GameManagementScreenContent(
   if (isJoinDialogOpen) {
     JoinGroupDialog(
         state = uiState.joinState,
+        isOnline = isOnline,
         renderAsWindow = renderDialogsAsWindow,
         onClearError = invitationVM::resetJoinState,
         onJoin = invitationVM::joinGroup,
@@ -365,6 +380,7 @@ internal fun GameManagementScreenContent(
     CreateGroupDialog(
         uiState = uiState,
         colors = colors,
+        isOnline = isOnline,
         renderAsWindow = renderDialogsAsWindow,
         onNameChanged = onGroupNameChanged,
         onCreate = onCreateGroup,
@@ -557,11 +573,15 @@ private fun GroupLoadError(
   }
 }
 
-/** Prompts users without groups to create their first campaign group. */
+/**
+ * Prompts users without groups to create their first campaign group. [createEnabled] is false
+ * offline, since creating a group needs the server.
+ */
 @Composable
 private fun EmptyGroupsCard(
     colors: GameManagementColors,
     onCreateGroup: () -> Unit,
+    createEnabled: Boolean,
 ) {
   Column(
       modifier =
@@ -589,19 +609,25 @@ private fun EmptyGroupsCard(
         label = "Create your first group",
         colors = colors,
         onClick = onCreateGroup,
+        enabled = createEnabled,
     )
   }
 }
 
-/** The "Create a new group" button at the top of the Campaigns screen; calls [onClick]. */
+/**
+ * The "Create a new group" button at the top of the Campaigns screen; calls [onClick]. Disabled
+ * when [enabled] is false.
+ */
 @Composable
 internal fun CreateGroupButton(
     colors: GameManagementColors,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
   Button(
       onClick = onClick,
+      enabled = enabled,
       modifier = modifier.fillMaxWidth().height(48.dp),
       shape = RoundedCornerShape(50),
       colors =
@@ -620,18 +646,23 @@ internal fun CreateGroupButton(
   }
 }
 
-/** The "Join a group" button at the top of the Campaigns screen; calls [onClick]. */
+/**
+ * The "Join a group" button at the top of the Campaigns screen; calls [onClick]. Disabled when
+ * [enabled] is false.
+ */
 @Composable
 internal fun JoinGroupButton(
     colors: GameManagementColors,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
   OutlinedActionButton(
       label = stringResource(R.string.join_group_action),
       colors = colors,
       icon = { Icon(Icons.AutoMirrored.Filled.Login, null, Modifier.size(16.dp)) },
       onClick = onClick,
+      enabled = enabled,
       modifier = modifier,
   )
 }
@@ -837,9 +868,11 @@ private fun PrimaryActionButton(
     label: String,
     colors: GameManagementColors,
     onClick: () -> Unit,
+    enabled: Boolean = true,
 ) {
   Button(
       onClick = onClick,
+      enabled = enabled,
       modifier = Modifier.fillMaxWidth().height(44.dp),
       shape = RoundedCornerShape(12.dp),
       colors =
@@ -896,9 +929,11 @@ private fun OutlinedActionButton(
     colors: GameManagementColors,
     onClick: () -> Unit,
     icon: (@Composable () -> Unit)? = null,
+    enabled: Boolean = true,
 ) {
   Button(
       onClick = onClick,
+      enabled = enabled,
       modifier = modifier.fillMaxWidth().height(42.dp),
       shape = RoundedCornerShape(10.dp),
       border = androidx.compose.foundation.BorderStroke(1.dp, colors.outline),
@@ -921,11 +956,15 @@ private fun OutlinedActionButton(
   }
 }
 
-/** Collects the required group name and reports validation, progress, and creation errors. */
+/**
+ * Collects the required group name and reports validation, progress, and creation errors. While
+ * [isOnline] is false, "Create group" is disabled and a "Needs a connection" line explains why.
+ */
 @Composable
 private fun CreateGroupDialog(
     uiState: GameManagementUiState,
     colors: GameManagementColors,
+    isOnline: Boolean,
     renderAsWindow: Boolean,
     onNameChanged: (String) -> Unit,
     onCreate: () -> Unit,
@@ -1017,9 +1056,10 @@ private fun CreateGroupDialog(
             fontSize = 11.sp,
         )
       }
+      NeedsConnectionHint(isOnline = isOnline, tag = C.Tag.create_group_needs_connection)
       Button(
           onClick = onCreate,
-          enabled = !nameIsEmpty && !uiState.isCreatingGroup,
+          enabled = isOnline && !nameIsEmpty && !uiState.isCreatingGroup,
           modifier =
               Modifier.fillMaxWidth()
                   .height(44.dp)

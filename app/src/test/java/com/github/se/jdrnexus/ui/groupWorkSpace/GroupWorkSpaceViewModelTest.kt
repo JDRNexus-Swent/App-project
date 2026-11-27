@@ -3,6 +3,7 @@
 package com.github.se.jdrnexus.ui.groupWorkSpace
 
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
+import com.github.se.jdrnexus.model.connectivity.NEEDS_CONNECTION
 import com.github.se.jdrnexus.model.filerepresentation.CharacterAction
 import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
 import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
@@ -18,6 +19,7 @@ import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
+import com.github.se.jdrnexus.utils.FakeConnectivityRepository
 import com.github.se.jdrnexus.viewmodel.LoadState
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -33,6 +35,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.resetMain
@@ -171,7 +174,13 @@ class GroupWorkSpaceViewModelTest {
         )
 
     val viewModel =
-        GroupWorkspaceViewModel(GROUP_ID, groupRepository, repository, FakeAuthRepository())
+        GroupWorkspaceViewModel(
+            GROUP_ID,
+            groupRepository,
+            repository,
+            FakeAuthRepository(),
+            FakeConnectivityRepository(),
+        )
     runCurrent()
 
     assertEquals("The Sunken Crown", viewModel.uiState.value.groupName)
@@ -201,6 +210,7 @@ class GroupWorkSpaceViewModelTest {
             FakeGroupRepository(groupForRole(GroupWorkspaceRole.GAME_MASTER)),
             repository,
             FakeAuthRepository(),
+            FakeConnectivityRepository(),
         )
     runCurrent()
 
@@ -1388,7 +1398,13 @@ class GroupWorkSpaceViewModelTest {
     assertEquals("The item name cannot be blank.", gm.uiState.value.errorMessage)
     assertEquals(listOf(file), repository.files.values.toList())
     assertThrows(IllegalArgumentException::class.java) {
-      GroupWorkspaceViewModel(" ", FakeGroupRepository(null), repository, FakeAuthRepository())
+      GroupWorkspaceViewModel(
+          " ",
+          FakeGroupRepository(null),
+          repository,
+          FakeAuthRepository(),
+          FakeConnectivityRepository(),
+      )
     }
   }
 
@@ -1943,12 +1959,105 @@ class GroupWorkSpaceViewModelTest {
     assertEquals(playerFolder, repository.files.getValue(playerFolder.id))
   }
 
+  // Offline, every workspace operation fails at once with the offline error and writes nothing.
+  @Test
+  fun operationsFailWithNeedsConnectionWhileOffline() = runTest {
+    val item = groupFile("item", ownerId = OWNER_ID)
+    val personal = JDRFile(id = "personal", ownerId = OWNER_ID)
+    val repository = FakeWorkspaceRepository(listOf(item, personal))
+    val connectivity = FakeConnectivityRepository(isOnline = false)
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER, connectivity = connectivity)
+    runCurrent()
+    val errors = mutableListOf<String>()
+    val operations =
+        listOf<() -> Unit>(
+            { gm.createFolder("Maps") },
+            { gm.createCharacter {} },
+            { gm.shareItem(personal.id) },
+            { gm.setItemHidden(item, isHidden = true) },
+            { gm.removeItem(item) },
+            { gm.editItem(item.copy(name = "Renamed")) },
+        )
+
+    operations.forEach { operation ->
+      gm.clearError()
+      operation()
+      runCurrent()
+      errors += gm.uiState.value.errorMessage
+    }
+
+    assertEquals(List(operations.size) { NEEDS_CONNECTION }, errors)
+    assertEquals(emptyList<Boolean>(), repository.createWaits)
+    assertEquals(emptyList<Pair<String, Boolean>>(), repository.hiddenRequests)
+    assertEquals(0, repository.addRequests.size)
+    assertEquals(0, repository.removeRequests.size)
+    assertEquals(emptyList<Boolean>(), repository.updateWaits)
+    assertFalse(gm.uiState.value.isOperationInProgress)
+  }
+
+  // A write waiting for the server stops with the offline error when the connection drops.
+  @Test
+  fun operationInFlightEndsWithNeedsConnectionWhenTheConnectionDrops() = runTest {
+    val repository = FakeWorkspaceRepository().apply { createGate = CompletableDeferred() }
+    val connectivity = FakeConnectivityRepository(isOnline = true)
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER, connectivity = connectivity)
+    runCurrent()
+
+    gm.createFolder("Maps")
+    runCurrent()
+    val whileWaiting = gm.uiState.value.isOperationInProgress
+    connectivity.online.value = false
+    runCurrent()
+
+    assertTrue(whileWaiting)
+    assertFalse(gm.uiState.value.isOperationInProgress)
+    assertEquals(NEEDS_CONNECTION, gm.uiState.value.errorMessage)
+  }
+
+  // The loaded content stays visible offline, and actions work again once reconnected.
+  @Test
+  fun operationsWorkAgainAfterReconnecting() = runTest {
+    val repository = FakeWorkspaceRepository()
+    val connectivity = FakeConnectivityRepository(isOnline = false)
+    val gm = viewModel(repository, GroupWorkspaceRole.GAME_MASTER, connectivity = connectivity)
+    runCurrent()
+
+    gm.createFolder("Offline")
+    runCurrent()
+    connectivity.online.value = true
+    gm.clearError()
+    gm.createFolder("Online")
+    runCurrent()
+
+    assertEquals(LoadState.Success, gm.uiState.value.loadState)
+    assertEquals(listOf("Online"), repository.files.values.map { it.name })
+    assertEquals("", gm.uiState.value.errorMessage)
+  }
+
+  @Test
+  fun isOnlineFollowsTheConnection() = runTest {
+    val connectivity = FakeConnectivityRepository(isOnline = true)
+    val gm =
+        viewModel(FakeWorkspaceRepository(), GroupWorkspaceRole.PLAYER, connectivity = connectivity)
+    backgroundScope.launch { gm.isOnline.collect {} }
+    runCurrent()
+
+    connectivity.online.value = false
+    runCurrent()
+    val offline = gm.isOnline.value
+    connectivity.online.value = true
+    runCurrent()
+
+    assertEquals(listOf(false, true), listOf(offline, gm.isOnline.value))
+  }
+
   private fun viewModel(
       repository: FakeWorkspaceRepository,
       role: GroupWorkspaceRole,
       authRepository: FakeAuthRepository = FakeAuthRepository(),
       groupRepository: FakeGroupRepository = FakeGroupRepository(groupForRole(role)),
-  ) = GroupWorkspaceViewModel(GROUP_ID, groupRepository, repository, authRepository)
+      connectivity: FakeConnectivityRepository = FakeConnectivityRepository(),
+  ) = GroupWorkspaceViewModel(GROUP_ID, groupRepository, repository, authRepository, connectivity)
 
   private fun groupForRole(role: GroupWorkspaceRole) =
       CampaignGroup(
@@ -1998,6 +2107,8 @@ class GroupWorkSpaceViewModelTest {
         mutableMapOf<Pair<String, String>, MutableStateFlow<List<JDRFile>>>()
     private var nextId = 0
     var createFailure: Exception? = null
+    /** When set, createFile waits for it, like a write waiting for a server that never answers. */
+    var createGate: CompletableDeferred<Unit>? = null
     var updateFailure: Exception? = null
     /** The `waitForServer` argument of each createFile / updateFile call, in order. */
     val createWaits = mutableListOf<Boolean>()
@@ -2018,6 +2129,7 @@ class GroupWorkSpaceViewModelTest {
 
     override suspend fun createFile(file: JDRFile, waitForServer: Boolean): Result<Unit> {
       createWaits += waitForServer
+      createGate?.await()
       createFailure?.let {
         return Result.failure(it)
       }

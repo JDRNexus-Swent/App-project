@@ -227,6 +227,11 @@ fun JDRNexusApp(
   val credentialManager = remember(context) { CredentialManager.create(context) }
   val navController = rememberNavController()
   val navigation = rememberNavigationHelper(navController)
+  // Every screen reads the connection through LocalIsOnline to show the offline banner, and the
+  // ViewModels of the screens with server-only actions read it to disable them.
+  val activeConnectivityRepository =
+      connectivityRepository
+          ?: remember(context) { ConnectivityRepositoryProvider.repository(context) }
 
   // Create an editFileViewModel to be able to retrieve the file for the edition screens
   val activeEditFileViewModel =
@@ -287,10 +292,6 @@ fun JDRNexusApp(
     }
   }
 
-  // Every screen reads the connection through LocalIsOnline to show the offline banner.
-  val activeConnectivityRepository =
-      connectivityRepository
-          ?: remember(context) { ConnectivityRepositoryProvider.repository(context) }
   // Collected only while the app is started, so the network callback is released in the
   // background; starts as online, so no banner flashes before the first value.
   val isOnline by
@@ -457,6 +458,7 @@ fun JDRNexusApp(
                               GameManagementViewModel(
                                   groupRepository = activeGroupRepository,
                                   authRepository = activeAuthRepository,
+                                  connectivityRepository = activeConnectivityRepository,
                               )
                             }
                           }
@@ -601,6 +603,7 @@ fun JDRNexusApp(
                               groupRepository = activeGroupRepository,
                               repository = activeWorkspaceRepository,
                               authRepository = activeAuthRepository,
+                              connectivityRepository = activeConnectivityRepository,
                           )
                         }
                       }
