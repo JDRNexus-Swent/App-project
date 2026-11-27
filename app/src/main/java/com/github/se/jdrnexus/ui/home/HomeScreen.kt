@@ -49,11 +49,11 @@ object TestTags {
   const val PSPACEBUTTON = "home_to_pspace"
   const val DICEBUTTON = "home_to_dice"
   const val DICE_ICON = "home_dice_icon"
-  const val GROUPMANAGEMENTBUTTON = "home_to_group_management"
-  const val GROUPMANAGEMENT_ICON = "home_group_management_icon"
+  const val SOUNDBOARDBUTTON = "home_to_soundboard"
+  const val SOUNDBOARD_ICON = "home_soundboard_icon"
   const val PSPACE_ICON = "home_personal_space_icon"
   const val LOGOUT = "home_logout"
-  val BUTTONS = listOf(DICEBUTTON, GROUPMANAGEMENTBUTTON)
+  val BUTTONS = listOf(DICEBUTTON, SOUNDBOARDBUTTON)
 }
 
 @Composable
@@ -63,6 +63,7 @@ fun HomeScreen(
     onLogout: () -> Unit = {},
     onPersonalSpaceClick: () -> Unit = {},
     onDiceClick: () -> Unit = {},
+    onSoundboardClick: () -> Unit = {},
     onGroupManagementClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
     onMapClick: () -> Unit = {},
@@ -185,9 +186,9 @@ fun HomeScreen(
           )
         }
         Button(
-            onClick = { if (canNavigate()) onGroupManagementClick() },
+            onClick = { if (canNavigate()) onSoundboardClick() },
             enabled = canNavigate(),
-            modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.GROUPMANAGEMENTBUTTON),
+            modifier = Modifier.weight(1f).aspectRatio(1f).testTag(TestTags.SOUNDBOARDBUTTON),
             shape = RoundedCornerShape(8.dp),
             colors =
                 ButtonDefaults.buttonColors(
@@ -198,7 +199,7 @@ fun HomeScreen(
           Icon(
               imageVector = Icons.Filled.Mic,
               contentDescription = null,
-              modifier = Modifier.size(32.dp).testTag(TestTags.GROUPMANAGEMENT_ICON),
+              modifier = Modifier.size(32.dp).testTag(TestTags.SOUNDBOARD_ICON),
           )
         }
         Button(

@@ -66,13 +66,13 @@ class HomeScreenS1Test {
   @Test
   fun quickToolButtonsAreSquareAndClickable() {
     var diceClicked = false
-    var groupManagementClicked = false
+    var soundboardClicked = false
     composeTestRule.setContent {
       SampleAppTheme {
         HomeScreen(
             viewModel = createViewModel(),
             onDiceClick = { diceClicked = true },
-            onGroupManagementClick = { groupManagementClicked = true },
+            onSoundboardClick = { soundboardClicked = true },
         )
       }
     }
@@ -82,7 +82,7 @@ class HomeScreenS1Test {
       button.assertIsDisplayed()
       composeTestRule
           .onNodeWithTag(
-              listOf(TestTags.DICE_ICON, TestTags.GROUPMANAGEMENT_ICON)[index],
+              listOf(TestTags.DICE_ICON, TestTags.SOUNDBOARD_ICON)[index],
               useUnmergedTree = true,
           )
           .assertIsDisplayed()
@@ -93,7 +93,7 @@ class HomeScreenS1Test {
       button.performClick()
     }
     Assert.assertTrue(diceClicked)
-    Assert.assertTrue(groupManagementClicked)
+    Assert.assertTrue(soundboardClicked)
   }
 
   @Test

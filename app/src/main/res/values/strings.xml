@@ -42,6 +42,7 @@
     <string name="enter_workspace_action">Enter workspace</string>
     <!-- Game master screen -->
     <string name="game_gm_dice_cd">Roll dice</string>
+    <string name="game_gm_soundboard_cd">Open soundboard</string>
     <string name="game_gm_header">Campaign · Game Master</string>
     <string name="game_gm_start_game">Start game</string>
     <string name="game_gm_game_in_progress">Game in progress</string>

@@ -28,6 +28,9 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.AnnotatedString
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -66,6 +69,8 @@ import com.github.se.jdrnexus.ui.search.DocumentSearchResult
 import com.github.se.jdrnexus.ui.search.DocumentSearchStatus
 import com.github.se.jdrnexus.ui.search.DocumentSearchUiState
 import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
+import com.github.se.jdrnexus.ui.soundboard.SoundboardUiState
+import com.github.se.jdrnexus.ui.soundboard.SoundboardViewModelInterface
 import com.github.se.jdrnexus.utils.FakeConnectivityRepository
 import com.github.se.jdrnexus.utils.FakeNotificationViewModel
 import com.github.se.jdrnexus.utils.FakeProfileRepository
@@ -85,6 +90,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -93,6 +99,12 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class MainActivityNavigationTest {
   @get:Rule val composeTestRule = createComposeRule()
+
+  // Every app built by showApp gets this factory; only the soundboard tests open that route.
+  private val soundboardViewModels = mutableListOf<LifetimeSoundboardViewModel>()
+  private val soundboardFactory = viewModelFactory {
+    initializer<ViewModel> { LifetimeSoundboardViewModel().also { soundboardViewModels += it } }
+  }
 
   @Test
   fun startsAtSignInAndReturnsFromSignUp() {
@@ -197,14 +209,14 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
-    waitForTag(TestTags.GROUPMANAGEMENTBUTTON)
+    waitForTag(TestTags.TITLE)
 
     composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertIsDisplayed()
 
     composeTestRule.runOnIdle { connectivity.online.value = true }
     composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertDoesNotExist()
 
-    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
     waitForTag(C.Tag.enter_workspace_button)
     composeTestRule.runOnIdle { connectivity.online.value = false }
     composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertIsDisplayed()
@@ -507,7 +519,7 @@ class MainActivityNavigationTest {
 
     composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
     composeTestRule.onNodeWithTag(TestTags.DICEBUTTON).assertIsNotEnabled()
-    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(TestTags.SOUNDBOARDBUTTON).assertIsNotEnabled()
     composeTestRule.onNodeWithTag(TestTags.PSPACEBUTTON).assertIsNotEnabled()
     composeTestRule.onNodeWithTag(TestTags.DICEBUTTON).performClick()
     composeTestRule.onAllNodesWithTag(C.Tag.dice_offline_screen).assertCountEquals(0)
@@ -819,8 +831,8 @@ class MainActivityNavigationTest {
     // Home removes Campaigns from the back stack, so coming back creates a new help ViewModel,
     // which reads the record again.
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
-    waitForTag(TestTags.GROUPMANAGEMENTBUTTON)
-    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
     waitForTag(C.Tag.help_button)
     composeTestRule.waitForIdle()
 
@@ -1030,6 +1042,46 @@ class MainActivityNavigationTest {
     composeTestRule.onAllNodesWithText(folder.name).assertCountEquals(2)
   }
 
+  /** A soundboard VM that does nothing and records when its owner clears it. */
+  private class LifetimeSoundboardViewModel : ViewModel(), SoundboardViewModelInterface {
+    var cleared = false
+    override val uiState = MutableStateFlow(SoundboardUiState())
+
+    override fun onCleared() {
+      cleared = true
+    }
+
+    override fun selectPlaylist(playlistId: String) = Unit
+
+    override fun playAmbience(playlistId: String, audioId: String) = Unit
+
+    override fun playPlaylist(playlistId: String) = Unit
+
+    override fun pauseAmbience() = Unit
+
+    override fun stopAmbience() = Unit
+
+    override fun setAmbienceLooping(isLooping: Boolean) = Unit
+
+    override fun toggleSoundEffect(audioId: String) = Unit
+
+    override fun setAmbienceVolume(volume: Float) = Unit
+
+    override fun setSoundEffectVolume(volume: Float) = Unit
+
+    override fun saveVolumes() = Unit
+
+    override fun toggleAmbienceMute() = Unit
+
+    override fun toggleSoundEffectMute() = Unit
+
+    override fun stopAll() = Unit
+
+    override fun setTrackMenuExpanded(isExpanded: Boolean) = Unit
+
+    override fun loadSoundboard(soundboardId: String?) = Unit
+  }
+
   private class NoGamesMapRepository : MapRepository {
     override suspend fun loadGamesNear(location: MapLocation?): List<MapGame> = emptyList()
   }
@@ -1117,6 +1169,91 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
 
     assertBackOnCampaigns(C.Tag.game_gm_start_game)
+  }
+
+  @Test
+  fun homeMicOpensTheSoundboardAndBackReturnsHome() {
+    showApp()
+    signIn()
+
+    composeTestRule.onNodeWithTag(TestTags.SOUNDBOARDBUTTON).performClick()
+    waitForTag(C.Tag.soundboard_loading)
+    Espresso.pressBack()
+
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.soundboard_loading).assertCountEquals(0)
+  }
+
+  @Test
+  fun gameMasterSoundboardOpensAndBackReturnsToTheGameScreen() {
+    openGameFromPlay(gameMasterId = "user-1")
+    waitForTag(C.Tag.game_gm_soundboard)
+
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_soundboard).performClick()
+    waitForTag(C.Tag.soundboard_loading)
+    Espresso.pressBack()
+
+    waitForTag(C.Tag.game_gm_start_game)
+  }
+
+  @Test
+  fun soundboardOpenedFromTheGameStopsWhenTheGameIsLeft() {
+    openGameFromPlay(gameMasterId = "user-1")
+    openSoundboardFromGameAndGoBack()
+    assertEquals(1, soundboardViewModels.size)
+    assertFalse(soundboardViewModels.single().cleared)
+
+    // Reopening reuses the playback the game screen owns.
+    openSoundboardFromGameAndGoBack()
+    assertEquals(1, soundboardViewModels.size)
+
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+    assertBackOnCampaigns(C.Tag.game_gm_start_game)
+    composeTestRule.runOnIdle { assertTrue(soundboardViewModels.single().cleared) }
+  }
+
+  @Test
+  fun campaignsTabFromGameSoundboardStopsTheSound() {
+    openGameFromPlay(gameMasterId = "user-1")
+    waitForTag(C.Tag.game_gm_soundboard)
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_soundboard).performClick()
+    waitForTag(C.Tag.soundboard_loading)
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+
+    assertBackOnCampaigns(C.Tag.game_gm_start_game)
+    composeTestRule.runOnIdle { assertTrue(soundboardViewModels.single().cleared) }
+  }
+
+  @Test
+  fun soundboardOpenedFromHomeLivesOnHome() {
+    showApp()
+    signIn()
+
+    repeat(2) {
+      composeTestRule.onNodeWithTag(TestTags.SOUNDBOARDBUTTON).performClick()
+      waitForTag(C.Tag.soundboard_loading)
+      Espresso.pressBack()
+      waitForTag(TestTags.TITLE)
+    }
+
+    composeTestRule.runOnIdle {
+      assertEquals(1, soundboardViewModels.size)
+      assertFalse(soundboardViewModels.single().cleared)
+    }
+  }
+
+  @Test
+  fun campaignsTabFromHomeSoundboardOpensCampaigns() {
+    showApp(groupRepository = groupRepository())
+    signIn()
+
+    composeTestRule.onNodeWithTag(TestTags.SOUNDBOARDBUTTON).performClick()
+    waitForTag(C.Tag.soundboard_loading)
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+
+    waitForTag(C.Tag.play_button)
+    composeTestRule.onAllNodesWithTag(C.Tag.soundboard_loading).assertCountEquals(0)
   }
 
   @Test
@@ -1391,6 +1528,7 @@ class MainActivityNavigationTest {
             notificationViewModel = FakeNotificationViewModel(),
             connectivityRepository = connectivityRepository,
             profileViewModel = profileViewModel,
+            soundboardViewModelFactory = soundboardFactory,
         )
       }
     }
@@ -1401,12 +1539,20 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
-    waitForTag(TestTags.GROUPMANAGEMENTBUTTON)
+    waitForTag(TestTags.TITLE)
   }
 
   private fun signInAndOpenCampaigns() {
     signIn()
-    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+  }
+
+  private fun openSoundboardFromGameAndGoBack() {
+    waitForTag(C.Tag.game_gm_soundboard)
+    composeTestRule.onNodeWithTag(C.Tag.game_gm_soundboard).performClick()
+    waitForTag(C.Tag.soundboard_loading)
+    Espresso.pressBack()
+    waitForTag(C.Tag.game_gm_start_game)
   }
 
   /** Shows the app with [profileViewModel], signs in and opens the profile from Home. */

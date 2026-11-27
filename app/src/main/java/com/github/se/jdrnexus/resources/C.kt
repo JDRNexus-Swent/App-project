@@ -216,6 +216,7 @@ object C {
     const val game_gm_next_round = "game_gm_next_round"
     const val game_gm_end_combat = "game_gm_end_combat"
     const val game_gm_dice = "game_gm_dice"
+    const val game_gm_soundboard = "game_gm_soundboard"
     const val game_gm_hidden_sections = "game_gm_hidden_sections"
 
     fun gameGmEnemy(id: String) = "game_gm_enemy_$id"
