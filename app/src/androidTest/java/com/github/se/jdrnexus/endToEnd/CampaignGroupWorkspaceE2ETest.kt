@@ -15,13 +15,16 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.se.jdrnexus.MainActivity
+import com.github.se.jdrnexus.model.help.HelpSeenRepositorySharedPreferences
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.GroupRepositoryFirestore
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.ui.gameManagement.CAMPAIGNS_HELP_TOPIC
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.google.firebase.auth.FirebaseAuth
@@ -55,6 +58,11 @@ class CampaignGroupWorkspaceE2ETest {
   @Before
   fun setUp() {
     FirebaseAuth.getInstance().signOut()
+    // The Campaigns help opens by itself on the first visit; it would cover the screen.
+    runBlocking {
+      HelpSeenRepositorySharedPreferences(ApplicationProvider.getApplicationContext())
+          .markSeen(CAMPAIGNS_HELP_TOPIC)
+    }
   }
 
   @After
@@ -161,7 +169,7 @@ class CampaignGroupWorkspaceE2ETest {
     val fileId = seedPersonalFile(fileName)
 
     // Verify that the user can create a campaign group from the application UI.
-    composeRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+    composeRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
     waitForTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
     composeRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_BUTTON).performClick()
     composeRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_DIALOG).assertIsDisplayed()

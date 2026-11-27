@@ -404,6 +404,32 @@ class DocumentSearchViewModelTest {
   }
 
   @Test
+  fun gameMasterSearchFindsHiddenFoldersAndTheirContent() {
+    val groupId = "group"
+    val hiddenFolder =
+        groupFile("Needle folder", groupId, "player", groupId, DocumentType.FOLDER, hidden = true)
+    val inside = groupFile("Needle inside", groupId, "player", hiddenFolder.id, DocumentType.TEXT)
+    val viewModel =
+        DocumentSearchViewModel(
+            scope = DocumentSearchScope.Group(groupId),
+            repository =
+                FakeWorkspaceRepository(
+                    groupItems =
+                        mapOf(groupId to listOf(hiddenFolder), hiddenFolder.id to listOf(inside))
+                ),
+            authRepository = FakeAuthRepository(AuthUser("gm", null, null)),
+            groupRepository = FakeGroupRepository(CampaignGroup(id = groupId, gameMasterId = "gm")),
+        )
+
+    viewModel.onQueryChanged("Needle")
+    idleMainLooperForSearch()
+
+    val results = viewModel.uiState.value.results
+    assertEquals(listOf(hiddenFolder, inside), results.map { it.file })
+    assertEquals(listOf(hiddenFolder.id), results.single { it.file == inside }.folderIds)
+  }
+
+  @Test
   fun playerSearchRecursesThroughVisibleFoldersAndHidesUnownedHiddenSubtrees() {
     val groupId = "group"
     val firstFolder = groupFile("First folder", groupId, "gm", groupId, DocumentType.FOLDER)

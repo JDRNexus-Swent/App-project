@@ -75,6 +75,7 @@ import com.github.se.jdrnexus.model.personalSpace.DocumentType
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.JdrNexusLogo
+import com.github.se.jdrnexus.resources.NeedsConnectionHint
 import com.github.se.jdrnexus.resources.OfflineBanner
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.viewmodel.LoadState
@@ -108,6 +109,10 @@ fun GroupWorkSpaceScreen(
     onCharacterCreated: (String) -> Unit = {},
 ) {
   val uiState by gwViewModel.uiState.collectAsState()
+  // Every action of the group workspace needs the server: offline they are disabled, and the
+  // content already loaded stays visible.
+  val isOnline by gwViewModel.isOnline.collectAsState()
+  val actionsEnabled = isOnline && !uiState.isOperationInProgress
   val scope = rememberCoroutineScope()
   val snackbarHostState = remember { SnackbarHostState() }
 
@@ -162,6 +167,7 @@ fun GroupWorkSpaceScreen(
         floatingActionButton = {
           if (uiState.loadState == LoadState.Success) {
             WorkspaceFab(
+                enabled = isOnline,
                 onCreateItem = {
                   gwViewModel.clearError()
                   showCreateItemDialog = true
@@ -200,6 +206,10 @@ fun GroupWorkSpaceScreen(
                 },
         )
         OfflineBanner()
+        NeedsConnectionHint(
+            isOnline = isOnline,
+            modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp),
+        )
 
         Spacer(Modifier.height(16.dp))
 
@@ -236,6 +246,7 @@ fun GroupWorkSpaceScreen(
             },
             currentUserId = uiState.currentUserId,
             viewModel = gwViewModel,
+            isOnline = isOnline,
         )
       }
     }
@@ -244,7 +255,8 @@ fun GroupWorkSpaceScreen(
   // Choose the type of item to create
   if (showCreateItemDialog) {
     CreateItemDialog(
-        isOperationInProgress = uiState.isOperationInProgress,
+        isOnline = isOnline,
+        optionsEnabled = actionsEnabled,
         onFolderSelected = {
           showCreateItemDialog = false
           folderName = ""
@@ -285,6 +297,11 @@ fun GroupWorkSpaceScreen(
                   Text(
                       text = uiState.errorMessage,
                   )
+                } else if (!isOnline) {
+                  NeedsConnectionHint(
+                      isOnline = false,
+                      tag = C.Tag.workspace_dialog_needs_connection,
+                  )
                 }
               },
           )
@@ -292,7 +309,7 @@ fun GroupWorkSpaceScreen(
         confirmButton = {
           TextButton(
               modifier = Modifier.testTag(C.Tag.workspace_create_folder_confirm),
-              enabled = !uiState.isOperationInProgress,
+              enabled = actionsEnabled,
               onClick = {
                 gwViewModel.clearError()
 
@@ -360,6 +377,11 @@ fun GroupWorkSpaceScreen(
                   modifier = Modifier.padding(bottom = 8.dp),
               )
             }
+            NeedsConnectionHint(
+                isOnline = isOnline,
+                modifier = Modifier.padding(bottom = 8.dp),
+                tag = C.Tag.workspace_dialog_needs_connection,
+            )
 
             if (availableItems.isEmpty()) {
               Text(stringResource(R.string.workspace_no_personal_items))
@@ -376,7 +398,7 @@ fun GroupWorkSpaceScreen(
                   Row(
                       modifier =
                           Modifier.fillMaxWidth()
-                              .clickable(enabled = !uiState.isOperationInProgress) {
+                              .clickable(enabled = actionsEnabled) {
                                 gwViewModel.clearError()
 
                                 scope.launch {
@@ -438,6 +460,7 @@ fun GroupWorkSpaceScreen(
               onNameChange = { editedName = it },
               errorMessage = uiState.errorMessage,
               isInProgress = uiState.isOperationInProgress,
+              isOnline = isOnline,
               onSave = {
                 gwViewModel.clearError()
 
@@ -488,12 +511,16 @@ fun GroupWorkSpaceScreen(
                       stringResource(R.string.workspace_remove_message, file.name),
                       color = color().onSecondary,
                   )
+                  NeedsConnectionHint(
+                      isOnline = isOnline,
+                      tag = C.Tag.workspace_dialog_needs_connection,
+                  )
                 }
               },
               confirmButton = {
                 TextButton(
                     modifier = Modifier.testTag(C.Tag.workspace_remove_item_confirm),
-                    enabled = !uiState.isOperationInProgress,
+                    enabled = actionsEnabled,
                     onClick = {
                       gwViewModel.clearError()
 
@@ -570,6 +597,8 @@ fun GroupWorkSpaceScreen(
  * @param onEdit Called when the item is edited.
  * @param onRemove Called when the item is removed.
  * @param onToggleVisibility Called when the item's visibility is toggled.
+ * @param isOnline Whether the device is online; offline the actions are disabled, as they need the
+ *   server, but the item can still be opened.
  */
 @Composable
 fun WorkspaceCard(
@@ -583,7 +612,9 @@ fun WorkspaceCard(
     onEdit: () -> Unit,
     onRemove: () -> Unit,
     onToggleVisibility: () -> Unit,
+    isOnline: Boolean = true,
 ) {
+  val actionsEnabled = isOnline && !operationInProgress
 
   // Every action is shown only when the user may take it.
   val edit = onEdit.takeIf { canEdit }
@@ -599,7 +630,7 @@ fun WorkspaceCard(
         onRemove = remove,
         onToggleVisibility = toggleVisibility,
         isHidden = isHidden,
-        actionsEnabled = !operationInProgress,
+        actionsEnabled = actionsEnabled,
     )
     return
   }
@@ -634,7 +665,7 @@ fun WorkspaceCard(
       onRemove = remove,
       onToggleVisibility = toggleVisibility,
       isHidden = isHidden,
-      actionsEnabled = !operationInProgress,
+      actionsEnabled = actionsEnabled,
   )
 }
 
@@ -745,6 +776,7 @@ private fun WorkspaceContent(
     onRemove: (JDRFile) -> Unit,
     currentUserId: String,
     viewModel: GroupWorkspaceViewModel,
+    isOnline: Boolean,
 ) {
 
   when (uiState.loadState) {
@@ -821,6 +853,7 @@ private fun WorkspaceContent(
                   isHidden = isHidden,
                   canChangeVisibility = canChangeVisibility,
                   operationInProgress = uiState.isOperationInProgress,
+                  isOnline = isOnline,
                   onOpen = { onItemClick(file) },
                   onEdit = { onEdit(file) },
                   onRemove = { onRemove(file) },
@@ -874,14 +907,18 @@ fun EmptyWorkspace() {
 /**
  * Lets the user choose the type of item to create in the current workspace.
  *
- * @param isOperationInProgress Whether a workspace operation is running, disabling the options.
+ * @param isOnline Whether the device is online; offline a "Needs a connection" line explains why
+ *   the options are disabled.
+ * @param optionsEnabled Whether the options can be chosen: false offline or while a workspace
+ *   operation is running.
  * @param onFolderSelected Called when the folder option is selected.
  * @param onCharacterSelected Called when the character option is selected.
  * @param onDismiss Called when the dialog is closed without a selection.
  */
 @Composable
 private fun CreateItemDialog(
-    isOperationInProgress: Boolean,
+    isOnline: Boolean,
+    optionsEnabled: Boolean,
     onFolderSelected: () -> Unit,
     onCharacterSelected: () -> Unit,
     onDismiss: () -> Unit,
@@ -902,17 +939,18 @@ private fun CreateItemDialog(
               stringResource(R.string.workspace_create_item_description),
               color = color().onSecondary,
           )
+          NeedsConnectionHint(isOnline = isOnline, tag = C.Tag.workspace_dialog_needs_connection)
           CreateItemOption(
               label = stringResource(R.string.workspace_folder_action),
               icon = Icons.Filled.Folder,
-              enabled = !isOperationInProgress,
+              enabled = optionsEnabled,
               onClick = onFolderSelected,
               modifier = Modifier.testTag(C.Tag.workspace_create_item_folder),
           )
           CreateItemOption(
               label = stringResource(R.string.workspace_character_action),
               icon = Icons.Default.People,
-              enabled = !isOperationInProgress,
+              enabled = optionsEnabled,
               onClick = onCharacterSelected,
               modifier = Modifier.testTag(C.Tag.workspace_create_item_character),
           )
@@ -992,17 +1030,20 @@ private fun CreateItemOption(
  *
  * @param onCreateItem Called when the user wants to create a new item.
  * @param onAddFile Called when a file should be added.
+ * @param enabled Whether the actions can be used. Both need the server, so the workspace passes
+ *   false offline: the button and its menu are hidden until it is true again.
  */
 @Composable
 fun WorkspaceFab(
     onCreateItem: () -> Unit,
     onAddFile: () -> Unit,
+    enabled: Boolean = true,
 ) {
 
   var expanded by remember { mutableStateOf(false) }
 
   Column(horizontalAlignment = Alignment.End) {
-    AnimatedVisibility(expanded) {
+    AnimatedVisibility(expanded && enabled) {
       Column {
         ExtendedFloatingActionButton(
             containerColor = color().surface,
@@ -1046,16 +1087,19 @@ fun WorkspaceFab(
       }
     }
 
-    FloatingActionButton(
-        containerColor = color().primary,
-        onClick = { expanded = !expanded },
-        shape = RoundedCornerShape(50),
-        modifier = Modifier.testTag(C.Tag.workspace_actions_fab),
-    ) {
-      Icon(
-          Icons.Default.Add,
-          null,
-      )
+    // A FloatingActionButton cannot be disabled, so it is hidden while its actions are unavailable.
+    if (enabled) {
+      FloatingActionButton(
+          containerColor = color().primary,
+          onClick = { expanded = !expanded },
+          shape = RoundedCornerShape(50),
+          modifier = Modifier.testTag(C.Tag.workspace_actions_fab),
+      ) {
+        Icon(
+            Icons.Default.Add,
+            null,
+        )
+      }
     }
   }
 }

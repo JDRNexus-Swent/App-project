@@ -20,6 +20,8 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.se.jdrnexus.model.connectivity.ConnectivityRepository
+import com.github.se.jdrnexus.model.help.HelpSeenRepository
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.repository.AuthError
@@ -27,6 +29,7 @@ import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.ui.help.HelpViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementUiState
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
@@ -367,6 +370,19 @@ class GameManagementScreenTest {
         GameManagementViewModel(
             groupRepository,
             ScreenAuthRepository(),
+            object : ConnectivityRepository {
+              override val isOnline = flowOf(true)
+            },
+        )
+    // Already seen: the help would otherwise open by itself and cover the screen.
+    val helpViewModel =
+        HelpViewModel(
+            CAMPAIGNS_HELP_TOPIC,
+            object : HelpSeenRepository {
+              override suspend fun hasSeen(topic: String) = true
+
+              override suspend fun markSeen(topic: String) = Unit
+            },
         )
     var enteredGroupId = ""
     var managedGroupId = ""
@@ -380,6 +396,7 @@ class GameManagementScreenTest {
             onManageGroup = { managedGroupId = it },
             onTabSelected = { selectedTab = it },
             gameManagementViewModel = viewModel,
+            helpViewModel = helpViewModel,
         )
       }
     }

@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -69,14 +68,17 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.R
+import com.github.se.jdrnexus.model.help.HelpSeenRepositorySharedPreferences
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.JdrNexusLogo
+import com.github.se.jdrnexus.resources.NeedsConnectionHint
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.resources.showComingSoon
 import com.github.se.jdrnexus.ui.help.HelpSheet
 import com.github.se.jdrnexus.ui.help.HelpViewModel
+import com.github.se.jdrnexus.ui.profile.ProfileButton
 import com.github.se.jdrnexus.ui.theme.LocalAppUiColors
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementUiState
@@ -133,8 +135,9 @@ internal object GameManagementTestTags {
  * Selecting "Enter workspace" invokes [onEnterWorkspace] with that group's ID so the destination
  * can load its shared files. Selecting "Play" invokes [onPlay] with that group's ID and the user's
  * role in it, so the destination can open the matching game screen. [gameManagementViewModel]
- * provides the loading and creation state. [helpViewModel] decides when the help sheet, opened by
- * the top bar's help button, is shown.
+ * provides the loading and creation state. [helpViewModel] decides when the help sheet is shown: by
+ * itself on the first visit on this device, then when the top bar's help button is tapped. The top
+ * bar's profile button, shown only when [onProfileClick] is given, invokes it.
  */
 @Composable
 fun GameManagementScreen(
@@ -143,9 +146,18 @@ fun GameManagementScreen(
     onManageGroup: (String) -> Unit,
     onTabSelected: (String) -> Unit,
     gameManagementViewModel: GameManagementViewModel,
-    helpViewModel: HelpViewModel = viewModel(),
+    helpViewModel: HelpViewModel =
+        viewModel(
+            factory =
+                HelpViewModel.factory(
+                    topic = CAMPAIGNS_HELP_TOPIC,
+                    repository = HelpSeenRepositorySharedPreferences(LocalContext.current),
+                )
+        ),
+    onProfileClick: (() -> Unit)? = null,
 ) {
   val uiState by gameManagementViewModel.uiState.collectAsState()
+  val isOnline by gameManagementViewModel.isOnline.collectAsState()
   val helpState by helpViewModel.uiState.collectAsState()
   LaunchedEffect(gameManagementViewModel) { gameManagementViewModel.loadGroups() }
 
@@ -162,9 +174,11 @@ fun GameManagementScreen(
       onManageGroup = onManageGroup,
       invitationVM = gameManagementViewModel,
       onTabSelected = onTabSelected,
+      isOnline = isOnline,
       showHelp = helpState.showHelp,
       onHelpClick = helpViewModel::onHelpClicked,
       onHelpDismiss = helpViewModel::onHelpDismissed,
+      onProfileClick = onProfileClick,
   )
 }
 
@@ -174,9 +188,13 @@ fun GameManagementScreen(
  *
  * @param onPlay receives the group ID and the user's role when a card's Play button is tapped.
  * @param invitationVM receives the invite and join actions of the dialogs.
+ * @param isOnline whether the device is online. Offline, creating, joining and inviting need the
+ *   server, so their buttons are disabled with a "Needs a connection" line; the groups stay
+ *   visible.
  * @param showHelp whether the help sheet with [campaignHelpPages] is shown.
  * @param onHelpClick called by the top bar's help button.
  * @param onHelpDismiss called once the help sheet has been closed.
+ * @param onProfileClick called by the top bar's profile button, which is hidden when null.
  * @param renderDialogsAsWindow whether dialogs open in their own window; tests render them inline.
  */
 @Composable
@@ -193,9 +211,11 @@ internal fun GameManagementScreenContent(
     onManageGroup: (String) -> Unit,
     invitationVM: GroupInvitationVM,
     onTabSelected: (String) -> Unit,
+    isOnline: Boolean = true,
     showHelp: Boolean = false,
     onHelpClick: () -> Unit = {},
     onHelpDismiss: () -> Unit = {},
+    onProfileClick: (() -> Unit)? = null,
     renderDialogsAsWindow: Boolean = true,
 ) {
   val colors = gameManagementColors()
@@ -207,7 +227,13 @@ internal fun GameManagementScreenContent(
 
   Scaffold(
       containerColor = colors.background,
-      topBar = { GameManagementHeader(colors = colors, onHelpClick = onHelpClick) },
+      topBar = {
+        GameManagementHeader(
+            colors = colors,
+            onHelpClick = onHelpClick,
+            onProfileClick = onProfileClick,
+        )
+      },
       bottomBar = {
         ScreenBottomBar(
             selectedTab = "Campaigns",
@@ -226,6 +252,7 @@ internal fun GameManagementScreenContent(
           CreateGroupButton(
               colors = colors,
               onClick = onCreateGroupClick,
+              enabled = isOnline,
               modifier = Modifier.testTag(GameManagementTestTags.CREATE_GROUP_BUTTON),
           )
         }
@@ -237,9 +264,11 @@ internal fun GameManagementScreenContent(
                 invitationVM.resetJoinState()
                 isJoinDialogOpen = true
               },
+              enabled = isOnline,
               modifier = Modifier.testTag(C.Tag.join_group_button),
           )
         }
+        if (!isOnline) item { NeedsConnectionHint(isOnline = false) }
       }
       if (uiState.successMessage.isNotEmpty()) {
         item {
@@ -273,6 +302,7 @@ internal fun GameManagementScreenContent(
               EmptyGroupsCard(
                   colors = colors,
                   onCreateGroup = onCreateGroupClick,
+                  createEnabled = isOnline,
               )
             }
         GroupLoadState.Success ->
@@ -281,6 +311,7 @@ internal fun GameManagementScreenContent(
                 EmptyGroupsCard(
                     colors = colors,
                     onCreateGroup = onCreateGroupClick,
+                    createEnabled = isOnline,
                 )
               }
             } else {
@@ -298,7 +329,8 @@ internal fun GameManagementScreenContent(
                     },
                     // The ViewModel ignores a load while another runs, so opening a second
                     // group's dialog then would show the first group's code under its name.
-                    inviteEnabled = uiState.invitationState != InvitationState.Loading,
+                    // Codes live on the server, so inviting also needs a connection.
+                    inviteEnabled = isOnline && uiState.invitationState != InvitationState.Loading,
                 )
               }
             }
@@ -326,6 +358,7 @@ internal fun GameManagementScreenContent(
         groupName = invitedGroup.name,
         code = uiState.inviteCode,
         state = uiState.invitationState,
+        isOnline = isOnline,
         renderAsWindow = renderDialogsAsWindow,
         onRetry = { invitationVM.loadInvitation(invitedGroup.id) },
         onRegenerate = { invitationVM.regenerateInvitation(invitedGroup.id) },
@@ -335,6 +368,7 @@ internal fun GameManagementScreenContent(
   if (isJoinDialogOpen) {
     JoinGroupDialog(
         state = uiState.joinState,
+        isOnline = isOnline,
         renderAsWindow = renderDialogsAsWindow,
         onClearError = invitationVM::resetJoinState,
         onJoin = invitationVM::joinGroup,
@@ -346,6 +380,7 @@ internal fun GameManagementScreenContent(
     CreateGroupDialog(
         uiState = uiState,
         colors = colors,
+        isOnline = isOnline,
         renderAsWindow = renderDialogsAsWindow,
         onNameChanged = onGroupNameChanged,
         onCreate = onCreateGroup,
@@ -361,10 +396,15 @@ internal fun GameManagementScreenContent(
 
 /**
  * Shows the profile, app identity, help button and notification affordance at the top of the
- * screen. The help button calls [onHelpClick].
+ * screen. The help button calls [onHelpClick] and the profile button, shown when [onProfileClick]
+ * is not null, calls it.
  */
 @Composable
-private fun GameManagementHeader(colors: GameManagementColors, onHelpClick: () -> Unit) {
+private fun GameManagementHeader(
+    colors: GameManagementColors,
+    onHelpClick: () -> Unit,
+    onProfileClick: (() -> Unit)?,
+) {
   val context = LocalContext.current
   AppTopBar(
       title = "JDRNexus",
@@ -380,18 +420,7 @@ private fun GameManagementHeader(colors: GameManagementColors, onHelpClick: () -
           )
         }
       },
-      leadingContent = {
-        Box(
-            modifier =
-                Modifier.size(38.dp)
-                    .clip(CircleShape)
-                    .background(colors.raised)
-                    .border(1.dp, colors.outline, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-          Icon(Icons.Filled.Person, contentDescription = "Profile", tint = colors.secondaryText)
-        }
-      },
+      leadingContent = { if (onProfileClick != null) ProfileButton(onClick = onProfileClick) },
       trailingContent = {
         IconButton(
             onClick = onHelpClick,
@@ -544,11 +573,15 @@ private fun GroupLoadError(
   }
 }
 
-/** Prompts users without groups to create their first campaign group. */
+/**
+ * Prompts users without groups to create their first campaign group. [createEnabled] is false
+ * offline, since creating a group needs the server.
+ */
 @Composable
 private fun EmptyGroupsCard(
     colors: GameManagementColors,
     onCreateGroup: () -> Unit,
+    createEnabled: Boolean,
 ) {
   Column(
       modifier =
@@ -576,19 +609,25 @@ private fun EmptyGroupsCard(
         label = "Create your first group",
         colors = colors,
         onClick = onCreateGroup,
+        enabled = createEnabled,
     )
   }
 }
 
-/** The "Create a new group" button at the top of the Campaigns screen; calls [onClick]. */
+/**
+ * The "Create a new group" button at the top of the Campaigns screen; calls [onClick]. Disabled
+ * when [enabled] is false.
+ */
 @Composable
 internal fun CreateGroupButton(
     colors: GameManagementColors,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
   Button(
       onClick = onClick,
+      enabled = enabled,
       modifier = modifier.fillMaxWidth().height(48.dp),
       shape = RoundedCornerShape(50),
       colors =
@@ -607,18 +646,23 @@ internal fun CreateGroupButton(
   }
 }
 
-/** The "Join a group" button at the top of the Campaigns screen; calls [onClick]. */
+/**
+ * The "Join a group" button at the top of the Campaigns screen; calls [onClick]. Disabled when
+ * [enabled] is false.
+ */
 @Composable
 internal fun JoinGroupButton(
     colors: GameManagementColors,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
   OutlinedActionButton(
       label = stringResource(R.string.join_group_action),
       colors = colors,
       icon = { Icon(Icons.AutoMirrored.Filled.Login, null, Modifier.size(16.dp)) },
       onClick = onClick,
+      enabled = enabled,
       modifier = modifier,
   )
 }
@@ -653,27 +697,12 @@ internal fun CampaignGroupCard(
     }
     Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
       Row(verticalAlignment = Alignment.CenterVertically) {
-        Row(
+        RoleBadge(
+            isGameMaster = isGameMaster,
+            colors = colors,
             modifier =
-                Modifier.campaignCardHighlight(CampaignCardElement.ROLE, highlighted, colors)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(colors.raised)
-                    .padding(horizontal = 7.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-          Icon(
-              if (isGameMaster) Icons.Filled.Settings else Icons.Filled.Person,
-              contentDescription = null,
-              modifier = Modifier.size(11.dp),
-              tint = colors.accent,
-          )
-          Text(
-              text = if (isGameMaster) "GameMaster" else "Player",
-              color = colors.accent,
-              fontSize = 9.sp,
-              modifier = Modifier.padding(start = 4.dp),
-          )
-        }
+                Modifier.campaignCardHighlight(CampaignCardElement.ROLE, highlighted, colors),
+        )
         Spacer(Modifier.weight(1f))
         Text(
             "Your group",
@@ -779,6 +808,40 @@ internal fun CampaignGroupCard(
   }
 }
 
+/**
+ * The badge naming a member's role in a group: a gear and "GameMaster", or a person and "Player".
+ * Shared by [CampaignGroupCard] and the member cards of [GroupManagementScreen], so both show the
+ * same role badge.
+ */
+@Composable
+internal fun RoleBadge(
+    isGameMaster: Boolean,
+    colors: GameManagementColors,
+    modifier: Modifier = Modifier,
+) {
+  Row(
+      modifier =
+          modifier
+              .clip(RoundedCornerShape(5.dp))
+              .background(colors.raised)
+              .padding(horizontal = 7.dp, vertical = 4.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Icon(
+        if (isGameMaster) Icons.Filled.Settings else Icons.Filled.Person,
+        contentDescription = null,
+        modifier = Modifier.size(11.dp),
+        tint = colors.accent,
+    )
+    Text(
+        stringResource(if (isGameMaster) R.string.role_game_master else R.string.role_player),
+        color = colors.accent,
+        fontSize = 9.sp,
+        modifier = Modifier.padding(start = 4.dp),
+    )
+  }
+}
+
 /** Renders the decorative campaign banner using the selected theme colors. */
 @Composable
 private fun CampaignBanner(groupName: String, colors: GameManagementColors) {
@@ -805,9 +868,11 @@ private fun PrimaryActionButton(
     label: String,
     colors: GameManagementColors,
     onClick: () -> Unit,
+    enabled: Boolean = true,
 ) {
   Button(
       onClick = onClick,
+      enabled = enabled,
       modifier = Modifier.fillMaxWidth().height(44.dp),
       shape = RoundedCornerShape(12.dp),
       colors =
@@ -864,9 +929,11 @@ private fun OutlinedActionButton(
     colors: GameManagementColors,
     onClick: () -> Unit,
     icon: (@Composable () -> Unit)? = null,
+    enabled: Boolean = true,
 ) {
   Button(
       onClick = onClick,
+      enabled = enabled,
       modifier = modifier.fillMaxWidth().height(42.dp),
       shape = RoundedCornerShape(10.dp),
       border = androidx.compose.foundation.BorderStroke(1.dp, colors.outline),
@@ -889,11 +956,15 @@ private fun OutlinedActionButton(
   }
 }
 
-/** Collects the required group name and reports validation, progress, and creation errors. */
+/**
+ * Collects the required group name and reports validation, progress, and creation errors. While
+ * [isOnline] is false, "Create group" is disabled and a "Needs a connection" line explains why.
+ */
 @Composable
 private fun CreateGroupDialog(
     uiState: GameManagementUiState,
     colors: GameManagementColors,
+    isOnline: Boolean,
     renderAsWindow: Boolean,
     onNameChanged: (String) -> Unit,
     onCreate: () -> Unit,
@@ -985,9 +1056,10 @@ private fun CreateGroupDialog(
             fontSize = 11.sp,
         )
       }
+      NeedsConnectionHint(isOnline = isOnline, tag = C.Tag.create_group_needs_connection)
       Button(
           onClick = onCreate,
-          enabled = !nameIsEmpty && !uiState.isCreatingGroup,
+          enabled = isOnline && !nameIsEmpty && !uiState.isCreatingGroup,
           modifier =
               Modifier.fillMaxWidth()
                   .height(44.dp)

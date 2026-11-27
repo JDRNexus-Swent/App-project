@@ -36,6 +36,7 @@ class MainActivityFirebaseNavigationTest {
   private companion object {
     const val SIGN_IN_SCROLL_CONTAINER = "sign_in_scroll_container"
     const val SIGN_UP_SCROLL_CONTAINER = "sign_up_scroll_container"
+    const val SYNC_TIMEOUT_MS = 10_000L
   }
 
   @Test
@@ -79,6 +80,7 @@ class MainActivityFirebaseNavigationTest {
     assertEquals(email, firebaseAuth.currentUser?.email)
     assertEquals("Ranger", firebaseAuth.currentUser?.displayName)
 
+    waitForWritesToSync()
     composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
     waitForTag(C.Tag.sign_in_sign_up)
     scrollToTag(SIGN_IN_SCROLL_CONTAINER, C.Tag.sign_in_sign_up)
@@ -106,6 +108,7 @@ class MainActivityFirebaseNavigationTest {
         GameManagementViewModel(
             GroupRepositoryFirestore(FirebaseEmulatorTestUtils.getFirestore()),
             authRepository,
+            FakeConnectivityRepository(),
         )
     val email = "campaign-${UUID.randomUUID()}@example.com"
     composeTestRule.setContent {
@@ -124,15 +127,25 @@ class MainActivityFirebaseNavigationTest {
     scrollToTag(SIGN_UP_SCROLL_CONTAINER, C.Tag.sign_up_submit)
     composeTestRule.onNodeWithTag(C.Tag.sign_up_submit).performClick()
     waitForTag(TestTags.TITLE)
-    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
     waitForTag(GameManagementTestTags.CREATE_GROUP_BUTTON)
     composeTestRule.onNodeWithTag(GameManagementTestTags.CREATE_GROUP_BUTTON).assertIsDisplayed()
 
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
     waitForTag(TestTags.LOGOUT)
+    waitForWritesToSync()
     composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
     waitForTag(C.Tag.sign_in_sign_up)
     assertNull(firebaseAuth.currentUser)
+  }
+
+  /**
+   * Waits until the writes of the sign-up reach the emulator. Logging out with writes still pending
+   * shows the unsynced-changes warning, which a slow emulator would otherwise trigger.
+   */
+  private fun waitForWritesToSync() {
+    val writes = FirebaseEmulatorTestUtils.getFirestore().waitForPendingWrites()
+    composeTestRule.waitUntil(SYNC_TIMEOUT_MS) { writes.isComplete }
   }
 
   private fun waitForTag(tag: String) {

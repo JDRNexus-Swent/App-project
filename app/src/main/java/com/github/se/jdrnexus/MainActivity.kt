@@ -30,7 +30,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.credentials.CredentialManager
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -57,6 +59,8 @@ import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthRepositoryFirebase
 import com.github.se.jdrnexus.model.repository.DiceRepositoryFirestore
+import com.github.se.jdrnexus.model.soundboard.Media3SoundboardPlayer
+import com.github.se.jdrnexus.model.soundboard.SoundboardRepositoryProvider
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.LocalIsOnline
 import com.github.se.jdrnexus.resources.showComingSoon
@@ -72,6 +76,8 @@ import com.github.se.jdrnexus.ui.game.GameScreenPlayer
 import com.github.se.jdrnexus.ui.gameManagement.GameManagementScreen
 import com.github.se.jdrnexus.ui.gameManagement.GameScreenGM
 import com.github.se.jdrnexus.ui.gameManagement.GameViewModelGMViewModel
+import com.github.se.jdrnexus.ui.gameManagement.GroupManagementScreen
+import com.github.se.jdrnexus.ui.gameManagement.GroupManagementViewModel
 import com.github.se.jdrnexus.ui.groupWorkSpace.GroupWorkSpaceScreen
 import com.github.se.jdrnexus.ui.groupWorkSpace.GroupWorkspaceViewModel
 import com.github.se.jdrnexus.ui.home.HomeScreen
@@ -81,16 +87,22 @@ import com.github.se.jdrnexus.ui.map.MapViewModel
 import com.github.se.jdrnexus.ui.notification.NotificationDestination
 import com.github.se.jdrnexus.ui.notification.NotificationScreen
 import com.github.se.jdrnexus.ui.notification.destination
+import com.github.se.jdrnexus.ui.profile.ProfileScreen
 import com.github.se.jdrnexus.ui.search.DocumentSearchInterfaceVM
 import com.github.se.jdrnexus.ui.search.DocumentSearchScope
 import com.github.se.jdrnexus.ui.search.DocumentSearchScreen
 import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
+import com.github.se.jdrnexus.ui.soundboard.SoundboardScreen
+import com.github.se.jdrnexus.ui.soundboard.SoundboardViewModel
+import com.github.se.jdrnexus.ui.soundboard.SoundboardViewModelInterface
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.GroupRole
 import com.github.se.jdrnexus.viewmodel.NotificationViewModel
 import com.github.se.jdrnexus.viewmodel.NotificationViewModelInterface
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
+import com.github.se.jdrnexus.viewmodel.ProfileViewModel
+import com.github.se.jdrnexus.viewmodel.ProfileViewModelInterface
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -122,8 +134,10 @@ enum class AllRoutes {
   GroupManagement,
   EditChar,
   EditLore,
+  Profile,
   Map,
   Notifications,
+  Soundboard,
 }
 
 object GroupWorkspaceRoute {
@@ -161,6 +175,18 @@ object GamePlayerRoute {
   fun createRoute(groupId: String): String = "game_player/${Uri.encode(groupId)}"
 }
 
+/**
+ * Route of the screen where a Game Master manages one group (members, removal, deletion). The list
+ * of the user's groups (Campaigns) is [AllRoutes.GroupManagement].
+ */
+object ManageGroupRoute {
+  const val route = "manage_group/{groupId}"
+  const val groupIdArgument = "groupId"
+
+  /** Builds the route opening the management screen of [groupId]. */
+  fun createRoute(groupId: String): String = "manage_group/${Uri.encode(groupId)}"
+}
+
 /** The first screen for the session found at launch, or null while it is still being checked. */
 internal fun launchRouteFor(session: SessionState): AllRoutes? =
     when (session) {
@@ -190,6 +216,8 @@ fun JDRNexusApp(
     notificationViewModel: NotificationViewModelInterface? = null,
     gameSessionRepository: GameSessionRepository? = null,
     connectivityRepository: ConnectivityRepository? = null,
+    profileViewModel: ProfileViewModelInterface? = null,
+    soundboardViewModelFactory: ViewModelProvider.Factory? = null,
 ) {
   val activeAuthViewModel = authViewModel ?: viewModel(factory = AuthViewModel.Factory)
   val activeAuthRepository = authRepository ?: AuthRepositoryFirebase()
@@ -200,6 +228,11 @@ fun JDRNexusApp(
   val credentialManager = remember(context) { CredentialManager.create(context) }
   val navController = rememberNavController()
   val navigation = rememberNavigationHelper(navController)
+  // Every screen reads the connection through LocalIsOnline to show the offline banner, and the
+  // ViewModels of the screens with server-only actions read it to disable them.
+  val activeConnectivityRepository =
+      connectivityRepository
+          ?: remember(context) { ConnectivityRepositoryProvider.repository(context) }
 
   // Create an editFileViewModel to be able to retrieve the file for the edition screens
   val activeEditFileViewModel =
@@ -216,6 +249,7 @@ fun JDRNexusApp(
                     }
                   }
           )
+  val openProfile = { navigation.navigate(AllRoutes.Profile.name) { launchSingleTop = true } }
   val activeNotificationViewModel =
       notificationViewModel
           ?: viewModel<NotificationViewModel>(
@@ -259,6 +293,7 @@ fun JDRNexusApp(
             groupRepository = activeGroupRepository,
             repository = activeWorkspaceRepository,
             authRepository = activeAuthRepository,
+            connectivityRepository = activeConnectivityRepository,
         )
       }
     }
@@ -272,10 +307,6 @@ fun JDRNexusApp(
     }
   }
 
-  // Every screen reads the connection through LocalIsOnline to show the offline banner.
-  val activeConnectivityRepository =
-      connectivityRepository
-          ?: remember(context) { ConnectivityRepositoryProvider.repository(context) }
   // Collected only while the app is started, so the network callback is released in the
   // background; starts as online, so no banner flashes before the first value.
   val isOnline by
@@ -353,8 +384,10 @@ fun JDRNexusApp(
               viewModel = activeAuthViewModel,
               onPersonalSpaceClick = onPersonalSpaceClicked,
               onDiceClick = onDiceClicked,
+              onSoundboardClick = { navigation.navigate(AllRoutes.Soundboard.name) },
               onGroupManagementClick = onGroupManagementClicked,
               onMapClick = onMapClicked,
+              onProfileClick = openProfile,
               unreadNotificationCount = notificationState.unreadCount,
               onNotificationsClick = {
                 navigation.navigate(AllRoutes.Notifications.name) { launchSingleTop = true }
@@ -452,6 +485,7 @@ fun JDRNexusApp(
                               GameManagementViewModel(
                                   groupRepository = activeGroupRepository,
                                   authRepository = activeAuthRepository,
+                                  connectivityRepository = activeConnectivityRepository,
                               )
                             }
                           }
@@ -471,7 +505,12 @@ fun JDRNexusApp(
                     }
                 navigation.navigate(route) { launchSingleTop = true }
               },
-              onManageGroup = { showComingSoon(context, "Group management") },
+              onManageGroup = { groupId ->
+                navigation.navigate(ManageGroupRoute.createRoute(groupId)) {
+                  launchSingleTop = true
+                }
+              },
+              onProfileClick = openProfile,
               onTabSelected = { tab ->
                 when (tab) {
                   "Home" -> navigation.popBackStack(AllRoutes.Home.name, inclusive = false)
@@ -480,6 +519,32 @@ fun JDRNexusApp(
                   "Map" -> navigation.navigate(AllRoutes.Map.name)
                 }
               },
+          )
+        }
+
+        composable(route = ManageGroupRoute.route) { backStackEntry ->
+          val groupId =
+              requireNotNull(backStackEntry.arguments?.getString(ManageGroupRoute.groupIdArgument))
+          val groupManagementViewModel: GroupManagementViewModel =
+              viewModel(
+                  factory =
+                      viewModelFactory {
+                        initializer {
+                          GroupManagementViewModel(
+                              groupId,
+                              activeGroupRepository,
+                              activeAuthRepository,
+                          )
+                        }
+                      }
+              )
+          GroupManagementScreen(
+              viewModel = groupManagementViewModel,
+              onBack = { navigation.popBackStack() },
+              onGroupDeleted = {
+                navigation.popBackStack(AllRoutes.GroupManagement.name, inclusive = false)
+              },
+              onTabSelected = onGameTabSelected,
           )
         }
 
@@ -652,6 +717,52 @@ fun JDRNexusApp(
           )
         }
 
+        composable(route = AllRoutes.Soundboard.name) { backStackEntry ->
+          // Home owns the soundboard, so there is one for the whole session: reopening it finds
+          // the music still playing, and it stops at logout. The soundboard's own entry is the
+          // owner only when Home is not on the stack (tests with another start destination).
+          val owner: ViewModelStoreOwner =
+              remember(backStackEntry) {
+                runCatching { navController.getBackStackEntry(AllRoutes.Home.name) }.getOrNull()
+                    ?: backStackEntry
+              }
+          // Requested as ViewModel so tests can pass a fake through soundboardViewModelFactory;
+          // both factories build a SoundboardViewModelInterface.
+          val soundboardViewModel =
+              viewModel<ViewModel>(
+                  viewModelStoreOwner = owner,
+                  key = AllRoutes.Soundboard.name,
+                  factory =
+                      soundboardViewModelFactory
+                          ?: viewModelFactory {
+                            initializer<ViewModel> {
+                              SoundboardViewModel(
+                                  SoundboardRepositoryProvider.repository(context),
+                                  Media3SoundboardPlayer(context),
+                                  activeAuthRepository,
+                              )
+                            }
+                          },
+              )
+                  as SoundboardViewModelInterface
+          SoundboardScreen(
+              viewModel = soundboardViewModel,
+              soundboardId = null,
+              onBack = { navigation.popBackStack() },
+              // TODO(#301): open the editor route once a SoundboardEditViewModelInterface
+              //  implementation exists.
+              onEdit = {},
+              onTabSelected = { tab ->
+                when (tab) {
+                  "Home" -> navigation.popBackStack(AllRoutes.Home.name, inclusive = false)
+                  // Opened from Home, Campaigns is not on the stack, so popping would do nothing.
+                  "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
+                  else -> onGameTabSelected(tab)
+                }
+              },
+          )
+        }
+
         composable(route = AllRoutes.EditChar.name) {
           EditFileCharacter(
               viewModel = activeEditFileViewModel,
@@ -665,6 +776,30 @@ fun JDRNexusApp(
               viewModel = activeEditFileViewModel,
               onBack = { navigation.popBackStack() },
               onSaved = { navigation.popBackStack() },
+          )
+        }
+
+        composable(route = AllRoutes.Profile.name) {
+          // Scoped to this entry: each visit reloads the profile and drops unsaved drafts.
+          val activeProfileViewModel =
+              profileViewModel
+                  ?: viewModel<ProfileViewModel>(
+                      factory =
+                          viewModelFactory {
+                            initializer { ProfileViewModel(authRepository = activeAuthRepository) }
+                          }
+                  )
+          ProfileScreen(
+              viewModel = activeProfileViewModel,
+              onBack = { navigation.popBackStack() },
+              onTabSelected = { tab ->
+                when (tab) {
+                  "Home" -> navigation.popBackStack(AllRoutes.Home.name, inclusive = false)
+                  "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
+                  "Files" -> navigation.navigate(AllRoutes.PersoSpace.name)
+                  "Map" -> navigation.navigate(AllRoutes.Map.name)
+                }
+              },
           )
         }
       }

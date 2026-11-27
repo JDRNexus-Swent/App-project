@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.resources.NeedsConnectionHint
 import com.github.se.jdrnexus.resources.darkFieldColors
 
 /**
@@ -235,6 +236,9 @@ private fun CardAction(
  * @param isInProgress Whether the rename is running: disables the field and buttons.
  * @param onSave Called when the user confirms the new name.
  * @param onCancel Called when the user cancels or dismisses the dialog.
+ * @param isOnline Whether the device is online. The group workspace passes it, since renaming there
+ *   needs the server: offline, Save is disabled with a "Needs a connection" line. The personal
+ *   space keeps the default, as it renames offline.
  */
 @Composable
 fun EditItemDialog(
@@ -245,6 +249,7 @@ fun EditItemDialog(
     isInProgress: Boolean,
     onSave: () -> Unit,
     onCancel: () -> Unit,
+    isOnline: Boolean = true,
 ) {
   AlertDialog(
       modifier = Modifier.testTag(C.Tag.workspace_edit_item_dialog),
@@ -281,12 +286,13 @@ fun EditItemDialog(
                 }
               },
           )
+          NeedsConnectionHint(isOnline = isOnline, tag = C.Tag.workspace_dialog_needs_connection)
         }
       },
       confirmButton = {
         TextButton(
             modifier = Modifier.testTag(C.Tag.workspace_edit_item_save),
-            enabled = !isInProgress,
+            enabled = isOnline && !isInProgress,
             onClick = onSave,
         ) {
           OperationButtonContent(

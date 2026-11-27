@@ -28,6 +28,10 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.AnnotatedString
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -46,6 +50,7 @@ import com.github.se.jdrnexus.model.personalSpace.GroupRepository
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.Placement
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepository
+import com.github.se.jdrnexus.model.profile.ProfileRepositoryProvider
 import com.github.se.jdrnexus.model.repository.AuthError
 import com.github.se.jdrnexus.model.repository.AuthRepository
 import com.github.se.jdrnexus.model.repository.AuthResult
@@ -65,11 +70,16 @@ import com.github.se.jdrnexus.ui.search.DocumentSearchResult
 import com.github.se.jdrnexus.ui.search.DocumentSearchStatus
 import com.github.se.jdrnexus.ui.search.DocumentSearchUiState
 import com.github.se.jdrnexus.ui.search.DocumentSearchViewModel
+import com.github.se.jdrnexus.ui.soundboard.SoundboardUiState
+import com.github.se.jdrnexus.ui.soundboard.SoundboardViewModelInterface
 import com.github.se.jdrnexus.utils.FakeConnectivityRepository
 import com.github.se.jdrnexus.utils.FakeNotificationViewModel
+import com.github.se.jdrnexus.utils.FakeProfileRepository
+import com.github.se.jdrnexus.utils.LOADED_PROFILE_STATE
 import com.github.se.jdrnexus.utils.NavigationGameSessionRepository
 import com.github.se.jdrnexus.utils.NavigationGroupRepository
 import com.github.se.jdrnexus.utils.NavigationWorkspaceRepository
+import com.github.se.jdrnexus.utils.RecordingProfileViewModel
 import com.github.se.jdrnexus.utils.tapInOneFrame
 import com.github.se.jdrnexus.viewmodel.GameManagementViewModel
 import com.github.se.jdrnexus.viewmodel.PersonalSpaceViewModel
@@ -81,6 +91,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -89,6 +100,12 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class MainActivityNavigationTest {
   @get:Rule val composeTestRule = createComposeRule()
+
+  // Every app built by showApp gets this factory; only the soundboard tests open that route.
+  private val soundboardViewModels = mutableListOf<LifetimeSoundboardViewModel>()
+  private val soundboardFactory = viewModelFactory {
+    initializer<ViewModel> { LifetimeSoundboardViewModel().also { soundboardViewModels += it } }
+  }
 
   @Test
   fun startsAtSignInAndReturnsFromSignUp() {
@@ -193,14 +210,14 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
-    waitForTag(TestTags.GROUPMANAGEMENTBUTTON)
+    waitForTag(TestTags.TITLE)
 
     composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertIsDisplayed()
 
     composeTestRule.runOnIdle { connectivity.online.value = true }
     composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertDoesNotExist()
 
-    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
     waitForTag(C.Tag.enter_workspace_button)
     composeTestRule.runOnIdle { connectivity.online.value = false }
     composeTestRule.onNodeWithTag(C.Tag.offline_banner, useUnmergedTree = true).assertIsDisplayed()
@@ -335,6 +352,142 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun homeProfileButtonOpensProfileAndBackButtonReturnsHome() {
+    val profileViewModel = RecordingProfileViewModel(LOADED_PROFILE_STATE)
+    openProfileFromHome(profileViewModel)
+
+    composeTestRule.onNodeWithTag(C.Tag.profile_username).assertTextContains("Rowan")
+    assertEquals(1, profileViewModel.loadCalls)
+
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
+  fun systemBackFromProfileReturnsHome() {
+    openProfileFromHome(RecordingProfileViewModel(LOADED_PROFILE_STATE))
+
+    Espresso.pressBack()
+
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
+  fun homeTabFromProfileReturnsHome() {
+    openProfileFromHome(RecordingProfileViewModel(LOADED_PROFILE_STATE))
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
+  fun campaignsTabFromProfileOpensCampaigns() {
+    showApp(
+        groupRepository = groupRepository(),
+        profileViewModel = RecordingProfileViewModel(LOADED_PROFILE_STATE),
+    )
+    signIn()
+    composeTestRule.onNodeWithTag(C.Tag.open_profile).performClick()
+    waitForTag(C.Tag.profile_username)
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+
+    waitForTag(C.Tag.play_button)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
+  fun filesTabFromProfileOpensPersonalSpace() {
+    openProfileFromHome(RecordingProfileViewModel(LOADED_PROFILE_STATE))
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+
+    waitForText(PERSONAL_SPACE_TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
+  fun mapTabFromProfileOpensTheMap() {
+    val defaultMapRepository = MapRepositoryProvider.mapRepository
+    MapRepositoryProvider.mapRepository = NoGamesMapRepository()
+    try {
+      openProfileFromHome(RecordingProfileViewModel(LOADED_PROFILE_STATE))
+
+      composeTestRule.onNodeWithTag(C.Tag.bottomTab("map")).performClick()
+
+      waitForTag(C.Tag.map_screen)
+      composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+    } finally {
+      MapRepositoryProvider.mapRepository = defaultMapRepository
+    }
+  }
+
+  @Test
+  fun eachProfileVisitLoadsTheProfileWithAFreshViewModel() {
+    // No injected ViewModel: JDRNexusApp creates the real one for the Profile entry.
+    showApp(profileViewModel = null)
+    signIn()
+    // Read only after showApp: the provider's default repository needs the FirebaseApp it starts.
+    val defaultProfileRepository = ProfileRepositoryProvider.repository
+    val profileRepository = FakeProfileRepository()
+    ProfileRepositoryProvider.repository = profileRepository
+    try {
+      repeat(2) {
+        composeTestRule.onNodeWithTag(C.Tag.open_profile).performClick()
+        waitForTag(C.Tag.profile_username)
+        composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+        waitForTag(TestTags.TITLE)
+        composeTestRule.waitForIdle()
+      }
+
+      // ProfileViewModel.loadProfile keeps an already loaded profile of the same user, so only a
+      // new ViewModel on the second visit fetches it again.
+      assertEquals(2, profileRepository.profileRequests.size)
+    } finally {
+      ProfileRepositoryProvider.repository = defaultProfileRepository
+    }
+  }
+
+  @Test
+  fun doubleTapOnProfileButtonOpensASingleProfile() {
+    showApp(profileViewModel = RecordingProfileViewModel(LOADED_PROFILE_STATE))
+    signIn()
+
+    composeTestRule.onNodeWithTag(C.Tag.open_profile).performTouchInput {
+      click()
+      click()
+    }
+    waitForTag(C.Tag.profile_username)
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    // One back leaves the profile: a second profile entry would still be on screen.
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
+  fun campaignsProfileButtonOpensProfileAndBackReturnsToCampaigns() {
+    showApp(
+        groupRepository = groupRepository(),
+        profileViewModel = RecordingProfileViewModel(LOADED_PROFILE_STATE),
+    )
+    signInAndOpenCampaigns()
+    waitForTag(C.Tag.play_button)
+
+    composeTestRule.onNodeWithTag(C.Tag.open_profile).performClick()
+    waitForTag(C.Tag.profile_username)
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    waitForTag(C.Tag.play_button)
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_username).assertCountEquals(0)
+  }
+
+  @Test
   fun rapidCloseClicksDoNotRemoveHomeFromTheBackStack() {
     val repository = FakeAuthRepository()
     showApp(repository)
@@ -367,7 +520,7 @@ class MainActivityNavigationTest {
 
     composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
     composeTestRule.onNodeWithTag(TestTags.DICEBUTTON).assertIsNotEnabled()
-    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(TestTags.SOUNDBOARDBUTTON).assertIsNotEnabled()
     composeTestRule.onNodeWithTag(TestTags.PSPACEBUTTON).assertIsNotEnabled()
     composeTestRule.onNodeWithTag(TestTags.DICEBUTTON).performClick()
     composeTestRule.onAllNodesWithTag(C.Tag.dice_offline_screen).assertCountEquals(0)
@@ -706,19 +859,31 @@ class MainActivityNavigationTest {
     showApp(groupRepository = groupRepository("user-1"))
     signInAndOpenCampaigns()
 
+    // The help opens by itself on the first visit; close it so that "?" is tapped with it closed.
+    waitForTag(C.Tag.help_sheet)
+    closeHelpWithGotIt()
+
+    composeTestRule.onNodeWithTag(C.Tag.help_button).performClick()
+    waitForTag(C.Tag.help_sheet)
+  }
+
+  @Test
+  fun campaignsHelpOpensByItselfOnTheFirstVisitOnly() {
+    showApp(groupRepository = groupRepository("user-1"))
+    signInAndOpenCampaigns()
+
+    waitForTag(C.Tag.help_sheet)
+    closeHelpWithGotIt()
+
+    // Home removes Campaigns from the back stack, so coming back creates a new help ViewModel,
+    // which reads the record again.
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
     waitForTag(C.Tag.help_button)
-    composeTestRule.onNodeWithTag(C.Tag.help_button).performClick()
-    waitForTag(C.Tag.help_sheet)
+    composeTestRule.waitForIdle()
 
-    composeTestRule.onNodeWithTag(C.Tag.help_next).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.help_next).performClick()
-    composeTestRule.onNodeWithTag(C.Tag.help_done).performClick()
-    composeTestRule.waitUntil(5_000) {
-      composeTestRule.onAllNodesWithTag(C.Tag.help_sheet).fetchSemanticsNodes().isEmpty()
-    }
-
-    composeTestRule.onNodeWithTag(C.Tag.help_button).performClick()
-    waitForTag(C.Tag.help_sheet)
+    composeTestRule.onAllNodesWithTag(C.Tag.help_sheet).assertCountEquals(0)
   }
 
   @Test
@@ -843,6 +1008,44 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun personalSearchFolderResultWithoutThePersonalSpaceUnderItOpensThePersonalSpace() {
+    val folder =
+        JDRFile(id = "campaign", name = "Campaign", ownerId = "user-1", type = DocumentType.FOLDER)
+    val repository = FakeAuthRepository(FakeAuthRepository.TEST_USER)
+    val workspaceRepository = FakeWorkspaceRepository(listOf(folder))
+    val authViewModel = AuthViewModel(repository)
+    val gameManagementViewModel =
+        GameManagementViewModel(FakeGroupRepository(), repository, FakeConnectivityRepository())
+    val personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, repository)
+    val editFileViewModel = EditFileViewModel(workspaceRepository)
+    val searchViewModel = FakeSearchViewModel(folder)
+    // The search is the first screen: there is no Personal Space under it to open the folder in.
+    composeTestRule.setContent {
+      JDRNexusApp(
+          authViewModel = authViewModel,
+          gameManagementViewModel = gameManagementViewModel,
+          personalSpaceViewModel = personalSpaceViewModel,
+          editFileViewModel = editFileViewModel,
+          authRepository = repository,
+          groupRepository = FakeGroupRepository(),
+          workspaceRepository = workspaceRepository,
+          personalSearchViewModel = searchViewModel,
+          notificationViewModel = FakeNotificationViewModel(),
+          connectivityRepository = FakeConnectivityRepository(),
+          startDestination = AllRoutes.Search,
+      )
+    }
+    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Camp")
+
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(folder.id)).performClick()
+
+    // The Personal Space replaces the search, at its root, where the folder is a row.
+    waitForTag(C.Tag.search_open)
+    composeTestRule.onAllNodesWithTag(C.Tag.search_query).assertCountEquals(0)
+    waitForText(folder.name)
+  }
+
+  @Test
   fun searchBackRestoresThePersonalSpaceFolder() {
     // The folder is the root entry; its lore document appears only inside that folder.
     val folder =
@@ -959,6 +1162,46 @@ class MainActivityNavigationTest {
     composeTestRule.onAllNodesWithText(folder.name).assertCountEquals(2)
   }
 
+  /** A soundboard VM that does nothing and records when its owner clears it. */
+  private class LifetimeSoundboardViewModel : ViewModel(), SoundboardViewModelInterface {
+    var cleared = false
+    override val uiState = MutableStateFlow(SoundboardUiState())
+
+    override fun onCleared() {
+      cleared = true
+    }
+
+    override fun selectPlaylist(playlistId: String) = Unit
+
+    override fun playAmbience(playlistId: String, audioId: String) = Unit
+
+    override fun playPlaylist(playlistId: String) = Unit
+
+    override fun pauseAmbience() = Unit
+
+    override fun stopAmbience() = Unit
+
+    override fun setAmbienceLooping(isLooping: Boolean) = Unit
+
+    override fun toggleSoundEffect(audioId: String) = Unit
+
+    override fun setAmbienceVolume(volume: Float) = Unit
+
+    override fun setSoundEffectVolume(volume: Float) = Unit
+
+    override fun saveVolumes() = Unit
+
+    override fun toggleAmbienceMute() = Unit
+
+    override fun toggleSoundEffectMute() = Unit
+
+    override fun stopAll() = Unit
+
+    override fun setTrackMenuExpanded(isExpanded: Boolean) = Unit
+
+    override fun loadSoundboard(soundboardId: String?) = Unit
+  }
+
   private class NoGamesMapRepository : MapRepository {
     override suspend fun loadGamesNear(location: MapLocation?): List<MapGame> = emptyList()
   }
@@ -1053,6 +1296,95 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun homeMicOpensTheSoundboardAndBackReturnsHome() {
+    showApp()
+    signIn()
+
+    composeTestRule.onNodeWithTag(TestTags.SOUNDBOARDBUTTON).performClick()
+    waitForTag(C.Tag.soundboard_loading)
+    Espresso.pressBack()
+
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.soundboard_loading).assertCountEquals(0)
+  }
+
+  @Test
+  fun soundboardOpenedFromHomeLivesOnHome() {
+    showApp()
+    signIn()
+
+    repeat(2) {
+      composeTestRule.onNodeWithTag(TestTags.SOUNDBOARDBUTTON).performClick()
+      waitForTag(C.Tag.soundboard_loading)
+      Espresso.pressBack()
+      waitForTag(TestTags.TITLE)
+    }
+
+    composeTestRule.runOnIdle {
+      assertEquals(1, soundboardViewModels.size)
+      assertFalse(soundboardViewModels.single().cleared)
+    }
+  }
+
+  @Test
+  fun soundboardStopsAtLogout() {
+    showApp()
+    signIn()
+    composeTestRule.onNodeWithTag(TestTags.SOUNDBOARDBUTTON).performClick()
+    waitForTag(C.Tag.soundboard_loading)
+    Espresso.pressBack()
+    waitForTag(TestTags.LOGOUT)
+
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+
+    waitForTag(C.Tag.sign_in_email)
+    composeTestRule.runOnIdle { assertTrue(soundboardViewModels.single().cleared) }
+  }
+
+  @Test
+  fun newUserOpensTheirEmptySoundboard() {
+    // No fake: the app builds the real soundboard VM on the device's (empty) Room database.
+    showApp(soundboardViewModelFactory = null)
+    signIn()
+
+    composeTestRule.onNodeWithTag(TestTags.SOUNDBOARDBUTTON).performClick()
+
+    waitForTag(C.Tag.soundboard_empty)
+  }
+
+  @Test
+  fun homeTabFromSoundboardReturnsHome() {
+    openSoundboardFromHome()
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.soundboard_loading).assertCountEquals(0)
+  }
+
+  @Test
+  fun filesTabFromSoundboardOpensFiles() {
+    openSoundboardFromHome()
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+
+    waitForText(PERSONAL_SPACE_TITLE)
+  }
+
+  @Test
+  fun campaignsTabFromHomeSoundboardOpensCampaigns() {
+    showApp(groupRepository = groupRepository())
+    signIn()
+
+    composeTestRule.onNodeWithTag(TestTags.SOUNDBOARDBUTTON).performClick()
+    waitForTag(C.Tag.soundboard_loading)
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+
+    waitForTag(C.Tag.play_button)
+    composeTestRule.onAllNodesWithTag(C.Tag.soundboard_loading).assertCountEquals(0)
+  }
+
+  @Test
   fun rapidPlayTapsOpenOneGameScreen() {
     showGameApp(gameMasterId = "user-1")
     signInAndOpenCampaigns()
@@ -1113,6 +1445,35 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
 
     assertBackOnCampaigns(C.Tag.game_player_back)
+  }
+
+  @Test
+  fun manageGroupOpensTheGroupManagementScreenAndBackReturnsToCampaigns() {
+    openGroupManagement(groupRepository("user-1"))
+
+    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
+
+    assertBackOnCampaigns(C.Tag.group_management_delete)
+  }
+
+  @Test
+  fun deletingTheGroupReturnsToCampaigns() {
+    val groupRepository = groupRepository("user-1")
+    openGroupManagement(groupRepository)
+
+    composeTestRule.onNodeWithTag(C.Tag.group_management_delete).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.group_management_confirm).performClick()
+
+    assertBackOnCampaigns(C.Tag.group_management_delete)
+    assertEquals("group-1", groupRepository.deletedGroupId)
+  }
+
+  private fun openGroupManagement(groupRepository: NavigationGroupRepository) {
+    showApp(groupRepository = groupRepository)
+    signInAndOpenCampaigns()
+    waitForText("Manage group")
+    composeTestRule.onNodeWithText("Manage group").performClick()
+    waitForTag(C.Tag.group_management_delete)
   }
 
   @Test
@@ -1231,6 +1592,14 @@ class MainActivityNavigationTest {
     composeTestRule.onAllNodesWithTag(gameScreenTag).assertCountEquals(0)
   }
 
+  /** Closes the open Campaigns help through its pages and "Got it", then waits for it to go. */
+  private fun closeHelpWithGotIt() {
+    composeTestRule.onNodeWithTag(C.Tag.help_next).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.help_next).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.help_done).performClick()
+    waitForTagToDisappear(C.Tag.help_sheet)
+  }
+
   private fun waitForTagToDisappear(tag: String) {
     composeTestRule.waitUntil(5_000) {
       composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isEmpty()
@@ -1261,7 +1630,9 @@ class MainActivityNavigationTest {
       workspaceRepository: NavigationWorkspaceRepository = NavigationWorkspaceRepository(),
       gameSessionRepository: NavigationGameSessionRepository? = null,
       connectivityRepository: FakeConnectivityRepository = FakeConnectivityRepository(),
+      profileViewModel: RecordingProfileViewModel? = RecordingProfileViewModel(),
       authViewModel: AuthViewModel = AuthViewModel(repository),
+      soundboardViewModelFactory: ViewModelProvider.Factory? = soundboardFactory,
   ) {
     val context = ApplicationProvider.getApplicationContext<Context>()
     if (FirebaseApp.getApps(context).isEmpty()) {
@@ -1285,17 +1656,40 @@ class MainActivityNavigationTest {
             gameSessionRepository = gameSessionRepository,
             notificationViewModel = FakeNotificationViewModel(),
             connectivityRepository = connectivityRepository,
+            profileViewModel = profileViewModel,
+            soundboardViewModelFactory = soundboardViewModelFactory,
         )
       }
     }
   }
 
-  private fun signInAndOpenCampaigns() {
+  /** Signs in with the fake account and waits for Home. */
+  private fun signIn() {
     composeTestRule.onNodeWithTag(C.Tag.sign_in_email).performTextInput("hero@example.com")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
-    waitForTag(TestTags.GROUPMANAGEMENTBUTTON)
-    composeTestRule.onNodeWithTag(TestTags.GROUPMANAGEMENTBUTTON).performClick()
+    waitForTag(TestTags.TITLE)
+  }
+
+  /** Shows the app, signs in and opens the soundboard with Home's mic button. */
+  private fun openSoundboardFromHome() {
+    showApp()
+    signIn()
+    composeTestRule.onNodeWithTag(TestTags.SOUNDBOARDBUTTON).performClick()
+    waitForTag(C.Tag.soundboard_loading)
+  }
+
+  private fun signInAndOpenCampaigns() {
+    signIn()
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
+  }
+
+  /** Shows the app with [profileViewModel], signs in and opens the profile from Home. */
+  private fun openProfileFromHome(profileViewModel: RecordingProfileViewModel) {
+    showApp(profileViewModel = profileViewModel)
+    signIn()
+    composeTestRule.onNodeWithTag(C.Tag.open_profile).performClick()
+    waitForTag(C.Tag.profile_username)
   }
 
   private fun waitForTag(tag: String) {
@@ -1331,7 +1725,8 @@ class MainActivityNavigationTest {
     val groupRepository = FakeGroupRepository()
     val authViewModel = AuthViewModel(repository)
     val personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, repository)
-    val gameManagementViewModel = GameManagementViewModel(groupRepository, repository)
+    val gameManagementViewModel =
+        GameManagementViewModel(groupRepository, repository, FakeConnectivityRepository())
     val editFileViewModel = EditFileViewModel(workspaceRepository)
     composeTestRule.setContent {
       JDRNexusApp(

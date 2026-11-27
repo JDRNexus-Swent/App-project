@@ -68,6 +68,7 @@ import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.personalSpace.InvitationCodes
 import com.github.se.jdrnexus.model.personalSpace.InvitationError
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.resources.NeedsConnectionHint
 import com.github.se.jdrnexus.viewmodel.InvitationState
 import com.github.se.jdrnexus.viewmodel.JoinState
 import kotlinx.coroutines.launch
@@ -83,6 +84,7 @@ internal fun invitationErrorMessage(error: InvitationError): Int =
       InvitationError.UNKNOWN_CODE -> R.string.invitation_error_unknown_code
       InvitationError.ALREADY_MEMBER -> R.string.invitation_error_already_member
       InvitationError.NETWORK -> R.string.invitation_error_network
+      InvitationError.OFFLINE -> R.string.needs_connection
     }
 
 /**
@@ -94,6 +96,15 @@ internal fun invitationErrorMessage(error: InvitationError): Int =
 internal fun joinErrorMessage(error: InvitationError): Int =
     if (error == InvitationError.NETWORK) R.string.join_error_network
     else invitationErrorMessage(error)
+
+/**
+ * This error, unless it is [InvitationError.OFFLINE] while the device is offline: the "Needs a
+ * connection" hint already says it then, so the dialog shows that text once. Back online, the hint
+ * goes and the error shows again, until the request is retried.
+ */
+private fun InvitationError.withoutOfflineHint(isOnline: Boolean): InvitationError? = takeUnless {
+  it == InvitationError.OFFLINE && !isOnline
+}
 
 /**
  * Uppercases [input] and keeps only characters a code can contain, up to the length of a generated
@@ -112,6 +123,9 @@ internal fun cleanInvitationCodeInput(input: String): String =
  * @param groupName name of the group, shown in the subtitle.
  * @param code the group's code, or `null` while none is loaded.
  * @param state whether the code is loading or the last request failed.
+ * @param isOnline whether the device is online. Offline, "Try again" and "Regenerate" need the
+ *   server, so they are disabled with a "Needs a connection" line; a code already shown can still
+ *   be copied and shared.
  * @param renderAsWindow whether to show the dialog in its own window; tests render it inline.
  * @param onRetry called by "Try again" when there is no code and none is loading.
  * @param onRegenerate called once the GameMaster confirms regenerating the code.
@@ -122,6 +136,7 @@ internal fun InviteDialog(
     groupName: String,
     code: String?,
     state: InvitationState,
+    isOnline: Boolean,
     renderAsWindow: Boolean,
     onRetry: () -> Unit,
     onRegenerate: () -> Unit,
@@ -130,6 +145,7 @@ internal fun InviteDialog(
   val colors = gameManagementColors()
   val isLoading = state == InvitationState.Loading
   val error = (state as? InvitationState.Error)?.error
+  val shownError = error?.withoutOfflineHint(isOnline)
   val canUseCode = code != null && !isLoading
   var confirmingRegenerate by rememberSaveable { mutableStateOf(false) }
   val clipboard = LocalClipboard.current
@@ -180,6 +196,7 @@ internal fun InviteDialog(
         else ->
             TextButton(
                 onClick = onRetry,
+                enabled = isOnline,
                 colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
                 modifier = Modifier.testTag(C.Tag.invite_retry),
             ) {
@@ -187,9 +204,14 @@ internal fun InviteDialog(
             }
       }
     }
-    if (error != null) {
-      ErrorLine(stringResource(invitationErrorMessage(error)), C.Tag.invite_error)
+    if (shownError != null) {
+      ErrorLine(stringResource(invitationErrorMessage(shownError)), C.Tag.invite_error)
     }
+    NeedsConnectionHint(
+        isOnline = isOnline,
+        modifier = Modifier.align(Alignment.CenterHorizontally),
+        tag = C.Tag.invite_needs_connection,
+    )
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       OutlinedButton(
           onClick = {
@@ -223,6 +245,7 @@ internal fun InviteDialog(
     }
     if (confirmingRegenerate) {
       RegenerateConfirmation(
+          confirmEnabled = isOnline,
           onCancel = { confirmingRegenerate = false },
           onConfirm = {
             confirmingRegenerate = false
@@ -232,7 +255,7 @@ internal fun InviteDialog(
     } else {
       TextButton(
           onClick = { confirmingRegenerate = true },
-          enabled = canUseCode,
+          enabled = canUseCode && isOnline,
           colors = ButtonDefaults.textButtonColors(contentColor = colors.secondaryText),
           modifier = Modifier.align(Alignment.CenterHorizontally).testTag(C.Tag.invite_regenerate),
       ) {
@@ -251,6 +274,8 @@ internal fun InviteDialog(
  * it clears the error.
  *
  * @param state the current join request: idle, running, failed or done.
+ * @param isOnline whether the device is online. Offline, Join is disabled with a "Needs a
+ *   connection" line, since joining needs the server.
  * @param renderAsWindow whether to show the dialog in its own window; tests render it inline.
  * @param onClearError called when the user edits the code while an error is shown.
  * @param onJoin called with the typed code when the user submits it.
@@ -259,6 +284,7 @@ internal fun InviteDialog(
 @Composable
 internal fun JoinGroupDialog(
     state: JoinState,
+    isOnline: Boolean,
     renderAsWindow: Boolean,
     onClearError: () -> Unit,
     onJoin: (String) -> Unit,
@@ -306,12 +332,14 @@ internal fun JoinGroupDialog(
         colors = gameManagementFieldColors(colors),
         modifier = Modifier.fillMaxWidth().testTag(C.Tag.join_code_field),
     )
-    if (error != null) {
-      ErrorLine(stringResource(joinErrorMessage(error)), C.Tag.join_error)
+    val shownError = error?.withoutOfflineHint(isOnline)
+    if (shownError != null) {
+      ErrorLine(stringResource(joinErrorMessage(shownError)), C.Tag.join_error)
     }
+    NeedsConnectionHint(isOnline = isOnline, tag = C.Tag.join_needs_connection)
     Button(
         onClick = { onJoin(code) },
-        enabled = code.isNotEmpty() && !isJoining,
+        enabled = isOnline && code.isNotEmpty() && !isJoining,
         shape = RoundedCornerShape(10.dp),
         colors = accentButtonColors(colors),
         modifier = Modifier.fillMaxWidth().height(46.dp).testTag(C.Tag.join_submit),
@@ -418,7 +446,11 @@ private fun accentButtonColors(colors: GameManagementColors): ButtonColors =
 
 /** The inline box that asks the GameMaster to confirm replacing the current code. */
 @Composable
-private fun RegenerateConfirmation(onCancel: () -> Unit, onConfirm: () -> Unit) {
+private fun RegenerateConfirmation(
+    confirmEnabled: Boolean,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+) {
   val colors = gameManagementColors()
   Column(
       modifier =
@@ -456,6 +488,7 @@ private fun RegenerateConfirmation(onCancel: () -> Unit, onConfirm: () -> Unit) 
       }
       Button(
           onClick = onConfirm,
+          enabled = confirmEnabled,
           shape = RoundedCornerShape(8.dp),
           colors = accentButtonColors(colors),
           modifier = Modifier.weight(1f).height(44.dp).testTag(C.Tag.invite_regenerate_confirm),

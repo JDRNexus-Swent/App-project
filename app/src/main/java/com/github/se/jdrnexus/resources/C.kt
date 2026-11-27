@@ -47,6 +47,14 @@ object C {
     const val shared_back_button = "shared_back_button"
     const val shared_bottom_bar = "shared_bottom_bar"
     const val offline_banner = "offline_banner"
+    const val needs_connection = "needs_connection"
+    const val create_group_needs_connection = "create_group_needs_connection"
+    const val join_needs_connection = "join_needs_connection"
+    const val invite_needs_connection = "invite_needs_connection"
+    const val workspace_dialog_needs_connection = "workspace_dialog_needs_connection"
+    const val sign_out_unsynced_dialog = "sign_out_unsynced_dialog"
+    const val sign_out_unsynced_cancel = "sign_out_unsynced_cancel"
+    const val sign_out_unsynced_confirm = "sign_out_unsynced_confirm"
     const val search_open = "document_search_open"
     const val search_query = "document_search_query"
     const val search_clear = "document_search_clear"
@@ -64,6 +72,12 @@ object C {
     const val profile_loading = "profile_loading"
     const val profile_saving = "profile_saving"
     const val profile_error = "profile_error"
+    /** Dialog asking to confirm leaving the profile while a save or picture upload runs. */
+    const val profile_leave_dialog = "profile_leave_dialog"
+    const val profile_leave_confirm = "profile_leave_confirm"
+    const val profile_leave_stay = "profile_leave_stay"
+    /** Button opening the profile screen, in the top bar of Home and of Campaigns. */
+    const val open_profile = "open_profile"
 
     const val sign_in_email = "auth_sign_in_email"
     const val sign_in_password = "auth_sign_in_password"
@@ -233,6 +247,80 @@ object C {
 
     /** Tag of the button restoring the hidden GM dashboard section [key]. */
     fun gameGmRestore(key: String) = "game_gm_restore_$key"
+
+    const val group_management_loading = "group_management_loading"
+    const val group_management_error = "group_management_error"
+    const val group_management_delete = "group_management_delete"
+    const val group_management_confirm = "group_management_confirm"
+    const val group_management_cancel = "group_management_cancel"
+    const val group_management_retry = "group_management_retry"
+
+    /** Tag of the row of the group member [uid] on the group management screen. */
+    fun groupManagementMember(uid: String) = "group_management_member_$uid"
+
+    /** Tag of the button removing the player [uid] on the group management screen. */
+    fun groupManagementRemove(uid: String) = "group_management_remove_$uid"
+
+    const val soundboard_loading = "soundboard_loading"
+    const val soundboard_error = "soundboard_error"
+    const val soundboard_retry = "soundboard_retry"
+    const val soundboard_empty = "soundboard_empty"
+    const val soundboard_edit = "soundboard_edit"
+    const val soundboard_content = "soundboard_content"
+    const val soundboard_ambience_volume = "soundboard_ambience_volume"
+    const val soundboard_ambience_mute = "soundboard_ambience_mute"
+    const val soundboard_effects_volume = "soundboard_effects_volume"
+    const val soundboard_effects_mute = "soundboard_effects_mute"
+    const val soundboard_volume_error = "soundboard_volume_error"
+    const val soundboard_track_menu = "soundboard_track_menu"
+    const val soundboard_play_pause = "soundboard_play_pause"
+    const val soundboard_preparing = "soundboard_preparing"
+    const val soundboard_elapsed = "soundboard_elapsed"
+    const val soundboard_looping = "soundboard_looping"
+    const val soundboard_ambience_error = "soundboard_ambience_error"
+    const val soundboard_effects_grid = "soundboard_effects_grid"
+    const val soundboard_effects_error = "soundboard_effects_error"
+
+    /** Tag of the soundboard's tab for the playlist with [id]. */
+    fun soundboardPlaylist(id: String) = "soundboard_playlist_$id"
+
+    /** Tag of the track menu item playing the track whose audio has [audioId]. */
+    fun soundboardTrack(audioId: String) = "soundboard_track_$audioId"
+
+    /** Tag of the button of the sound effect whose audio has [audioId]. */
+    fun soundboardEffect(audioId: String) = "soundboard_effect_$audioId"
+
+    const val soundboard_edit_loading = "soundboard_edit_loading"
+    const val soundboard_edit_error = "soundboard_edit_error"
+    const val soundboard_edit_retry = "soundboard_edit_retry"
+    const val soundboard_edit_content = "soundboard_edit_content"
+    const val soundboard_edit_name = "soundboard_edit_name"
+    const val soundboard_edit_add_playlist = "soundboard_edit_add_playlist"
+    const val soundboard_edit_playlist_name = "soundboard_edit_playlist_name"
+    const val soundboard_edit_add_track = "soundboard_edit_add_track"
+    const val soundboard_edit_add_track_progress = "soundboard_edit_add_track_progress"
+    const val soundboard_edit_track_error = "soundboard_edit_track_error"
+    const val soundboard_edit_add_sound = "soundboard_edit_add_sound"
+    const val soundboard_edit_add_sound_progress = "soundboard_edit_add_sound_progress"
+    const val soundboard_edit_effect_error = "soundboard_edit_effect_error"
+    const val soundboard_edit_save = "soundboard_edit_save"
+    const val soundboard_edit_save_progress = "soundboard_edit_save_progress"
+    const val soundboard_edit_save_error = "soundboard_edit_save_error"
+    const val soundboard_edit_discard_dialog = "soundboard_edit_discard_dialog"
+    const val soundboard_edit_discard_confirm = "soundboard_edit_discard_confirm"
+    const val soundboard_edit_discard_cancel = "soundboard_edit_discard_cancel"
+
+    /** Tag of the editable name of the track whose audio has [audioId]. */
+    fun soundboardEditTrackName(audioId: String) = "soundboard_edit_track_name_$audioId"
+
+    /** Tag of the remove button of the track whose audio has [audioId]. */
+    fun soundboardEditTrackRemove(audioId: String) = "soundboard_edit_track_remove_$audioId"
+
+    /** Tag of the editable name of the effect whose audio has [audioId]. */
+    fun soundboardEditEffectName(audioId: String) = "soundboard_edit_effect_name_$audioId"
+
+    /** Tag of the remove button of the effect whose audio has [audioId]. */
+    fun soundboardEditEffectRemove(audioId: String) = "soundboard_edit_effect_remove_$audioId"
 
     /** Tag of the search result item with [fileId]. */
     fun searchResult(fileId: String) = "document_search_result_$fileId"

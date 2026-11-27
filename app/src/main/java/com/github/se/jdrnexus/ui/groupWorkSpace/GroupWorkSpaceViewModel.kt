@@ -6,6 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.se.jdrnexus.codec.JDRFileCodecException
 import com.github.se.jdrnexus.codec.JDRFileJsonCodec
+import com.github.se.jdrnexus.model.connectivity.ConnectivityRepository
+import com.github.se.jdrnexus.model.connectivity.failWhenOffline
+import com.github.se.jdrnexus.model.connectivity.isOnlineIn
 import com.github.se.jdrnexus.model.filerepresentation.DEFAULT_CHARACTER_NAME
 import com.github.se.jdrnexus.model.filerepresentation.renameCharacterSheet
 import com.github.se.jdrnexus.model.personalSpace.DocumentType
@@ -66,11 +69,20 @@ data class GroupWorkspaceUiState(
     val personalFilesError: String = "",
 )
 
+/**
+ * State and actions of one group's workspace.
+ *
+ * The group workspace only works online: every operation that writes to it fails with
+ * [com.github.se.jdrnexus.model.connectivity.NEEDS_CONNECTION] when [connectivityRepository]
+ * reports the device offline, or when the connection drops while it runs. Content already loaded
+ * stays visible offline.
+ */
 class GroupWorkspaceViewModel(
     private val groupId: String,
     private val groupRepository: GroupRepository,
     private val repository: WorkspaceRepository = WorkspaceRepositoryProvider.repository,
     private val authRepository: AuthRepository = AuthRepositoryProvider.repository,
+    private val connectivityRepository: ConnectivityRepository,
 ) : ViewModel() {
 
   private var role: GroupWorkspaceRole? = null
@@ -78,10 +90,22 @@ class GroupWorkspaceViewModel(
 
   val uiState: StateFlow<GroupWorkspaceUiState> = _uiState.asStateFlow()
 
+  /** Whether the device is online; the screen disables the workspace's actions while it is not. */
+  val isOnline: StateFlow<Boolean> = connectivityRepository.isOnlineIn(viewModelScope)
+
   // Keeps track of the coroutine currently loading the workspace.
   private var fetchJob: Job? = null
   private var personalFilesJob: Job? = null
   private var fetchGeneration = 0L
+
+  /**
+   * A folder [openFolderAt] was asked to open before the user's role was known, with its ancestors:
+   * it is opened once the role is known.
+   */
+  private var pendingFolderOpen: Pair<String, List<String>>? = null
+
+  /** Whether the signed-in user has been read once, so a later read is a change of user. */
+  private var userRead = false
 
   // Prevents two workspace modifications from running their critical sections simultaneously within
   // this ViewModel.
@@ -259,6 +283,10 @@ class GroupWorkspaceViewModel(
             fetchJob = null
             fetchGeneration++
             role = null
+            // A folder asked for by a previous user is not opened for the next one. The first
+            // user read is the one who asked, so the request is kept for them.
+            if (userRead) pendingFolderOpen = null
+            userRead = true
 
             if (uid == null) {
               _uiState.value = GroupWorkspaceUiState(loadState = LoadState.SignedOut)
@@ -285,6 +313,7 @@ class GroupWorkspaceViewModel(
 
         if (newRole == null) {
           role = null
+          pendingFolderOpen = null
           fetchJob?.cancel()
           fetchGeneration++
 
@@ -322,7 +351,11 @@ class GroupWorkspaceViewModel(
           personalFilesJob = loadPersonalFiles(uid)
         }
 
-        if (roleChanged || fetchJob == null) {
+        val pendingFolder = pendingFolderOpen
+        pendingFolderOpen = null
+        if (pendingFolder != null) {
+          openFolderAt(pendingFolder.first, pendingFolder.second)
+        } else if (roleChanged || fetchJob == null) {
           loadWorkspace()
         }
       }
@@ -425,10 +458,18 @@ class GroupWorkspaceViewModel(
    * Opens [folderId] directly, for example from a search result, as if the user had opened each of
    * the folders above it from the group root: Back then goes up through them.
    *
+   * Called before the user's role in the group is known, the folder and its history are kept and
+   * loaded once the role is known.
+   *
    * @param ancestorIds ids of the folders from the group root (excluded) down to the one holding
    *   [folderId].
    */
   fun openFolderAt(folderId: String, ancestorIds: List<String>) {
+    if (role == null) {
+      // Opened once the role is known; loading now would do nothing.
+      pendingFolderOpen = folderId to ancestorIds
+      return
+    }
     _uiState.update { it.copy(folderHistory = listOf("") + ancestorIds) }
     loadWorkspace(folderId, preserveFolderHistory = true)
   }
@@ -763,6 +804,9 @@ class GroupWorkspaceViewModel(
    * using a Mutex, propagates coroutine cancellation, displays failures, and resets the loading
    * state when all pending operations finish. Workspace updates are observed through the
    * repository's Flow.
+   *
+   * Every operation needs the server: offline, or when the connection drops while it runs, it stops
+   * with the "Needs a connection." error instead of loading forever.
    */
   private suspend fun performOperation(
       operation: suspend () -> Unit,
@@ -771,7 +815,7 @@ class GroupWorkspaceViewModel(
     _uiState.update { it.copy(isOperationInProgress = true) }
 
     try {
-      operationMutex.withLock { operation() }
+      operationMutex.withLock { connectivityRepository.isOnline.failWhenOffline(operation) }
       // The repository's Flow is responsible for refreshing the UI.
     } catch (e: CancellationException) {
       throw e

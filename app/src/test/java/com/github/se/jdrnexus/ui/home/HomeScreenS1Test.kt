@@ -7,6 +7,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
@@ -25,6 +26,7 @@ import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthStatus
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
+import com.github.se.jdrnexus.utils.PendingWritesWorkspaceRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -66,13 +68,13 @@ class HomeScreenS1Test {
   @Test
   fun quickToolButtonsAreSquareAndClickable() {
     var diceClicked = false
-    var groupManagementClicked = false
+    var soundboardClicked = false
     composeTestRule.setContent {
       SampleAppTheme {
         HomeScreen(
             viewModel = createViewModel(),
             onDiceClick = { diceClicked = true },
-            onGroupManagementClick = { groupManagementClicked = true },
+            onSoundboardClick = { soundboardClicked = true },
         )
       }
     }
@@ -82,7 +84,7 @@ class HomeScreenS1Test {
       button.assertIsDisplayed()
       composeTestRule
           .onNodeWithTag(
-              listOf(TestTags.DICE_ICON, TestTags.GROUPMANAGEMENT_ICON)[index],
+              listOf(TestTags.DICE_ICON, TestTags.SOUNDBOARD_ICON)[index],
               useUnmergedTree = true,
           )
           .assertIsDisplayed()
@@ -93,7 +95,7 @@ class HomeScreenS1Test {
       button.performClick()
     }
     Assert.assertTrue(diceClicked)
-    Assert.assertTrue(groupManagementClicked)
+    Assert.assertTrue(soundboardClicked)
   }
 
   @Test
@@ -197,6 +199,116 @@ class HomeScreenS1Test {
   }
 
   @Test
+  fun logoutWithUnsyncedChangesShowsTheWarningInsteadOfSigningOut() {
+    val repository = FakeAuthRepository()
+    // Held, so the screen sees the check running, then ending without a sign-out.
+    val check = CompletableDeferred<Unit>()
+    val workspace = PendingWritesWorkspaceRepository(true).apply { checkGate = check }
+    val viewModel = AuthViewModel(repository, workspace)
+    var loggedOut = false
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(viewModel, onLogout = { loggedOut = true }) }
+    }
+
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.waitForIdle()
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).assertIsNotEnabled()
+    check.complete(Unit)
+
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) {
+      composeTestRule
+          .onAllNodesWithTag(C.Tag.sign_out_unsynced_dialog)
+          .fetchSemanticsNodes()
+          .size == 1
+    }
+    composeTestRule
+        .onNodeWithText("Changes made offline will be lost", substring = true)
+        .assertIsDisplayed()
+    Assert.assertEquals(0, repository.signOutCalls)
+    Assert.assertFalse(loggedOut)
+  }
+
+  @Test
+  fun cancellingTheUnsyncedWarningStaysSignedInAndEnablesLogoutAgain() {
+    val repository = FakeAuthRepository()
+    val viewModel = AuthViewModel(repository, PendingWritesWorkspaceRepository(true))
+    var loggedOut = false
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(viewModel, onLogout = { loggedOut = true }) }
+    }
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) { viewModel.uiState.value.isSignOutWarningShown }
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_out_unsynced_cancel).performClick()
+
+    composeTestRule.onAllNodesWithTag(C.Tag.sign_out_unsynced_dialog).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).assertIsEnabled()
+    Assert.assertEquals(0, repository.signOutCalls)
+    Assert.assertFalse(loggedOut)
+  }
+
+  @Test
+  fun confirmingTheUnsyncedWarningSignsOutAnyway() {
+    // Held, so the screen sees the sign-out running before it ends, as with a real server.
+    val signOutResult = CompletableDeferred<AuthResult<Unit>>()
+    val repository = FakeAuthRepository { signOutResult.await() }
+    val viewModel = AuthViewModel(repository, PendingWritesWorkspaceRepository(true))
+    var loggedOut = false
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(viewModel, onLogout = { loggedOut = true }) }
+    }
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) { viewModel.uiState.value.isSignOutWarningShown }
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_out_unsynced_confirm).performClick()
+    composeTestRule.waitForIdle()
+    Assert.assertEquals(1, repository.signOutCalls)
+    signOutResult.complete(AuthResult.Success(Unit))
+
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) { loggedOut }
+    composeTestRule.onAllNodesWithTag(C.Tag.sign_out_unsynced_dialog).assertCountEquals(0)
+  }
+
+  @Test
+  fun confirmingTheUnsyncedWarningLeavesHomeWhenTheSignOutEndsAtOnce() {
+    // Ends without suspending, like Firebase's sign-out: the screen never sees Loading.
+    val repository = FakeAuthRepository()
+    val viewModel = AuthViewModel(repository, PendingWritesWorkspaceRepository(true))
+    var logouts = 0
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(viewModel, onLogout = { logouts++ }) }
+    }
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) { viewModel.uiState.value.isSignOutWarningShown }
+
+    composeTestRule.onNodeWithTag(C.Tag.sign_out_unsynced_confirm).performClick()
+
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) { logouts == 1 }
+    composeTestRule.waitForIdle()
+    Assert.assertEquals(1, logouts)
+    Assert.assertFalse(viewModel.uiState.value.isSignedOut)
+  }
+
+  @Test
+  fun logoutWithoutUnsyncedChangesSignsOutWithoutWarning() {
+    val signOutResult = CompletableDeferred<AuthResult<Unit>>()
+    val repository = FakeAuthRepository { signOutResult.await() }
+    val viewModel = AuthViewModel(repository, PendingWritesWorkspaceRepository(false))
+    var loggedOut = false
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(viewModel, onLogout = { loggedOut = true }) }
+    }
+
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.waitForIdle()
+    Assert.assertEquals(1, repository.signOutCalls)
+    composeTestRule.onAllNodesWithTag(C.Tag.sign_out_unsynced_dialog).assertCountEquals(0)
+    signOutResult.complete(AuthResult.Success(Unit))
+
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) { loggedOut }
+  }
+
+  @Test
   fun personalSpaceButtonInvokesCallback() {
     var clicked = false
     composeTestRule.setContent {
@@ -267,6 +379,44 @@ class HomeScreenS1Test {
     composeTestRule.onNodeWithTag(C.Tag.notification_bell).performClick()
 
     Assert.assertEquals(0, notificationClicks)
+    signOutResult.complete(AuthResult.Success(Unit))
+  }
+
+  @Test
+  fun profileButtonIsHiddenWithoutProfileCallback() {
+    composeTestRule.setContent { SampleAppTheme { HomeScreen(createViewModel()) } }
+
+    composeTestRule.onAllNodesWithTag(C.Tag.open_profile).assertCountEquals(0)
+  }
+
+  @Test
+  fun profileButtonOpensProfile() {
+    var profileClicks = 0
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(createViewModel(), onProfileClick = { profileClicks++ }) }
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.open_profile).assertIsDisplayed().performClick()
+
+    Assert.assertEquals(1, profileClicks)
+  }
+
+  @Test
+  fun profileButtonCannotOpenProfileWhileSignOutIsPending() {
+    val signOutResult = CompletableDeferred<AuthResult<Unit>>()
+    val repository = FakeAuthRepository { signOutResult.await() }
+    val viewModel = AuthViewModel(repository)
+    var profileClicks = 0
+    composeTestRule.setContent {
+      SampleAppTheme { HomeScreen(viewModel, onProfileClick = { profileClicks++ }) }
+    }
+
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+    composeTestRule.waitUntil(SIGN_OUT_TIMEOUT_MS) { repository.signOutCalls == 1 }
+    composeTestRule.onNodeWithTag(C.Tag.open_profile).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(C.Tag.open_profile).performClick()
+
+    Assert.assertEquals(0, profileClicks)
     signOutResult.complete(AuthResult.Success(Unit))
   }
 
