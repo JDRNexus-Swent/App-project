@@ -375,6 +375,10 @@ class SoundboardViewModel(
     sounds.forEach { sound -> control(sound) { setVolume(volume) } }
   }
 
+  /**
+   * Saves the slider values by replacing the whole board. An editor save that has yet to reach the
+   * ViewModel's board observer could be overwritten.
+   */
   override fun saveVolumes() {
     val session = boardSession ?: return
     val released = state.value.soundboard ?: return
@@ -383,8 +387,6 @@ class SoundboardViewModel(
         if (boardSession !== session) return@withLock
         val board = state.value.soundboard ?: return@withLock
         try {
-          // stale race with editing, but editing is not here yet
-          // and repo should implement save Volume in the meantime, avoiding it
           repository
               .saveSoundboard(
                   session.userId,
