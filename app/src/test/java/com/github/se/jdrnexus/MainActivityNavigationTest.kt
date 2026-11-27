@@ -1185,47 +1185,6 @@ class MainActivityNavigationTest {
   }
 
   @Test
-  fun gameMasterSoundboardOpensAndBackReturnsToTheGameScreen() {
-    openGameFromPlay(gameMasterId = "user-1")
-    waitForTag(C.Tag.game_gm_soundboard)
-
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_soundboard).performClick()
-    waitForTag(C.Tag.soundboard_loading)
-    Espresso.pressBack()
-
-    waitForTag(C.Tag.game_gm_start_game)
-  }
-
-  @Test
-  fun soundboardOpenedFromTheGameStopsWhenTheGameIsLeft() {
-    openGameFromPlay(gameMasterId = "user-1")
-    openSoundboardFromGameAndGoBack()
-    assertEquals(1, soundboardViewModels.size)
-    assertFalse(soundboardViewModels.single().cleared)
-
-    // Reopening reuses the playback the game screen owns.
-    openSoundboardFromGameAndGoBack()
-    assertEquals(1, soundboardViewModels.size)
-
-    composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
-    assertBackOnCampaigns(C.Tag.game_gm_start_game)
-    composeTestRule.runOnIdle { assertTrue(soundboardViewModels.single().cleared) }
-  }
-
-  @Test
-  fun campaignsTabFromGameSoundboardStopsTheSound() {
-    openGameFromPlay(gameMasterId = "user-1")
-    waitForTag(C.Tag.game_gm_soundboard)
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_soundboard).performClick()
-    waitForTag(C.Tag.soundboard_loading)
-
-    composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
-
-    assertBackOnCampaigns(C.Tag.game_gm_start_game)
-    composeTestRule.runOnIdle { assertTrue(soundboardViewModels.single().cleared) }
-  }
-
-  @Test
   fun soundboardOpenedFromHomeLivesOnHome() {
     showApp()
     signIn()
@@ -1241,6 +1200,21 @@ class MainActivityNavigationTest {
       assertEquals(1, soundboardViewModels.size)
       assertFalse(soundboardViewModels.single().cleared)
     }
+  }
+
+  @Test
+  fun soundboardStopsAtLogout() {
+    showApp()
+    signIn()
+    composeTestRule.onNodeWithTag(TestTags.SOUNDBOARDBUTTON).performClick()
+    waitForTag(C.Tag.soundboard_loading)
+    Espresso.pressBack()
+    waitForTag(TestTags.LOGOUT)
+
+    composeTestRule.onNodeWithTag(TestTags.LOGOUT).performClick()
+
+    waitForTag(C.Tag.sign_in_email)
+    composeTestRule.runOnIdle { assertTrue(soundboardViewModels.single().cleared) }
   }
 
   @Test
@@ -1545,14 +1519,6 @@ class MainActivityNavigationTest {
   private fun signInAndOpenCampaigns() {
     signIn()
     composeTestRule.onNodeWithTag(C.Tag.bottomTab("campaigns")).performClick()
-  }
-
-  private fun openSoundboardFromGameAndGoBack() {
-    waitForTag(C.Tag.game_gm_soundboard)
-    composeTestRule.onNodeWithTag(C.Tag.game_gm_soundboard).performClick()
-    waitForTag(C.Tag.soundboard_loading)
-    Espresso.pressBack()
-    waitForTag(C.Tag.game_gm_start_game)
   }
 
   /** Shows the app with [profileViewModel], signs in and opens the profile from Home. */

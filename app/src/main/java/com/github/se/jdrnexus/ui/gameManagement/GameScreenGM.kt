@@ -31,7 +31,6 @@ import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -50,7 +49,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -100,7 +98,6 @@ private enum class GmSection(@StringRes val title: Int, val key: String) {
  * @param viewModel Supplies session state and handles game actions.
  * @param onTabSelected Receives selections from the shared bottom navigation.
  * @param onDiceClick Opens the dice roller.
- * @param onSoundboardClick Opens the soundboard.
  * @param groupName Name shown for the active campaign.
  * @param onBack Leaves the screen; the top bar shows no back button when it is null.
  */
@@ -109,7 +106,6 @@ fun GameScreenGM(
     viewModel: GameViewModelGM,
     onTabSelected: (String) -> Unit = {},
     onDiceClick: () -> Unit = {},
-    onSoundboardClick: () -> Unit = {},
     groupName: String = "",
     onBack: (() -> Unit)? = null,
 ) {
@@ -130,7 +126,6 @@ fun GameScreenGM(
       },
       onTabSelected = onTabSelected,
       onDiceClick = onDiceClick,
-      onSoundboardClick = onSoundboardClick,
       onStartGame = viewModel::startGame,
       onBack = onBack,
   )
@@ -197,7 +192,6 @@ private fun GameStartControl(uiState: GameViewModelGMUiState, onStartGame: () ->
  * @param onRetry Requests the unavailable session data again.
  * @param onTabSelected Receives shared bottom-navigation selections.
  * @param onDiceClick Opens the dice roller.
- * @param onSoundboardClick Opens the soundboard.
  * @param onStartGame Starts the campaign's game session.
  * @param onBack Leaves the screen; the top bar shows no back button when it is null.
  * @param renderAddEnemyDialogAsWindow Whether the add-enemy dialog opens in its own window; tests
@@ -216,7 +210,6 @@ internal fun GameScreenGMContent(
     onRetry: () -> Unit = {},
     onTabSelected: (String) -> Unit = {},
     onDiceClick: () -> Unit = {},
-    onSoundboardClick: () -> Unit = {},
     onStartGame: () -> Unit = {},
     onBack: (() -> Unit)? = null,
     renderAddEnemyDialogAsWindow: Boolean = true,
@@ -233,38 +226,23 @@ internal fun GameScreenGMContent(
       bottomBar = { ScreenBottomBar(selectedTab = "Campaigns", onTabSelected = onTabSelected) },
       contentColor = MaterialTheme.colorScheme.onSurface,
       floatingActionButton = {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+        FloatingActionButton(
+            onClick = onDiceClick,
+            modifier = Modifier.testTag(C.Tag.game_gm_dice),
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
         ) {
-          SmallFloatingActionButton(
-              onClick = onSoundboardClick,
-              modifier = Modifier.testTag(C.Tag.game_gm_soundboard),
-          ) {
-            Icon(
-                imageVector = Icons.Default.MusicNote,
-                contentDescription = stringResource(R.string.game_gm_soundboard_cd),
-            )
-          }
-          FloatingActionButton(
-              onClick = onDiceClick,
-              modifier = Modifier.testTag(C.Tag.game_gm_dice),
-              containerColor = MaterialTheme.colorScheme.primary,
-              contentColor = MaterialTheme.colorScheme.onPrimary,
-          ) {
-            Icon(
-                imageVector = Icons.Default.Casino,
-                contentDescription = stringResource(R.string.game_gm_dice_cd),
-            )
-          }
+          Icon(
+              imageVector = Icons.Default.Casino,
+              contentDescription = stringResource(R.string.game_gm_dice_cd),
+          )
         }
       },
   ) { padding ->
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding).testTag(C.Tag.game_gm_list),
-        // 152dp = 24dp gap + 40dp small FAB + 16dp spacing + 56dp FAB + 16dp FAB margin, so the
-        // last card can scroll above both FABs.
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 152.dp),
+        // 96dp = 24dp gap + 56dp FAB + 16dp FAB margin, so the last card can scroll above the FAB.
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       item {

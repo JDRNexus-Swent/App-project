@@ -555,9 +555,6 @@ fun JDRNexusApp(
               onBack = { navigation.popBackStack() },
               onTabSelected = onGameTabSelected,
               onDiceClick = { navigation.navigate(AllRoutes.Dice.name) { launchSingleTop = true } },
-              onSoundboardClick = {
-                navigation.navigate(AllRoutes.Soundboard.name) { launchSingleTop = true }
-              },
           )
         }
 
@@ -686,15 +683,12 @@ fun JDRNexusApp(
         }
 
         composable(route = AllRoutes.Soundboard.name) { backStackEntry ->
-          // Playback lives as long as the screen it was opened from: the GM game screen (sound
-          // stops when the game is left) or Home (sound lives until logout).
+          // Home owns the soundboard, so there is one for the whole session: reopening it finds
+          // the music still playing, and it stops at logout. The soundboard's own entry is the
+          // owner only when Home is not on the stack (tests with another start destination).
           val owner: ViewModelStoreOwner =
               remember(backStackEntry) {
-                navController.previousBackStackEntry?.takeIf {
-                  it.destination.route == GameMasterRoute.route
-                }
-                    ?: runCatching { navController.getBackStackEntry(AllRoutes.Home.name) }
-                        .getOrNull()
+                runCatching { navController.getBackStackEntry(AllRoutes.Home.name) }.getOrNull()
                     ?: backStackEntry
               }
           // Requested as ViewModel so tests can pass a fake through soundboardViewModelFactory;
@@ -726,15 +720,8 @@ fun JDRNexusApp(
               onTabSelected = { tab ->
                 when (tab) {
                   "Home" -> navigation.popBackStack(AllRoutes.Home.name, inclusive = false)
-                  // Opened from Home, Campaigns is not on the stack, so popping does nothing.
-                  "Campaigns" ->
-                      if (
-                          !navigation.popBackStack(
-                              AllRoutes.GroupManagement.name,
-                              inclusive = false,
-                          )
-                      )
-                          navigation.navigate(AllRoutes.GroupManagement.name)
+                  // Opened from Home, Campaigns is not on the stack, so popping would do nothing.
+                  "Campaigns" -> navigation.navigate(AllRoutes.GroupManagement.name)
                   else -> onGameTabSelected(tab)
                 }
               },
