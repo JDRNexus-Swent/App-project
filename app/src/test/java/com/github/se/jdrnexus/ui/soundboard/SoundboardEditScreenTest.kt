@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
@@ -261,6 +262,13 @@ class SoundboardEditScreenTest {
   }
 
   @Test
+  fun noPlaylistHintIsHiddenWhilePlaylistsExist() {
+    setContent(ready.copy(selectedPlaylistId = null))
+
+    composeTestRule.onNodeWithText("Add a playlist to add ambience tracks.").assertDoesNotExist()
+  }
+
+  @Test
   fun tracksAreRenamedInPlaceAndRemoved() {
     val vm = setContent(ready)
 
@@ -284,6 +292,7 @@ class SoundboardEditScreenTest {
     answerPicker(picked)
 
     assertEquals(listOf("importTrack(tavern, $picked)"), vm.callsAfterLoad())
+    assertEquals(listOf("audio/mpeg"), picker.inputs)
   }
 
   @Test
@@ -304,10 +313,7 @@ class SoundboardEditScreenTest {
 
     composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_track_progress).assertExists()
     composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_sound_progress).assertDoesNotExist()
-    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_track).assertIsNotEnabled()
-    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_sound).assertIsNotEnabled()
-    composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_save).assertIsNotEnabled()
-    assertDraftControls(enabled = true)
+    assertImportBlocksOtherImportsAndSave()
   }
 
   @Test
@@ -350,10 +356,42 @@ class SoundboardEditScreenTest {
   }
 
   @Test
-  fun blankNameIsShownAsRequired() {
-    setContent(ready.copy(draft = draft.copy(effects = listOf(sword.copy(name = "")))))
+  fun blankNamesAreShownAsRequired() {
+    setContent(
+        ready.copy(
+            draft =
+                draft.copy(
+                    playlists =
+                        listOf(tavern.copy(name = "", tracks = listOf(byTheFire.copy(name = "")))),
+                    effects = listOf(sword.copy(name = "")),
+                )
+        )
+    )
 
-    composeTestRule.onNodeWithText("Name required").assertIsDisplayed()
+    listOf(
+            C.Tag.soundboard_edit_playlist_name,
+            C.Tag.soundboardEditTrackName("fire"),
+            C.Tag.soundboardEditEffectName("sword"),
+        )
+        .forEach { composeTestRule.onNodeWithTag(it).assertTextContains("Name required") }
+  }
+
+  @Test
+  fun removeButtonsOfBlankRowsSayUnnamedSound() {
+    setContent(
+        ready.copy(
+            draft =
+                draft.copy(
+                    playlists = listOf(tavern.copy(tracks = listOf(byTheFire.copy(name = "")))),
+                    effects = listOf(sword.copy(name = "")),
+                )
+        )
+    )
+
+    listOf(C.Tag.soundboardEditTrackRemove("fire"), C.Tag.soundboardEditEffectRemove("sword"))
+        .forEach {
+          composeTestRule.onNodeWithTag(it).assertContentDescriptionEquals("Remove unnamed sound")
+        }
   }
 
   @Test
@@ -364,16 +402,18 @@ class SoundboardEditScreenTest {
     answerPicker(picked)
 
     assertEquals(listOf("importSoundEffect($picked)"), vm.callsAfterLoad())
+    assertEquals(listOf("audio/mpeg"), picker.inputs)
   }
 
   @Test
-  fun effectImportShowsItsOwnSpinner() {
+  fun effectImportShowsItsSpinnerAndBlocksOtherImportsAndSave() {
     composeTestRule.mainClock.autoAdvance = false
     setContent(ready.copy(status = SoundboardEditStatus.IMPORTING_EFFECT))
     composeTestRule.mainClock.advanceTimeBy(100)
 
     composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_sound_progress).assertExists()
     composeTestRule.onNodeWithTag(C.Tag.soundboard_edit_add_track_progress).assertDoesNotExist()
+    assertImportBlocksOtherImportsAndSave()
   }
 
   @Test
@@ -522,6 +562,20 @@ class SoundboardEditScreenTest {
           val node = composeTestRule.onNodeWithTag(tag)
           if (enabled) node.assertIsEnabled() else node.assertIsNotEnabled()
         }
+  }
+
+  /**
+   * Checks that while an import runs, no other import or save can start but the draft stays
+   * editable.
+   */
+  private fun assertImportBlocksOtherImportsAndSave() {
+    listOf(
+            C.Tag.soundboard_edit_add_track,
+            C.Tag.soundboard_edit_add_sound,
+            C.Tag.soundboard_edit_save,
+        )
+        .forEach { composeTestRule.onNodeWithTag(it).assertIsNotEnabled() }
+    assertDraftControls(enabled = true)
   }
 
   /** Answers the last picker launch with [uri], or as cancelled when it is null. */

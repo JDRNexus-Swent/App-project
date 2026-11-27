@@ -8,11 +8,13 @@ import androidx.core.app.ActivityOptionsCompat
 
 /**
  * Stands in for the activity behind a system picker in screen tests. Provide it through
- * `LocalActivityResultRegistryOwner`: each launch is recorded in [requestCodes] instead of opening
- * the picker, and the test answers with `activityResultRegistry.dispatchResult(requestCode, …)`.
+ * `LocalActivityResultRegistryOwner`: each launch is recorded in [requestCodes], with what it asked
+ * for in [inputs], instead of opening the picker, and the test answers with
+ * `activityResultRegistry.dispatchResult(requestCode, …)`.
  */
 internal class RecordingPickerOwner : ActivityResultRegistryOwner {
   val requestCodes = mutableListOf<Int>()
+  val inputs = mutableListOf<Any?>()
   override val activityResultRegistry =
       object : ActivityResultRegistry() {
         override fun <I, O> onLaunch(
@@ -22,6 +24,7 @@ internal class RecordingPickerOwner : ActivityResultRegistryOwner {
             options: ActivityOptionsCompat?,
         ) {
           requestCodes.add(requestCode)
+          inputs.add(input)
         }
       }
 }

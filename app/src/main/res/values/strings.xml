@@ -323,6 +323,7 @@
     <string name="soundboard_edit_effect_subtitle">%1$s · One-shot effect</string>
     <string name="soundboard_edit_name_required">Name required</string>
     <string name="soundboard_edit_remove_cd">Remove %1$s</string>
+    <string name="soundboard_edit_remove_unnamed_cd">Remove unnamed sound</string>
     <string name="soundboard_edit_add_track">Add track</string>
     <string name="soundboard_edit_add_sound">Add sound</string>
     <string name="soundboard_edit_save">Save soundboard</string>

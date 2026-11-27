@@ -290,15 +290,18 @@ private fun AmbienceEditor(
       Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
       Text(stringResource(R.string.soundboard_edit_add_playlist))
     }
-    if (selected == null) {
-      EmptyHint(R.string.soundboard_edit_no_playlist)
-    } else {
+    if (draft.playlists.isEmpty()) EmptyHint(R.string.soundboard_edit_no_playlist)
+    if (selected != null) {
       OutlinedTextField(
           value = selected.name,
           onValueChange = { viewModel.renamePlaylist(selected.id, it) },
           enabled = canEdit,
           label = { Text(stringResource(R.string.soundboard_edit_playlist_name)) },
           isError = selected.name.isBlank(),
+          supportingText =
+              if (selected.name.isBlank()) {
+                { Text(stringResource(R.string.soundboard_edit_name_required)) }
+              } else null,
           singleLine = true,
           modifier = Modifier.fillMaxWidth().testTag(C.Tag.soundboard_edit_playlist_name),
       )
@@ -475,7 +478,9 @@ private fun SoundRow(
     ) {
       Icon(
           Icons.Filled.Remove,
-          contentDescription = stringResource(R.string.soundboard_edit_remove_cd, name),
+          contentDescription =
+              if (name.isBlank()) stringResource(R.string.soundboard_edit_remove_unnamed_cd)
+              else stringResource(R.string.soundboard_edit_remove_cd, name),
           tint = colors.error,
           modifier = Modifier.size(16.dp),
       )
