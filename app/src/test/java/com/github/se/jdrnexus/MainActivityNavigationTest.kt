@@ -29,6 +29,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.test.core.app.ApplicationProvider
@@ -1218,6 +1219,36 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun newUserOpensTheirEmptySoundboard() {
+    // No fake: the app builds the real soundboard VM on the device's (empty) Room database.
+    showApp(soundboardViewModelFactory = null)
+    signIn()
+
+    composeTestRule.onNodeWithTag(TestTags.SOUNDBOARDBUTTON).performClick()
+
+    waitForTag(C.Tag.soundboard_empty)
+  }
+
+  @Test
+  fun homeTabFromSoundboardReturnsHome() {
+    openSoundboardFromHome()
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("home")).performClick()
+
+    waitForTag(TestTags.TITLE)
+    composeTestRule.onAllNodesWithTag(C.Tag.soundboard_loading).assertCountEquals(0)
+  }
+
+  @Test
+  fun filesTabFromSoundboardOpensFiles() {
+    openSoundboardFromHome()
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+
+    waitForText(PERSONAL_SPACE_TITLE)
+  }
+
+  @Test
   fun campaignsTabFromHomeSoundboardOpensCampaigns() {
     showApp(groupRepository = groupRepository())
     signIn()
@@ -1478,6 +1509,7 @@ class MainActivityNavigationTest {
       connectivityRepository: FakeConnectivityRepository = FakeConnectivityRepository(),
       profileViewModel: RecordingProfileViewModel? = RecordingProfileViewModel(),
       authViewModel: AuthViewModel = AuthViewModel(repository),
+      soundboardViewModelFactory: ViewModelProvider.Factory? = soundboardFactory,
   ) {
     val context = ApplicationProvider.getApplicationContext<Context>()
     if (FirebaseApp.getApps(context).isEmpty()) {
@@ -1502,7 +1534,7 @@ class MainActivityNavigationTest {
             notificationViewModel = FakeNotificationViewModel(),
             connectivityRepository = connectivityRepository,
             profileViewModel = profileViewModel,
-            soundboardViewModelFactory = soundboardFactory,
+            soundboardViewModelFactory = soundboardViewModelFactory,
         )
       }
     }
@@ -1514,6 +1546,14 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(C.Tag.sign_in_password).performTextInput("secret1")
     composeTestRule.onNodeWithTag(C.Tag.sign_in_submit).performClick()
     waitForTag(TestTags.TITLE)
+  }
+
+  /** Shows the app, signs in and opens the soundboard with Home's mic button. */
+  private fun openSoundboardFromHome() {
+    showApp()
+    signIn()
+    composeTestRule.onNodeWithTag(TestTags.SOUNDBOARDBUTTON).performClick()
+    waitForTag(C.Tag.soundboard_loading)
   }
 
   private fun signInAndOpenCampaigns() {
