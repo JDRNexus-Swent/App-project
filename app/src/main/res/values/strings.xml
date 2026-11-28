@@ -46,7 +46,7 @@
     <!-- Game management screen -->
     <string name="play_action">Play</string>
     <string name="enter_workspace_action">Enter workspace</string>
-    <!-- Game master screen -->
+    <!-- Player game screen -->
     <string name="game_player_title">Game session</string>
     <string name="game_player_leave_title">Changes could not be saved</string>
     <string name="game_player_leave_anyway">Leave anyway</string>
@@ -66,6 +66,8 @@
     <string name="game_player_saved">Changes saved.</string>
     <string name="game_player_invalid_number">Enter a whole number.</string>
     <string name="game_player_current_hp">Current HP</string>
+
+    <!-- Game master screen -->
     <string name="game_gm_dice_cd">Roll dice</string>
     <string name="game_gm_header">Campaign · Game Master</string>
     <string name="game_gm_start_game">Start game</string>

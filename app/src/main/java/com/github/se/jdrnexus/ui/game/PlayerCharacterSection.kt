@@ -36,6 +36,18 @@ import com.github.se.jdrnexus.resources.C
 // Placeholder until roll modifiers can be derived from the character's stats.
 private const val PLACEHOLDER_DICE_MODIFIER = 0
 
+/**
+ * Adds the player's character sheet to this lazy list, including HP controls, stat rolls, action
+ * descriptions, and save feedback.
+ *
+ * @param sheet Character data to display.
+ * @param uiState Session state providing HP validation, save progress, and error messages.
+ * @param saveSucceeded Whether to show the save confirmation.
+ * @param onHpChanged Called with the proposed current HP after a whole number is entered or a
+ *   damage or heal button is pressed.
+ * @param onSave Called when the player presses the save button.
+ * @param onOpenDice Called with a placeholder modifier of zero when the player rolls a stat.
+ */
 internal fun LazyListScope.playerCharacterSection(
     sheet: CharacterFile,
     uiState: GamePlayerUiState,
