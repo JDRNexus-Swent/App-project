@@ -46,6 +46,27 @@
     <!-- Game management screen -->
     <string name="play_action">Play</string>
     <string name="enter_workspace_action">Enter workspace</string>
+    <!-- Player game screen -->
+    <string name="game_player_title">Game session</string>
+    <string name="game_player_leave_title">Changes could not be saved</string>
+    <string name="game_player_leave_anyway">Leave anyway</string>
+    <string name="game_player_stay">Stay</string>
+    <string name="game_player_workspace">Group Workspace</string>
+    <string name="game_player_loading">Loading game session...</string>
+    <string name="game_player_empty">No character is available.</string>
+    <string name="game_player_take_damage">Take damage (−)</string>
+    <string name="game_player_heal">Heal (+)</string>
+    <string name="game_player_max_hp">Max HP: %1$s</string>
+    <string name="game_player_stats">Stats</string>
+    <string name="game_player_stat_value">Value: %1$s</string>
+    <string name="game_player_roll">Modifier +0 · Roll</string>
+    <string name="game_player_actions">Actions</string>
+    <string name="game_player_saving">Saving changes...</string>
+    <string name="game_player_save">Save Changes</string>
+    <string name="game_player_saved">Changes saved.</string>
+    <string name="game_player_invalid_number">Enter a whole number.</string>
+    <string name="game_player_current_hp">Current HP</string>
+
     <!-- Game master screen -->
     <string name="game_gm_dice_cd">Roll dice</string>
     <string name="game_gm_header">Campaign · Game Master</string>
