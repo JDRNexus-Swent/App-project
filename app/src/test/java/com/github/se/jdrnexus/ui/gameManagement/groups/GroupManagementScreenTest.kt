@@ -1,5 +1,6 @@
+// Co-authored-by: Codex <codex@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-package com.github.se.jdrnexus.ui.gameManagement
+package com.github.se.jdrnexus.ui.gameManagement.groups
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertCountEquals

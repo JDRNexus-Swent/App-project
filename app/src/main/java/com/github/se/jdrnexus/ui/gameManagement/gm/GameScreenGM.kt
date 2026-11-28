@@ -1,7 +1,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Codex <codex@openai.com>
-package com.github.se.jdrnexus.ui.gameManagement
+package com.github.se.jdrnexus.ui.gameManagement.gm
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -49,6 +49,14 @@ import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
+import com.github.se.jdrnexus.ui.gameManagement.gm.sections.AddEnemyDialog
+import com.github.se.jdrnexus.ui.gameManagement.gm.sections.GmActivitySection
+import com.github.se.jdrnexus.ui.gameManagement.gm.sections.GmCombatSection
+import com.github.se.jdrnexus.ui.gameManagement.gm.sections.GmLoreSection
+import com.github.se.jdrnexus.ui.gameManagement.gm.sections.GmNpcDialog
+import com.github.se.jdrnexus.ui.gameManagement.gm.sections.GmNpcSection
+import com.github.se.jdrnexus.ui.gameManagement.gm.sections.GmSection
+import com.github.se.jdrnexus.ui.gameManagement.gm.sections.HiddenSections
 
 /**
  * Connects the GM view model to the stateless game-master session UI.

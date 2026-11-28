@@ -1,7 +1,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Codex <codex@openai.com>
-package com.github.se.jdrnexus.ui.gameManagement
+package com.github.se.jdrnexus.ui.gameManagement.gm.sections
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,7 +31,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.ui.gameManagement.gm.Npc
 
+/** Displays campaign [npcs] and passes the selected NPC ID to [onSelectNpc]. */
 @Composable
 internal fun GmNpcSection(
     npcs: List<Npc>,
@@ -56,6 +58,7 @@ internal fun GmNpcSection(
   }
 }
 
+/** Shows the selected [npc]'s name and information until [onDismiss] is called. */
 @Composable
 internal fun GmNpcDialog(npc: Npc, onDismiss: () -> Unit) {
   AlertDialog(

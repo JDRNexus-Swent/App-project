@@ -1,3 +1,4 @@
+// Co-authored-by: Codex <codex@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus
@@ -72,11 +73,11 @@ import com.github.se.jdrnexus.ui.edition.EditFileCharacter
 import com.github.se.jdrnexus.ui.edition.EditFileLore
 import com.github.se.jdrnexus.ui.game.GamePlayerViewModel
 import com.github.se.jdrnexus.ui.game.GameScreenPlayer
-import com.github.se.jdrnexus.ui.gameManagement.GameManagementScreen
-import com.github.se.jdrnexus.ui.gameManagement.GameScreenGM
-import com.github.se.jdrnexus.ui.gameManagement.GameViewModelGMViewModel
-import com.github.se.jdrnexus.ui.gameManagement.GroupManagementScreen
-import com.github.se.jdrnexus.ui.gameManagement.GroupManagementViewModel
+import com.github.se.jdrnexus.ui.gameManagement.campaigns.GameManagementScreen
+import com.github.se.jdrnexus.ui.gameManagement.gm.GameScreenGM
+import com.github.se.jdrnexus.ui.gameManagement.gm.GameViewModelGMViewModel
+import com.github.se.jdrnexus.ui.gameManagement.groups.GroupManagementScreen
+import com.github.se.jdrnexus.ui.gameManagement.groups.GroupManagementViewModel
 import com.github.se.jdrnexus.ui.groupWorkSpace.GroupWorkSpaceScreen
 import com.github.se.jdrnexus.ui.groupWorkSpace.GroupWorkspaceViewModel
 import com.github.se.jdrnexus.ui.home.HomeScreen

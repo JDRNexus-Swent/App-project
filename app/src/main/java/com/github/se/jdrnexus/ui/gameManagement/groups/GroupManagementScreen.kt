@@ -1,5 +1,6 @@
+// Co-authored-by: Codex <codex@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-package com.github.se.jdrnexus.ui.gameManagement
+package com.github.se.jdrnexus.ui.gameManagement.groups
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,6 +39,8 @@ import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.ScreenBottomBar
+import com.github.se.jdrnexus.ui.gameManagement.campaigns.RoleBadge
+import com.github.se.jdrnexus.ui.gameManagement.campaigns.gameManagementColors
 
 /**
  * Shows the members of a campaign group and, for its Game Master, the buttons that remove a player

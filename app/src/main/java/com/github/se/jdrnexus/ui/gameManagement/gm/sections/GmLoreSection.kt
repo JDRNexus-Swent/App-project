@@ -1,7 +1,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Codex <codex@openai.com>
-package com.github.se.jdrnexus.ui.gameManagement
+package com.github.se.jdrnexus.ui.gameManagement.gm.sections
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,7 +19,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.ui.gameManagement.gm.LoreDocument
 
+/** Displays lore documents and expands the entry matching [expandedLoreId]. */
 @Composable
 internal fun GmLoreSection(
     loreDocuments: List<LoreDocument>,

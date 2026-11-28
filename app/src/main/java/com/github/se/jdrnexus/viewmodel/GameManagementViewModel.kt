@@ -1,3 +1,4 @@
+// Co-authored-by: Codex <codex@openai.com>
 // Co-authored-by: OpenAI Codex
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.viewmodel
@@ -14,7 +15,7 @@ import com.github.se.jdrnexus.model.personalSpace.InvitationCodes
 import com.github.se.jdrnexus.model.personalSpace.InvitationError
 import com.github.se.jdrnexus.model.personalSpace.InvitationException
 import com.github.se.jdrnexus.model.repository.AuthRepository
-import com.github.se.jdrnexus.ui.gameManagement.GroupInvitationVM
+import com.github.se.jdrnexus.ui.gameManagement.groups.GroupInvitationVM
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext

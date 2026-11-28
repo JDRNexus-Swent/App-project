@@ -1,5 +1,6 @@
+// Co-authored-by: Codex <codex@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-package com.github.se.jdrnexus.ui.gameManagement
+package com.github.se.jdrnexus.ui.gameManagement.campaigns
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

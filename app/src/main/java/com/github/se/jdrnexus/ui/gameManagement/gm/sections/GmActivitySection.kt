@@ -1,7 +1,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Codex <codex@openai.com>
-package com.github.se.jdrnexus.ui.gameManagement
+package com.github.se.jdrnexus.ui.gameManagement.gm.sections
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -15,7 +15,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.ui.gameManagement.gm.ActivityItem
 
+/** Displays the campaign activity feed and lets the GM hide the section with [onDismiss]. */
 @Composable
 internal fun GmActivitySection(activityFeed: List<ActivityItem>, onDismiss: () -> Unit) {
   SectionCard(GmSection.ACTIVITY, onDismiss = onDismiss) {

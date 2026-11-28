@@ -1,5 +1,6 @@
+// Co-authored-by: Codex <codex@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-package com.github.se.jdrnexus.ui.gameManagement
+package com.github.se.jdrnexus.ui.gameManagement.groups
 
 import android.content.ClipData
 import android.content.Intent
@@ -69,6 +70,8 @@ import com.github.se.jdrnexus.model.personalSpace.InvitationCodes
 import com.github.se.jdrnexus.model.personalSpace.InvitationError
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.resources.NeedsConnectionHint
+import com.github.se.jdrnexus.ui.gameManagement.campaigns.GameManagementColors
+import com.github.se.jdrnexus.ui.gameManagement.campaigns.gameManagementColors
 import com.github.se.jdrnexus.viewmodel.InvitationState
 import com.github.se.jdrnexus.viewmodel.JoinState
 import kotlinx.coroutines.launch

@@ -1,5 +1,6 @@
+// Co-authored-by: Codex <codex@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-package com.github.se.jdrnexus.ui.gameManagement
+package com.github.se.jdrnexus.ui.gameManagement.groups
 
 import android.content.ClipboardManager
 import android.content.Intent
@@ -36,6 +37,7 @@ import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.personalSpace.CampaignGroup
 import com.github.se.jdrnexus.model.personalSpace.InvitationError
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.ui.gameManagement.campaigns.GameManagementScreenContent
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import com.github.se.jdrnexus.utils.RecordingInvitationVM
 import com.github.se.jdrnexus.viewmodel.GameManagementUiState

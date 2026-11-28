@@ -1,7 +1,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Codex <codex@openai.com>
-package com.github.se.jdrnexus.ui.gameManagement
+package com.github.se.jdrnexus.ui.gameManagement.gm.sections
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
@@ -60,7 +60,9 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterFile
 import com.github.se.jdrnexus.model.filerepresentation.CharacterHealthPoints
 import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.ui.gameManagement.gm.CombatNPC
 
+/** Displays the current round and enemies with controls to manage combat and enemy HP. */
 @Composable
 internal fun GmCombatSection(
     currentRound: Int,

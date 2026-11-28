@@ -1,3 +1,4 @@
+// Co-authored-by: Codex <codex@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus
@@ -62,7 +63,7 @@ import com.github.se.jdrnexus.ui.dice.FlatDieView
 import com.github.se.jdrnexus.ui.dice.LocalDieView
 import com.github.se.jdrnexus.ui.edition.EditFileCharacterTestTags
 import com.github.se.jdrnexus.ui.edition.EditFileLoreTestTags
-import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
+import com.github.se.jdrnexus.ui.gameManagement.campaigns.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.github.se.jdrnexus.ui.jdrfile.EditFileViewModel
 import com.github.se.jdrnexus.ui.search.DocumentSearchInterfaceVM

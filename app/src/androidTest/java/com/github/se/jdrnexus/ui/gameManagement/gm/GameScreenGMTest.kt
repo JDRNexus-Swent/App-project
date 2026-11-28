@@ -1,6 +1,7 @@
+// Co-authored-by: Codex <codex@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-package com.github.se.jdrnexus.ui.gameManagement
+package com.github.se.jdrnexus.ui.gameManagement.gm
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertCountEquals
@@ -25,6 +26,7 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.model.filerepresentation.LoreFile
 import com.github.se.jdrnexus.model.filerepresentation.LoreSection
 import com.github.se.jdrnexus.resources.C
+import com.github.se.jdrnexus.ui.gameManagement.gm.sections.isValidEnemyInput
 import com.github.se.jdrnexus.ui.theme.SampleAppTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
