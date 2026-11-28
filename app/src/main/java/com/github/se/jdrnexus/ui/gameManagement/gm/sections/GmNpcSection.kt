@@ -66,8 +66,8 @@ internal fun GmNpcSection(
 }
 
 /**
- * Shows the selected NPC's name and information. When the information is blank, the dialog
- * displays a message saying no information is available.
+ * Shows the selected NPC's name and information. When the information is blank, the dialog displays
+ * a message saying no information is available.
  *
  * @param npc Selected NPC whose details are shown.
  * @param onDismiss Called when the GM presses Close or dismisses the dialog.
