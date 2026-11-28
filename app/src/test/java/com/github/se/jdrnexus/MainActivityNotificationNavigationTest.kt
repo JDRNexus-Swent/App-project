@@ -1,3 +1,4 @@
+// Co-authored-by: Codex <codex@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus
 
@@ -24,8 +25,8 @@ import com.github.se.jdrnexus.model.repository.AuthResult
 import com.github.se.jdrnexus.model.repository.AuthUser
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.authentication.AuthViewModel
-import com.github.se.jdrnexus.ui.gameManagement.CAMPAIGNS_HELP_TOPIC
-import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
+import com.github.se.jdrnexus.ui.gameManagement.campaigns.CAMPAIGNS_HELP_TOPIC
+import com.github.se.jdrnexus.ui.gameManagement.campaigns.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.github.se.jdrnexus.utils.FakeNotificationViewModel
 import com.github.se.jdrnexus.utils.NavigationGroupRepository

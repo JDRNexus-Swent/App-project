@@ -1,6 +1,7 @@
+// Co-authored-by: Codex <codex@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-package com.github.se.jdrnexus.ui.gameManagement
+package com.github.se.jdrnexus.ui.gameManagement.campaigns
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -76,6 +77,10 @@ import com.github.se.jdrnexus.resources.JdrNexusLogo
 import com.github.se.jdrnexus.resources.NeedsConnectionHint
 import com.github.se.jdrnexus.resources.ScreenBottomBar
 import com.github.se.jdrnexus.resources.showComingSoon
+import com.github.se.jdrnexus.ui.gameManagement.groups.GroupInvitationVM
+import com.github.se.jdrnexus.ui.gameManagement.groups.GroupManagementScreen
+import com.github.se.jdrnexus.ui.gameManagement.groups.InviteDialog
+import com.github.se.jdrnexus.ui.gameManagement.groups.JoinGroupDialog
 import com.github.se.jdrnexus.ui.help.HelpSheet
 import com.github.se.jdrnexus.ui.help.HelpViewModel
 import com.github.se.jdrnexus.ui.profile.ProfileButton

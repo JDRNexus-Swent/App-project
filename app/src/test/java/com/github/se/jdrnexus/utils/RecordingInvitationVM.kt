@@ -1,7 +1,8 @@
+// Co-authored-by: Codex <codex@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.utils
 
-import com.github.se.jdrnexus.ui.gameManagement.GroupInvitationVM
+import com.github.se.jdrnexus.ui.gameManagement.groups.GroupInvitationVM
 
 /**
  * Records the invitation calls made by the game-management screen. It does not change any state:

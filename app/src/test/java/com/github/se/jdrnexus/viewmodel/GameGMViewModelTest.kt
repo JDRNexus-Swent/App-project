@@ -1,3 +1,4 @@
+// Co-authored-by: Codex <codex@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.viewmodel
@@ -15,11 +16,11 @@ import com.github.se.jdrnexus.model.gameManagement.GameLoreEntry
 import com.github.se.jdrnexus.model.gameManagement.GameNpc
 import com.github.se.jdrnexus.model.gameManagement.GameSessionRepository
 import com.github.se.jdrnexus.model.gameManagement.GameSessionSnapshot
-import com.github.se.jdrnexus.ui.gameManagement.CombatNPC
-import com.github.se.jdrnexus.ui.gameManagement.GameViewModelGMViewModel
-import com.github.se.jdrnexus.ui.gameManagement.GameViewModelGMViewModelFactory
-import com.github.se.jdrnexus.ui.gameManagement.LoreDocument
-import com.github.se.jdrnexus.ui.gameManagement.Npc
+import com.github.se.jdrnexus.ui.gameManagement.gm.CombatNPC
+import com.github.se.jdrnexus.ui.gameManagement.gm.GameViewModelGMViewModel
+import com.github.se.jdrnexus.ui.gameManagement.gm.GameViewModelGMViewModelFactory
+import com.github.se.jdrnexus.ui.gameManagement.gm.LoreDocument
+import com.github.se.jdrnexus.ui.gameManagement.gm.Npc
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi

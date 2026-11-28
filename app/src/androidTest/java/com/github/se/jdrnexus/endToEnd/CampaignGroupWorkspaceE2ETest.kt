@@ -1,3 +1,4 @@
+// Co-authored-by: Codex <codex@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.endToEnd
@@ -24,8 +25,8 @@ import com.github.se.jdrnexus.model.personalSpace.GroupRepositoryFirestore
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
 import com.github.se.jdrnexus.model.personalSpace.WorkspaceRepositoryProvider
 import com.github.se.jdrnexus.resources.C
-import com.github.se.jdrnexus.ui.gameManagement.CAMPAIGNS_HELP_TOPIC
-import com.github.se.jdrnexus.ui.gameManagement.GameManagementTestTags
+import com.github.se.jdrnexus.ui.gameManagement.campaigns.CAMPAIGNS_HELP_TOPIC
+import com.github.se.jdrnexus.ui.gameManagement.campaigns.GameManagementTestTags
 import com.github.se.jdrnexus.ui.home.TestTags
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
