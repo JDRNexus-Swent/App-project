@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
@@ -37,6 +38,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -284,6 +286,20 @@ fun JDRNexusApp(
       null -> Unit
     }
   }
+  // Shared by the group workspace and its search, which reuses the workspace's ViewModel.
+  val groupWorkspaceViewModelFactory: (String) -> ViewModelProvider.Factory = { groupId ->
+    viewModelFactory {
+      initializer {
+        GroupWorkspaceViewModel(
+            groupId = groupId,
+            groupRepository = activeGroupRepository,
+            repository = activeWorkspaceRepository,
+            authRepository = activeAuthRepository,
+            connectivityRepository = activeConnectivityRepository,
+        )
+      }
+    }
+  }
   val onGameTabSelected: (String) -> Unit = { tab ->
     when (tab) {
       "Home" -> navigation.popBackStack(AllRoutes.Home.name, inclusive = false)
@@ -437,10 +453,28 @@ fun JDRNexusApp(
           )
         }
 
-        composable(route = AllRoutes.Search.name) {
+        composable(route = AllRoutes.Search.name) { backStackEntry ->
+          // The search is opened from the Personal Space, whose ViewModel opens folder results.
+          val personalSpaceEntry =
+              remember(backStackEntry) {
+                navController.backStackEntryOrNull(AllRoutes.PersoSpace.name)
+              }
+          // Null when the search was not opened from the Personal Space.
+          val workspaceViewModel = personalSpaceEntry?.let {
+            personalSpaceViewModel ?: viewModel<PersonalSpaceViewModel>(it)
+          }
           DocumentSearchScreen(
               onBack = { navigation.popBackStack() },
               onDocumentClicked = { file -> openDocument(file, null) },
+              onFolderClicked = { result ->
+                if (workspaceViewModel != null) {
+                  workspaceViewModel.openFolderAt(result.file, result.folderIds, result.folderPath)
+                  navigation.popBackStack()
+                } else {
+                  navController.replaceSearchWith(AllRoutes.PersoSpace.name, backStackEntry)
+                }
+              },
+              rootPathLabel = stringResource(R.string.search_personal_space_path),
               searchViewModel = personalSearchViewModel ?: viewModel<DocumentSearchViewModel>(),
           )
         }
@@ -595,20 +629,7 @@ fun JDRNexusApp(
                   backStackEntry.arguments?.getString(GroupWorkspaceRoute.groupIdArgument)
               )
           val groupWorkspaceViewModel: GroupWorkspaceViewModel =
-              viewModel(
-                  factory =
-                      viewModelFactory {
-                        initializer {
-                          GroupWorkspaceViewModel(
-                              groupId = groupId,
-                              groupRepository = activeGroupRepository,
-                              repository = activeWorkspaceRepository,
-                              authRepository = activeAuthRepository,
-                              connectivityRepository = activeConnectivityRepository,
-                          )
-                        }
-                      }
-              )
+              viewModel(factory = groupWorkspaceViewModelFactory(groupId))
           val uiState by groupWorkspaceViewModel.uiState.collectAsState()
           GroupWorkSpaceScreen(
               gwViewModel = groupWorkspaceViewModel,
@@ -663,9 +684,41 @@ fun JDRNexusApp(
                             }
                           }
                   )
+          // The search is opened from the group workspace, whose ViewModel opens folder results.
+          val workspaceEntry =
+              remember(backStackEntry) {
+                navController.backStackEntryOrNull(GroupWorkspaceRoute.route)?.takeIf {
+                  it.arguments?.getString(GroupWorkspaceRoute.groupIdArgument) == groupId
+                }
+              }
+          // Without the workspace under the search, its own entry holds the ViewModel, which then
+          // only names the group root.
+          val groupWorkspaceViewModel: GroupWorkspaceViewModel =
+              viewModel(
+                  workspaceEntry ?: backStackEntry,
+                  factory = groupWorkspaceViewModelFactory(groupId),
+              )
+          val workspaceState by groupWorkspaceViewModel.uiState.collectAsState()
+          // A result at the group root is labelled with the group, never with the Personal Space.
+          val groupRootLabel =
+              workspaceState.groupName.ifBlank {
+                stringResource(R.string.search_group_workspace_path)
+              }
           DocumentSearchScreen(
               onBack = { navigation.popBackStack() },
               onDocumentClicked = { file -> openDocument(file, groupId) },
+              onFolderClicked = { result ->
+                if (workspaceEntry != null) {
+                  groupWorkspaceViewModel.openFolderAt(result.file.id, result.folderIds)
+                  navigation.popBackStack()
+                } else {
+                  navController.replaceSearchWith(
+                      GroupWorkspaceRoute.createRoute(groupId),
+                      backStackEntry,
+                  )
+                }
+              },
+              rootPathLabel = groupRootLabel,
               searchViewModel = activeGroupSearchViewModel,
           )
         }
@@ -794,4 +847,26 @@ private fun NavHostController.showSignInAfterSessionEnded(route: String) {
 @Composable
 fun AppPreview() {
   SampleAppTheme { JDRNexusApp() }
+}
+
+/** The topmost back stack entry of [route], or null when [route] is not on the back stack. */
+private fun NavHostController.backStackEntryOrNull(route: String): NavBackStackEntry? =
+    runCatching {
+      getBackStackEntry(route)
+    }
+    .getOrNull()
+
+/**
+ * Opens the workspace at [workspaceRoute] in place of the search at [searchEntry], at its root.
+ * Used when a folder result is tapped in a search that was not opened from its workspace, so there
+ * is no workspace to open the folder in; the search is always opened from it in the app.
+ */
+private fun NavHostController.replaceSearchWith(
+    workspaceRoute: String,
+    searchEntry: NavBackStackEntry,
+) {
+  navigate(workspaceRoute) {
+    popUpTo(searchEntry.destination.id) { inclusive = true }
+    launchSingleTop = true
+  }
 }

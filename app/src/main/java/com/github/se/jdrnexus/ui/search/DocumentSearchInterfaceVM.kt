@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.search
 
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
@@ -38,11 +39,13 @@ sealed interface DocumentSearchStatus {
   data class Error(val reason: SearchError) : DocumentSearchStatus
 }
 
-/** Observable data needed to render document search results and progress. */
+/** A file matching the query, and where it is in its workspace. */
 data class DocumentSearchResult(
     val file: JDRFile,
     /** Folder names from the workspace root to the folder containing [file]. */
     val folderPath: List<String>,
+    /** Ids of the folders of [folderPath], in the same order: the root itself is not included. */
+    val folderIds: List<String> = emptyList(),
 )
 
 /** Observable data needed to render document search results and progress. */

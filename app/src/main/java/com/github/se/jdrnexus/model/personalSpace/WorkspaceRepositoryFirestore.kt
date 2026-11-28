@@ -10,6 +10,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.Source
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.awaitClose
@@ -466,46 +467,80 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       }
 
       if (snapshot != null) {
-        val files = mutableListOf<JDRFile>()
-
-        for (document in snapshot.documents) {
-          try {
-            val file = document.toObject(JDRFile::class.java)
-            if (file != null && filterCondition(file)) {
-              files.add(file)
-            }
-          } catch (e: Exception) {
-            Log.e(
-                "WorkspaceRepository",
-                "Error in the deserialization of $errorMessageContext doc ${document.id}",
-                e,
-            )
-          }
-        }
-        sortCondition(files)
-        trySend(files)
+        trySend(snapshot.toFiles(errorMessageContext, filterCondition, sortCondition))
       }
     }
     awaitClose { listenerRegistration.remove() }
   }
 
+  /**
+   * The [JDRFile]s of this snapshot that match [filterCondition], sorted by [sortCondition]. A
+   * document that cannot be deserialized is logged and skipped.
+   */
+  private fun QuerySnapshot.toFiles(
+      errorMessageContext: String,
+      filterCondition: (JDRFile) -> Boolean = { true },
+      sortCondition: (MutableList<JDRFile>) -> Unit = {},
+  ): List<JDRFile> {
+    val files = mutableListOf<JDRFile>()
+    for (document in documents) {
+      try {
+        val file = document.toObject(JDRFile::class.java)
+        if (file != null && filterCondition(file)) {
+          files.add(file)
+        }
+      } catch (e: Exception) {
+        Log.e(TAG, "Error in the deserialization of $errorMessageContext doc ${document.id}", e)
+      }
+    }
+    sortCondition(files)
+    return files
+  }
+
+  /**
+   * Runs [query] once from the default source: the server while it is reachable, the local cache
+   * once Firestore knows it is not.
+   *
+   * Unlike [getWithCacheFallback], a slow server is never replaced by the cache after a timeout: a
+   * cached document is complete, but a cached query result can lack the documents this device has
+   * never read, so it would silently miss some. A connection lost but not yet detected therefore
+   * waits until Firestore notices it (a few seconds) before the cache answers.
+   */
+  private suspend fun getQueryOnce(query: Query): QuerySnapshot = query.get().await()
+
+  private fun personalFolderQuery(folderId: String, ownerId: String): Query =
+      collection.whereEqualTo("ownerId", ownerId).whereEqualTo("personalParentId", folderId)
+
+  private fun groupFolderQuery(folderId: String, groupId: String): Query =
+      collection
+          .whereArrayContains(FIELD_SHARED_GROUPS_IDS, groupId)
+          .whereEqualTo("$FIELD_PLACEMENTS.$groupId.folderId", folderId)
+
+  private val notGroupRoot: (JDRFile) -> Boolean = { it.type != DocumentType.GROUP_ROOT }
+
+  private val byLowercaseName: (MutableList<JDRFile>) -> Unit = {
+    it.sortBy { file -> file.name.lowercase() }
+  }
+
   override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
       observeFilesQuery(
-          query =
-              collection
-                  .whereEqualTo("ownerId", ownerId)
-                  .whereEqualTo("personalParentId", folderId),
+          query = personalFolderQuery(folderId, ownerId),
           errorMessageContext = "personal folder",
-          filterCondition = { it.type != DocumentType.GROUP_ROOT },
+          filterCondition = notGroupRoot,
       )
 
   override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
       observeFilesQuery(
-          query =
-              collection
-                  .whereArrayContains(FIELD_SHARED_GROUPS_IDS, groupId)
-                  .whereEqualTo("$FIELD_PLACEMENTS.$groupId.folderId", folderId),
+          query = groupFolderQuery(folderId, groupId),
           errorMessageContext = "group folder",
-          sortCondition = { it.sortBy { file -> file.name.lowercase() } },
+          sortCondition = byLowercaseName,
       )
+
+  override suspend fun fetchPersonalFolderFiles(folderId: String, ownerId: String): List<JDRFile> =
+      getQueryOnce(personalFolderQuery(folderId, ownerId))
+          .toFiles("personal folder", filterCondition = notGroupRoot)
+
+  override suspend fun fetchGroupFolderFiles(folderId: String, groupId: String): List<JDRFile> =
+      getQueryOnce(groupFolderQuery(folderId, groupId))
+          .toFiles("group folder", sortCondition = byLowercaseName)
 }

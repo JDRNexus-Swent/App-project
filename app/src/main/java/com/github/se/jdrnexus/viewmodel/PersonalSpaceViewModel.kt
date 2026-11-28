@@ -190,6 +190,26 @@ class PersonalSpaceViewModel(
   }
 
   /**
+   * Opens [folder] directly, for example from a search result, as if the user had opened each of
+   * the folders above it from the Root: Back then goes up through them.
+   *
+   * @param ancestorIds ids of the folders from the Root (excluded) down to the one holding
+   *   [folder].
+   * @param ancestorNames names of those folders, in the same order.
+   */
+  fun openFolderAt(folder: JDRFile, ancestorIds: List<String>, ancestorNames: List<String>) {
+    require(folder.isContainer()) { "Only a folder can be opened." }
+    require(ancestorIds.size == ancestorNames.size) { "Each ancestor folder needs its name." }
+    navigationPath.clear()
+    folderNames.clear()
+    navigationPath.addLast(PERSONAL_ROOT_ID)
+    navigationPath.addAll(ancestorIds)
+    folderNames.addAll(ancestorNames)
+    folderNames.addLast(folder.name)
+    fetchItems(personalParentId = folder.id)
+  }
+
+  /**
    * Goes back to the parent folder. Does nothing when [PersonalSpaceUiState.canNavigateUp] is
    * false.
    */

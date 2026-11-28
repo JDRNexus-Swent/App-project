@@ -43,13 +43,25 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.se.jdrnexus.FolderItem
 import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.model.personalSpace.JDRFile
+import com.github.se.jdrnexus.model.personalSpace.isContainer
 import com.github.se.jdrnexus.resources.AppTopBar
 import com.github.se.jdrnexus.resources.C
 
+/**
+ * Searches the files of a workspace by name.
+ *
+ * @param onDocumentClicked opens a lore or character result.
+ * @param onFolderClicked opens a folder result in its workspace; the result carries the folders
+ *   above it ([DocumentSearchResult.folderIds]).
+ * @param rootPathLabel the location shown for a result at the root of the searched workspace, such
+ *   as "Personal Space" or the group's name.
+ */
 @Composable
 fun DocumentSearchScreen(
     onBack: () -> Unit,
     onDocumentClicked: (JDRFile) -> Unit,
+    onFolderClicked: (DocumentSearchResult) -> Unit,
+    rootPathLabel: String,
     searchViewModel: DocumentSearchInterfaceVM = viewModel<DocumentSearchViewModel>(),
 ) {
   val uiState by searchViewModel.uiState.collectAsState()
@@ -147,12 +159,12 @@ fun DocumentSearchScreen(
               FolderItem(
                   folder =
                       result.file.copy(
-                          content =
-                              result.folderPath.joinToString(" / ").ifEmpty {
-                                stringResource(R.string.search_personal_space_path)
-                              }
+                          content = result.folderPath.joinToString(" / ").ifEmpty { rootPathLabel }
                       ),
-                  onFolderClicked = { onDocumentClicked(result.file) },
+                  onFolderClicked = {
+                    if (result.file.isContainer()) onFolderClicked(result)
+                    else onDocumentClicked(result.file)
+                  },
                   modifier = Modifier.testTag(C.Tag.searchResult(result.file.id)),
                   cardColor = colors.surface,
                   iconBackground = colors.surfaceContainerLowest,

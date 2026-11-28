@@ -98,6 +98,15 @@ class GroupWorkspaceViewModel(
   private var personalFilesJob: Job? = null
   private var fetchGeneration = 0L
 
+  /**
+   * A folder [openFolderAt] was asked to open before the user's role was known, with its ancestors:
+   * it is opened once the role is known.
+   */
+  private var pendingFolderOpen: Pair<String, List<String>>? = null
+
+  /** Whether the signed-in user has been read once, so a later read is a change of user. */
+  private var userRead = false
+
   // Prevents two workspace modifications from running their critical sections simultaneously within
   // this ViewModel.
   private val operationMutex = Mutex()
@@ -274,6 +283,10 @@ class GroupWorkspaceViewModel(
             fetchJob = null
             fetchGeneration++
             role = null
+            // A folder asked for by a previous user is not opened for the next one. The first
+            // user read is the one who asked, so the request is kept for them.
+            if (userRead) pendingFolderOpen = null
+            userRead = true
 
             if (uid == null) {
               _uiState.value = GroupWorkspaceUiState(loadState = LoadState.SignedOut)
@@ -300,6 +313,7 @@ class GroupWorkspaceViewModel(
 
         if (newRole == null) {
           role = null
+          pendingFolderOpen = null
           fetchJob?.cancel()
           fetchGeneration++
 
@@ -337,7 +351,11 @@ class GroupWorkspaceViewModel(
           personalFilesJob = loadPersonalFiles(uid)
         }
 
-        if (roleChanged || fetchJob == null) {
+        val pendingFolder = pendingFolderOpen
+        pendingFolderOpen = null
+        if (pendingFolder != null) {
+          openFolderAt(pendingFolder.first, pendingFolder.second)
+        } else if (roleChanged || fetchJob == null) {
           loadWorkspace()
         }
       }
@@ -433,6 +451,26 @@ class GroupWorkspaceViewModel(
     if (folderId == currentFolderId) return
 
     _uiState.update { state -> state.copy(folderHistory = state.folderHistory + currentFolderId) }
+    loadWorkspace(folderId, preserveFolderHistory = true)
+  }
+
+  /**
+   * Opens [folderId] directly, for example from a search result, as if the user had opened each of
+   * the folders above it from the group root: Back then goes up through them.
+   *
+   * Called before the user's role in the group is known, the folder and its history are kept and
+   * loaded once the role is known.
+   *
+   * @param ancestorIds ids of the folders from the group root (excluded) down to the one holding
+   *   [folderId].
+   */
+  fun openFolderAt(folderId: String, ancestorIds: List<String>) {
+    if (role == null) {
+      // Opened once the role is known; loading now would do nothing.
+      pendingFolderOpen = folderId to ancestorIds
+      return
+    }
+    _uiState.update { it.copy(folderHistory = listOf("") + ancestorIds) }
     loadWorkspace(folderId, preserveFolderHistory = true)
   }
 

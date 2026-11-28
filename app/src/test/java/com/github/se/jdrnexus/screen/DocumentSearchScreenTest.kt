@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.screen
 
 import androidx.compose.ui.test.assertCountEquals
@@ -6,6 +7,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -84,6 +86,74 @@ class DocumentSearchScreenTest {
   }
 
   @Test
+  fun rootResultShowsTheWorkspaceLabelAndNestedResultShowsItsFolders() {
+    val viewModel =
+        FakeDocumentSearchViewModel(
+            DocumentSearchUiState(
+                query = "Dragon",
+                results = listOf(rootResult, result),
+                status = DocumentSearchStatus.Results,
+            )
+        )
+    setScreen(viewModel, rootPathLabel = "The Sunken Crown")
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.searchResult(rootResult.file.id))
+        .assertTextContains("The Sunken Crown")
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(result.file.id)).assertTextContains("Campaign")
+    composeTestRule.onAllNodesWithText("The Sunken Crown").assertCountEquals(1)
+    composeTestRule.onAllNodesWithText("Personal Space").assertCountEquals(0)
+  }
+
+  @Test
+  fun tappingFolderResultOpensTheFolderInsteadOfTheEditor() {
+    val viewModel =
+        FakeDocumentSearchViewModel(
+            DocumentSearchUiState(
+                query = "Maps",
+                results = listOf(folderResult),
+                status = DocumentSearchStatus.Results,
+            )
+        )
+    var openedFolder: DocumentSearchResult? = null
+    var openedFile: JDRFile? = null
+    setScreen(
+        viewModel,
+        onDocumentClicked = { openedFile = it },
+        onFolderClicked = { openedFolder = it },
+    )
+
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(folderResult.file.id)).performClick()
+
+    assertEquals(folderResult, openedFolder)
+    assertEquals(null, openedFile)
+  }
+
+  @Test
+  fun tappingDocumentResultOpensTheDocumentInsteadOfAFolder() {
+    val viewModel =
+        FakeDocumentSearchViewModel(
+            DocumentSearchUiState(
+                query = "Dragon",
+                results = listOf(result),
+                status = DocumentSearchStatus.Results,
+            )
+        )
+    var openedFolder: DocumentSearchResult? = null
+    var openedFile: JDRFile? = null
+    setScreen(
+        viewModel,
+        onDocumentClicked = { openedFile = it },
+        onFolderClicked = { openedFolder = it },
+    )
+
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(result.file.id)).performClick()
+
+    assertEquals(result.file, openedFile)
+    assertEquals(null, openedFolder)
+  }
+
+  @Test
   fun blankLoadingAndNoResultsStatesAreRendered() {
     val viewModel = FakeDocumentSearchViewModel()
     setScreen(viewModel)
@@ -144,12 +214,16 @@ class DocumentSearchScreenTest {
   private fun setScreen(
       viewModel: FakeDocumentSearchViewModel,
       onDocumentClicked: (JDRFile) -> Unit = {},
+      onFolderClicked: (DocumentSearchResult) -> Unit = {},
+      rootPathLabel: String = "Personal Space",
   ) {
     composeTestRule.setContent {
       SampleAppTheme {
         DocumentSearchScreen(
             onBack = {},
             onDocumentClicked = onDocumentClicked,
+            onFolderClicked = onFolderClicked,
+            rootPathLabel = rootPathLabel,
             searchViewModel = viewModel,
         )
       }
@@ -192,6 +266,17 @@ class DocumentSearchScreenTest {
                     type = DocumentType.TEXT,
                 ),
             folderPath = listOf("Campaign"),
+        )
+    val rootResult =
+        DocumentSearchResult(
+            file = JDRFile(id = "dragon-map", name = "Dragon map", type = DocumentType.TEXT),
+            folderPath = emptyList(),
+        )
+    val folderResult =
+        DocumentSearchResult(
+            file = JDRFile(id = "maps", name = "Maps", type = DocumentType.FOLDER),
+            folderPath = listOf("Campaign"),
+            folderIds = listOf("campaign"),
         )
   }
 }

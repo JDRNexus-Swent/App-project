@@ -75,6 +75,109 @@ class DocumentSearchViewModelTest {
   }
 
   @Test
+  fun personalSearchFindsFoldersLoreAndCharactersAtEveryDepth() {
+    val rootFolder = JDRFile("root-folder", "Dragon Den", type = DocumentType.FOLDER)
+    val nestedFolder = JDRFile("nested-folder", "Dragon Eggs", type = DocumentType.FOLDER)
+    val lore = JDRFile("lore", "Dragon History", type = DocumentType.TEXT)
+    val character = JDRFile("hero", "Dragon Rider", type = DocumentType.CHARACTER)
+    val viewModel =
+        DocumentSearchViewModel(
+            repository =
+                FakeWorkspaceRepository(
+                    rootItems = listOf(rootFolder, lore),
+                    itemsByFolder =
+                        mapOf(
+                            rootFolder.id to listOf(nestedFolder),
+                            nestedFolder.id to listOf(character),
+                        ),
+                ),
+            authRepository = FakeAuthRepository(),
+        )
+
+    viewModel.onQueryChanged("dragon")
+    idleMainLooperForSearch()
+
+    assertEquals(
+        listOf(rootFolder, nestedFolder, lore, character),
+        viewModel.uiState.value.results.map { it.file },
+    )
+    assertEquals(
+        listOf(emptyList(), listOf("Dragon Den"), emptyList(), listOf("Dragon Den", "Dragon Eggs")),
+        viewModel.uiState.value.results.map { it.folderPath },
+    )
+    assertEquals(
+        listOf(
+            emptyList(),
+            listOf(rootFolder.id),
+            emptyList(),
+            listOf(rootFolder.id, nestedFolder.id),
+        ),
+        viewModel.uiState.value.results.map { it.folderIds },
+    )
+    assertEquals(DocumentSearchStatus.Results, viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun personalSearchNeverReturnsAGroupRootOrAnImage() {
+    // A group root is the workspace itself; an image cannot be opened from a search result yet.
+    val groupRoot = JDRFile("group-root", "Dragon Campaign", type = DocumentType.GROUP_ROOT)
+    val image = JDRFile("image", "Dragon portrait", type = DocumentType.IMAGE)
+    val folder = JDRFile("folder", "Dragon Maps", type = DocumentType.FOLDER)
+    val viewModel =
+        DocumentSearchViewModel(
+            repository = FakeWorkspaceRepository(rootItems = listOf(groupRoot, image, folder)),
+            authRepository = FakeAuthRepository(),
+        )
+
+    viewModel.onQueryChanged("dragon")
+    idleMainLooperForSearch()
+
+    assertEquals(listOf(folder), viewModel.uiState.value.results.map { it.file })
+  }
+
+  @Test
+  fun groupSearchFindsVisibleFoldersAndHidesUnownedHiddenFoldersFromPlayers() {
+    val groupId = "group"
+    val visibleFolder = groupFile("Map folder", groupId, "gm", groupId, DocumentType.FOLDER)
+    val nestedFolder =
+        groupFile("Map archive", groupId, "gm", visibleFolder.id, DocumentType.FOLDER)
+    val hiddenFolder =
+        groupFile("Map secrets", groupId, "gm", groupId, DocumentType.FOLDER, hidden = true)
+    val viewModel =
+        DocumentSearchViewModel(
+            scope = DocumentSearchScope.Group(groupId),
+            repository =
+                FakeWorkspaceRepository(
+                    groupItems =
+                        mapOf(
+                            groupId to listOf(visibleFolder, hiddenFolder),
+                            visibleFolder.id to listOf(nestedFolder),
+                        )
+                ),
+            authRepository = FakeAuthRepository(AuthUser("player", null, null)),
+            groupRepository =
+                FakeGroupRepository(
+                    CampaignGroup(
+                        id = groupId,
+                        gameMasterId = "gm",
+                        participantIds = listOf("player"),
+                    )
+                ),
+        )
+
+    viewModel.onQueryChanged("map")
+    idleMainLooperForSearch()
+
+    assertEquals(
+        listOf(nestedFolder, visibleFolder),
+        viewModel.uiState.value.results.map { it.file },
+    )
+    assertEquals(listOf("Map folder"), viewModel.uiState.value.results.first().folderPath)
+    assertEquals(listOf(visibleFolder.id), viewModel.uiState.value.results.first().folderIds)
+    assertEquals(emptyList<String>(), viewModel.uiState.value.results.last().folderIds)
+  }
+
+  @Test
   fun ranksExactPrefixWordPrefixAndSubstringMatchesBeforeAlphabeticalTies() {
     val matchingFiles =
         listOf(
@@ -234,8 +337,12 @@ class DocumentSearchViewModelTest {
     viewModel.onQueryChanged("hidden")
     idleMainLooperForSearch()
 
-    assertEquals(listOf(ownHiddenFile), viewModel.uiState.value.results.map { it.file })
-    assertEquals(listOf("hidden-folder"), viewModel.uiState.value.results.single().folderPath)
+    // The hidden folder stays visible to the player because it holds their own file.
+    assertEquals(
+        listOf(hiddenFolder, ownHiddenFile),
+        viewModel.uiState.value.results.map { it.file },
+    )
+    assertEquals(listOf("hidden-folder"), viewModel.uiState.value.results.last().folderPath)
   }
 
   @Test
@@ -296,6 +403,32 @@ class DocumentSearchViewModelTest {
     idleMainLooperForSearch()
 
     assertEquals(listOf(hidden, visible), viewModel.uiState.value.results.map { it.file })
+  }
+
+  @Test
+  fun gameMasterSearchFindsHiddenFoldersAndTheirContent() {
+    val groupId = "group"
+    val hiddenFolder =
+        groupFile("Needle folder", groupId, "player", groupId, DocumentType.FOLDER, hidden = true)
+    val inside = groupFile("Needle inside", groupId, "player", hiddenFolder.id, DocumentType.TEXT)
+    val viewModel =
+        DocumentSearchViewModel(
+            scope = DocumentSearchScope.Group(groupId),
+            repository =
+                FakeWorkspaceRepository(
+                    groupItems =
+                        mapOf(groupId to listOf(hiddenFolder), hiddenFolder.id to listOf(inside))
+                ),
+            authRepository = FakeAuthRepository(AuthUser("gm", null, null)),
+            groupRepository = FakeGroupRepository(CampaignGroup(id = groupId, gameMasterId = "gm")),
+        )
+
+    viewModel.onQueryChanged("Needle")
+    idleMainLooperForSearch()
+
+    val results = viewModel.uiState.value.results
+    assertEquals(listOf(hiddenFolder, inside), results.map { it.file })
+    assertEquals(listOf(hiddenFolder.id), results.single { it.file == inside }.folderIds)
   }
 
   @Test
@@ -405,16 +538,32 @@ class DocumentSearchViewModelTest {
 
     override fun getFileFlow(fileId: String): Flow<JDRFile?> = flowOf(null)
 
-    override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> {
-      if (folderId == PERSONAL_ROOT_ID) {
-        personalRootRequests++
-        return rootFailure?.let { failure -> flow { throw failure } } ?: flowOf(rootItems)
-      }
-      return flowOf(itemsByFolder[folderId].orEmpty())
-    }
+    // The search must read each folder once: a listener's first value can come from a partial
+    // local cache, so the listeners of this fake fail.
+    override fun getPersonalFolderFiles(folderId: String, ownerId: String): Flow<List<JDRFile>> =
+        flow {
+          error("The search must not read folders through a listener.")
+        }
 
     override fun getGroupFolderFiles(folderId: String, groupId: String): Flow<List<JDRFile>> =
-        flowOf(groupItems[folderId].orEmpty())
+        flow {
+          error("The search must not read folders through a listener.")
+        }
+
+    override suspend fun fetchPersonalFolderFiles(
+        folderId: String,
+        ownerId: String,
+    ): List<JDRFile> {
+      if (folderId == PERSONAL_ROOT_ID) {
+        personalRootRequests++
+        rootFailure?.let { throw it }
+        return rootItems
+      }
+      return itemsByFolder[folderId].orEmpty()
+    }
+
+    override suspend fun fetchGroupFolderFiles(folderId: String, groupId: String): List<JDRFile> =
+        groupItems[folderId].orEmpty()
   }
 
   private class FakeGroupRepository(private val group: CampaignGroup?) : GroupRepository {

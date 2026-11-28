@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.github.se.jdrnexus.ui.search
 
 import androidx.lifecycle.ViewModel
@@ -23,9 +24,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * Searches document names across the configured workspace. Personal search recursively reads the
- * signed-in user's folder tree; group search also applies the workspace's membership and visibility
- * rules before exposing results.
+ * Searches the names of every file type (folders, lore and characters) across the configured
+ * workspace. Personal search recursively reads the signed-in user's folder tree; group search also
+ * applies the workspace's membership and visibility rules before exposing results.
  *
  * A [groupRepository] is required when [scope] is [DocumentSearchScope.Group]. It is optional for
  * Personal Space search.
@@ -115,7 +116,7 @@ class DocumentSearchViewModel(
 
     return documents
         .asSequence()
-        .filter { it.file.type == DocumentType.TEXT || it.file.type == DocumentType.CHARACTER }
+        .filter { it.file.type in SEARCHABLE_TYPES }
         .filter { it.file.name.contains(query, ignoreCase = true) }
         .sortedWith(
             compareBy<DocumentSearchResult> { matchRank(it.file.name, query) }
@@ -135,22 +136,20 @@ class DocumentSearchViewModel(
 
   private suspend fun collectPersonalDocuments(ownerId: String): List<DocumentSearchResult> {
     val documents = mutableListOf<DocumentSearchResult>()
-    val pendingFolders = ArrayDeque<Pair<String, List<String>>>()
+    // Each pending folder carries the location of its children: the names and ids down to it.
+    val pendingFolders = ArrayDeque<Triple<String, List<String>, List<String>>>()
     val visitedFolderIds = mutableSetOf<String>()
+    pendingFolders.addLast(Triple(PERSONAL_ROOT_ID, emptyList(), emptyList()))
 
-    fun collect(items: List<JDRFile>, folderPath: List<String>) {
-      items.forEach { item ->
-        documents.add(DocumentSearchResult(item, folderPath))
+    // One-shot reads: the first value of a listener can come from a partial local cache.
+    while (pendingFolders.isNotEmpty()) {
+      val (folderId, folderPath, folderIds) = pendingFolders.removeFirst()
+      repository.fetchPersonalFolderFiles(folderId, ownerId).forEach { item ->
+        documents.add(DocumentSearchResult(item, folderPath, folderIds))
         if (item.isContainer() && visitedFolderIds.add(item.id)) {
-          pendingFolders.addLast(item.id to (folderPath + item.name))
+          pendingFolders.addLast(Triple(item.id, folderPath + item.name, folderIds + item.id))
         }
       }
-    }
-
-    collect(repository.getPersonalFolderFiles(PERSONAL_ROOT_ID, ownerId).first(), emptyList())
-    while (pendingFolders.isNotEmpty()) {
-      val (folderId, folderPath) = pendingFolders.removeFirst()
-      collect(repository.getPersonalFolderFiles(folderId, ownerId).first(), folderPath)
     }
     return documents
   }
@@ -174,7 +173,7 @@ class DocumentSearchViewModel(
 
     while (pendingFolderIds.isNotEmpty()) {
       val folderId = pendingFolderIds.removeFirst()
-      repository.getGroupFolderFiles(folderId, groupId).first().forEach { item ->
+      repository.fetchGroupFolderFiles(folderId, groupId).forEach { item ->
         if (groupId !in item.sharedGroupsIds || item.placements[groupId]?.folderId != folderId) {
           return@forEach
         }
@@ -222,15 +221,16 @@ class DocumentSearchViewModel(
             }
 
     return visibleFiles.map { item ->
-      val folderPath = mutableListOf<String>()
+      val parents = mutableListOf<JDRFile>()
       var parentId = item.placements[groupId]?.folderId
       val visited = mutableSetOf<String>()
       while (parentId != null && parentId != groupId && visited.add(parentId)) {
         val parent = documentsById[parentId] ?: break
-        folderPath.add(parent.name)
+        parents.add(parent)
         parentId = parent.placements[groupId]?.folderId
       }
-      DocumentSearchResult(item, folderPath.asReversed())
+      parents.reverse()
+      DocumentSearchResult(item, parents.map { it.name }, parents.map { it.id })
     }
   }
 
@@ -262,4 +262,12 @@ class DocumentSearchViewModel(
   }
 
   private class SearchException(val reason: SearchError) : Exception()
+
+  private companion object {
+    /**
+     * The types a result can have: each one opens from the search. A group root is the workspace
+     * itself, and an image cannot be opened yet.
+     */
+    val SEARCHABLE_TYPES = setOf(DocumentType.FOLDER, DocumentType.TEXT, DocumentType.CHARACTER)
+  }
 }

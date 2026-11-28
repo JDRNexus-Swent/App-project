@@ -608,6 +608,17 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun groupSearchLabelsRootResultsWithTheGroupNotThePersonalSpace() {
+    val loreFile = loreFile()
+    groupWorkspaceSearchStart(loreFile)
+
+    composeTestRule
+        .onNodeWithTag(C.Tag.searchResult(loreFile.id))
+        .assertTextContains("The Sunken Crown")
+    composeTestRule.onAllNodesWithText("Personal Space").assertCountEquals(0)
+  }
+
+  @Test
   fun groupSearchOpensAnotherMembersFileReadOnly() {
     val loreFile = loreFile().copy(ownerId = "another-player")
     groupWorkspaceSearchStart(loreFile)
@@ -803,6 +814,41 @@ class MainActivityNavigationTest {
   }
 
   @Test
+  fun groupSearchFolderResultOpensTheFolderInTheWorkspace() {
+    val folder =
+        JDRFile(
+            id = "dragon-maps",
+            name = "Dragon Maps",
+            ownerId = "user-1",
+            type = DocumentType.FOLDER,
+            sharedGroupsIds = listOf("group-1"),
+            placements = mapOf("group-1" to Placement(folderId = "group-1")),
+        )
+    val child =
+        JDRFile(
+            id = "atlas",
+            name = "Atlas",
+            ownerId = "user-1",
+            sharedGroupsIds = listOf("group-1"),
+            placements = mapOf("group-1" to Placement(folderId = folder.id)),
+        )
+    groupWorkspaceSearchStart(folder, child)
+
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(folder.id)).performClick()
+
+    // The search closes on the workspace, opened at the folder: its name heads the screen.
+    waitForText(child.name)
+    composeTestRule.onAllNodesWithTag(C.Tag.search_query).assertCountEquals(0)
+    composeTestRule.onNodeWithText(folder.name).assertIsDisplayed()
+
+    // Back goes up to the group root, not back to the search.
+    Espresso.pressBack()
+    waitForText("The Sunken Crown")
+    composeTestRule.onAllNodesWithText(child.name).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(C.Tag.search_query).assertCountEquals(0)
+  }
+
+  @Test
   fun groupWorkspaceSearchShowsGroupFilesAndBackReturnsToWorkspace() {
     groupWorkspaceSearchStart(loreFile())
     composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
@@ -918,6 +964,9 @@ class MainActivityNavigationTest {
     waitForText(loreFile.name)
     composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
     composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Kingdom")
+    composeTestRule
+        .onNodeWithTag(C.Tag.searchResult(loreFile.id))
+        .assertTextContains("Personal Space")
     composeTestRule.onNodeWithTag(C.Tag.searchResult(loreFile.id)).performClick()
 
     waitForTag(EditFileLoreTestTags.LIST)
@@ -925,6 +974,76 @@ class MainActivityNavigationTest {
     composeTestRule.onNodeWithTag(C.Tag.search_query).assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.shared_back_button).performClick()
     waitForText(loreFile.name)
+  }
+
+  @Test
+  fun personalSearchFolderResultOpensTheFolderInThePersonalSpace() {
+    val folder =
+        JDRFile(
+            id = "campaign",
+            name = "Campaign",
+            ownerId = "user-1",
+            type = DocumentType.FOLDER,
+        )
+    val searchViewModel = FakeSearchViewModel(folder)
+    val loreFile = showAuthenticatedApp(searchViewModel, personalFolder = folder)
+
+    composeTestRule.onNodeWithTag(C.Tag.bottomTab("files")).performClick()
+    waitForText(folder.name)
+    composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Camp")
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(folder.id)).performClick()
+
+    // The search closes on the Personal Space, inside the folder: its lore document is listed,
+    // and the top bar title and the heading both show the folder name.
+    waitForText(loreFile.name)
+    composeTestRule.onAllNodesWithTag(C.Tag.search_query).assertCountEquals(0)
+    composeTestRule.onAllNodesWithText(folder.name).assertCountEquals(2)
+
+    // Back goes up to the root, where the folder is a row again.
+    Espresso.pressBack()
+    composeTestRule.waitUntil(5_000) {
+      composeTestRule.onAllNodesWithText(loreFile.name).fetchSemanticsNodes().isEmpty()
+    }
+    composeTestRule.onAllNodesWithText(folder.name).assertCountEquals(1)
+  }
+
+  @Test
+  fun personalSearchFolderResultWithoutThePersonalSpaceUnderItOpensThePersonalSpace() {
+    val folder =
+        JDRFile(id = "campaign", name = "Campaign", ownerId = "user-1", type = DocumentType.FOLDER)
+    val repository = FakeAuthRepository(FakeAuthRepository.TEST_USER)
+    val workspaceRepository = FakeWorkspaceRepository(listOf(folder))
+    val authViewModel = AuthViewModel(repository)
+    val gameManagementViewModel =
+        GameManagementViewModel(FakeGroupRepository(), repository, FakeConnectivityRepository())
+    val personalSpaceViewModel = PersonalSpaceViewModel(workspaceRepository, repository)
+    val editFileViewModel = EditFileViewModel(workspaceRepository)
+    val searchViewModel = FakeSearchViewModel(folder)
+    // The search is the first screen: there is no Personal Space under it to open the folder in.
+    composeTestRule.setContent {
+      JDRNexusApp(
+          authViewModel = authViewModel,
+          gameManagementViewModel = gameManagementViewModel,
+          personalSpaceViewModel = personalSpaceViewModel,
+          editFileViewModel = editFileViewModel,
+          authRepository = repository,
+          groupRepository = FakeGroupRepository(),
+          workspaceRepository = workspaceRepository,
+          personalSearchViewModel = searchViewModel,
+          notificationViewModel = FakeNotificationViewModel(),
+          connectivityRepository = FakeConnectivityRepository(),
+          startDestination = AllRoutes.Search,
+      )
+    }
+    composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Camp")
+
+    composeTestRule.onNodeWithTag(C.Tag.searchResult(folder.id)).performClick()
+
+    // The Personal Space replaces the search, at its root, where the folder is a row.
+    waitForTag(C.Tag.search_open)
+    composeTestRule.onAllNodesWithTag(C.Tag.search_query).assertCountEquals(0)
+    waitForText(folder.name)
   }
 
   @Test
@@ -1107,12 +1226,16 @@ class MainActivityNavigationTest {
               ),
       )
 
-  private fun groupWorkspaceSearchStart(loreFile: JDRFile) {
+  /**
+   * Opens the search of a group workspace holding [result] and [otherFiles], and waits for
+   * [result].
+   */
+  private fun groupWorkspaceSearchStart(result: JDRFile, vararg otherFiles: JDRFile) {
     val groupRepository = groupRepository()
 
     showApp(
         groupRepository = groupRepository,
-        workspaceRepository = NavigationWorkspaceRepository(listOf(loreFile)),
+        workspaceRepository = NavigationWorkspaceRepository(listOf(result) + otherFiles),
     )
     signInAndOpenCampaigns()
 
@@ -1122,7 +1245,7 @@ class MainActivityNavigationTest {
 
     composeTestRule.onNodeWithTag(C.Tag.search_open).performClick()
     composeTestRule.onNodeWithTag(C.Tag.search_query).performTextInput("Dragon")
-    waitForTag(C.Tag.searchResult(loreFile.id))
+    waitForTag(C.Tag.searchResult(result.id))
   }
 
   @Test
