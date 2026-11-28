@@ -479,8 +479,8 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
    */
   private fun QuerySnapshot.toFiles(
       errorMessageContext: String,
-      filterCondition: (JDRFile) -> Boolean,
-      sortCondition: (MutableList<JDRFile>) -> Unit,
+      filterCondition: (JDRFile) -> Boolean = { true },
+      sortCondition: (MutableList<JDRFile>) -> Unit = {},
   ): List<JDRFile> {
     val files = mutableListOf<JDRFile>()
     for (document in documents) {
@@ -537,12 +537,10 @@ class WorkspaceRepositoryFirestore(private val firestore: FirebaseFirestore) : W
       )
 
   override suspend fun fetchPersonalFolderFiles(folderId: String, ownerId: String): List<JDRFile> =
-      getQueryOnce(personalFolderQuery(folderId, ownerId)).toFiles(
-          "personal folder",
-          notGroupRoot,
-      ) {}
+      getQueryOnce(personalFolderQuery(folderId, ownerId))
+          .toFiles("personal folder", filterCondition = notGroupRoot)
 
   override suspend fun fetchGroupFolderFiles(folderId: String, groupId: String): List<JDRFile> =
       getQueryOnce(groupFolderQuery(folderId, groupId))
-          .toFiles("group folder", { true }, byLowercaseName)
+          .toFiles("group folder", sortCondition = byLowercaseName)
 }

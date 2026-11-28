@@ -116,8 +116,7 @@ class DocumentSearchViewModel(
 
     return documents
         .asSequence()
-        // Folders, lore and characters are all searchable; a group root is the workspace itself.
-        .filter { it.file.type != DocumentType.GROUP_ROOT }
+        .filter { it.file.type in SEARCHABLE_TYPES }
         .filter { it.file.name.contains(query, ignoreCase = true) }
         .sortedWith(
             compareBy<DocumentSearchResult> { matchRank(it.file.name, query) }
@@ -263,4 +262,12 @@ class DocumentSearchViewModel(
   }
 
   private class SearchException(val reason: SearchError) : Exception()
+
+  private companion object {
+    /**
+     * The types a result can have: each one opens from the search. A group root is the workspace
+     * itself, and an image cannot be opened yet.
+     */
+    val SEARCHABLE_TYPES = setOf(DocumentType.FOLDER, DocumentType.TEXT, DocumentType.CHARACTER)
+  }
 }

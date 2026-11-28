@@ -118,12 +118,14 @@ class DocumentSearchViewModelTest {
   }
 
   @Test
-  fun personalSearchNeverReturnsAGroupRoot() {
+  fun personalSearchNeverReturnsAGroupRootOrAnImage() {
+    // A group root is the workspace itself; an image cannot be opened from a search result yet.
     val groupRoot = JDRFile("group-root", "Dragon Campaign", type = DocumentType.GROUP_ROOT)
+    val image = JDRFile("image", "Dragon portrait", type = DocumentType.IMAGE)
     val folder = JDRFile("folder", "Dragon Maps", type = DocumentType.FOLDER)
     val viewModel =
         DocumentSearchViewModel(
-            repository = FakeWorkspaceRepository(rootItems = listOf(groupRoot, folder)),
+            repository = FakeWorkspaceRepository(rootItems = listOf(groupRoot, image, folder)),
             authRepository = FakeAuthRepository(),
         )
 

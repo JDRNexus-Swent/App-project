@@ -86,7 +86,10 @@ class WorkspaceRepositoryFolderReadsTest {
   fun fetchPersonalFolderFilesSkipsGroupRootsAndOtherOwnersFiles() = runBlocking {
     val file = personal("file", "Notes", PERSONAL_ROOT_ID, DocumentType.TEXT)
     val groupRoot = personal("root", "Campaign", PERSONAL_ROOT_ID, DocumentType.GROUP_ROOT)
-    storeOnServer(file, groupRoot)
+    val otherOwnersFile =
+        personal("other", "Their notes", PERSONAL_ROOT_ID, DocumentType.TEXT)
+            .copy(ownerId = OTHER_USER_ID)
+    storeOnServer(file, groupRoot, otherOwnersFile)
 
     val children =
         runAndPumpMainLooper("fetchPersonalFolderFiles", READ_TIMEOUT_MS) {
@@ -134,6 +137,7 @@ class WorkspaceRepositoryFolderReadsTest {
 
   private companion object {
     const val USER_ID = "A"
+    const val OTHER_USER_ID = "B"
     const val GROUP_ID = "group"
 
     // The first query of a run can take a few seconds while the emulator connection warms up.
