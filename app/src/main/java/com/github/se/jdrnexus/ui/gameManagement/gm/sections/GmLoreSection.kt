@@ -21,7 +21,15 @@ import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.gameManagement.gm.LoreDocument
 
-/** Displays lore documents and expands the entry matching [expandedLoreId]. */
+/**
+ * Lists campaign lore with a preview and a shared or private label for each document. The expanded
+ * document shows its full text, while the other previews are limited to two lines.
+ *
+ * @param loreDocuments Documents to display in their supplied order.
+ * @param expandedLoreId ID of the expanded document, or null when all previews are collapsed.
+ * @param onDismiss Called when the GM hides the lore section.
+ * @param onToggleLore Receives the document ID when the GM chooses to read or collapse its text.
+ */
 @Composable
 internal fun GmLoreSection(
     loreDocuments: List<LoreDocument>,

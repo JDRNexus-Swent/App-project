@@ -62,7 +62,21 @@ import com.github.se.jdrnexus.model.filerepresentation.CharacterStat
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.gameManagement.gm.CombatNPC
 
-/** Displays the current round and enemies with controls to manage combat and enemy HP. */
+/**
+ * Shows the current combat round and the enemies in the encounter. The available round controls
+ * depend on whether combat is active. The GM can add, remove, or adjust enemies in either state.
+ *
+ * @param currentRound Round number displayed in the section header.
+ * @param isCombatActive Whether to show the controls to advance or end combat.
+ * @param enemies Enemies displayed with their current HP and individual controls.
+ * @param onDismiss Called when the GM hides the combat section.
+ * @param onStartCombat Called when the GM starts combat from the inactive state.
+ * @param onNextRound Called when the GM advances active combat by one round.
+ * @param onEndCombat Called when the GM ends active combat.
+ * @param onOpenAddEnemy Called when the GM opens the add-enemy dialog.
+ * @param onUpdateEnemyHp Receives the enemy ID and a signed HP change of +1 or -1.
+ * @param onRemoveEnemy Receives the ID of the enemy the GM chooses to remove.
+ */
 @Composable
 internal fun GmCombatSection(
     currentRound: Int,

@@ -33,7 +33,14 @@ import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.gameManagement.gm.Npc
 
-/** Displays campaign [npcs] and passes the selected NPC ID to [onSelectNpc]. */
+/**
+ * Shows campaign NPC portraits and names in a horizontally scrollable row. Selecting an NPC lets
+ * the caller open its details. An empty message is shown when the campaign has no NPCs.
+ *
+ * @param npcs Campaign NPCs to display in their supplied order.
+ * @param onDismiss Called when the GM hides the NPC section.
+ * @param onSelectNpc Receives the ID of the NPC the GM selects.
+ */
 @Composable
 internal fun GmNpcSection(
     npcs: List<Npc>,
@@ -58,7 +65,13 @@ internal fun GmNpcSection(
   }
 }
 
-/** Shows the selected [npc]'s name and information until [onDismiss] is called. */
+/**
+ * Shows the selected NPC's name and information. When the information is blank, the dialog
+ * displays a message saying no information is available.
+ *
+ * @param npc Selected NPC whose details are shown.
+ * @param onDismiss Called when the GM presses Close or dismisses the dialog.
+ */
 @Composable
 internal fun GmNpcDialog(npc: Npc, onDismiss: () -> Unit) {
   AlertDialog(

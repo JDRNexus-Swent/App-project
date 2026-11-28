@@ -17,7 +17,13 @@ import com.github.se.jdrnexus.R
 import com.github.se.jdrnexus.resources.C
 import com.github.se.jdrnexus.ui.gameManagement.gm.ActivityItem
 
-/** Displays the campaign activity feed and lets the GM hide the section with [onDismiss]. */
+/**
+ * Shows up to eight recent campaign actions, including the player name and any recorded dice roll.
+ * Displays an empty message when the feed has no entries.
+ *
+ * @param activityFeed Campaign activity ordered from newest to oldest.
+ * @param onDismiss Called when the GM hides the activity section.
+ */
 @Composable
 internal fun GmActivitySection(activityFeed: List<ActivityItem>, onDismiss: () -> Unit) {
   SectionCard(GmSection.ACTIVITY, onDismiss = onDismiss) {
